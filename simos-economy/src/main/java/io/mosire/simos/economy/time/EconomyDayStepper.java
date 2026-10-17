@@ -158,6 +158,61 @@ public final class EconomyDayStepper implements AutoCloseable {
       MarketTopology topology,
       boolean plantingDrawsFirst,
       EconomyParallelism parallelism) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        new UnavailableAssetOccupancyLookup(),
+        new UnavailableProductionWageQuoteLookup(),
+        new UnavailableParticipantAttributeLookup());
+  }
+
+  /**
+   * ★★★ <b>D-032 C2 全参构造器</b>：在原有行为旋钮之外显式注入 D4-C 资产占用读口、D2 §6.5 工资报价读口与 参与户属性桥。未接真实实现时必须传对应的 {@code
+   * Unavailable*} fail-closed 适配器（不得传 null）。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      ParticipantAttributeLookup participantAttributeLookup) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        wageQuoteLookup,
+        participantAttributeLookup,
+        null);
+  }
+
+  /** ★★★ <b>D-032 C2 全参构造器（含权威 revision）</b>：资产占用快照的 expectedRevision 由组合根给出。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision) {
     this.lastCycleClosed = false;
     // ★★ B3：runtime 必须非 null（同上：生产实例的唯一权威在 production）。
     this.runtime =
@@ -166,7 +221,11 @@ public final class EconomyDayStepper implements AutoCloseable {
         new EconomySession(
             Objects.requireNonNull(base, "base"),
             Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）"),
-            runtime);
+            runtime,
+            Objects.requireNonNull(assetOccupancyLookup, "assetOccupancyLookup（D4-C 读口）"),
+            Objects.requireNonNull(wageQuoteLookup, "wageQuoteLookup（D2 §6.5 读口）"),
+            Objects.requireNonNull(participantAttributeLookup, "participantAttributeLookup（属性桥）"),
+            expectedRevision);
     this.accounts = Objects.requireNonNull(accounts, "accounts（账户会话是会话状态，必须由调用方载入）");
     this.topology =
         Objects.requireNonNull(topology, "topology（M2.3：没有城市信息用 MarketTopology.singleHex）");
@@ -712,7 +771,8 @@ public final class EconomyDayStepper implements AutoCloseable {
                 current.activity(),
                 next,
                 current.period(),
-                current.kind()));
+                current.kind(),
+                current.productionRole()));
       }
     }
     if (LOG.isDebugEnabled()) {

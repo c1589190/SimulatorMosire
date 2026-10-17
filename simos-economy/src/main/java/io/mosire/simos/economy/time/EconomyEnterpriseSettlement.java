@@ -38,6 +38,8 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRole.LaborRole;
 import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionRosters;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
@@ -251,7 +253,8 @@ final class EconomyEnterpriseSettlement {
         composition,
         householdGoods,
         markets,
-        enterprises);
+        enterprises,
+        new LinkedHashMap<>());
   }
 
   /**
@@ -287,7 +290,8 @@ final class EconomyEnterpriseSettlement {
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       MarketIndex markets,
-      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises) {
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters) {
     Objects.requireNonNull(runtime, "runtime（实例建档的唯一权威口，B2b 起必填）");
     Objects.requireNonNull(base, "base");
     if (base.modes().isEmpty()) {
@@ -305,6 +309,7 @@ final class EconomyEnterpriseSettlement {
     Objects.requireNonNull(householdGoods, "householdGoods");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(enterprises, "organizations");
+    Objects.requireNonNull(productionRosters, "productionRosters（C2：名册工作副本）");
 
     boolean changed = false;
     Set<ProductionUnitId> created = new LinkedHashSet<>();
@@ -413,7 +418,8 @@ final class EconomyEnterpriseSettlement {
                     laborCommitments,
                     composition,
                     householdGoods,
-                    markets);
+                    markets,
+                    productionRosters);
             ProductionEnterprise previous = enterprises.put(orgId, result.enterprise());
             if (!result.enterprise().equals(previous)) {
               changed = true;
@@ -466,7 +472,8 @@ final class EconomyEnterpriseSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      MarketIndex markets) {
+      MarketIndex markets,
+      LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters) {
     ActorRef organizer = HouseholdActors.of(household);
     String modeKey = MODE_KEY_PREFIX + mode.id().value();
     List<IndustryId> candidates = IndustryHexKeys.at(industries, hex.q(), hex.r());
@@ -496,11 +503,40 @@ final class EconomyEnterpriseSettlement {
       boolean preset = existingUnit.modeKey().equals(existingUnit.industry().value());
       if (ours || preset) {
         ProductionRules relation = relations.get(unitId);
+        // ★★★ D-032 C2（D2 §5.4）：采用已有 unit 时，单角色 plan 且 rules 空 ⇒ 补一条默认名册
+        //   （seed 已建好实例、自动组织在第一次推进时接管的路径也由此得到名册）。
+        if (!productionRosters.containsKey(unitId) && industry.roles().size() == 1) {
+          boolean rulesEmpty = relation == null || relation.rules().isEmpty();
+          if (rulesEmpty) {
+            long remaining =
+                Math.max(
+                    0L,
+                    householdEconomy.laborMilli()
+                        - ProductionRosters.plannedLaborOf(productionRosters, household));
+            Optional<ProductionRoster> defaultRoster =
+                ProductionRosters.defaultSingleHouseholdRoster(
+                    unitId, industry, household, remaining);
+            if (defaultRoster.isEmpty()) {
+              return shortageResult(
+                  orgId,
+                  mode,
+                  positionId,
+                  household,
+                  shareIdsOf(industryId, organizer, assetShares),
+                  "roster-required:" + unitId.value());
+            }
+            productionRosters.put(unitId, defaultRoster.get());
+          }
+        }
         List<Payee> inputSources = relation == null ? List.of() : List.of(relation.inputSupplier());
         Payee outputOwnership =
             relation == null
                 ? new Payee.ToActor(organizer)
                 : new Payee.ToActor(relation.residualOwner());
+        List<HouseholdId> laborSources =
+            productionRosters.containsKey(unitId)
+                ? productionRosters.get(unitId).households()
+                : List.of(household);
         return new OrganizeResult(
             new ProductionEnterprise(
                 orgId,
@@ -508,7 +544,7 @@ final class EconomyEnterpriseSettlement {
                 positionId,
                 Optional.of(unitId),
                 organizer,
-                List.of(household),
+                laborSources,
                 shareIdsOf(industryId, organizer, assetShares),
                 inputSources,
                 outputOwnership,
@@ -538,6 +574,17 @@ final class EconomyEnterpriseSettlement {
           AssetBudgetBook.SHARED_SCOPE_REJECTION);
     }
 
+    // ★★★ D-032 D2 §5.4 / I16：多角色 plan 没有显式名册 ⇒ 具名 `roster-required`，不得按角色各建一份组织，
+    //   也不得伪造 placeholder 工资工人。
+    if (industry.roles().size() > 1 && !productionRosters.containsKey(unitId)) {
+      return shortageResult(
+          orgId,
+          mode,
+          positionId,
+          household,
+          shareIdsOf(industryId, organizer, assetShares),
+          "roster-required:" + unitId.value());
+    }
     // ── 路由 ②：计划一条新 unit（只读；任一路不满 ⇒ 具名 SHORTAGE）──────────────────────────
     ProductionRecipe recipe = industry.recipe();
     long disposableLabor = disposableLabor(household, householdEconomy, laborCommitments);
@@ -703,8 +750,30 @@ final class EconomyEnterpriseSettlement {
             generated.relation().residualOwner(),
             generated.relation().laborSource());
 
+    // ★★★ D-032 D2 §5.4：单角色 + `rules` 空 ⇒ 建 unit 时同批生成默认名册。
+    //   remaining = laborMilli − Σ现有名册.plannedLabor；remaining<=0 或标准日劳动为 0 ⇒ `roster-required`。
+    Optional<ProductionRoster> defaultRoster = Optional.empty();
+    if (industry.roles().size() == 1 && relation.rules().isEmpty()) {
+      long remaining =
+          Math.max(
+              0L,
+              householdEconomy.laborMilli()
+                  - ProductionRosters.plannedLaborOf(productionRosters, household));
+      defaultRoster =
+          ProductionRosters.defaultSingleHouseholdRoster(unitId, industry, household, remaining);
+      if (defaultRoster.isEmpty()) {
+        return shortageResult(
+            orgId,
+            mode,
+            positionId,
+            household,
+            shareIdsOf(industryId, organizer, assetShares),
+            "roster-required:" + unitId.value());
+      }
+    }
+
     Optional<AllocationPlan> allocation = Optional.empty();
-    if (recipe.laborPerUnit() > 0L) {
+    if (industry.roles().size() == 1 && recipe.laborPerUnit() > 0L) {
       long amount = Math.min(scale * recipe.laborPerUnit(), laborBudget);
       if (amount < recipe.laborPerUnit()) {
         return shortageResult(
@@ -768,21 +837,30 @@ final class EconomyEnterpriseSettlement {
     }
     applyGrants(grants, organizer, industries, pledges, assetShares);
     relations.put(unitId, relation);
+    // ★★★ D-032 D2 §5.6：生产承诺带角色、id 走 idOfProduction（单角色 plan 的角色 = roles[0]）。
+    Optional<io.mosire.simos.economy.api.production.ProductionRoleId> allocationRole =
+        industry.roles().size() == 1 ? Optional.of(industry.roles().get(0).id()) : Optional.empty();
     allocation.ifPresent(
-        plan -> {
-          LaborAllocationId allocationId =
-              HouseholdLaborCommitment.idOf(unitId, plan.lot(), household);
-          laborCommitments.put(
-              allocationId,
-              new HouseholdLaborCommitment(
-                  allocationId,
-                  plan.lot(),
-                  household,
-                  organizer,
-                  unitId.value(),
-                  plan.laborMilli(),
-                  plan.period()));
-        });
+        plan ->
+            allocationRole.ifPresent(
+                role -> {
+                  LaborAllocationId allocationId =
+                      HouseholdLaborCommitment.idOfProduction(unitId, role, plan.lot(), household);
+                  laborCommitments.put(
+                      allocationId,
+                      new HouseholdLaborCommitment(
+                          allocationId,
+                          plan.lot(),
+                          household,
+                          organizer,
+                          unitId.value(),
+                          plan.laborMilli(),
+                          plan.period(),
+                          io.mosire.simos.economy.api.labor.LaborCommitmentKind.PRODUCTION,
+                          Optional.of(role)));
+                }));
+    // 默认名册在实例创建成功、关系/配额都通过之后落工作副本（零半状态）。
+    defaultRoster.ifPresent(roster -> productionRosters.put(unitId, roster));
     return new OrganizeResult(
         new ProductionEnterprise(
             orgId,
@@ -790,7 +868,9 @@ final class EconomyEnterpriseSettlement {
             positionId,
             Optional.of(unitId),
             organizer,
-            List.of(household),
+            productionRosters.containsKey(unitId)
+                ? productionRosters.get(unitId).households()
+                : List.of(household),
             shareIdsOf(industryId, organizer, assetShares),
             List.of(relation.inputSupplier()),
             new Payee.ToActor(relation.residualOwner()),

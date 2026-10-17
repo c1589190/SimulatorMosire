@@ -69,6 +69,7 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -394,7 +395,12 @@ public record EconomyData(
     //   ★ 空表 = 这个档还没有过任何市场轮（合法状态；新世界第一轮之前）。
     //   ★ 与 marketTables 的关系：**不要求**键在 marketTables 里 —— 市场被撤（ClearRegion/Merge）之后，
     //     它的历史统计仍是历史事实（读口按键直取，不做"键必须仍存在"的守卫）。
-    Map<MarketZoneId, MarketRoundStats> marketRoundStats)
+    Map<MarketZoneId, MarketRoundStats> marketRoundStats,
+    // ── ★★★ D-032 C2（D2 §5.3）：第 32 个组件 —— 生产参与名册（unit → roster）────────────────────
+    //   键 == 值内 unit；空表合法（= 没有任何名册）。名册是"谁以什么角色参与"的**唯一权威**：
+    //   production 只从执行请求接收，不持久持有；economy 不得从 ProductionEnterprise / ProductionRules 反推角色。
+    //   ★ D2/D3/D4 组件号约束：31 = C2 前基线；本组件 = 32；D3 只新增 33–35；D4 后续 36/37。
+    Map<ProductionUnitId, ProductionRoster> productionRosters)
     implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
@@ -562,7 +568,8 @@ public record EconomyData(
         Map.of(), // householdDebtRefs
         Map.of(), // commodityFreightBaseMilli
         Map.of(), // govMarketMandates
-        Map.of()); // marketRoundStats
+        Map.of(), // marketRoundStats
+        Map.of()); // productionRosters
   }
 
   public EconomyData {
@@ -1882,6 +1889,31 @@ public record EconomyData(
 
     // ── Z1 第 33 个组件：生产效率累计与余数表 —— ★★ B2b 起**本组件已从本类型删除** ──────────────
     //   效率累计与三段精度余数的唯一权威在 production（{@code ProductionData.efficiency()}，经
+
+    // ── ★★★ D-032 C2（D2 §5.3）：第 32 个组件的形状守卫 + 冻结 ────────────────────────────────
+    //   ★ 本组件只做**不依赖 production 定义**的校验（键 == 值内 unit、null）；角色存在性/份额 owner/
+    //     资格/权重规则等跨切片判据在 `EconomyReferenceValidation#validateProductionRosters`。
+    //   ★ 逐键复制 + 冻在赋值处：与其余 Map 组件同款（访问器返回冻结副本，调用方改不动）。
+    if (productionRosters == null) {
+      productionRosters = Map.of();
+    }
+    Map<ProductionUnitId, ProductionRoster> productionRostersCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionRoster> entry : productionRosters.entrySet()) {
+      ProductionUnitId rosterUnit = entry.getKey();
+      ProductionRoster roster = entry.getValue();
+      if (rosterUnit == null || roster == null) {
+        throw new IllegalArgumentException("productionRosters 的键与值都不得为 null: " + rosterUnit);
+      }
+      if (!rosterUnit.equals(roster.unit())) {
+        throw new IllegalArgumentException(
+            "productionRosters 的键必须与 ProductionRoster.unit 一致（D2-I1）：键="
+                + rosterUnit.value()
+                + "，行内 unit="
+                + roster.unit().value());
+      }
+      productionRostersCopy.put(rosterUnit, roster);
+    }
+    productionRosters = Collections.unmodifiableMap(productionRostersCopy); // ★ 冻在赋值处
     //   {@code ProductionRuntime#efficiencyOf(unit)} 只读投影），由 {@code ProductionRuntime#executeDay}
     // 写。
   }
@@ -1995,7 +2027,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2052,7 +2085,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2091,7 +2125,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2127,7 +2162,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   public EconomyData withLaborCommitments(
@@ -2163,7 +2199,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2199,7 +2236,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2211,7 +2249,8 @@ public record EconomyData(
   /**
    * ★★ <b>W1：市场轮统计簿的唯一写入形态</b>（每个市场轮结束时由 {@code EconomySettlement} 调一次）。
    *
-   * <p>★ 手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来） ⇒ 所有写入都必须走本方法。
+   * <p>★ 手写 {@code new EconomyData(…, productionRosters)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来）
+   * ⇒ 所有写入都必须走本方法。
    */
   public EconomyData withMarketRoundStats(Map<MarketZoneId, MarketRoundStats> value) {
     return new EconomyData(
@@ -2245,13 +2284,15 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        value);
+        value,
+        productionRosters);
   }
 
   /**
    * ★★ <b>W1：价表的唯一写入形态</b>（键 = 市场 id；每区一张）。
    *
-   * <p>★ 手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来） ⇒ 所有只改价表的写入都必须走本方法。
+   * <p>★ 手写 {@code new EconomyData(…, productionRosters)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来）
+   * ⇒ 所有只改价表的写入都必须走本方法。
    *
    * <p>★★ <b>什么时候<b>不能</b>单用它</b>（2026-10-11 W1d）：当这次变更同时要动<b>区表</b>（新建区 / 撤区 / 改法定币）时，
    * 中间态会被构造期的跨表守卫拒掉（"区在、价表不在"或"价表计价币 ≠ 区法定币"）—— 那种"区 + 它的价表成对变化"的场景走 {@link
@@ -2289,7 +2330,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2329,7 +2371,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2364,7 +2407,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2400,7 +2444,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   // ★★ B2b：`withProcesses` 已删（units 组件退役）。实例的唯一权威在 production，写它一律经契约口
@@ -2441,7 +2486,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   // ★★★ B5（§13.15.2 裁定十八）：`withModes(Map<ProductionModeId, ProductionModeDefinitionView>)`
@@ -2482,7 +2528,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2518,7 +2565,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2564,7 +2612,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2601,7 +2650,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2638,7 +2688,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2674,7 +2725,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2710,7 +2762,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2746,7 +2799,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2786,7 +2840,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2827,7 +2882,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2868,7 +2924,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2909,7 +2966,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2950,7 +3008,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -2992,7 +3051,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   // ★★ B2b：`withOutputQuantityOverrides` 已删（GM 产出覆盖的唯一权威在 production）。
@@ -3043,7 +3103,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -3084,7 +3145,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -3093,8 +3155,9 @@ public record EconomyData(
    * <p>键 = {@link MarketZoneId}，且必须等于值内 {@link MarketZone#zoneId()}（键即身份，不许两处拼区名）。<b>空表</b> ⇒
    * 市场区退回"城市 + tier 半径"派生（既有世界的默认值，逐值不变）；<b>非空</b> ⇒ 成员格由本表唯一给定。
    *
-   * <p>★★ <b>它是"划界/退让/覆盖/合并"的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个 组件（本仓最贵的那类
-   * bug）；三个区命令都走它。跨表守卫（hex 不重叠、法定币在词表里、发行政府登记且 issuable 含法定币） 由构造期判，命令层只是把它们提前成具名拒因。
+   * <p>★★ <b>它是"划界/退让/覆盖/合并"的唯一写入形态</b>：手写 {@code new EconomyData(…, productionRosters)}
+   * 会在下一次新增组件时静默丢掉某个 组件（本仓最贵的那类 bug）；三个区命令都走它。跨表守卫（hex 不重叠、法定币在词表里、发行政府登记且 issuable 含法定币）
+   * 由构造期判，命令层只是把它们提前成具名拒因。
    */
   public EconomyData withMarketZones(Map<MarketZoneId, MarketZone> value) {
     return new EconomyData(
@@ -3128,7 +3191,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -3189,7 +3253,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -3199,8 +3264,9 @@ public record EconomyData(
    * CommodityFreightBase#legacyMilli(CommodityId)}（现行硬编码分档 ⇒ 未设表的世界逐值不变）；<b>键缺</b> ⇒ 同上（{@link
    * #commodityFreightBaseMilliOf}）。
    *
-   * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；GM 命令
-   * {@code economy.SetCommodityFreight} 走它。★ 值域（{@code ≥ 0}）由构造期具名判死；键域（必须是词表里的商品） 由命令层判。
+   * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…, productionRosters)}
+   * 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；GM 命令 {@code economy.SetCommodityFreight} 走它。★ 值域（{@code ≥
+   * 0}）由构造期具名判死；键域（必须是词表里的商品） 由命令层判。
    */
   public EconomyData withCommodityFreightBaseMilli(Map<CommodityId, Long> value) {
     return new EconomyData(
@@ -3234,7 +3300,8 @@ public record EconomyData(
         householdDebtRefs,
         value,
         govMarketMandates,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /**
@@ -3244,9 +3311,9 @@ public record EconomyData(
    * （谁/商品/方向/量/限价/到期）。<b>空表</b> ⇒ 国库户在商品市场上零订单（与 Z7b 的"退出商品市场"在行为上逐值相同）； 授权主体必须是已登记的政府、且其国库必须是家户 ——
    * 由 compact 构造器具名判死。
    *
-   * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；两条 GM
-   * 命令（{@code economy.AuthorizeGovernmentMarketOrder} / {@code
-   * economy.CancelGovernmentMarketOrder}）与日结算的成交回写走它。
+   * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…, productionRosters)}
+   * 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；两条 GM 命令（{@code economy.AuthorizeGovernmentMarketOrder} /
+   * {@code economy.CancelGovernmentMarketOrder}）与日结算的成交回写走它。
    */
   public EconomyData withGovMarketMandates(Map<MarketMandateId, GovernmentMarketMandate> value) {
     return new EconomyData(
@@ -3280,7 +3347,8 @@ public record EconomyData(
         householdDebtRefs,
         commodityFreightBaseMilli,
         value,
-        marketRoundStats);
+        marketRoundStats,
+        productionRosters);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */
@@ -3354,5 +3422,64 @@ public record EconomyData(
               : relation);
     }
     return normalized;
+  }
+
+  // ── ★★★ D-032 C2（D2 §5.3）：名册组件的逐组件写口（不绕过 ChangeSet 的落盘路径）───────────────
+
+  /** 整份替换一张名册表（GM 命令 / 创世 / 自动名册共用；其余 31 个组件原样带过）。 */
+  public EconomyData withProductionRosters(Map<ProductionUnitId, ProductionRoster> value) {
+    Objects.requireNonNull(value, "value（清除全部名册请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        value);
+  }
+
+  /** 写入/替换一个 unit 的名册（键 == 值内 unit 由构造期再判一次）。 */
+  public EconomyData withProductionRoster(ProductionRoster roster) {
+    Objects.requireNonNull(roster, "roster");
+    LinkedHashMap<ProductionUnitId, ProductionRoster> next = new LinkedHashMap<>(productionRosters);
+    next.put(roster.unit(), roster);
+    return withProductionRosters(next);
+  }
+
+  /** 清除一个 unit 的名册；键不存在 ⇒ 逐值不变（返回同值的新实例）。 */
+  public EconomyData withoutProductionRoster(ProductionUnitId unit) {
+    Objects.requireNonNull(unit, "unit");
+    if (!productionRosters.containsKey(unit)) {
+      return this;
+    }
+    LinkedHashMap<ProductionUnitId, ProductionRoster> next = new LinkedHashMap<>(productionRosters);
+    next.remove(unit);
+    return withProductionRosters(next);
   }
 }

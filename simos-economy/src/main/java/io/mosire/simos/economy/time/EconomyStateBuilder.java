@@ -40,6 +40,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRuntime;
@@ -112,6 +113,9 @@ public final class EconomyStateBuilder {
 
   /** ★★ W1：市场轮统计簿的会话工作副本（键 = 市场 id）。 */
   private LinkedHashMap<MarketZoneId, MarketRoundStats> marketRoundStats;
+
+  /** ★★★ D-032 C2：生产参与名册工作副本（自动组织 / 名册命令在段内写；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters;
 
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -394,6 +398,19 @@ public final class EconomyStateBuilder {
     return marketRoundStats;
   }
 
+  /** ★★★ D-032 C2：名册表的只读选择（已物化读工作副本、未物化直接复用 base 的不可变表）。 */
+  public Map<ProductionUnitId, ProductionRoster> productionRostersOrBase() {
+    return productionRosters == null ? base.productionRosters() : productionRosters;
+  }
+
+  /** ★★★ D-032 C2：名册表工作副本（写入口：自动名册 / 名册命令；未物化时从 base 惰性拷贝）。 */
+  public LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters() {
+    if (productionRosters == null) {
+      productionRosters = new LinkedHashMap<>(base.productionRosters());
+    }
+    return productionRosters;
+  }
+
   /** 在途批次表工作副本。 */
   public LinkedHashMap<ShipmentId, ShipmentBatch> shipments() {
     if (shipments == null) {
@@ -599,6 +616,9 @@ public final class EconomyStateBuilder {
         // ★★ W1（第 40 个组件）：市场轮统计簿**是**会话工作副本 —— 每个市场轮结束时写它
         //   （最近一轮 / 本周期 / 上周期三段窗口，见 MarketRoundStats）。漏了它 = 统计在段内被写回、
         //   下一次 advance 又从 base 的旧窗口开始（"统计永远差一轮"这种静默漂移）。
-        marketRoundStats == null ? base.marketRoundStats() : marketRoundStats);
+        marketRoundStats == null ? base.marketRoundStats() : marketRoundStats,
+        // ★★★ D-032 C2（第 32 个组件）：自动组织会在段内写真名册 ⇒ 走显式工作副本；未物化 ⇒ 原样复用 base。
+        //   漏了它 = 任意一次 advance 都会把已建立的名册静默抹掉（本仓最贵的那类 bug）。
+        productionRosters == null ? base.productionRosters() : productionRosters);
   }
 }

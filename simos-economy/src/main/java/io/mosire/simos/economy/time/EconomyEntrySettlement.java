@@ -23,6 +23,8 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionRosters;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.ExperienceTrackId;
@@ -293,7 +295,8 @@ final class EconomyEntrySettlement {
             new LinkedHashMap<>(assetShares),
             new LinkedHashMap<>(laborCommitments),
             new LinkedHashMap<>(operatorConditions),
-            new LinkedHashMap<>(relations));
+            new LinkedHashMap<>(relations),
+            new LinkedHashMap<>());
     EntryContext context =
         new EntryContext(
             runtime,
@@ -364,7 +367,8 @@ final class EconomyEntrySettlement {
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       MarketIndex markets,
-      long day) {
+      long day,
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
     Objects.requireNonNull(runtime, "runtime（D-032：试算走 production 契约，不接受 null）");
     Objects.requireNonNull(intents, "intents");
     Objects.requireNonNull(planAssetSources, "planAssetSources（缺省给空表 = 只认自有份额）");
@@ -372,8 +376,16 @@ final class EconomyEntrySettlement {
     if (intents.isEmpty()) {
       return new Execution(false, Set.of(), List.of());
     }
+    Objects.requireNonNull(productionRosters, "productionRosters（C2：名册工作副本）");
     Tables tables =
-        new Tables(industries, units, assetShares, laborCommitments, operatorConditions, relations);
+        new Tables(
+            industries,
+            units,
+            assetShares,
+            laborCommitments,
+            operatorConditions,
+            relations,
+            productionRosters);
     EntryContext context =
         new EntryContext(
             runtime,
@@ -1176,10 +1188,39 @@ final class EconomyEntrySettlement {
     if (tables.units.containsKey(unitId)) {
       return Optional.of("UNIT_ID_EXISTS:" + unitId.value());
     }
+    // ★★★ D-032 D2 §5.4 / I16：真实执行时的名册前置判定（模拟期不落名册，只证明可以建）。
+    Optional<ProductionRoster> defaultRoster = Optional.empty();
+    if (mode == WriteMode.REAL) {
+      List<io.mosire.simos.production.contract.ProductionRoleDefinition> roles =
+          intent.plan().roles();
+      if (roles.size() > 1 && !tables.productionRosters.containsKey(unitId)) {
+        return Optional.of("roster-required:" + unitId.value());
+      }
+      if (roles.size() == 1) {
+        HouseholdEconomy row = context.householdEconomies.get(intent.household());
+        long remaining =
+            row == null
+                ? 0L
+                : Math.max(
+                    0L,
+                    row.laborMilli()
+                        - ProductionRosters.plannedLaborOf(
+                            tables.productionRosters, intent.household()));
+        defaultRoster =
+            ProductionRosters.defaultSingleHouseholdRoster(
+                unitId, intent.plan(), intent.household(), remaining);
+        if (defaultRoster.isEmpty()) {
+          return Optional.of("roster-required:" + unitId.value());
+        }
+      }
+    }
     LaborAllocationId allocationId = null;
-    if (intent.laborMilli() > 0L) {
+    io.mosire.simos.economy.api.production.ProductionRoleId allocationRole =
+        intent.plan().roles().size() == 1 ? intent.plan().roles().get(0).id() : null;
+    if (intent.laborMilli() > 0L && allocationRole != null) {
       PeopleLotId lot = intent.laborLot().orElseThrow();
-      allocationId = HouseholdLaborCommitment.idOf(unitId, lot, intent.household());
+      allocationId =
+          HouseholdLaborCommitment.idOfProduction(unitId, allocationRole, lot, intent.household());
       if (tables.laborCommitments.containsKey(allocationId)) {
         return Optional.of("ALLOCATION_ID_EXISTS:" + allocationId.value());
       }
@@ -1338,14 +1379,17 @@ final class EconomyEntrySettlement {
               intent.householdActor(),
               unitId.value(),
               intent.laborMilli(),
-              intent.laborPeriod()));
+              intent.laborPeriod(),
+              io.mosire.simos.economy.api.labor.LaborCommitmentKind.PRODUCTION,
+              Optional.of(allocationRole)));
     }
+    defaultRoster.ifPresent(roster -> tables.productionRosters.put(unitId, roster));
     // 派生账本同步（供同批次后续评估看见本条的占用）。
     context
         .unitIdsByOperator
         .computeIfAbsent(intent.householdActor(), ignored -> new ArrayList<>())
         .add(unitId);
-    if (intent.laborMilli() > 0L) {
+    if (allocationId != null) {
       PeopleLotId lot = intent.laborLot().orElseThrow();
       context.allocationMilliByHousehold.merge(intent.household(), intent.laborMilli(), Long::sum);
       context.allocationMilliByGroup.merge(lot, intent.laborMilli(), Long::sum);
@@ -1438,7 +1482,9 @@ final class EconomyEntrySettlement {
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionRules> relations) {
+      Map<ProductionUnitId, ProductionRules> relations,
+      // ★★★ D-032 C2：名册工作副本（真实执行时写默认名册；模拟期用空表，不落任何状态）。
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
 
     Tables {
       Objects.requireNonNull(industries, "Tables.industries 不得为 null");
@@ -1447,6 +1493,7 @@ final class EconomyEntrySettlement {
       Objects.requireNonNull(laborCommitments, "Tables.allocations 不得为 null");
       Objects.requireNonNull(operatorConditions, "Tables.operatorConditions 不得为 null");
       Objects.requireNonNull(relations, "Tables.relations 不得为 null");
+      Objects.requireNonNull(productionRosters, "Tables.productionRosters 不得为 null");
     }
   }
 

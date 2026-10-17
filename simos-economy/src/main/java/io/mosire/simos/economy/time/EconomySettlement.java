@@ -297,7 +297,7 @@ public final class EconomySettlement {
    * 本常量先**存在但取值 0**，V7 参数目录落地后由参数表供给（届时耕牛一起做，这个数才有依据）。 有一条用例把它钉住（{@code
    * EconomySettlementTest.productionLossSplitsIntoFeedAndDepreciation}）。
    */
-  public static final int FEED_PER_MILLE = 0;
+  public static final int FEED_PER_MILLE = ProductionOutputNetting.FEED_PER_MILLE;
 
   /**
    * ★★ **收获时的农具折旧**（千分数）：**30‰（3%）**。
@@ -306,7 +306,7 @@ public final class EconomySettlement {
    * ——**留种**移出收获扣减、改在**播种日**以 {@code cycleInputPerUnit} 的 LAND 档现扣（v2 spec §3.4 的"最重要的口径修正"）， 剩下的
    * 3% 即农具折旧。用户 2026-09-25 裁定「现定」的定案数（见计划 2 的「修订与新增」）。
    */
-  public static final int DEPRECIATION_PER_MILLE = 30;
+  public static final int DEPRECIATION_PER_MILLE = ProductionOutputNetting.DEPRECIATION_PER_MILLE;
 
   /** 同格借粮的每周期利率（千分数）：20‰；字面量的唯一拼写点在 {@link DebtTerms}（旧公开常量为兼容别名）。 */
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE =
@@ -1254,7 +1254,8 @@ public final class EconomySettlement {
                 householdMoney,
                 composition,
                 MarketIndex.of(dayView),
-                day);
+                day,
+                session.sheet().productionRosters());
         outcomes.addAll(execution.outcomes());
         enteredToday = execution.enteredUnitIds();
         if (execution.changed()) {
@@ -1446,7 +1447,8 @@ public final class EconomySettlement {
               composition,
               householdGoods,
               MarketIndex.of(dayView),
-              session.sheet().productionOrganizations());
+              session.sheet().productionOrganizations(),
+              session.sheet().productionRosters());
       if (enterpriseOutcome.changed()) {
         // unit/关系/份额/配额/组织任一变了 ⇒ 换一份索引再进现有日结算（与 0-entry 的执行后重建同款）。
         // ★ P2：条件从"新建了 unit"放宽到 changed()，确保今天新落的 SHORTAGE/ACTIVE 组织也进
@@ -1828,11 +1830,14 @@ public final class EconomySettlement {
         //   ① 本周期逐家户实际劳动 = `receipt.cycleContributions()`（逐 tick 累计、含中途换出工户、不拿关账日反推）；
         //   ② 本周期实际投入 = `receipt.consumedInputs()`（production 的实际扣量）。
         Map<HouseholdId, Long> cycleLaborByHousehold = new LinkedHashMap<>();
+        Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+            cycleLaborByParticipant = new LinkedHashMap<>();
         for (io.mosire.simos.production.contract.CycleContribution contribution :
             receipt.cycleContributions().values()) {
           if (contribution.laborMilli() > 0L) {
             cycleLaborByHousehold.merge(
                 contribution.household(), contribution.laborMilli(), Math::addExact);
+            cycleLaborByParticipant.put(contribution.participantKey(), contribution.laborMilli());
           }
         }
         harvestWorks.add(
@@ -1844,7 +1849,9 @@ public final class EconomySettlement {
                 hexOfIndustry(unit.industry()),
                 harvestOrder++,
                 cycleLaborByHousehold,
-                receipt.consumedInputs()));
+                receipt.consumedInputs(),
+                cycleLaborByParticipant,
+                session.sheet().productionRostersOrBase().get(id)));
         // ★★★ W5：把这一份 scale 记下来给铸币用（只有真的铸币的产业会在 MintSettlement 里被读；
         //   记全部关账 unit 是刻意的 —— 判据"这个 unit 铸不铸币"只在一个地方回答：IndustryDefinitionView.moneyOutputPerUnit
         // 是否为空）。
@@ -1906,7 +1913,8 @@ public final class EconomySettlement {
         ledger,
         issuanceJournal,
         day,
-        parallelism);
+        parallelism,
+        assetShares);
     // ── ★★★ W5（2026-10-11）：铸币生产方式的收获 ────────────────────────────────────────────────────
     //   ★ 位置 = **产业关账之后**（`harvestPartitioned` 已把本轮的净产计进各主体账）：
     //     铸币读的是关账处求好的 scale（与粮/布同一次 evaluateHarvest 的产物），因此"投入真实消耗"与
@@ -4107,7 +4115,11 @@ public final class EconomySettlement {
       //     —— 那是"住在这一格"的投影，不是"实际出工"的事实：没出工的户也进分母、最后一天出工的户被当成整周期
       //     出工。I9 要的是回执里的实际贡献（`ProductionReceipt.cycleContributions` / `consumedInputs`）。
       Map<HouseholdId, Long> laborByHousehold,
-      Map<CommodityId, Long> cycleInputUsed) {}
+      Map<CommodityId, Long> cycleInputUsed,
+      // ── ★★★ D-032 C2：逐 (家户 × 角色) 周期劳动 + 该 unit 的名册（无 rosters ⇒ 旧路径）────────────
+      Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+          cycleLaborByParticipant,
+      io.mosire.simos.economy.model.ProductionRoster roster) {}
 
   /** 收获阶段一个分区的产出（意向 + 本地实物入账 + 本地账本）。 */
   private record HarvestPartition(
@@ -4134,7 +4146,8 @@ public final class EconomySettlement {
       ProductionLedger.Accumulator ledger,
       MoneyIssuanceJournal issuanceJournal,
       long day,
-      EconomyParallelism parallelism) {
+      EconomyParallelism parallelism,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     if (works.isEmpty()) {
       return;
     }
@@ -4173,6 +4186,9 @@ public final class EconomySettlement {
                       work.outputQuantityOverrides(),
                       work.laborByHousehold(),
                       work.cycleInputUsed(),
+                      work.cycleLaborByParticipant(),
+                      work.roster(),
+                      assetShares,
                       householdEconomies,
                       index,
                       localIncome,
@@ -4238,20 +4254,36 @@ public final class EconomySettlement {
     if (stepUnits.isEmpty()) {
       return io.mosire.simos.production.contract.ProductionDayResult.empty();
     }
-    // ① 逐 (家户 → unit) 汇总实际劳动贡献（唯一拼写点：劳动配额表）。
-    Map<String, Map<HouseholdId, Long>> contributionsByUnit = new LinkedHashMap<>();
+    // ① 按名册/配额表把实际劳动贡献汇总成**逐 (家户 × 角色)** 列表（D2 §6.1/§6.2）。
+    //   ★ 角色只从 `HouseholdLaborCommitment.productionRole()` 读（D2 §5.6 的唯一权威）；
+    //     漏角色 = 多角色同户静默合并，故这里 fail-closed。
+    Map<String, List<io.mosire.simos.production.contract.ParticipantContribution>>
+        contributionsByUnit = new LinkedHashMap<>();
     for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
       long amount = commitment.laborMilli();
       if (amount <= 0L) {
         continue;
       }
+      if (commitment.productionRole().isEmpty()) {
+        throw new IllegalStateException(
+            "生产承诺缺 productionRole（D2 §5.6 不变量被绕开；状态已被改坏）: id="
+                + commitment.id().value()
+                + " activity="
+                + commitment.activity());
+      }
       contributionsByUnit
-          .computeIfAbsent(commitment.activity(), ignored -> new LinkedHashMap<>())
-          .merge(commitment.household(), amount, Math::addExact);
+          .computeIfAbsent(commitment.activity(), ignored -> new ArrayList<>())
+          .add(
+              new io.mosire.simos.production.contract.ParticipantContribution(
+                  commitment.household(), commitment.productionRole().get(), amount));
     }
     // ② 按**稳定序**（实例 id 升序）建步表 —— 序是内容的纯函数（引擎不重排）。
     List<ProductionUnitId> ordered = new ArrayList<>(stepUnits.keySet());
     ordered.sort(Comparator.comparing(ProductionUnitId::value));
+    Map<ProductionUnitId, io.mosire.simos.economy.model.ProductionRoster> rosters =
+        session.sheet().productionRostersOrBase();
+    Map<HouseholdId, io.mosire.simos.economy.model.HouseholdEconomy> householdEconomies =
+        session.sheet().householdEconomiesOrBase();
     List<io.mosire.simos.production.contract.ProductionDayRequest.Step> steps = new ArrayList<>();
     Map<ProductionUnitId, String> assetScopeRejections = new LinkedHashMap<>();
     for (ProductionUnitId id : ordered) {
@@ -4275,8 +4307,129 @@ public final class EconomySettlement {
                 + " plan="
                 + unit.industry().value());
       }
-      Map<HouseholdId, Long> contributions = contributionsByUnit.getOrDefault(id.value(), Map.of());
+      io.mosire.simos.economy.model.ProductionRoster roster = rosters.get(id);
+      List<io.mosire.simos.production.contract.ParticipantContribution> contributions =
+          contributionsByUnit.getOrDefault(id.value(), List.of());
+      if (roster != null) {
+        // ★★ D2-I17：名册方案的 `ProductionRules.rules` 必须为空（旧 CompensationRule 产出分配禁用）。
+        //   双分 = 契约故障，必须在任何写入之前拒绝整个候选提交。
+        io.mosire.simos.economy.api.relation.ProductionRules relation =
+            session.sheet().relationsOrBase().get(id);
+        if (relation != null && !relation.rules().isEmpty()) {
+          throw new IllegalStateException(
+              "legacy-compensation-rules-present: 名册方案不得同时保留旧补偿规则（D2-I17）: unit="
+                  + id.value()
+                  + " rules="
+                  + relation.rules().size());
+        }
+        // ★★ 名册与名册内角色的轻量执行前重查（D2 §7.3：execute 前查；完整角色资格由 production 执行面重查）。
+        for (io.mosire.simos.production.contract.ParticipantContribution contribution :
+            contributions) {
+          if (roster.participant(contribution.household(), contribution.role()).isEmpty()) {
+            throw new IllegalStateException(
+                "role-unknown: 劳动承诺的角色不在名册里（跨切片不一致）: unit="
+                    + id.value()
+                    + " household="
+                    + contribution.household().value()
+                    + " role="
+                    + contribution.role().value());
+          }
+        }
+      }
+      // ★★ 执行入参：逐参与户属性事实（属性桥；读不到 ⇒ 不填 EMPTY 冒充）+ 逐户劳动预算。
+      java.util.Set<HouseholdId> participantHouseholds = new java.util.LinkedHashSet<>();
+      if (roster != null) {
+        participantHouseholds.addAll(roster.households());
+        participantHouseholds.add(roster.organizerHousehold());
+      }
+      for (io.mosire.simos.production.contract.ParticipantContribution contribution :
+          contributions) {
+        participantHouseholds.add(contribution.household());
+      }
+      Map<HouseholdId, io.mosire.simos.production.contract.ExternalAttributeFacts>
+          participantAttributes = new LinkedHashMap<>();
+      Map<HouseholdId, Long> householdLaborBudgetMilli = new LinkedHashMap<>();
+      Map<HouseholdId, Long> managementLaborMilli = new LinkedHashMap<>();
+      for (HouseholdId household : participantHouseholds) {
+        io.mosire.simos.economy.model.HouseholdEconomy row = householdEconomies.get(household);
+        if (row == null) {
+          throw new IllegalStateException(
+              "参与户不在 economy 行表里（跨切片不一致）: unit=" + id.value() + " household=" + household.value());
+        }
+        session
+            .participantAttributeLookup()
+            .factsOf(household)
+            .ifPresent(facts -> participantAttributes.put(household, facts));
+        householdLaborBudgetMilli.put(household, row.laborMilli());
+      }
+      // ★★ 管理劳动：C2 没有管理劳动来源。countsManagement 角色缺该项 ⇒ 具名业务拒绝（不按 0 静默）。
+      if (roster != null) {
+        for (io.mosire.simos.economy.model.ProductionParticipant participant :
+            roster.participants()) {
+          boolean countsManagement =
+              industry.roles().stream()
+                  .filter(definition -> definition.id().equals(participant.role()))
+                  .findFirst()
+                  .flatMap(definition -> definition.experienceGrowth())
+                  .map(io.mosire.simos.production.contract.ExperienceGrowth::countsManagement)
+                  .orElse(false);
+          if (countsManagement) {
+            assetScopeRejections.put(
+                id,
+                "management-labor-missing:"
+                    + participant.role().value()
+                    + ":"
+                    + participant.household().value());
+            break;
+          }
+        }
+        if (assetScopeRejections.containsKey(id)) {
+          continue;
+        }
+      }
+      // ★★ 资产占用读口（D4-C）：名册方案只用它；Optional.empty ⇒ 具名 `asset-occupancy-unavailable`，
+      //   绝不回退旧 usableAssets 整池扫描。非名册方案保留既有路径（C2 不声称 R2 已关闭）。
+      Map<io.mosire.simos.actor.api.asset.AssetKind, Long> assetOccupancy;
+      if (roster != null) {
+        java.util.Optional<io.mosire.simos.util.state.RevisionId> expectedRevision =
+            session.expectedRevision();
+        if (expectedRevision.isEmpty()) {
+          assetScopeRejections.put(id, "asset-occupancy-unavailable");
+          continue;
+        }
+        java.util.Optional<io.mosire.simos.economy.time.AssetOccupancySnapshot> snapshot =
+            session.assetOccupancyLookup().occupancyOf(id, expectedRevision.get(), day, day + 1L);
+        if (snapshot.isEmpty()) {
+          assetScopeRejections.put(id, "asset-occupancy-unavailable");
+          continue;
+        }
+        io.mosire.simos.economy.time.AssetOccupancySnapshot occupancy = snapshot.get();
+        if (!occupancy.revision().equals(expectedRevision.get())
+            || !occupancy.unit().equals(id)
+            || !occupancy.location().equals(unit.location())
+            || occupancy.fromTick() != day
+            || occupancy.toTickExclusive() != day + 1L) {
+          throw new IllegalStateException(
+              "asset-occupancy-snapshot-mismatch: 资产占用快照与本次推进不一致: unit="
+                  + id.value()
+                  + " revision="
+                  + occupancy.revision()
+                  + " expected="
+                  + expectedRevision.get());
+        }
+        assetOccupancy = occupancy.allocation();
+      } else {
+        assetOccupancy = ProductionProcessBook.usableAssets(unit, settlementIndex);
+      }
       Map<CommodityId, Long> finalInputs = session.drawnProductionInputsOf(id);
+      // ★★ 计划级属性主体 = organizer（D2 §6.2）：有属性桥读数才填，读不到时仍传 EMPTY 作为
+      //   `attributes`（production 的计划级条件会因缺属性 fail-closed）；participantAttributes 只装权威读数。
+      io.mosire.simos.production.contract.ExternalAttributeFacts planAttributes =
+          roster == null
+              ? io.mosire.simos.production.contract.ExternalAttributeFacts.EMPTY
+              : participantAttributes.getOrDefault(
+                  roster.organizerHousehold(),
+                  io.mosire.simos.production.contract.ExternalAttributeFacts.EMPTY);
       // ★★ grantedScale 的口径 = **基准规模（投入侧）上限**（§13.8 裁定一）。
       //   本批不额外设上限：economy 的"统一预算"已经落在**实际投入**上（劳动配额 + 实扣原料 + 实际占用），
       //   再叠一个授予上限只会变成第二份口径；计划规模（缩产/停业）的作用点在劳动需求与投入需求那一侧，
@@ -4287,9 +4440,12 @@ public final class EconomySettlement {
               java.util.Optional.empty(),
               Long.MAX_VALUE,
               contributions,
-              ProductionProcessBook.usableAssets(unit, settlementIndex),
+              assetOccupancy,
               finalInputs,
-              io.mosire.simos.production.contract.ExternalAttributeFacts.EMPTY));
+              planAttributes,
+              participantAttributes,
+              householdLaborBudgetMilli,
+              managementLaborMilli));
     }
     io.mosire.simos.production.contract.ProductionDayResult productionDay =
         steps.isEmpty()
@@ -5333,7 +5489,8 @@ public final class EconomySettlement {
               laborCommitment.activity(),
               scaled,
               laborCommitment.period(),
-              laborCommitment.kind()));
+              laborCommitment.kind(),
+              laborCommitment.productionRole()));
     }
   }
 
@@ -8199,7 +8356,8 @@ public final class EconomySettlement {
         laborCommitment.activity(),
         laborMilli,
         laborCommitment.period(),
-        laborCommitment.kind());
+        laborCommitment.kind(),
+        laborCommitment.productionRole());
   }
 
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────
@@ -8324,6 +8482,102 @@ public final class EconomySettlement {
       ledger.addOutputAccrual(
           new ProductionLedger.ActorEntry(
               HouseholdActors.of(household), location, commodity, share.getValue()));
+    }
+  }
+
+  /**
+   * ★★★ <b>D-032 C2（D2 §8.3 / §6.3）：名册方案的两层分配落账</b>。
+   *
+   * <p>★★ <b>唯一算术来源</b>：{@code production.contract.RoleDistribution.allocate}（角色池 + 角色内最大余数法 +
+   * 份额/整数余数规则）；economy 在这里只做两件事：把当刻事实（计划劳动/权益权重/净池）装进去，把结果逐户落账。 <b>不</b>复制任何角色池/最大余数公式。
+   *
+   * <p>★ <b>不双记</b>：净产直接按份额计入 participant 家户库存（不先 credit 给 operator 再转出）；未分配量 （{@code
+   * unallocated}，含零权重角色池与余数）全部归 organizer residual，并具名 {@code ROLE_SHARE_UNALLOCATED_RESIDUAL} 记入
+   * organizer 的流水。
+   *
+   * <p>★ <b>守恒</b>：{@code RoleDistributionResult} 构造期已复核逐商品 {@code Σshares + unallocated ==
+   * poolTotal}； 本方法再按 gross/net 口径与 ledger 对齐（loss 已在 harvest 记入 ΣLoss）。
+   */
+  private static void creditRosterNetPool(
+      long day,
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      io.mosire.simos.economy.model.ProductionRoster roster,
+      Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+          cycleLaborByParticipant,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<CommodityId, Long> netByCommodity,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income,
+      ProductionLedger.Accumulator ledger) {
+    Objects.requireNonNull(roster, "roster");
+    HexCoord location = hexOfIndustry(industry.id());
+    List<io.mosire.simos.production.contract.RoleDistributionParticipant> participants =
+        new ArrayList<>();
+    Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long> rightsWeights =
+        new LinkedHashMap<>();
+    for (io.mosire.simos.economy.model.ProductionParticipant participant : roster.participants()) {
+      participants.add(
+          new io.mosire.simos.production.contract.RoleDistributionParticipant(
+              participant.household(), participant.role(), participant.configuredWeight()));
+      long rights = 0L;
+      for (AssetShareId share : participant.rightsStakes()) {
+        OwnershipStake stake = assetShares.get(share);
+        if (stake == null) {
+          throw new IllegalStateException(
+              "BY_RIGHTS 引用的资产份额不存在（状态已被改坏）: unit="
+                  + unit.id().value()
+                  + " share="
+                  + share.value());
+        }
+        rights = Math.addExact(rights, stake.quantity());
+      }
+      if (rights > 0L) {
+        rightsWeights.put(
+            new io.mosire.simos.production.contract.ProductionParticipantKey(
+                participant.household(), participant.role()),
+            rights);
+      }
+    }
+    io.mosire.simos.production.contract.RoleDistributionResult distribution =
+        io.mosire.simos.production.contract.RoleDistribution.allocate(
+            new io.mosire.simos.production.contract.RoleDistributionRequest(
+                industry, participants, cycleLaborByParticipant, rightsWeights, netByCommodity));
+    for (Map.Entry<
+            io.mosire.simos.production.contract.ProductionParticipantKey, Map<CommodityId, Long>>
+        entry : distribution.shares().entrySet()) {
+      HouseholdId household = entry.getKey().household();
+      for (Map.Entry<CommodityId, Long> share : entry.getValue().entrySet()) {
+        addStock(householdGoods, household, share.getKey(), share.getValue());
+        addGoods(income, household, share.getKey(), share.getValue());
+        ledger.addOutputAccrual(
+            new ProductionLedger.ActorEntry(
+                HouseholdActors.of(household), location, share.getKey(), share.getValue()));
+      }
+    }
+    HouseholdId residualOwner = roster.organizerHousehold();
+    for (Map.Entry<CommodityId, Long> residual : distribution.unallocated().entrySet()) {
+      addStock(householdGoods, residualOwner, residual.getKey(), residual.getValue());
+      addGoods(income, residualOwner, residual.getKey(), residual.getValue());
+      ledger.addOutputAccrual(
+          new ProductionLedger.ActorEntry(
+              HouseholdActors.of(residualOwner), location, residual.getKey(), residual.getValue()));
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "ROLE_SHARE_UNALLOCATED_RESIDUAL",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "unit",
+                  unit.id().value(),
+                  "commodity",
+                  residual.getKey().value(),
+                  "amount",
+                  residual.getValue(),
+                  "organizer",
+                  residualOwner.value()));
     }
   }
 
@@ -8675,6 +8929,10 @@ public final class EconomySettlement {
       Map<CommodityId, Long> outputQuantityOverrides,
       Map<HouseholdId, Long> cycleLaborByHousehold,
       Map<CommodityId, Long> cycleInputUsed,
+      Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+          cycleLaborByParticipant,
+      io.mosire.simos.economy.model.ProductionRoster roster,
+      Map<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       SettlementIndex index,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income,
@@ -8707,19 +8965,47 @@ public final class EconomySettlement {
       }
       // ★★ 生产消耗 = **饲料 + 农具折旧**（v2 spec §3.4：留种已移出收获扣减，改在现扣投入步）——
       //   两项各自具名，此处取**两者之和**、**逐商品按同一千分比**（作坊的 3% 即织机磨损）。
-      long loss = gross * (FEED_PER_MILLE + DEPRECIATION_PER_MILLE) / 1000L;
-      long net = gross - loss;
+      // ★★★ D-032 C2（D2 §8.3）：毛产 → 净产只走 `ProductionOutputNetting`（全仓唯一拼写点）。
+      ProductionOutputNetting.Netted nettedOutput = ProductionOutputNetting.net(gross);
+      long loss = nettedOutput.loss();
+      long net = nettedOutput.net();
       ledger.addGross(industry.id(), commodity, gross);
       ledger.addLoss(industry.id(), commodity, loss);
       grossByCommodity.put(commodity, gross);
       netByCommodity.put(commodity, net);
-      // ★★ **R5 ②：净产进产出计提（+净产 → 账户主体家户），不再写进本产业的行**。
-      //   ★ 单一主体 ⇒ 一条计提；集体主体 ⇒ 按劳动权重分给各家家户（产出归属与投入代理同一批人）。
-      creditOutput(
-          subject, subjectWeights, householdGoods, operator, commodity, net, location, ledger);
     }
     if (netByCommodity.isEmpty()) {
       return; // 规模 0（或产出表为空）⇒ 没有产出、也没有可付的：连规则都不必结算
+    }
+    // ★★★ D-032 C2（D2 §8.3）：名册方案只走 RoleDistribution —— 先把 net 按角色池/角色内拆到户，
+    //   直接逐户 credit（不先记给 operator 再转出，避免双记），并且绝不调用旧 `ProductionSettlement` 产出分配。
+    if (roster != null) {
+      creditRosterNetPool(
+          day,
+          unit,
+          industry,
+          roster,
+          cycleLaborByParticipant,
+          assetShares,
+          netByCommodity,
+          householdEconomies,
+          householdGoods,
+          income,
+          ledger);
+      return;
+    }
+    // ★★ **R5 ②：净产进产出计提（+净产 → 账户主体家户），不再写进本产业的行**。
+    //   ★ 单一主体 ⇒ 一条计提；集体主体 ⇒ 按劳动权重分给各家家户（产出归属与投入代理同一批人）。
+    for (Map.Entry<CommodityId, Long> netEntry : netByCommodity.entrySet()) {
+      creditOutput(
+          subject,
+          subjectWeights,
+          householdGoods,
+          operator,
+          netEntry.getKey(),
+          netEntry.getValue(),
+          location,
+          ledger);
     }
     ProductionRules relation = relations.get(unit.id());
     if (relation == null) {

@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -27,6 +28,7 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
@@ -146,6 +148,16 @@ public interface EconomyDayView {
 
   /** 市场区表（静态）⇒ 段内不变（写入口只有三条区命令）。 */
   Map<MarketZoneId, MarketZone> marketZones();
+
+  /**
+   * ★★★ <b>D-032 D2 §5.3：生产参与名册（键 = unit）</b>。
+   *
+   * <p>★ <b>缺省 = 空表</b>：没有名册不是坏数据，是"这个世界还没有合作生产名册"（与其余可选组件同款）。 {@code EconomyData}
+   * 直接实现（它就是自己的当刻值）；{@code WorkingDayView} 覆盖为**工作副本优先** （自动组织/名册命令会在段内写它）。
+   */
+  default Map<ProductionUnitId, ProductionRoster> productionRosters() {
+    return Map.of();
+  }
 
   /**
    * ★★ <b>W1：市场轮统计簿</b>（键 = 市场 id；纯读数）。★ <b>工作副本优先</b>：每个市场轮结束时当日结算会写它 ⇒

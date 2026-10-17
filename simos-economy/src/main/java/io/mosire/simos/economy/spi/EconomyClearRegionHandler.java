@@ -35,6 +35,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -308,6 +309,10 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     // ★★ B2b：实例表已不在 economy（上面已从 production 投影定位 removedUnits）。
     Map<AssetShareId, OwnershipStake> assetShares = withoutKeys(base.assetShares(), removedShares);
     Map<ProductionUnitId, ProductionRules> relations = withoutKeys(base.relations(), removedUnits);
+    // ★★★ D-032 C2（D2 §10.1）：实例删除/区域清理必须同批删除对应名册；留下悬空名册 ⇒ revision 拒绝
+    //   （`roster-instance-unknown`）。
+    Map<ProductionUnitId, ProductionRoster> productionRosters =
+        withoutKeys(base.productionRosters(), removedUnits);
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
     Map<HouseholdId, HouseholdEconomy> householdEconomies =
@@ -407,7 +412,8 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     //    ★ classes/memberships 不在这条链里——它们有双向互锁（membership 必须引用现存家户 ∧ 非空 memberships 的
     //      Σcount 必须等于 ΣClassRow.population），只有同一次构造才能同时摘掉；见 ⑥。
     EconomyData staged =
-        base.withRelations(relations)
+        base.withProductionRosters(productionRosters)
+            .withRelations(relations)
             .withOperatorConditions(operatorConditions)
             .withPledges(pledges)
             .withClassShares(classShares)
@@ -470,7 +476,9 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.commodityFreightBaseMilli(),
         // ★★ R1（第 39 个组件）：政府市场授权表原样带过（清区不动授权；授权由 GM 命令撤销）。
         staged.govMarketMandates(),
-        staged.marketRoundStats());
+        staged.marketRoundStats(),
+        // ★★★ D-032 C2：被清格里的名册同批删除（staged 已按 removedUnits 摘过）。
+        staged.productionRosters());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

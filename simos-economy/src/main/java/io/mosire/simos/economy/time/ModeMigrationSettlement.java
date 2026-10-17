@@ -48,6 +48,8 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionRosters;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -590,7 +592,8 @@ public final class ModeMigrationSettlement {
                   laborCommitment.activity(),
                   laborCommitment.laborMilli() - take,
                   laborCommitment.period(),
-                  laborCommitment.kind()));
+                  laborCommitment.kind(),
+                  laborCommitment.productionRole()));
         }
         if (!DefaultProductionModes.DISPLACED.equals(move.targetMode()) && targetUnit != null) {
           // ★★ P0：传投影行视图（带投影人口/劳动），只读参数；本方法只做存在性校验。
@@ -603,6 +606,31 @@ public final class ModeMigrationSettlement {
               targetHouseholdEconomy.withPopulationAndLabor(
                   plannedPopulation.get(move.target()), plannedLabor.get(move.target())));
         }
+      }
+
+      // ★★★ D-032 D2 §9.3：整户迁空时合并名册（同 role 计划劳动/权重相加、rights 并集、organizer OR）。
+      //   organizer 合户必须走 Phase M 的
+      // `production.RebindInstanceOperator`（unit.operator/enterprise/relation
+      //   都是持久字段）；本类只移动名册引用，遇到 organizer 迁出时具名拒绝，绝不留下半状态。
+      if (empties) {
+        LinkedHashMap<ProductionUnitId, ProductionRoster> rosters =
+            session.sheet().productionRosters();
+        for (ProductionRoster roster : new ArrayList<>(rosters.values())) {
+          if (!roster.participantsOf(source).isEmpty()
+              && roster.organizerHousehold().equals(source)) {
+            throw new IllegalStateException(
+                "organizer-merge-requires-rebind: organizer 合户必须走 production.RebindInstanceOperator: unit="
+                    + roster.unit().value()
+                    + " source="
+                    + source.value()
+                    + " target="
+                    + move.target().value());
+          }
+        }
+        Map<ProductionUnitId, ProductionRoster> mergedRosters =
+            ProductionRosters.mergeHousehold(rosters, source, move.target());
+        rosters.clear();
+        rosters.putAll(mergedRosters);
       }
 
       // ③ 货币（★★ D-023：源户全部币种逐项随迁；不做 FX、不做兑换）
@@ -1467,7 +1495,16 @@ public final class ModeMigrationSettlement {
         targetUnitKey == null
             ? new LaborAllocationId(
                 "alloc-mig-" + sourceLaborCommitment.group().value() + "-" + target.value())
-            : HouseholdLaborCommitment.idOf(targetUnitKey, sourceLaborCommitment.group(), target);
+            : HouseholdLaborCommitment.idOfProduction(
+                targetUnitKey,
+                sourceLaborCommitment
+                    .productionRole()
+                    .orElseThrow(
+                        () ->
+                            new IllegalStateException(
+                                "PRODUCTION 承诺缺 productionRole（D2 §5.6 不变量被绕开）")),
+                sourceLaborCommitment.group(),
+                target);
     HouseholdLaborCommitment existingLaborCommitment = laborCommitments.get(targetId);
     HouseholdLaborCommitment createdLaborCommitment =
         new HouseholdLaborCommitment(
@@ -1479,7 +1516,8 @@ public final class ModeMigrationSettlement {
             (existingLaborCommitment == null ? 0L : existingLaborCommitment.laborMilli())
                 + laborTake,
             sourceLaborCommitment.period(),
-            sourceLaborCommitment.kind());
+            sourceLaborCommitment.kind(),
+            sourceLaborCommitment.productionRole());
     laborCommitments.put(targetId, createdLaborCommitment);
     if (targetHouseholdEconomy == null) {
       throw new IllegalStateException("迁移目标行不存在（拒绝静默丢劳动）: " + target);

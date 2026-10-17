@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -26,6 +27,7 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
@@ -144,6 +146,11 @@ final class WorkingDayView implements EconomyDayView {
   @Override
   public Map<MarketZoneId, MarketRoundStats> marketRoundStats() {
     return sheet.marketRoundStatsOrBase();
+  }
+
+  @Override
+  public Map<ProductionUnitId, ProductionRoster> productionRosters() {
+    return sheet.productionRostersOrBase();
   }
 
   @Override

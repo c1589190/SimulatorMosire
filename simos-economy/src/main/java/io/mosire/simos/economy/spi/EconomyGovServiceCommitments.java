@@ -545,7 +545,8 @@ public final class EconomyGovServiceCommitments {
             unitId.value(),
             laborMilli,
             period,
-            LaborCommitmentKind.GOV_SERVICE);
+            LaborCommitmentKind.GOV_SERVICE,
+            java.util.Optional.empty());
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> allocations =
         new LinkedHashMap<>(base.allocations());
     allocations.put(rowId, row); // 既有键 ⇒ put 保留原插入位（保序）

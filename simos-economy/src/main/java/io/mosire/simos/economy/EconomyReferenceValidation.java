@@ -1,22 +1,30 @@
 package io.mosire.simos.economy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionRuntime;
+import io.mosire.simos.production.contract.RolePayment;
+import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -60,6 +68,282 @@ public final class EconomyReferenceValidation {
     validateLaborActorIndustryCollision(definitions, candidate, label);
     validateFlowsOnIndustryHex(definitions, candidate, label);
     validateDemandHexes(definitions, candidate, label);
+    validateProductionRosters(definitions, production, candidate, label);
+  }
+
+  /**
+   * ★★★ <b>D-032 D2 §7.1：角色定义 ↔ 名册的交叉校验</b>（C2 新增的唯一拼写点）。
+   *
+   * <p>★ <b>只读</b>：在候选态上判"名册是否与 production 当刻定义/实例、economy 当刻资产份额与家户预算自洽"； 失败以 {@link
+   * IllegalArgumentException} 具名出面（命令层折 {@code Rejected}，不留 revision）。
+   *
+   * <p>判据（逐条对应 D2 §7.1 / D2-I1–I18）：
+   *
+   * <ul>
+   *   <li>unit 存在且 production 实例的 plan == roster.plan；
+   *   <li>角色 id 全部存在于 plan.roles；每个 {@code PRODUCT_SHARE} 定义角色至少一个 participant（MONEY_WAGE 可无）；
+   *   <li>恰好一个 organizer（{@link ProductionRoster} 构造期已判）；organizer 的角色必须是 {@code PRODUCT_SHARE}；
+   *   <li>{@code unit.operator == HouseholdActors.of(organizerHousehold)}；
+   *   <li>role 级 {@code standardLaborPerCycle>0} 的非工资角色至少一名 participant {@code plannedLabor>0}；
+   *   <li>逐户名册计划劳动之和 ≤ 该户当刻 {@code HouseholdEconomy.laborMilli}（D2-I13）；
+   *   <li>{@code BY_RIGHTS}：份额存在、industry == plan、owner == 该户 actor，且不得跨 participant 重复引用；
+   *   <li>{@code CONFIGURED_WEIGHTS}：权重只在该规则下允许非零且角色内至少一项 &gt; 0；其余规则必须 rights 空/weight 0；
+   *   <li>名册方案 {@code ProductionRules.rules} 必须为空（D2-I17；否则具名 {@code
+   *       legacy-compensation-rules-present}）；
+   *   <li>有组织时 {@code ProductionEnterprise.laborSources} 必须等于名册全户派生集（否则 {@code
+   *       enterprise-roster-mismatch}）。
+   * </ul>
+   */
+  public static void validateProductionRosters(
+      ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label) {
+    Objects.requireNonNull(definitions, "definitions");
+    Objects.requireNonNull(production, "production");
+    Objects.requireNonNull(candidate, "candidate");
+    Objects.requireNonNull(label, "label");
+    Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> instances =
+        production.instances();
+    for (Map.Entry<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionRoster> entry :
+        candidate.productionRosters().entrySet()) {
+      io.mosire.simos.economy.api.id.ProductionUnitId unitId = entry.getKey();
+      ProductionRoster roster = entry.getValue();
+      ProductionProcess unit = instances.get(unitId);
+      if (unit == null) {
+        throw new IllegalArgumentException(
+            label + " 的名册指名了不存在的生产实例（roster-instance-unknown）: " + unitId.value());
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(unit.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          label
+                              + " 的名册实例方案定义不存在: unit="
+                              + unitId.value()
+                              + " plan="
+                              + unit.plan().value()));
+      if (!roster.plan().equals(plan.id())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的名册 plan 与 production 实例不一致（roster-plan-mismatch）: unit="
+                + unitId.value()
+                + " roster="
+                + roster.plan().value()
+                + " instance="
+                + plan.id().value());
+      }
+      Map<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionRoleDefinition>
+          rolesById = new java.util.LinkedHashMap<>();
+      for (ProductionRoleDefinition role : plan.roles()) {
+        rolesById.put(role.id(), role);
+      }
+      // 角色存在性 + 每个 PRODUCT_SHARE 角色至少一个 participant。
+      Map<io.mosire.simos.economy.api.production.ProductionRoleId, Integer> participantsByRole =
+          new java.util.LinkedHashMap<>();
+      for (io.mosire.simos.economy.model.ProductionParticipant participant :
+          roster.participants()) {
+        ProductionRoleDefinition role = rolesById.get(participant.role());
+        if (role == null) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的名册含未知角色（role-unknown）: unit="
+                  + unitId.value()
+                  + " role="
+                  + participant.role().value());
+        }
+        participantsByRole.merge(participant.role(), 1, Integer::sum);
+      }
+      for (ProductionRoleDefinition role : plan.roles()) {
+        if (role.payment() instanceof RolePayment.ProductShare
+            && participantsByRole.getOrDefault(role.id(), 0) == 0) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的名册缺少 PRODUCT_SHARE 角色参与项（role-unfilled）: unit="
+                  + unitId.value()
+                  + " role="
+                  + role.id().value());
+        }
+      }
+      // organizer 角色必须是 PRODUCT_SHARE；operator 必须解析到 organizer 家户 actor。
+      ProductionRoleDefinition organizerRole = rolesById.get(roster.organizer().role());
+      if (organizerRole == null || !(organizerRole.payment() instanceof RolePayment.ProductShare)) {
+        throw new IllegalArgumentException(
+            label
+                + " 的名册 organizer 角色必须是 PRODUCT_SHARE（D2-I3）: unit="
+                + unitId.value()
+                + " role="
+                + roster.organizer().role().value());
+      }
+      if (unit.operator().kind() != ActorKind.HOUSEHOLD
+          || !unit.operator().equals(HouseholdActors.of(roster.organizerHousehold()))) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 unit.operator 与名册 organizer 不一致（organizer-actor-mismatch）: unit="
+                + unitId.value()
+                + " operator="
+                + unit.operator()
+                + " organizer="
+                + roster.organizerHousehold().value());
+      }
+      // 角色内劳动/权重/权益规则。
+      java.util.Set<io.mosire.simos.economy.api.id.AssetShareId> referencedShares =
+          new java.util.LinkedHashSet<>();
+      Map<io.mosire.simos.economy.api.production.ProductionRoleId, Long> positiveLaborByRole =
+          new java.util.LinkedHashMap<>();
+      Map<io.mosire.simos.economy.api.production.ProductionRoleId, Long> weightByRole =
+          new java.util.LinkedHashMap<>();
+      for (io.mosire.simos.economy.model.ProductionParticipant participant :
+          roster.participants()) {
+        ProductionRoleDefinition role = rolesById.get(participant.role());
+        if (role == null) {
+          continue; // 上面已拒
+        }
+        if (participant.plannedLaborMilliPerDay() > 0L) {
+          positiveLaborByRole.merge(
+              participant.role(), participant.plannedLaborMilliPerDay(), Math::addExact);
+        }
+        switch (role.intraRoleSplit()) {
+          case BY_RIGHTS -> {
+            if (!participant.rightsStakes().isEmpty()) {
+              for (io.mosire.simos.economy.api.id.AssetShareId share : participant.rightsStakes()) {
+                if (!referencedShares.add(share)) {
+                  throw new IllegalArgumentException(
+                      label
+                          + " 的名册 rightsStakes 被跨 participant 重复引用（rights-duplicate）: unit="
+                          + unitId.value()
+                          + " share="
+                          + share.value());
+                }
+                OwnershipStake stake = candidate.assetShares().get(share);
+                if (stake == null) {
+                  throw new IllegalArgumentException(
+                      label
+                          + " 的名册 rightsStakes 引用的份额不存在（rights-not-owned）: unit="
+                          + unitId.value()
+                          + " share="
+                          + share.value());
+                }
+                if (!stake.industry().equals(plan.id())) {
+                  throw new IllegalArgumentException(
+                      label
+                          + " 的名册 rightsStakes 的产业与 plan 不一致（rights-not-owned）: unit="
+                          + unitId.value()
+                          + " share="
+                          + share.value());
+                }
+                if (!stake.owner().equals(HouseholdActors.of(participant.household()))) {
+                  throw new IllegalArgumentException(
+                      label
+                          + " 的名册 rightsStakes 的 owner 不是该参与户（rights-not-owned）: unit="
+                          + unitId.value()
+                          + " share="
+                          + share.value());
+                }
+              }
+            }
+            if (participant.configuredWeight() != 0L) {
+              throw new IllegalArgumentException(
+                  label
+                      + " 的 BY_RIGHTS 角色不得给 configuredWeight（configured-weight-invalid）: unit="
+                      + unitId.value()
+                      + " role="
+                      + role.id().value());
+            }
+          }
+          case CONFIGURED_WEIGHTS -> {
+            if (!participant.rightsStakes().isEmpty()) {
+              throw new IllegalArgumentException(
+                  label
+                      + " 的 CONFIGURED_WEIGHTS 角色不得给 rightsStakes（rights-not-owned）: unit="
+                      + unitId.value()
+                      + " role="
+                      + role.id().value());
+            }
+            weightByRole.merge(participant.role(), participant.configuredWeight(), Math::addExact);
+          }
+          case EQUAL, BY_RECOGNIZED_LABOR -> {
+            if (!participant.rightsStakes().isEmpty() || participant.configuredWeight() != 0L) {
+              throw new IllegalArgumentException(
+                  label
+                      + " 的 EQUAL/BY_RECOGNIZED_LABOR 角色不得给 rights/weight（configured-weight-invalid）: unit="
+                      + unitId.value()
+                      + " role="
+                      + role.id().value());
+            }
+          }
+        }
+      }
+      for (ProductionRoleDefinition role : plan.roles()) {
+        if (role.intraRoleSplit() == IntraRoleSplitRule.CONFIGURED_WEIGHTS
+            && participantsByRole.getOrDefault(role.id(), 0) > 0
+            && weightByRole.getOrDefault(role.id(), 0L) <= 0L) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的 CONFIGURED_WEIGHTS 角色内权重必须至少一项 > 0（configured-weight-invalid）: unit="
+                  + unitId.value()
+                  + " role="
+                  + role.id().value());
+        }
+        if (!(role.payment() instanceof RolePayment.MoneyWage)
+            && role.standardLaborMilliPerCycle() > 0L
+            && positiveLaborByRole.getOrDefault(role.id(), 0L) <= 0L) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的劳动者角色没有任何 plannedLabor>0 的参与项（role-unfilled）: unit="
+                  + unitId.value()
+                  + " role="
+                  + role.id().value());
+        }
+      }
+      // 旧补偿规则禁用（D2-I17）。
+      ProductionRules relation = candidate.relations().get(unitId);
+      if (relation != null && !relation.rules().isEmpty()) {
+        throw new IllegalArgumentException(
+            label
+                + " 的名册方案不得同时保留旧补偿规则（legacy-compensation-rules-present）: unit="
+                + unitId.value()
+                + " rules="
+                + relation.rules().size());
+      }
+      // enterprise.laborSources 派生一致性（D2 §4.3）。
+      for (ProductionEnterprise enterprise : candidate.productionOrganizations().values()) {
+        if (enterprise.unitId().isPresent() && enterprise.unitId().get().equals(unitId)) {
+          List<HouseholdId> derived = roster.households();
+          if (!enterprise.laborSources().equals(derived)) {
+            throw new IllegalArgumentException(
+                label
+                    + " 的组织 laborSources 与名册全户派生集不一致（enterprise-roster-mismatch）: unit="
+                    + unitId.value());
+          }
+        }
+      }
+    }
+    // 全局预算（D2-I13）：逐户跨全部名册合计 ≤ 当日 laborMilli。
+    Map<HouseholdId, Long> plannedByHousehold = new java.util.LinkedHashMap<>();
+    for (ProductionRoster roster : candidate.productionRosters().values()) {
+      for (Map.Entry<HouseholdId, Long> planned : roster.plannedLaborByHousehold().entrySet()) {
+        plannedByHousehold.merge(planned.getKey(), planned.getValue(), Math::addExact);
+      }
+    }
+    for (Map.Entry<HouseholdId, Long> entry : plannedByHousehold.entrySet()) {
+      HouseholdEconomy row = candidate.classes().get(entry.getKey());
+      if (row == null) {
+        throw new IllegalArgumentException(label + " 的名册参与户不在家户行表里: " + entry.getKey().value());
+      }
+      if (entry.getValue() > row.laborMilli()) {
+        throw new IllegalArgumentException(
+            label
+                + " 的名册计划劳动超过家户当日预算（household-labor-overcommitted）: household="
+                + entry.getKey().value()
+                + " planned="
+                + entry.getValue()
+                + " budget="
+                + row.laborMilli());
+      }
+    }
   }
 
   /**

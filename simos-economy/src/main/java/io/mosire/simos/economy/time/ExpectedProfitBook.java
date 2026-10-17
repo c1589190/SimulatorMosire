@@ -28,7 +28,10 @@ import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -526,50 +529,28 @@ public final class ExpectedProfitBook {
       }
     }
 
-    long revenue = 0L;
-    Map<CommodityId, Long> revenueByCommodity = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> output : plannedOutput.entrySet()) {
-      CommodityId commodity = output.getKey();
+    // ★★★ D-032 C2：产品/投入估值统一走 `bidValueMilli`/`askValueMilli`（唯一拼写点；与
+    //   `rosterIncomes` 同口径），本方法不再内联一套价格公式。
+    Map<CommodityId, Long> plannedQuantities = new LinkedHashMap<>();
+    Set<CommodityId> unpricedOutputs = new LinkedHashSet<>();
+    for (CommodityId commodity : plannedOutput.keySet()) {
       long quantity =
           Math.addExact(
               selfConsumed.getOrDefault(commodity, 0L), sellable.getOrDefault(commodity, 0L));
-      if (quantity <= 0L) {
-        continue;
+      if (quantity > 0L) {
+        plannedQuantities.put(commodity, quantity);
       }
-      if (market == null || !market.hasPrice(commodity)) {
-        continue; // 从未定价 ⇒ 这一项按 0 计，priceMissing 已记
-      }
-      long price = market.bidPriceOf(commodity);
-      if (price <= 0L) {
-        continue; // 明确 0 价（免费）⇒ 收入为 0；仍然"有价"，不算缺价
-      }
-      long money = Math.multiplyExact(quantity, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
-      revenue = Math.addExact(revenue, money);
-      revenueByCommodity.merge(commodity, money, Math::addExact);
     }
+    Map<CommodityId, Long> revenueByCommodity =
+        bidValuesByCommodity(market, plannedQuantities, unpricedOutputs);
+    long revenue = sumValues(revenueByCommodity);
 
-    long inputCost = 0L;
     boolean inputPriceMissing = false;
-    Map<CommodityId, Long> inputCostByCommodity = new LinkedHashMap<>();
-    // ★★ §15.12 B：投入量取 probe 的 inputRequired（基准规模 × 每单位需求；键集 = 配方投入表），
-    //   不再自算 inputPerUnit × scale —— 那是第二份物理算术。
-    for (Map.Entry<CommodityId, Long> input : probe.inputRequired().entrySet()) {
-      long need = input.getValue();
-      if (need <= 0L) {
-        continue;
-      }
-      if (market == null || !market.hasPrice(input.getKey())) {
-        inputPriceMissing = true;
-        continue; // 从未定价的投入 ⇒ 不硬折
-      }
-      long price = market.askPriceOf(input.getKey());
-      if (price <= 0L) {
-        continue; // 明确 0 价投入 ⇒ 免费，成本 0；仍然"有价"
-      }
-      long money = Math.multiplyExact(need, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
-      inputCost = Math.addExact(inputCost, money);
-      inputCostByCommodity.merge(input.getKey(), money, Math::addExact);
-    }
+    Set<CommodityId> unpricedInputs = new LinkedHashSet<>();
+    Map<CommodityId, Long> inputCostByCommodity =
+        askValuesByCommodity(market, probe.inputRequired(), unpricedInputs);
+    inputPriceMissing = !unpricedInputs.isEmpty();
+    long inputCost = sumValues(inputCostByCommodity);
 
     // ★★ §15.12 B：laborRequiredMilli 是"每日"口径（基准规模 × 每单位劳动）⇒ × horizonDays 折成本周期劳动。
     long laborNeed =
@@ -1694,5 +1675,475 @@ public final class ExpectedProfitBook {
       throw new IllegalArgumentException("ceilDiv 的分母必须 > 0: " + denominator);
     }
     return Math.floorDiv(numerator + denominator - 1L, denominator);
+  }
+
+  // ── ★★★ D-032 C2（D2 §8.1/§8.2）：名册的逐户预计所得 ─────────────────────────────────────
+
+  /**
+   * ★★★ <b>名册的一户预计所得</b>（D2 §8.2 的稳定形状）。
+   *
+   * <p>★ <b>负净额保留</b>（D2-I9 工程默认）：{@link #negative()} 为 true 的行<b>不</b>被过滤 —— 它只影响读数与 D3 选择，C2 不删行。
+   *
+   * @param productShareMilli 该户由 {@code RoleDistribution} 得到的逐商品份额（毫单位）
+   * @param productShareValueMilli 产品份额按本地 bid 估值的金额（缺价商品按 0 计并记入 {@code unpricedCommodities}）
+   * @param wageReceivableMilli 该户作为 MONEY_WAGE worker 的预计应收
+   * @param wagePayableMilli 该户作为 organizer 的预计应付
+   * @param inputBurdenMilli 该户作为 inputSupplier 的投入负担
+   * @param expectedNetMilli 产品份额值 + 工资应收 − 工资应付 − 投入负担
+   * @param rejection 具名拒绝（非空 ⇒ 本行不可作为可用预计；数值仍保留可审计）
+   */
+  public record RosterHouseholdIncome(
+      ProductionUnitId unit,
+      IndustryId plan,
+      HouseholdId household,
+      io.mosire.simos.economy.api.production.ProductionRoleId role,
+      boolean organizer,
+      Map<CommodityId, Long> productShareMilli,
+      long productShareValueMilli,
+      long wageReceivableMilli,
+      long wagePayableMilli,
+      long inputBurdenMilli,
+      long expectedNetMilli,
+      boolean negative,
+      Set<CommodityId> unpricedCommodities,
+      Optional<String> rejection) {
+
+    public RosterHouseholdIncome {
+      Objects.requireNonNull(unit, "unit");
+      Objects.requireNonNull(plan, "plan");
+      Objects.requireNonNull(household, "household");
+      Objects.requireNonNull(role, "role");
+      productShareMilli = Collections.unmodifiableMap(new LinkedHashMap<>(productShareMilli));
+      unpricedCommodities = Collections.unmodifiableSet(new LinkedHashSet<>(unpricedCommodities));
+      rejection = Objects.requireNonNull(rejection, "rejection");
+      if (negative != (expectedNetMilli < 0L)) {
+        throw new IllegalArgumentException(
+            "RosterHouseholdIncome.negative 必须与 expectedNetMilli 同号");
+      }
+    }
+  }
+
+  /**
+   * ★★★ <b>D-032 D2 §8.1/§8.2：按名册逐户预计所得</b>。
+   *
+   * <p>数据流（逐条对应设计）：
+   *
+   * <ol>
+   *   <li>名册/旧规则校验（{@code legacy-compensation-rules-present}）；
+   *   <li>{@code probe}：计划级主体 = organizer；角色级资格由 production 的 execute 重查（probe 只判计划级）； 资产读口 = D4-C
+   *       {@link AssetOccupancyLookup}（unavailable ⇒ 具名 {@code asset-occupancy-unavailable}，
+   *       <b>不</b>回退整池扫描）；
+   *   <li>毛产 → net 只走 {@link ProductionOutputNetting}（FEED + DEPRECIATION）；
+   *   <li>{@code RoleDistribution.allocate} 用 <b>planned</b> labor / rights / weights 切角色池与角色内份额；
+   *       产品份额不以劳动为条件（地主 plannedLabor=0 仍拿定义份额）；
+   *   <li>逐户：产品份额值（本地 bid）+ 工资应收 − 工资应付 − 投入负担；负净额保留。
+   * </ol>
+   *
+   * <p>★★ <b>C2 边界</b>：工资报价读口默认永远 empty ⇒ 含 {@code MONEY_WAGE} 角色的名册得到 {@code
+   * wage-quote-missing:<role>}（不得按 0）；本方法不支付、不落账。
+   *
+   * <p>★ <b>纯读</b>：只调用 {@code probe} 与只读 lookup，不写任何状态。
+   */
+  public static List<RosterHouseholdIncome> rosterIncomes(
+      IndustryDefinitionView plan,
+      ProductionProcess unit,
+      ProductionRoster roster,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      AccountSession accounts,
+      Map<ProductionUnitId, ProductionRules> relations,
+      MarketTable market,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+      AssetOccupancyLookup assetOccupancyLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      long day,
+      ProductionRuntime runtime) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(unit, "unit");
+    Objects.requireNonNull(roster, "roster");
+    Objects.requireNonNull(runtime, "runtime");
+    long cycleDays = Math.max(1L, plan.cycleDays());
+    Map<HouseholdId, ExternalAttributeFacts> facts =
+        participantAttributes == null ? Map.of() : participantAttributes;
+    ProductionRules relation = relations == null ? null : relations.get(unit.id());
+    String legacyRejection =
+        relation != null && !relation.rules().isEmpty()
+            ? "legacy-compensation-rules-present"
+            : null;
+    // ★ D2 §7.3：角色级资格逐户检查（计划级资格由 probe 的 organizer 主体判；execute 会再查一次）。
+    Optional<String> qualificationRejection =
+        roleQualificationRejection(plan, roster, runtime, facts);
+    // 1) 资产占用（D4-C）：不可用 ⇒ 具名拒绝（不读成 0、不回退 usableAssets）。
+    Map<AssetKind, Long> occupancy = Map.of();
+    String occupancyRejection = null;
+    if (assetOccupancyLookup == null || expectedRevision == null) {
+      occupancyRejection = "asset-occupancy-unavailable";
+    } else {
+      Optional<AssetOccupancySnapshot> snapshot =
+          assetOccupancyLookup.occupancyOf(unit.id(), expectedRevision, day, day + 1L);
+      if (snapshot.isEmpty()) {
+        occupancyRejection = "asset-occupancy-unavailable";
+      } else {
+        AssetOccupancySnapshot value = snapshot.get();
+        if (!value.revision().equals(expectedRevision)
+            || !value.unit().equals(unit.id())
+            || !value.location().equals(unit.location())
+            || value.fromTick() != day
+            || value.toTickExclusive() != day + 1L) {
+          throw new IllegalStateException(
+              "asset-occupancy-snapshot-mismatch: unit=" + unit.id().value());
+        }
+        occupancy = ProductionProbeInputs.positiveAssets(value.allocation());
+      }
+    }
+    // 2) 计划级 probe：主体 = organizer；劳动 = Σ planned × cycleDays。
+    long plannedLaborPerDay = 0L;
+    for (ProductionParticipant participant : roster.participants()) {
+      plannedLaborPerDay = Math.addExact(plannedLaborPerDay, participant.plannedLaborMilliPerDay());
+    }
+    HouseholdId organizer = roster.organizerHousehold();
+    HouseholdProductionConditions conditions =
+        new HouseholdProductionConditions(
+            organizer,
+            Math.multiplyExact(plannedLaborPerDay, cycleDays),
+            occupancy,
+            ProductionProbeInputs.inputsOf(
+                accounts == null ? Map.of() : accounts.householdGoods().get(organizer), plan),
+            ProductionProbeInputs.masteryOf(runtime, organizer, plan),
+            ProductionProbeInputs.experienceOf(runtime, organizer, plan));
+    ProductionProbeResult probe =
+        runtime.probe(
+            new ProductionProbeRequest(
+                plan.id(),
+                conditions,
+                occupancy,
+                runtime.efficiencyOf(unit.id()),
+                facts.getOrDefault(organizer, ExternalAttributeFacts.EMPTY)));
+    String probeRejection =
+        !probe.feasible()
+            ? "PROBE:" + probe.reason()
+            : probe.scale() <= 0L ? "PROBE:SCALE_ZERO" : null;
+    String rejection =
+        legacyRejection != null
+            ? legacyRejection
+            : qualificationRejection.orElse(
+                occupancyRejection != null ? occupancyRejection : probeRejection);
+    // 3) 毛产 → net（唯一拼写点）。
+    Map<CommodityId, Long> netPools = new LinkedHashMap<>();
+    if (rejection == null) {
+      for (Map.Entry<CommodityId, ProductionOutputNetting.Netted> entry :
+          ProductionOutputNetting.netAll(probe.expectedOutput()).entrySet()) {
+        netPools.put(entry.getKey(), entry.getValue().net());
+      }
+    }
+    // 4) 角色两层分配（planned labor / rights / weights）。
+    Map<io.mosire.simos.production.contract.ProductionParticipantKey, Map<CommodityId, Long>>
+        sharesByParticipant = new LinkedHashMap<>();
+    Map<CommodityId, Long> unallocated = new LinkedHashMap<>();
+    Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long> plannedByParticipant =
+        new LinkedHashMap<>();
+    Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long> rightsWeights =
+        new LinkedHashMap<>();
+    List<io.mosire.simos.production.contract.RoleDistributionParticipant> distributionParticipants =
+        new ArrayList<>();
+    for (ProductionParticipant participant : roster.participants()) {
+      io.mosire.simos.production.contract.ProductionParticipantKey key =
+          new io.mosire.simos.production.contract.ProductionParticipantKey(
+              participant.household(), participant.role());
+      distributionParticipants.add(
+          new io.mosire.simos.production.contract.RoleDistributionParticipant(
+              participant.household(), participant.role(), participant.configuredWeight()));
+      plannedByParticipant.put(
+          key, Math.multiplyExact(participant.plannedLaborMilliPerDay(), cycleDays));
+      long rights = 0L;
+      for (AssetShareId shareId : participant.rightsStakes()) {
+        OwnershipStake stake = assetShares == null ? null : assetShares.get(shareId);
+        if (stake == null) {
+          throw new IllegalStateException(
+              "BY_RIGHTS 引用的资产份额不存在: unit=" + unit.id().value() + " share=" + shareId.value());
+        }
+        rights = Math.addExact(rights, stake.quantity());
+      }
+      if (rights > 0L) {
+        rightsWeights.put(key, rights);
+      }
+    }
+    if (rejection == null && !netPools.isEmpty()) {
+      io.mosire.simos.production.contract.RoleDistributionResult distribution =
+          io.mosire.simos.production.contract.RoleDistribution.allocate(
+              new io.mosire.simos.production.contract.RoleDistributionRequest(
+                  plan, distributionParticipants, plannedByParticipant, rightsWeights, netPools));
+      sharesByParticipant.putAll(distribution.shares());
+      unallocated.putAll(distribution.unallocated());
+    }
+    // 5) 工资报价（C2：默认 lookup 永远 empty ⇒ wage-quote-missing，不按 0）。
+    Map<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionWageQuote> wageQuotes =
+        new LinkedHashMap<>();
+    String wageRejection = null;
+    for (io.mosire.simos.production.contract.ProductionRoleDefinition role : plan.roles()) {
+      if (!(role.payment() instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage)) {
+        continue;
+      }
+      Optional<ProductionWageQuote> quote =
+          wageQuoteLookup == null
+              ? Optional.empty()
+              : wageQuoteLookup.quoteFor(unit.id(), role.id());
+      if (quote.isEmpty()) {
+        if (wageRejection == null) {
+          wageRejection = "wage-quote-missing:" + role.id().value();
+        }
+      } else {
+        wageQuotes.put(role.id(), quote.get());
+      }
+    }
+    // 6) 逐户预计所得（负净额保留）。
+    Map<io.mosire.simos.economy.api.production.ProductionRoleId, Long> wageLaborByRole =
+        new LinkedHashMap<>();
+    for (ProductionParticipant participant : roster.participants()) {
+      wageLaborByRole.merge(
+          participant.role(),
+          Math.multiplyExact(participant.plannedLaborMilliPerDay(), cycleDays),
+          Math::addExact);
+    }
+    // 投入负担：只有 relation.inputSupplier 解析到某参与户时才归该户；否则归 organizer。
+    Optional<HouseholdId> inputSupplierHousehold = Optional.empty();
+    if (relation != null && relation.inputSupplier() instanceof Payee.ToActor toActor) {
+      for (ProductionParticipant participant : roster.participants()) {
+        if (toActor.actor().equals(HouseholdActors.of(participant.household()))) {
+          inputSupplierHousehold = Optional.of(participant.household());
+          break;
+        }
+      }
+    }
+    long inputBurden =
+        rejection == null && market != null ? askValueMilli(market, probe.inputRequired()) : 0L;
+    List<RosterHouseholdIncome> incomes = new ArrayList<>();
+    for (ProductionParticipant participant : roster.participants()) {
+      io.mosire.simos.production.contract.ProductionParticipantKey key =
+          new io.mosire.simos.production.contract.ProductionParticipantKey(
+              participant.household(), participant.role());
+      Map<CommodityId, Long> share = sharesByParticipant.getOrDefault(key, Map.of());
+      long productValue = 0L;
+      Set<CommodityId> unpriced = new LinkedHashSet<>();
+      if (market != null) {
+        for (Map.Entry<CommodityId, Long> line : share.entrySet()) {
+          if (!market.hasPrice(line.getKey())) {
+            unpriced.add(line.getKey());
+            continue;
+          }
+          productValue =
+              Math.addExact(
+                  productValue,
+                  Math.multiplyExact(line.getValue(), market.bidPriceOf(line.getKey()))
+                      / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+        }
+      }
+      long receivable = 0L;
+      long payable = 0L;
+      ProductionWageQuote quote = wageQuotes.get(participant.role());
+      if (quote != null) {
+        long labor = wageLaborByRole.getOrDefault(participant.role(), 0L);
+        receivable = Math.multiplyExact(quote.wagePerLaborMilli(), labor) / 1000L;
+      }
+      if (participant.organizer()) {
+        for (Map.Entry<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionWageQuote>
+            wage : wageQuotes.entrySet()) {
+          payable =
+              Math.addExact(
+                  payable,
+                  Math.multiplyExact(
+                          wage.getValue().wagePerLaborMilli(),
+                          wageLaborByRole.getOrDefault(wage.getKey(), 0L))
+                      / 1000L);
+        }
+      }
+      long participantInputBurden =
+          inputSupplierHousehold.orElse(organizer).equals(participant.household())
+              ? inputBurden
+              : 0L;
+      long net =
+          Math.subtractExact(
+              Math.addExact(productValue, receivable),
+              Math.addExact(payable, participantInputBurden));
+      String rowRejection = rejection != null ? rejection : wageRejection;
+      incomes.add(
+          new RosterHouseholdIncome(
+              unit.id(),
+              plan.id(),
+              participant.household(),
+              participant.role(),
+              participant.organizer(),
+              share,
+              productValue,
+              receivable,
+              payable,
+              participantInputBurden,
+              net,
+              net < 0L,
+              unpriced,
+              Optional.ofNullable(rowRejection)));
+    }
+    return Collections.unmodifiableList(incomes);
+  }
+
+  /**
+   * ★ D2 §7.3：角色级资格逐户检查（`roles[].conditions`）。
+   *
+   * <p>★ 主体 = 该角色每个参与户；{@code MinimumExperience} 读 production 经验（冻结条件优先）， {@code ExternalAttribute}
+   * 读该户属性事实；缺事实/经验不足 ⇒ 具名 {@code role-qualification:<role>:<household>:<reason>}。
+   */
+  private static Optional<String> roleQualificationRejection(
+      IndustryDefinitionView plan,
+      ProductionRoster roster,
+      ProductionRuntime runtime,
+      Map<HouseholdId, ExternalAttributeFacts> facts) {
+    for (ProductionParticipant participant : roster.participants()) {
+      io.mosire.simos.production.contract.ProductionRoleDefinition role =
+          plan.roles().stream()
+              .filter(candidate -> candidate.id().equals(participant.role()))
+              .findFirst()
+              .orElse(null);
+      if (role == null) {
+        return Optional.of("role-unknown:" + participant.role().value());
+      }
+      for (io.mosire.simos.production.contract.ProductionAvailabilityCondition condition :
+          role.conditions()) {
+        if (condition
+            instanceof
+            io.mosire.simos.production.contract.ProductionAvailabilityCondition.MinimumExperience
+                minimum) {
+          long experience =
+              runtime.currentCondition().isPresent()
+                  ? runtime
+                      .currentCondition()
+                      .get()
+                      .experienceOf(participant.household(), minimum.track())
+                  : runtime.experienceOf(participant.household(), minimum.track());
+          if (experience < minimum.minimumExperience()) {
+            return Optional.of(
+                "role-qualification:"
+                    + participant.role().value()
+                    + ":"
+                    + participant.household().value()
+                    + ":"
+                    + condition.describe());
+          }
+        } else {
+          ExternalAttributeFacts participantFacts =
+              facts.getOrDefault(participant.household(), ExternalAttributeFacts.EMPTY);
+          ExternalAttributeFacts.Verdict verdict = participantFacts.evaluate(condition);
+          if (!verdict.satisfied()) {
+            return Optional.of(
+                "role-qualification:"
+                    + participant.role().value()
+                    + ":"
+                    + participant.household().value()
+                    + ":"
+                    + verdict.reason());
+          }
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  /** 数量 × 本地 bid ÷ 1000（毫商品 → 毫钱）；缺价/0 价 ⇒ 0。与 {@code productionProspect} 同一口径。 */
+  private static long bidValueMilli(MarketTable market, Map<CommodityId, Long> quantities) {
+    if (market == null) {
+      return 0L;
+    }
+    long total = 0L;
+    for (Map.Entry<CommodityId, Long> entry : quantities.entrySet()) {
+      if (!market.hasPrice(entry.getKey())) {
+        continue;
+      }
+      total =
+          Math.addExact(
+              total,
+              Math.multiplyExact(entry.getValue(), market.bidPriceOf(entry.getKey()))
+                  / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+    }
+    return total;
+  }
+
+  /** 逐商品 bid 估值（唯一口径）：缺价记入 {@code unpriced}、0 价按 0；只返回 >0 行。 */
+  private static Map<CommodityId, Long> bidValuesByCommodity(
+      MarketTable market, Map<CommodityId, Long> quantities, Set<CommodityId> unpriced) {
+    Map<CommodityId, Long> values = new LinkedHashMap<>();
+    if (market == null) {
+      unpriced.addAll(quantities.keySet());
+      return values;
+    }
+    for (Map.Entry<CommodityId, Long> entry : quantities.entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      if (!market.hasPrice(entry.getKey())) {
+        unpriced.add(entry.getKey());
+        continue;
+      }
+      long price = market.bidPriceOf(entry.getKey());
+      if (price <= 0L) {
+        continue;
+      }
+      values.put(
+          entry.getKey(),
+          Math.multiplyExact(entry.getValue(), price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+    }
+    return values;
+  }
+
+  /** 逐商品 ask 估值（唯一口径）：缺价记入 {@code unpriced}、0 价按 0；只返回 >0 行。 */
+  private static Map<CommodityId, Long> askValuesByCommodity(
+      MarketTable market, Map<CommodityId, Long> quantities, Set<CommodityId> unpriced) {
+    Map<CommodityId, Long> values = new LinkedHashMap<>();
+    if (market == null) {
+      unpriced.addAll(quantities.keySet());
+      return values;
+    }
+    for (Map.Entry<CommodityId, Long> entry : quantities.entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      if (!market.hasPrice(entry.getKey())) {
+        unpriced.add(entry.getKey());
+        continue;
+      }
+      long price = market.askPriceOf(entry.getKey());
+      if (price <= 0L) {
+        continue;
+      }
+      values.put(
+          entry.getKey(),
+          Math.multiplyExact(entry.getValue(), price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+    }
+    return values;
+  }
+
+  private static long sumValues(Map<CommodityId, Long> values) {
+    long total = 0L;
+    for (long value : values.values()) {
+      total = Math.addExact(total, value);
+    }
+    return total;
+  }
+
+  /** 数量 × 本地 ask ÷ 1000（投入负担的唯一估值口径）。 */
+  private static long askValueMilli(MarketTable market, Map<CommodityId, Long> quantities) {
+    if (market == null) {
+      return 0L;
+    }
+    long total = 0L;
+    for (Map.Entry<CommodityId, Long> entry : quantities.entrySet()) {
+      if (!market.hasPrice(entry.getKey())) {
+        continue;
+      }
+      total =
+          Math.addExact(
+              total,
+              Math.multiplyExact(entry.getValue(), market.askPriceOf(entry.getKey()))
+                  / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+    }
+    return total;
   }
 }

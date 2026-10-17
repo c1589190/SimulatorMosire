@@ -14,10 +14,12 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
@@ -67,6 +69,19 @@ import java.util.Set;
  * UUID；同输入同输出。
  */
 final class LaborQueueSettlement {
+
+  /**
+   * ★★★ <b>D-032 D2 §5.6：套利活动的角色</b>。套利是家户自营活动（没有 ProductionProcess/方案角色）；生产承诺 仍必须携带角色，故用一个稳定的非方案角色
+   * id 表达"这是自营套利"，<b>不</b>再引入第二个 role 字符串字段。
+   */
+  static final ProductionRoleId ARBITRAGE_ROLE = new ProductionRoleId("arbitrage");
+
+  /** 一个候选劳动槽 = (unit, 角色)；同一户可以在同一 unit 的多个角色上分别排队（D2 §4.3）。 */
+  private record LaborSlot(
+      HouseholdId household, ProductionProcess unit, ProductionRoleId role, boolean moneyWage) {}
+
+  /** (unit, 角色) 复合键：写回时用于只替换被排队的角色行，不误删同户同 unit 的其他角色。 */
+  private record UnitRole(ProductionUnitId unit, ProductionRoleId role) {}
 
   private LaborQueueSettlement() {}
 
@@ -170,29 +185,35 @@ final class LaborQueueSettlement {
           .add(laborCommitment.household());
     }
 
-    // ── 候选 unit 按家户归集 ─────────────────────────────────────────────────────────────
+    // ── 候选 (unit × 角色) 槽按家户归集（D-032 D2 §4.3：PRODUCT_SHARE 读名册、MONEY_WAGE 读报价读口）──────
     List<HouseholdId> orderedHouseholds = new ArrayList<>(householdEconomies.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
-    Map<HouseholdId, List<ProductionProcess>> candidatesByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, List<LaborSlot>> candidatesByHousehold = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
       candidatesByHousehold.put(household, new ArrayList<>());
     }
+    Map<ProductionUnitId, ProductionRoster> productionRosters =
+        session.sheet().productionRostersOrBase();
     for (ProductionProcess unit : units.values()) {
-      for (HouseholdId household :
-          candidateHouseholdsOf(
+      for (LaborSlot slot :
+          candidateSlotsOf(
               unit,
               householdEconomies,
               enterpriseByProcess,
               allocationHouseholdsByActivity,
-              index)) {
-        List<ProductionProcess> list = candidatesByHousehold.get(household);
-        if (list != null && !list.contains(unit)) {
-          list.add(unit);
+              index,
+              session.sheet().definitions(),
+              productionRosters)) {
+        List<LaborSlot> list = candidatesByHousehold.get(slot.household());
+        if (list != null && !list.contains(slot)) {
+          list.add(slot);
         }
       }
     }
-    for (List<ProductionProcess> list : candidatesByHousehold.values()) {
-      list.sort(Comparator.comparing(candidate -> candidate.id().value()));
+    for (List<LaborSlot> list : candidatesByHousehold.values()) {
+      list.sort(
+          Comparator.comparing((LaborSlot slot) -> slot.unit().id().value())
+              .thenComparing(slot -> slot.role().value()));
     }
 
     // ── 阶段 0：套利活动的"同一份资源快照"（§4.3.5）+ 逐户价目表（§3.3；逐 tick 派生、不进状态）──────
@@ -212,7 +233,7 @@ final class LaborQueueSettlement {
     Map<HouseholdId, TradeArbitrageActivity> arbitrageByHousehold = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
       HouseholdEconomy householdEconomy = householdEconomies.get(household);
-      List<ProductionProcess> candidates = candidatesByHousehold.getOrDefault(household, List.of());
+      List<LaborSlot> candidates = candidatesByHousehold.getOrDefault(household, List.of());
       List<HouseholdLaborCommitment> householdLaborCommitments =
           laborCommitmentsByHousehold.getOrDefault(household, List.of());
       if (candidates.isEmpty()) {
@@ -276,13 +297,19 @@ final class LaborQueueSettlement {
         continue;
       }
       Map<ProductionUnitId, ProductionProcess> candidateUnitsById = new LinkedHashMap<>();
-      for (ProductionProcess unit : candidates) {
-        candidateUnitsById.put(unit.id(), unit);
+      List<ProductionProcess> candidateUnits = new ArrayList<>();
+      for (LaborSlot slot : candidates) {
+        candidateUnitsById.put(slot.unit().id(), slot.unit());
+        if (!candidateUnits.contains(slot.unit())) {
+          candidateUnits.add(slot.unit());
+        }
       }
-      MarketTable market = marketOf(householdEconomy, candidates, markets);
+      MarketTable market = marketOf(householdEconomy, candidateUnits, markets);
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
       Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
-      for (ProductionProcess unit : candidates) {
+      Set<UnitRole> queuedSlots = new LinkedHashSet<>();
+      for (LaborSlot slot : candidates) {
+        ProductionProcess unit = slot.unit();
         if (govServiceActivities.contains(unit.id().value())) {
           continue; // ★ C7：该户在此 unit 上有 GOV_SERVICE 承诺 ⇒ 不进队列（队列不得创建/覆盖政府承诺）
         }
@@ -296,6 +323,31 @@ final class LaborQueueSettlement {
         }
         Optional<ProductionModeId> modeId = modeIdOf(unit, enterpriseByProcess);
         String rankModeKey = modeId.map(ProductionModeId::value).orElse(unit.modeKey());
+        if (slot.moneyWage()) {
+          // ★★★ D-032 D2 §6.5 / §8.2：C2 不持久化工资报价 ⇒ 默认 lookup 永远 empty。
+          //   含工资角色的候选必须具名 `wage-quote-missing:<role>`（不得按 0 报价，也不得伪造 worker）。
+          Optional<io.mosire.simos.economy.model.ProductionWageQuote> quote =
+              session.wageQuoteLookup().quoteFor(unit.id(), slot.role());
+          String wageReason =
+              quote.isEmpty()
+                  ? "wage-quote-missing:" + slot.role().value()
+                  : "wage-target-missing:" + slot.role().value();
+          offers.add(
+              new LaborQueueBook.Offer(
+                  unit.id(),
+                  slot.role(),
+                  modeId,
+                  rankModeKey,
+                  0L,
+                  false,
+                  0L,
+                  0L,
+                  0L,
+                  0L,
+                  0L,
+                  wageReason));
+          continue;
+        }
         LaborQueueBook.Offer offer =
             LaborQueueBook.offer(
                 unit,
@@ -308,12 +360,15 @@ final class LaborQueueSettlement {
                 // ★★★ D-032 §15.12 A（R1）：家户决定这批物理量的熟练度/经验（probe 入参），
                 //   产出/投入/劳动由同一次试算给出（本户在循环外已解析）。
                 household,
+                // ★★★ D-032 C2 §5.6：候选按名册角色分流；同 unit 多角色分别排队、分别落配额 id。
+                slot.role(),
                 // ★★★ B8（缺陷 DEF-T2b-2 的同源一处）：投入那一路读**本生产日实扣量**的权威视图
                 //   （`LaborQueueBook#cycleInputUsedMilliOf`：本 tick 现扣过就读会话那一份，否则读实例）。
                 session);
         if (!LaborQueueBook.isPreservedByQueue(offer)) {
           offers.add(offer);
           queuedUnits.add(unit.id());
+          queuedSlots.add(new UnitRole(unit.id(), slot.role()));
         }
       }
 
@@ -353,7 +408,19 @@ final class LaborQueueSettlement {
         if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
           continue; // 已整额计入
         }
-        if (!queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
+        UnitRole commitmentSlot =
+            new UnitRole(
+                new ProductionUnitId(laborCommitment.activity()),
+                laborCommitment
+                    .productionRole()
+                    .orElseThrow(
+                        () ->
+                            laborCommitmentContractFault(
+                                household,
+                                day,
+                                "PRODUCTION 承诺缺 productionRole（D2 §5.6 不变量被绕开）: id="
+                                    + laborCommitment.id().value())));
+        if (!queuedSlots.contains(commitmentSlot)) {
           preserved = Math.addExact(preserved, laborCommitment.laborMilli());
         }
       }
@@ -361,7 +428,7 @@ final class LaborQueueSettlement {
         // 合法状态到不了这里（构造期守卫；GOV_SERVICE 越界已在上面 fail-closed），但排队写回不得以坏状态为借口
         // 超预算：先整额保 GOV_SERVICE，只对 PRODUCTION 既有保留量按比例缩到剩余预算以内。
         preserveIntoBudget(
-            laborCommitments, householdLaborCommitments, queuedUnits, budget, govServiceLaborMilli);
+            laborCommitments, householdLaborCommitments, queuedSlots, budget, govServiceLaborMilli);
         preserved = budget;
       }
       LaborQueueBook.Plan desired = LaborQueueBook.plan(household, budget, preserved, offers);
@@ -377,8 +444,8 @@ final class LaborQueueSettlement {
     }
 
     // ── 阶段 2：逐 unit 全局封顶（按各家户想要量比例缩；只减不增）──────────────────────────
-    Map<String, Long> finalGrantByUnitHousehold = new LinkedHashMap<>();
-    Map<ProductionUnitId, List<Map.Entry<HouseholdId, Long>>> desiredByUnit = new LinkedHashMap<>();
+    Map<String, Long> finalGrantBySlot = new LinkedHashMap<>();
+    Map<ProductionUnitId, List<Wanted>> desiredByUnit = new LinkedHashMap<>();
     Map<ProductionUnitId, Long> capByUnit = new LinkedHashMap<>();
     for (HouseholdWork work : works) {
       for (LaborQueueBook.Decision decision : work.desired().decisions()) {
@@ -389,7 +456,9 @@ final class LaborQueueSettlement {
         capByUnit.put(unitId, decision.offer().maxAbsorbableLaborMilli());
         desiredByUnit
             .computeIfAbsent(unitId, ignored -> new ArrayList<>())
-            .add(Map.entry(work.household(), decision.grantedLaborMilli()));
+            .add(
+                new Wanted(
+                    work.household(), decision.offer().role(), decision.grantedLaborMilli()));
       }
     }
     // ★ 被"保留"的既有配额也占该 unit 的可吸收量（如甲户市场未定价 ⇒ 保留、乙户正常价 ⇒ 排队；同一 unit 时
@@ -407,30 +476,30 @@ final class LaborQueueSettlement {
         }
       }
     }
-    for (Map.Entry<ProductionUnitId, List<Map.Entry<HouseholdId, Long>>> entry :
-        desiredByUnit.entrySet()) {
+    for (Map.Entry<ProductionUnitId, List<Wanted>> entry : desiredByUnit.entrySet()) {
       ProductionUnitId unitId = entry.getKey();
-      List<Map.Entry<HouseholdId, Long>> desired = entry.getValue();
+      List<Wanted> desired = entry.getValue();
       long cap =
           Math.max(
               0L, capByUnit.getOrDefault(unitId, 0L) - reservedByUnit.getOrDefault(unitId, 0L));
       long total = 0L;
-      for (Map.Entry<HouseholdId, Long> wanted : desired) {
-        total += wanted.getValue();
+      for (Wanted wanted : desired) {
+        total += wanted.laborMilli();
       }
       if (total <= cap) {
-        for (Map.Entry<HouseholdId, Long> wanted : desired) {
-          finalGrantByUnitHousehold.put(key(unitId, wanted.getKey()), wanted.getValue());
+        for (Wanted wanted : desired) {
+          finalGrantBySlot.put(key(unitId, wanted.household(), wanted.role()), wanted.laborMilli());
         }
         continue;
       }
       long[] weights = new long[desired.size()];
       for (int i = 0; i < desired.size(); i++) {
-        weights[i] = desired.get(i).getValue();
+        weights[i] = desired.get(i).laborMilli();
       }
       long[] parts = ProportionalSplit.byDenominator(cap, weights, total);
       for (int i = 0; i < desired.size(); i++) {
-        finalGrantByUnitHousehold.put(key(unitId, desired.get(i).getKey()), parts[i]);
+        finalGrantBySlot.put(
+            key(unitId, desired.get(i).household(), desired.get(i).role()), parts[i]);
       }
     }
 
@@ -441,8 +510,8 @@ final class LaborQueueSettlement {
       long allocated = work.preserved();
       for (LaborQueueBook.Decision decision : work.desired().decisions()) {
         long finalGrant =
-            finalGrantByUnitHousehold.getOrDefault(
-                key(decision.offer().unitId(), work.household()), 0L);
+            finalGrantBySlot.getOrDefault(
+                key(decision.offer().unitId(), work.household(), decision.offer().role()), 0L);
         allocated += finalGrant;
         String outcome = decision.outcome();
         if (decision.grantedLaborMilli() > 0L) {
@@ -605,10 +674,13 @@ final class LaborQueueSettlement {
     }
   }
 
-  /** (unit, household) 的复合键拼写点（阶段 2/3 共用；无状态）。 */
-  private static String key(ProductionUnitId unitId, HouseholdId household) {
-    return unitId.value() + "\u0000" + household.value();
+  /** (unit, household, role) 的复合键拼写点（阶段 2/3 共用；无状态；同名同 unit 多角色不再撞车）。 */
+  private static String key(ProductionUnitId unitId, HouseholdId household, ProductionRoleId role) {
+    return unitId.value() + "\u0000" + household.value() + "\u0000" + role.value();
   }
+
+  /** 阶段 2 的"想要量"：同一户在同一 unit 的某个角色上想要多少劳动。 */
+  private record Wanted(HouseholdId household, ProductionRoleId role, long laborMilli) {}
 
   // ── 套利活动（§4.3；阶段 1 新增）────────────────────────────────────────────────────────
 
@@ -628,7 +700,7 @@ final class LaborQueueSettlement {
       long day,
       List<HouseholdId> orderedHouseholds,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, List<ProductionProcess>> candidatesByHousehold,
+      Map<HouseholdId, List<LaborSlot>> candidatesByHousehold,
       MarketIndex markets,
       AccountSession accounts) {
     Map<HouseholdId, HouseholdResourceSnapshot> snapshots = new LinkedHashMap<>();
@@ -637,9 +709,13 @@ final class LaborQueueSettlement {
       if (householdEconomy == null) {
         continue;
       }
-      MarketTable market =
-          marketOf(
-              householdEconomy, candidatesByHousehold.getOrDefault(household, List.of()), markets);
+      List<ProductionProcess> candidateUnits = new ArrayList<>();
+      for (LaborSlot slot : candidatesByHousehold.getOrDefault(household, List.of())) {
+        if (!candidateUnits.contains(slot.unit())) {
+          candidateUnits.add(slot.unit());
+        }
+      }
+      MarketTable market = marketOf(householdEconomy, candidateUnits, markets);
       Map<CommodityId, Long> goods =
           accounts == null
               ? Map.of()
@@ -715,6 +791,7 @@ final class LaborQueueSettlement {
     if (!evaluation.hasOpportunity()) {
       return new LaborQueueBook.Offer(
           arbitrageUnit,
+          ARBITRAGE_ROLE,
           Optional.empty(),
           arbitrageUnit.value(),
           0L,
@@ -730,6 +807,7 @@ final class LaborQueueSettlement {
         evaluation.activity().orElseThrow().opportunity();
     return new LaborQueueBook.Offer(
         arbitrageUnit,
+        ARBITRAGE_ROLE,
         Optional.empty(),
         arbitrageUnit.value(), // ★ 并列键 = 活动键（"收益率 desc, activityId asc"里的 activityId）
         opportunity.laborMilli(),
@@ -865,6 +943,88 @@ final class LaborQueueSettlement {
     return households;
   }
 
+  /**
+   * ★★★ <b>D-032 D2 §4.3 / §5.4：按名册角色分流候选</b>。
+   *
+   * <ul>
+   *   <li>有 {@link ProductionRoster}：{@code PRODUCT_SHARE} 角色只取该角色 {@code plannedLaborMilliPerDay >
+   *       0} 的 participant（纯收租/零计划劳动户不进自动劳动匹配）；{@code MONEY_WAGE} 角色不读 roster 的 planned labor， 但 C2
+   *       用默认 {@code ProductionWageQuoteLookup}（永远 empty）⇒ 为每个工资角色发一条零额候选，具名 {@code
+   *       wage-quote-missing:<role>}（不伪造 worker、不按 0 报价）。
+   *   <li>无名册：单角色 plan ⇒ 用既有候选户 + 该唯一角色；多角色 plan 无名册 ⇒ 不产生任何候选（调用方记 {@code
+   *       roster-required}），绝不按角色各建一份。
+   * </ul>
+   */
+  private static List<LaborSlot> candidateSlotsOf(
+      ProductionProcess unit,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
+      Map<String, Set<HouseholdId>> allocationHouseholdsByActivity,
+      SettlementIndex index,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
+    Optional<IndustryDefinitionView> plan = definitions.industry(unit.industry());
+    if (plan.isEmpty()) {
+      return List.of();
+    }
+    List<LaborSlot> slots = new ArrayList<>();
+    ProductionRoster roster = productionRosters.get(unit.id());
+    if (roster != null) {
+      for (io.mosire.simos.economy.model.ProductionParticipant participant :
+          roster.participants()) {
+        IndustryDefinitionView definition = plan.get();
+        io.mosire.simos.production.contract.ProductionRoleDefinition roleDefinition =
+            definition.roles().stream()
+                .filter(candidate -> candidate.id().equals(participant.role()))
+                .findFirst()
+                .orElse(null);
+        if (roleDefinition == null) {
+          continue; // 未知角色由 EconomyReferenceValidation 拒绝；这里不猜
+        }
+        boolean moneyWage =
+            roleDefinition.payment()
+                instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage;
+        if (moneyWage) {
+          slots.add(new LaborSlot(participant.household(), unit, participant.role(), true));
+          continue;
+        }
+        if (participant.plannedLaborMilliPerDay() > 0L
+            && householdEconomies.containsKey(participant.household())) {
+          slots.add(new LaborSlot(participant.household(), unit, participant.role(), false));
+        }
+      }
+      // MONEY_WAGE 角色可无 participant：C2 仍要为它发一条具名缺报价读数（organizer 作为读口主体）。
+      for (io.mosire.simos.production.contract.ProductionRoleDefinition roleDefinition :
+          plan.get().roles()) {
+        if (!(roleDefinition.payment()
+            instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage)) {
+          continue;
+        }
+        boolean covered = slots.stream().anyMatch(slot -> slot.role().equals(roleDefinition.id()));
+        if (!covered) {
+          HouseholdId organizerHousehold = roster.organizerHousehold();
+          if (householdEconomies.containsKey(organizerHousehold)) {
+            slots.add(new LaborSlot(organizerHousehold, unit, roleDefinition.id(), true));
+          }
+        }
+      }
+      return slots;
+    }
+    if (plan.get().roles().size() != 1) {
+      return List.of(); // 多角色 plan 无名册 ⇒ roster-required（由校验/执行面具名拒绝）
+    }
+    io.mosire.simos.production.contract.ProductionRoleDefinition onlyRole =
+        plan.get().roles().get(0);
+    boolean moneyWage =
+        onlyRole.payment() instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage;
+    for (HouseholdId household :
+        candidateHouseholdsOf(
+            unit, householdEconomies, enterpriseByProcess, allocationHouseholdsByActivity, index)) {
+      slots.add(new LaborSlot(household, unit, onlyRole.id(), moneyWage));
+    }
+    return slots;
+  }
+
   /** 该 unit 的组织 mode；没有组织 ⇒ 空（旧 unit 的并列键退回 {@code modeKey}）。 */
   private static Optional<ProductionModeId> modeIdOf(
       ProductionProcess unit, Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess) {
@@ -936,8 +1096,10 @@ final class LaborQueueSettlement {
       Map<ProductionUnitId, ProductionProcess> candidateUnitsById,
       long day) {
     Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
+    Set<UnitRole> queuedSlots = new LinkedHashSet<>();
     for (LaborQueueBook.Decision decision : plan.decisions()) {
       queuedUnits.add(decision.offer().unitId());
+      queuedSlots.add(new UnitRole(decision.offer().unitId(), decision.offer().role()));
     }
     // ★ C7 防御：正常路径上带 GOV_SERVICE 的 activity 已被挡在候选外；这里再判一次，任何"排队到政府承诺上"的
     //   路径都 fail-closed（不静默覆盖/删除）。
@@ -950,14 +1112,25 @@ final class LaborQueueSettlement {
             "队列试图排队/覆盖 GOV_SERVICE 承诺: activity=" + laborCommitment.activity());
       }
     }
-    Map<ProductionUnitId, HouseholdLaborCommitment> templates = new LinkedHashMap<>();
+    Map<UnitRole, HouseholdLaborCommitment> templates = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
       if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION) {
         continue; // ★ C7：GOV_SERVICE 行原样留在活表里，不参与"删旧行/复用模板"
       }
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      if (queuedUnits.contains(unitId)) {
-        templates.putIfAbsent(unitId, laborCommitment);
+      ProductionRoleId role =
+          laborCommitment
+              .productionRole()
+              .orElseThrow(
+                  () ->
+                      laborCommitmentContractFault(
+                          plan.household(),
+                          day,
+                          "PRODUCTION 承诺缺 productionRole（D2 §5.6 不变量被绕开）: id="
+                              + laborCommitment.id().value()));
+      UnitRole slot = new UnitRole(unitId, role);
+      if (queuedSlots.contains(slot)) {
+        templates.putIfAbsent(slot, laborCommitment);
         laborCommitments.remove(laborCommitment.id());
       }
     }
@@ -966,7 +1139,9 @@ final class LaborQueueSettlement {
         continue;
       }
       ProductionUnitId unitId = decision.offer().unitId();
-      HouseholdLaborCommitment template = templates.get(unitId);
+      ProductionRoleId role = decision.offer().role();
+      UnitRole slot = new UnitRole(unitId, role);
+      HouseholdLaborCommitment template = templates.get(slot);
       if (template != null) {
         laborCommitments.put(template.id(), withLaborMilli(template, decision.grantedLaborMilli()));
         continue;
@@ -974,12 +1149,12 @@ final class LaborQueueSettlement {
       ProductionProcess unit = candidateUnitsById.get(unitId);
       if (unit == null) {
         // ★★ 套利活动没有 ProductionProcess：收劳动的主体是**家户自己**（{@code HouseholdActors} 是
-        //   家户身份 ↔ actor 身份的唯一拼写点）；配额 id 仍走契约层的唯一拼写点 {@code idOf(unit, ...)}。
+        //   家户身份 ↔ actor 身份的唯一拼写点）；配额 id 仍走契约层的唯一拼写点 {@code idOfProduction}。
         if (!TradeArbitrageActivity.isArbitrageActivity(unitId.value())) {
           throw new IllegalStateException("排队结果指向一个不在候选表里的 unit（内部不一致）：" + unitId.value());
         }
         LaborAllocationId arbitrageId =
-            HouseholdLaborCommitment.idOf(unitId, lot, plan.household());
+            HouseholdLaborCommitment.idOfProduction(unitId, role, lot, plan.household());
         HouseholdLaborCommitment freshLaborCommitment =
             new HouseholdLaborCommitment(
                 arbitrageId,
@@ -989,7 +1164,8 @@ final class LaborQueueSettlement {
                 unitId.value(),
                 decision.grantedLaborMilli(),
                 1L,
-                LaborCommitmentKind.PRODUCTION); // ★ 套利属普通生产承诺：进排队、可缩（I13 的 Σ 里与生产同侧）
+                LaborCommitmentKind.PRODUCTION,
+                Optional.of(role)); // ★ 套利属普通生产承诺：进排队、可缩（I13 的 Σ 里与生产同侧）
         HouseholdLaborCommitment previousLaborCommitment =
             laborCommitments.putIfAbsent(arbitrageId, freshLaborCommitment);
         if (previousLaborCommitment != null) {
@@ -1004,7 +1180,8 @@ final class LaborQueueSettlement {
         }
         continue;
       }
-      LaborAllocationId id = HouseholdLaborCommitment.idOf(unitId, lot, plan.household());
+      LaborAllocationId id =
+          HouseholdLaborCommitment.idOfProduction(unitId, role, lot, plan.household());
       HouseholdLaborCommitment freshLaborCommitment =
           new HouseholdLaborCommitment(
               id,
@@ -1014,7 +1191,8 @@ final class LaborQueueSettlement {
               unitId.value(),
               decision.grantedLaborMilli(),
               1L,
-              LaborCommitmentKind.PRODUCTION); // ★ C7：队列只发 PRODUCTION，绝不创建 GOV_SERVICE
+              LaborCommitmentKind.PRODUCTION,
+              Optional.of(role)); // ★ C7：队列只发 PRODUCTION，绝不创建 GOV_SERVICE
       HouseholdLaborCommitment previousLaborCommitment =
           laborCommitments.putIfAbsent(id, freshLaborCommitment);
       if (previousLaborCommitment != null) {
@@ -1037,7 +1215,7 @@ final class LaborQueueSettlement {
   private static void preserveIntoBudget(
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       List<HouseholdLaborCommitment> householdLaborCommitments,
-      Set<ProductionUnitId> queuedUnits,
+      Set<UnitRole> queuedSlots,
       long budget,
       long govServiceLaborMilli) {
     long availableForProduction = Math.max(0L, budget - govServiceLaborMilli);
@@ -1048,7 +1226,11 @@ final class LaborQueueSettlement {
       if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION) {
         continue; // ★ C7：GOV_SERVICE 整额保留，绝不进入比例缩
       }
-      if (queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
+      UnitRole slot =
+          new UnitRole(
+              new ProductionUnitId(laborCommitment.activity()),
+              laborCommitment.productionRole().orElseThrow());
+      if (queuedSlots.contains(slot)) {
         continue;
       }
       ids.add(laborCommitment.id());
@@ -1089,7 +1271,8 @@ final class LaborQueueSettlement {
         laborCommitment.activity(),
         laborMilli,
         laborCommitment.period(),
-        laborCommitment.kind());
+        laborCommitment.kind(),
+        laborCommitment.productionRole());
   }
 
   /**

@@ -38,6 +38,25 @@ public final class EconomySession {
   private final io.mosire.simos.production.contract.ProductionRuntime runtime;
 
   /**
+   * ★★★ <b>D-032 D4-C / D2 §8.4：本会话的资产占用唯一只读读口</b>。组合根未装配 D4-I 时必须注入 {@link
+   * UnavailableAssetOccupancyLookup}；名册执行路径读到 {@code Optional.empty()} ⇒ 具名 {@code
+   * asset-occupancy-unavailable}，<b>不得</b>回退 {@code usableAssets} 整池扫描。
+   */
+  private final AssetOccupancyLookup assetOccupancyLookup;
+
+  /** ★★★ D-032 D2 §6.5：工资报价读口；C2 的默认 = {@link UnavailableProductionWageQuoteLookup}（永远 empty）。 */
+  private final ProductionWageQuoteLookup wageQuoteLookup;
+
+  /** ★★★ D-032 D2 §6.2/§7.3：参与户外部属性事实的唯一读口。 */
+  private final ParticipantAttributeLookup participantAttributeLookup;
+
+  /**
+   * ★★★ D-032 D4-C：本次 Advance 的权威 revision（资产占用快照必须与它同版本）。 组合根未提供 ⇒ {@link
+   * java.util.Optional#empty()} ⇒ 名册执行路径具名 {@code asset-occupancy-unavailable}。
+   */
+  private final java.util.Optional<io.mosire.simos.util.state.RevisionId> expectedRevision;
+
+  /**
    * ★★ <b>P5：本会话的死亡按人口比例删债累加器</b>（瞬态；键 = 债务人，值 = Σ 逐笔 {@code forgive} 的本金差）。
    *
    * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：删债不是新的持久组件 —— 合同表里该条的 {@code
@@ -136,10 +155,61 @@ public final class EconomySession {
       EconomyData base,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionRuntime runtime) {
+    this(
+        base,
+        definitions,
+        runtime,
+        new UnavailableAssetOccupancyLookup(),
+        new UnavailableProductionWageQuoteLookup(),
+        new UnavailableParticipantAttributeLookup());
+  }
+
+  /**
+   * ★★★ <b>D-032 C2 的装配口</b>：除定义来源与运行时外，再注入 D4-C 资产占用读口、工资报价读口与属性桥。 三个 lookup 都必须显式给出（缺真实实现时用对应的
+   * {@code Unavailable*} fail-closed 适配器，不得传 null）。
+   */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      ParticipantAttributeLookup participantAttributeLookup) {
+    this(
+        base,
+        definitions,
+        runtime,
+        assetOccupancyLookup,
+        wageQuoteLookup,
+        participantAttributeLookup,
+        null);
+  }
+
+  /**
+   * ★★★ <b>D-032 C2 全参装配口（含权威 revision）</b>：资产占用快照要求调用方给出 expectedRevision；未提供 ⇒ 名册执行路径 fail-closed
+   * `asset-occupancy-unavailable`（不猜版本、不跨 revision 读）。
+   */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision) {
     this.base = Objects.requireNonNull(base, "base");
     // ★★ B3：runtime 必须非 null（§13.3 第 2 条 —— 所有支持生产的有效入口显式获得合法 runtime）。
     this.runtime =
         Objects.requireNonNull(runtime, "runtime（D-032：生产实例的唯一权威在 production，必须显式注入合法运行时）");
+    this.assetOccupancyLookup =
+        Objects.requireNonNull(
+            assetOccupancyLookup, "assetOccupancyLookup（D4-C 读口，缺实现用 Unavailable*）");
+    this.wageQuoteLookup =
+        Objects.requireNonNull(wageQuoteLookup, "wageQuoteLookup（D2 §6.5 读口，缺实现用 Unavailable*）");
+    this.participantAttributeLookup =
+        Objects.requireNonNull(
+            participantAttributeLookup, "participantAttributeLookup（属性桥，缺实现用 Unavailable*）");
+    this.expectedRevision = java.util.Optional.ofNullable(expectedRevision);
     this.sheet = new EconomyStateBuilder(base, definitions, runtime);
     this.flows = new LinkedHashMap<>(base.flows());
   }
@@ -168,6 +238,26 @@ public final class EconomySession {
           "孤立例外（§14.25.3 裁定四十五第 3 条）：返回的是组合根注入的契约端口接口 ProductionRuntime —— economy 读/写生产候选态的唯一通道；接口没有拷贝契约，拷贝掉就不再是同一份权威候选态（beginTick()/changeSet() 的 tick 身份与候选态会失配），调用面限于 economy 域内与组合根收尾。登记见 impl-ledger B12")
   public io.mosire.simos.production.contract.ProductionRuntime productionRuntime() {
     return runtime;
+  }
+
+  /** ★★★ D-032 D4-C：本会话的资产占用只读读口（empty = 不可用，调用方必须具名拒绝）。 */
+  public AssetOccupancyLookup assetOccupancyLookup() {
+    return assetOccupancyLookup;
+  }
+
+  /** ★★★ D-032 D2 §6.5：本会话的工资报价读口（C2 默认永远 empty ⇒ `wage-quote-missing`）。 */
+  public ProductionWageQuoteLookup wageQuoteLookup() {
+    return wageQuoteLookup;
+  }
+
+  /** ★★★ D-032 D2 §6.2/§7.3：参与户外部属性事实读口。 */
+  public ParticipantAttributeLookup participantAttributeLookup() {
+    return participantAttributeLookup;
+  }
+
+  /** ★★★ D-032 D4-C：本次 Advance 的权威 revision（资产占用快照必须与它同版本）。 */
+  public java.util.Optional<io.mosire.simos.util.state.RevisionId> expectedRevision() {
+    return expectedRevision;
   }
 
   public EconomyData base() {

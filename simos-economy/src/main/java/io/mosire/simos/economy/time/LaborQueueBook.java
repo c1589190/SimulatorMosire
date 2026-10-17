@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
@@ -119,6 +120,7 @@ public final class LaborQueueBook {
   /** 一条"这个 unit 本 tick 最多能吸收多少家户劳动、每单位劳动的预期净收益是多少"的读数。 */
   public record Offer(
       ProductionUnitId unitId,
+      ProductionRoleId role,
       Optional<ProductionModeId> modeId,
       String rankModeKey,
       long maxAbsorbableLaborMilli,
@@ -132,6 +134,7 @@ public final class LaborQueueBook {
 
     public Offer {
       Objects.requireNonNull(unitId, "Offer.unitId 不得为 null");
+      Objects.requireNonNull(role, "Offer.role 不得为 null（D2 §5.6：候选按名册角色分流）");
       Objects.requireNonNull(modeId, "Offer.modeId 不得为 null（没有请用 Optional.empty()）");
       Objects.requireNonNull(rankModeKey, "Offer.rankModeKey 不得为 null（没有 mode 用 modeKey）");
       Objects.requireNonNull(reason, "Offer.reason 不得为 null（没有就用空串）");
@@ -199,6 +202,16 @@ public final class LaborQueueBook {
       }
       return Optional.empty();
     }
+
+    /** ★ D-032 C2：给出某个 {@code (unit, role)} 的排队决定（同 unit 多角色分行）。 */
+    public Optional<Decision> decisionOf(ProductionUnitId unitId, ProductionRoleId role) {
+      for (Decision decision : decisions) {
+        if (decision.offer().unitId().equals(unitId) && decision.offer().role().equals(role)) {
+          return Optional.of(decision);
+        }
+      }
+      return Optional.empty();
+    }
   }
 
   // ── ① 单个 unit 的 offer ────────────────────────────────────────────────────────────────
@@ -228,8 +241,10 @@ public final class LaborQueueBook {
       Optional<ProductionModeId> modeId,
       String rankModeKey,
       HouseholdId household,
+      ProductionRoleId role,
       EconomySession session) {
     Objects.requireNonNull(unit, "unit");
+    Objects.requireNonNull(role, "role（D2 §5.6：候选按名册角色分流）");
     Objects.requireNonNull(industry, "industry");
     Objects.requireNonNull(index, "index");
     Objects.requireNonNull(modeId, "modeId");
@@ -241,7 +256,18 @@ public final class LaborQueueBook {
     Optional<String> assetRejection = index.assetRejectionOf(unit.id());
     if (assetRejection.isPresent()) {
       return new Offer(
-          unit.id(), modeId, rankModeKey, 0L, false, 0L, 0L, 0L, 0L, 0L, assetRejection.get());
+          unit.id(),
+          role,
+          modeId,
+          rankModeKey,
+          0L,
+          false,
+          0L,
+          0L,
+          0L,
+          0L,
+          0L,
+          assetRejection.get());
     }
 
     long capacityScale =
@@ -373,6 +399,7 @@ public final class LaborQueueBook {
     String fullReason = joinReasons(reason, priceMissing, inputPriceMissing, market);
     return new Offer(
         unit.id(),
+        role,
         modeId,
         rankModeKey,
         maxAbsorbable,

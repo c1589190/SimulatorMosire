@@ -41,8 +41,10 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -65,7 +67,9 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
@@ -75,6 +79,7 @@ import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -355,13 +360,17 @@ final class EconomyPayloads {
     //   载荷里即使带 `memberships` 键也不再解析（旧世界重建）。
     Map<AssetShareId, OwnershipStake> assetShares = new LinkedHashMap<>();
     Map<String, Long> ownershipStakeSequences = new LinkedHashMap<>();
+    // ★★★ D-032 C2（D2 §5.5）：顶层 productionRosters 名册表。C2 只做 economy 侧接收/形状校验；
+    //   角色/资格/份额 owner 的跨切片判据由 EconomyReferenceValidation#validateProductionRosters 在候选态判。
+    Map<ProductionUnitId, ProductionRoster> productionRosters =
+        productionRosters(payload, definitions, productionInstances);
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
       int r = requireInt(entry, "r");
       HexCoord hex = new HexCoord(q, r);
       // ★★ **H0：配额先解析**（下面推默认关系的居住类型要用它 —— 那是"这批人住哪种居住类型"的唯一来源）。
-      List<HouseholdLaborCommitment> entryLaborCommitments = new ArrayList<>();
+      List<RawAllocation> entryLaborCommitments = new ArrayList<>();
       for (JsonNode node : optionalArray(entry, "allocations")) {
         entryLaborCommitments.add(allocation(node));
       }
@@ -499,9 +508,18 @@ final class EconomyPayloads {
       }
       List<HouseholdLaborCommitment> canonicalLaborCommitments =
           new ArrayList<>(entryLaborCommitments.size());
-      for (HouseholdLaborCommitment laborCommitment : entryLaborCommitments) {
+      for (RawAllocation rawAllocation : entryLaborCommitments) {
+        ProductionRoleId resolvedRole =
+            resolveProductionRole(
+                rawAllocation, productionInstances, productionRosters, definitions);
+        boolean productionUnit =
+            productionInstances.containsKey(new ProductionUnitId(rawAllocation.activity()));
         canonicalLaborCommitments.add(
-            canonicalAllocationActivity(laborCommitment, unitsByIndustry, units, entry));
+            canonicalAllocationActivity(
+                rawAllocation.withRole(resolvedRole, productionUnit),
+                unitsByIndustry,
+                units,
+                entry));
       }
       // ★ 默认关系的居住类型来源 = 供给该 unit 的批次前缀（ResidenceKind.ofLot）。
       Map<ProductionUnitId, Set<ResidenceKind>> residencesByUnit = new LinkedHashMap<>();
@@ -617,7 +635,8 @@ final class EconomyPayloads {
         Map.of(),
         Map.of(),
         Map.of(),
-        Map.of());
+        Map.of(),
+        productionRosters);
   }
 
   /**
@@ -1194,7 +1213,8 @@ final class EconomyPayloads {
               laborCommitment.activity(),
               laborCommitment.laborMilli(),
               laborCommitment.period(),
-              laborCommitment.kind());
+              laborCommitment.kind(),
+              laborCommitment.productionRole());
     }
     if (laborCommitment.activity().startsWith("unit-")) {
       throw new IllegalArgumentException(
@@ -1218,7 +1238,8 @@ final class EconomyPayloads {
           candidates.get(0).value(),
           laborCommitment.laborMilli(),
           laborCommitment.period(),
-          laborCommitment.kind());
+          laborCommitment.kind(),
+          laborCommitment.productionRole());
     }
     if (candidates.size() > 1) {
       throw new IllegalArgumentException(
@@ -1258,14 +1279,179 @@ final class EconomyPayloads {
    * <p>★ {@code actor.kind} 走 {@link ActorKind#parse} 的**词表**（词表外的种类即抛并列出合法值）； {@code actor.id}
    * 与产业的对应关系由 {@code EconomyData} 的构造期守卫判死（不在这里重复实现）。
    */
-  private static HouseholdLaborCommitment allocation(JsonNode node) {
+  /**
+   * ★★★ <b>D-032 C2（D2 §5.5）：顶层 {@code productionRosters} 的形状解析</b>。
+   *
+   * <p>★ 每一项与 {@code economy.SetProductionRoster} 同形（§5.4），但 {@code plan} 不由载荷给：它从 production
+   * 当刻实例读出（给 plan 只会制造第二拼写点，故不接受）。{@code participants: []} = 清除该 unit 名册。
+   *
+   * <p>★ 本层只判 <b>形状</b>（unit 必须已在 production 实例投影里、participant 字段类型、id 词表）；角色存在性 / 份额 owner / 资格 /
+   * 权重规则由 {@code EconomyReferenceValidation#validateProductionRosters} 在候选态判。
+   */
+  private static Map<ProductionUnitId, ProductionRoster> productionRosters(
+      JsonNode payload,
+      ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionProcess> productionInstances) {
+    Map<ProductionUnitId, ProductionRoster> rosters = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "productionRosters")) {
+      if (node == null || !node.isObject()) {
+        throw new IllegalArgumentException("productionRosters 的元素必须是对象: " + node);
+      }
+      ProductionUnitId unit = ProductionUnitId.parse(requireText(node, "unit"));
+      ProductionProcess instance = productionInstances.get(unit);
+      if (instance == null) {
+        throw new IllegalArgumentException(
+            "roster-instance-unknown: 名册指名的生产实例不存在（实例的唯一权威在 production）: " + unit.value());
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(instance.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          "roster-plan-unknown: 名册实例的方案定义不存在: unit="
+                              + unit.value()
+                              + " plan="
+                              + instance.plan().value()));
+      Optional<String> declaredPlan = optionalText(node, "plan");
+      if (declaredPlan.isPresent() && !plan.id().value().equals(declaredPlan.get())) {
+        throw new IllegalArgumentException(
+            "roster-plan-mismatch: 名册载荷的 plan 与 production 实例不一致: unit="
+                + unit.value()
+                + " 载荷="
+                + declaredPlan.get()
+                + " 实例="
+                + plan.id().value());
+      }
+      List<ProductionParticipant> participants = new ArrayList<>();
+      for (JsonNode participantNode : optionalArray(node, "participants")) {
+        if (participantNode == null || !participantNode.isObject()) {
+          throw new IllegalArgumentException(
+              "productionRosters[].participants 的元素必须是对象: " + participantNode);
+        }
+        HouseholdId household = HouseholdId.parse(requireText(participantNode, "household"));
+        ProductionRoleId role = ProductionRoleId.parse(requireText(participantNode, "role"));
+        boolean organizer = requireBoolean(participantNode, "organizer");
+        long plannedLaborMilliPerDay = requireLong(participantNode, "plannedLaborMilliPerDay");
+        List<AssetShareId> rightsStakes = new ArrayList<>();
+        for (JsonNode stakeNode : optionalArray(participantNode, "rightsStakes")) {
+          if (stakeNode == null || !stakeNode.isTextual() || stakeNode.asText().isBlank()) {
+            throw new IllegalArgumentException(
+                "productionRosters[].participants[].rightsStakes 的元素必须是非空字符串: " + stakeNode);
+          }
+          rightsStakes.add(AssetShareId.parse(stakeNode.asText()));
+        }
+        long configuredWeight = optionalLong(participantNode, "configuredWeight", 0L);
+        participants.add(
+            new ProductionParticipant(
+                household,
+                role,
+                organizer,
+                plannedLaborMilliPerDay,
+                rightsStakes,
+                configuredWeight));
+      }
+      if (participants.isEmpty()) {
+        rosters.remove(unit); // participants: [] = 清除该 unit 名册
+        continue;
+      }
+      ProductionRoster roster = new ProductionRoster(unit, plan.id(), participants);
+      if (rosters.put(unit, roster) != null) {
+        throw new IllegalArgumentException("同一份载荷里 productionRosters 的 unit 重复: " + unit.value());
+      }
+    }
+    return rosters;
+  }
+
+  /**
+   * ★★★ <b>D-032 D2 §5.6：把一条载荷配额的 PRODUCTION 角色解析出来</b>。
+   *
+   * <p>解析次序（fail-closed，绝不猜）：
+   *
+   * <ol>
+   *   <li>载荷显式给 {@code productionRole} ⇒ 用它（必须是该 plan 的角色）；
+   *   <li>否则读该 unit 的 {@link ProductionRoster}：该户在名册里恰有一个角色 ⇒ 用它；多个 ⇒ {@code
+   *       production-role-ambiguous}；零个 ⇒ {@code roster-participant-missing}；
+   *   <li>没有名册但 plan 只有一个角色 ⇒ 用该角色（与单户默认名册同口径）；多角色 ⇒ {@code roster-required}；
+   *   <li>activity 不是 production 里的实例（自由家户劳动）⇒ 必须有显式角色，否则 {@code production-role-required}。
+   * </ol>
+   */
+  private static ProductionRoleId resolveProductionRole(
+      RawAllocation raw,
+      Map<ProductionUnitId, ProductionProcess> productionInstances,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      ProductionDefinitionLookup definitions) {
+    ProductionUnitId unit = new ProductionUnitId(raw.activity());
+    ProductionProcess instance = productionInstances.get(unit);
+    if (instance == null) {
+      if (raw.role().isPresent()) {
+        return raw.role().get();
+      }
+      throw new IllegalArgumentException(
+          "production-role-required: 非生产实例的自由家户劳动也必须显式给 productionRole: activity="
+              + raw.activity()
+              + " household="
+              + raw.household().value());
+    }
+    IndustryDefinitionView plan =
+        definitions
+            .industry(instance.plan())
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "production-role-plan-unknown: 劳动配额指名的实例方案定义不存在: unit="
+                            + unit.value()
+                            + " plan="
+                            + instance.plan().value()));
+    if (raw.role().isPresent()) {
+      ProductionRoleId role = raw.role().get();
+      if (plan.roles().stream().noneMatch(definition -> definition.id().equals(role))) {
+        throw new IllegalArgumentException(
+            "role-unknown:"
+                + role.value()
+                + ": 劳动配额的 productionRole 不在方案角色里: unit="
+                + unit.value());
+      }
+      return role;
+    }
+    ProductionRoster roster = productionRosters.get(unit);
+    if (roster != null) {
+      List<ProductionParticipant> matches = roster.participantsOf(raw.household());
+      if (matches.size() == 1) {
+        return matches.get(0).role();
+      }
+      if (matches.size() > 1) {
+        throw new IllegalArgumentException(
+            "production-role-ambiguous: 名册里该户有多个角色而配额未显式给 productionRole: unit="
+                + unit.value()
+                + " household="
+                + raw.household().value());
+      }
+      throw new IllegalArgumentException(
+          "roster-participant-missing: 名册里没有该户而配额未显式给 productionRole: unit="
+              + unit.value()
+              + " household="
+              + raw.household().value());
+    }
+    if (plan.roles().size() == 1) {
+      return plan.roles().get(0).id();
+    }
+    throw new IllegalArgumentException(
+        "roster-required: 多角色方案的名册缺失（先给 productionRosters 或 economy.SetProductionRoster）: unit="
+            + unit.value()
+            + " plan="
+            + plan.id().value());
+  }
+
+  private static RawAllocation allocation(JsonNode node) {
     // （household 缺键的具名拒见下方 requireTextOrRejectAllocationHousehold）
     JsonNode actor = optionalObject(node, "actor");
     if (actor == null) {
       throw new IllegalArgumentException("劳动分配的字段 actor 必须是对象: " + node);
     }
     LaborAllocationId id = LaborAllocationId.parse(requireText(node, "id"));
-    return new HouseholdLaborCommitment(
+    Optional<String> roleText = optionalText(node, "productionRole");
+    return new RawAllocation(
         id,
         PeopleLotId.parse(requireText(node, "group")),
         // ★ S1：载荷必须显式给 household。★★ B2c（§13.12.5）：迁移期 pending 占位已整套删除 ⇒ 缺键**当场
@@ -1274,7 +1460,45 @@ final class EconomyPayloads {
         actorRef(actor),
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
-        requireLong(node, "period"));
+        requireLong(node, "period"),
+        roleText.map(ProductionRoleId::parse));
+  }
+
+  /**
+   * ★★★ <b>D-032 D2 §5.6：一条尚未挂角色的劳动配额（载荷中间态）</b>。
+   *
+   * <p>★ <b>为什么需要中间态</b>：名册/实例在载荷里的位置不保证在配额之前 ⇒ 角色必须等 `units[]` 与顶层 `productionRosters[]` 都解析完再解析；而
+   * {@link HouseholdLaborCommitment} 的构造期守卫禁止 `PRODUCTION + empty`（不制造第二条无角色的生产承诺）。本记录只在 {@code
+   * EconomyPayloads} 内部存活。
+   */
+  private record RawAllocation(
+      LaborAllocationId id,
+      PeopleLotId group,
+      HouseholdId household,
+      io.mosire.simos.actor.api.actor.ActorRef actor,
+      String activity,
+      long laborMilli,
+      long period,
+      Optional<ProductionRoleId> role) {
+
+    HouseholdLaborCommitment withRole(ProductionRoleId resolved, boolean productionUnit) {
+      // ★ D-032 D2 §5.6：生产承诺的 id 必须由 idOfProduction 派生（角色入 id）；非 unit 的自由劳动保留载荷 id。
+      LaborAllocationId canonicalId =
+          productionUnit
+              ? HouseholdLaborCommitment.idOfProduction(
+                  new ProductionUnitId(activity), resolved, group, household)
+              : id;
+      return new HouseholdLaborCommitment(
+          canonicalId,
+          group,
+          household,
+          actor,
+          activity,
+          laborMilli,
+          period,
+          LaborCommitmentKind.PRODUCTION,
+          Optional.of(resolved));
+    }
   }
 
   /**

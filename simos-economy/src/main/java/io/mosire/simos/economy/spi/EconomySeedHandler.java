@@ -76,15 +76,20 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       io.mosire.simos.production.contract.ProductionStateLookup production =
           // ★★ B2b：实例权威在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
           EconomyProductionDefinitions.stateOf(state);
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions =
+          // ★★★ B5（§13.15.3 裁定十九）：载荷 `industries[]` 键已退役 ⇒ 产业定义（模板 + regime）从
+          //   **production 当刻定义权威**取（同一 state 的两份只读口：定义来源 + 实例投影）。
+          EconomyProductionDefinitions.of(state);
       seeded =
           EconomyPayloads.toData(
               payload,
               state.meta().timestamp(),
-              // ★★★ B5（§13.15.3 裁定十九）：载荷 `industries[]` 键已退役 ⇒ 产业定义（模板 + regime）从
-              //   **production 当刻定义权威**取（同一 state 的两份只读口：定义来源 + 实例投影）。
-              EconomyProductionDefinitions.of(state),
+              definitions,
               // ★★ B2b：实例权威也在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
               production.instances());
+      // ★★★ D-032 C2（D2 §5.5 / §7.1）：创世名册的跨切片校验（角色存在/份额 owner/全局预算/旧规则禁用）。
+      io.mosire.simos.economy.EconomyReferenceValidation.validateProductionRosters(
+          definitions, production, seeded, "economy.Seed");
     } catch (IllegalArgumentException | IllegalStateException e) {
       // ★ B2b：旧形状载荷（缺 household）不再有构造期自动迁移（迁移器已删）—— 它在 EconomyData 的
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
@@ -242,7 +247,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ R1（第 39 个组件）：政府市场授权表原样带过 —— 漏了它 = 一次按格追加播种会把已授权
             //   的政府挂单静默抹掉（账面上看不出是谁弄丢的）。
             base.govMarketMandates(),
-            base.marketRoundStats());
+            base.marketRoundStats(),
+            // ★★★ D-032 C2（D2 §5.5）：名册按 unit 合并 —— 新播的 unit 带自己的名册；缺键 ⇒ 逐值带过已有状态。
+            //   漏了它 = 一次按格追加播种会把已建立的名册静默抹掉。
+            merge(base.productionRosters(), seeded.productionRosters()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

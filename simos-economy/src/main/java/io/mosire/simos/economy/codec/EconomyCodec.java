@@ -54,6 +54,7 @@ import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
@@ -237,6 +238,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ R3B.2：units 表的键 = ProductionUnitId；同时注册值侧反序列化器（旧档/手写可能写裸字符串）。
     module.addKeyDeserializer(ProductionUnitId.class, keyDeserializer(ProductionUnitId::parse));
     module.addDeserializer(ProductionUnitId.class, new ProductionUnitIdDeserializer());
+    // ★★★ D-032 C2：ProductionRoleId 是 D2 §5.1 的稳定身份，线格式 = 裸字符串（与其余稳定 id 同制）。
+    //   生产名册的 participant.role、HouseholdLaborCommitment.productionRole 都走这一对读写；
+    //   注册在 keyModule 里 ⇒ PLAIN / MAPPER 同源，写出去的档自己读得回。
+    module.addKeyDeserializer(ProductionRoleId.class, keyDeserializer(ProductionRoleId::parse));
+    module.addDeserializer(ProductionRoleId.class, new ProductionRoleIdDeserializer());
+    module.addSerializer(ProductionRoleId.class, new ProductionRoleIdSerializer());
     // ★★ R3B.1：OwnershipStake 值内的 id 可能是本 codec 旧字节的 {"value":"use-…"}，也可能是裸字符串
     //   （手写/外部工具/旧别名）⇒ 值侧显式收两种（keyModule 同时供 PLAIN 使用）；其它形状仍 fail-closed。
     module.addDeserializer(AssetShareId.class, new AssetShareIdDeserializer());
@@ -1953,6 +1960,34 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** {@link ProductionUnitId} 的值侧读入：裸字符串或 {@code {"value":…}}（与 AssetShareId 同款）。 */
+  /** ★ D-032 C2：ProductionRoleId 的线格式 = 裸字符串（读侧也接受旧对象形 {@code {value:"…"}}）。 */
+  private static final class ProductionRoleIdDeserializer
+      extends JsonDeserializer<ProductionRoleId> {
+
+    @Override
+    public ProductionRoleId deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (raw.isTextual()) {
+        return ProductionRoleId.parse(raw.asText());
+      }
+      if (raw.isObject() && raw.hasNonNull("value") && raw.get("value").isTextual()) {
+        return ProductionRoleId.parse(raw.get("value").asText());
+      }
+      throw new IllegalStateException("ProductionRoleId 必须是字符串或 {value:\"…\"}: " + raw);
+    }
+  }
+
+  private static final class ProductionRoleIdSerializer extends JsonSerializer<ProductionRoleId> {
+
+    @Override
+    public void serialize(
+        ProductionRoleId value, JsonGenerator generator, SerializerProvider serializers)
+        throws IOException {
+      generator.writeString(value.value());
+    }
+  }
+
   private static final class ProductionUnitIdDeserializer
       extends JsonDeserializer<ProductionUnitId> {
 
