@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import java.util.Objects;
@@ -26,6 +28,7 @@ public record WagePostingKey(ProductionUnitId unit, ProductionRoleId role) {
 
   /** 规范串：{@code <unit.length()>:<unit><role>}（与 {@link #parse} 互为逆）。 */
   @Override
+  @JsonValue
   public String toString() {
     return WageKeyWireFormat.encode(unit.value(), role.value());
   }
@@ -35,6 +38,7 @@ public record WagePostingKey(ProductionUnitId unit, ProductionRoleId role) {
    *
    * @throws IllegalArgumentException 文本为空、长度前缀缺失/非整数/非正、长度越界或任一段为空
    */
+  @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
   public static WagePostingKey parse(String text) {
     String[] parts = WageKeyWireFormat.decode("WagePostingKey", text, "unit", "role");
     return new WagePostingKey(ProductionUnitId.parse(parts[0]), ProductionRoleId.parse(parts[1]));

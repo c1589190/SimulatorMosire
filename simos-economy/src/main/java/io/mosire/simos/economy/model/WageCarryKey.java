@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -33,6 +35,7 @@ public record WageCarryKey(ProductionUnitId unit, ProductionRoleId role, Househo
    * <p>最后一段 worker 吃掉剩余全部字符；"角色长度"严格标出 worker 的起点，故含 {@code :} 或 {@code |} 的合法 id 不会被切错。
    */
   @Override
+  @JsonValue
   public String toString() {
     String unitValue = unit.value();
     String roleValue = role.value();
@@ -50,6 +53,7 @@ public record WageCarryKey(ProductionUnitId unit, ProductionRoleId role, Househo
    *
    * @throws IllegalArgumentException 文本为空、长度前缀缺失/非整数/非正、长度越界或任一段为空
    */
+  @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
   public static WageCarryKey parse(String text) {
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("WageCarryKey 不得为空白: " + text);

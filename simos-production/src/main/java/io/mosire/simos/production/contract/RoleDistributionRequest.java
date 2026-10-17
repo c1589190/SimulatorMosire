@@ -40,8 +40,40 @@ public record RoleDistributionRequest(
       participantCopy.add(participant);
     }
     participants = Collections.unmodifiableList(participantCopy);
-    recognizedLaborMilli = freezeWeightMap(recognizedLaborMilli, "recognizedLaborMilli");
-    rightsWeights = freezeWeightMap(rightsWeights, "rightsWeights");
+
+    if (recognizedLaborMilli == null) {
+      throw new IllegalArgumentException(
+          "RoleDistributionRequest.recognizedLaborMilli 不得为 null（无权重用空表）");
+    }
+    Map<ProductionParticipantKey, Long> recognizedLaborCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionParticipantKey, Long> entry : recognizedLaborMilli.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "RoleDistributionRequest.recognizedLaborMilli 的键与值都不得为 null");
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "RoleDistributionRequest.recognizedLaborMilli 不得为负: " + entry.getKey());
+      }
+      recognizedLaborCopy.put(entry.getKey(), entry.getValue());
+    }
+    recognizedLaborMilli = Collections.unmodifiableMap(recognizedLaborCopy);
+
+    if (rightsWeights == null) {
+      throw new IllegalArgumentException("RoleDistributionRequest.rightsWeights 不得为 null（无权重用空表）");
+    }
+    Map<ProductionParticipantKey, Long> rightsWeightsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionParticipantKey, Long> entry : rightsWeights.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("RoleDistributionRequest.rightsWeights 的键与值都不得为 null");
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "RoleDistributionRequest.rightsWeights 不得为负: " + entry.getKey());
+      }
+      rightsWeightsCopy.put(entry.getKey(), entry.getValue());
+    }
+    rightsWeights = Collections.unmodifiableMap(rightsWeightsCopy);
 
     if (distributablePools == null) {
       throw new IllegalArgumentException("RoleDistributionRequest.distributablePools 不得为 null");
@@ -62,24 +94,5 @@ public record RoleDistributionRequest(
       poolsCopy.put(entry.getKey(), entry.getValue());
     }
     distributablePools = Collections.unmodifiableMap(poolsCopy);
-  }
-
-  private static Map<ProductionParticipantKey, Long> freezeWeightMap(
-      Map<ProductionParticipantKey, Long> source, String field) {
-    if (source == null) {
-      throw new IllegalArgumentException("RoleDistributionRequest." + field + " 不得为 null（无权重用空表）");
-    }
-    Map<ProductionParticipantKey, Long> copy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionParticipantKey, Long> entry : source.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("RoleDistributionRequest." + field + " 的键与值都不得为 null");
-      }
-      if (entry.getValue() < 0L) {
-        throw new IllegalArgumentException(
-            "RoleDistributionRequest." + field + " 不得为负: " + entry.getKey());
-      }
-      copy.put(entry.getKey(), entry.getValue());
-    }
-    return Collections.unmodifiableMap(copy);
   }
 }

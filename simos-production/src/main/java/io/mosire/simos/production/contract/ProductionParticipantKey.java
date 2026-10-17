@@ -1,5 +1,7 @@
 package io.mosire.simos.production.contract;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
@@ -25,6 +27,7 @@ public record ProductionParticipantKey(HouseholdId household, ProductionRoleId r
 
   /** 规范串：{@code <household.length()>:<household><role>}（与 {@link #parse} 互为逆）。 */
   @Override
+  @JsonValue
   public String toString() {
     String householdValue = household.value();
     return householdValue.length() + ":" + householdValue + role.value();
@@ -35,6 +38,7 @@ public record ProductionParticipantKey(HouseholdId household, ProductionRoleId r
    *
    * @throws IllegalArgumentException 文本为空、前缀非法、长度越界或角色段为空
    */
+  @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
   public static ProductionParticipantKey parse(String text) {
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("ProductionParticipantKey 的规范串不得为空白");

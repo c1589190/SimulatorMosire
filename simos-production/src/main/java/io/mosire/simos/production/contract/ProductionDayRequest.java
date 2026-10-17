@@ -181,31 +181,42 @@ public record ProductionDayRequest(List<Step> steps) {
         participantAttributesCopy.put(entry.getKey(), entry.getValue());
       }
       participantAttributes = Collections.unmodifiableMap(participantAttributesCopy); // ★ 冻在赋值处
-      householdLaborBudgetMilli =
-          freezeNonNegativeByHousehold(householdLaborBudgetMilli, "householdLaborBudgetMilli");
-      managementLaborMilli =
-          freezeNonNegativeByHousehold(managementLaborMilli, "managementLaborMilli");
-    }
 
-    private static Map<HouseholdId, Long> freezeNonNegativeByHousehold(
-        Map<HouseholdId, Long> source, String field) {
-      if (source == null) {
+      if (householdLaborBudgetMilli == null) {
         throw new IllegalArgumentException(
-            "ProductionDayRequest.Step." + field + " 不得为 null（无值用空表）");
+            "ProductionDayRequest.Step.householdLaborBudgetMilli 不得为 null（无值用空表）");
       }
-      Map<HouseholdId, Long> copy = new LinkedHashMap<>();
-      for (Map.Entry<HouseholdId, Long> entry : source.entrySet()) {
+      Map<HouseholdId, Long> householdLaborBudgetCopy = new LinkedHashMap<>();
+      for (Map.Entry<HouseholdId, Long> entry : householdLaborBudgetMilli.entrySet()) {
         if (entry.getKey() == null || entry.getValue() == null) {
           throw new IllegalArgumentException(
-              "ProductionDayRequest.Step." + field + " 的键与值都不得为 null");
+              "ProductionDayRequest.Step.householdLaborBudgetMilli 的键与值都不得为 null");
         }
         if (entry.getValue() < 0L) {
           throw new IllegalArgumentException(
-              "ProductionDayRequest.Step." + field + " 不得为负: " + entry.getKey());
+              "ProductionDayRequest.Step.householdLaborBudgetMilli 不得为负: " + entry.getKey());
         }
-        copy.put(entry.getKey(), entry.getValue());
+        householdLaborBudgetCopy.put(entry.getKey(), entry.getValue());
       }
-      return Collections.unmodifiableMap(copy);
+      householdLaborBudgetMilli = Collections.unmodifiableMap(householdLaborBudgetCopy); // ★ 冻在赋值处
+
+      if (managementLaborMilli == null) {
+        throw new IllegalArgumentException(
+            "ProductionDayRequest.Step.managementLaborMilli 不得为 null（无值用空表）");
+      }
+      Map<HouseholdId, Long> managementLaborCopy = new LinkedHashMap<>();
+      for (Map.Entry<HouseholdId, Long> entry : managementLaborMilli.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step.managementLaborMilli 的键与值都不得为 null");
+        }
+        if (entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step.managementLaborMilli 不得为负: " + entry.getKey());
+        }
+        managementLaborCopy.put(entry.getKey(), entry.getValue());
+      }
+      managementLaborMilli = Collections.unmodifiableMap(managementLaborCopy); // ★ 冻在赋值处
     }
 
     /** ★ 把本步还原成引擎真正消费的那一个请求（两个分支共用 {@link ProductionExecutionRequest}）。 */
