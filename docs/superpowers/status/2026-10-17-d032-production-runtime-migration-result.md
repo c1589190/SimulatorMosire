@@ -270,3 +270,13 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：production/economy/app `-DskipTests compile` rc=0；`spotless:check` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **已知边界/偏离**：顶层 `industries` 节点未做全量未知键白名单（现有 app seed 仍带跨域 operator/relation 键；C3 裁剪 seed 或 parser 分模式）；`RoleDistribution.allocate`/participants/逐角色经验/工资/C1 runtime 未实现；C4 需迁移 `ProductionContractGuardTest` 18 字段断言及往返/工具测试。
 - **下一步**：D4-C（只读 `AssetOccupancyLookup`/`WagePayableInventoryLookup` 接口 + `Unavailable*` 适配器，不落 EconomyData），随后 C2(32)、W2a(33/34)、W1、W2b(35)、D4-I(36/37)、D4-T、W3。
+
+## 十七、2026-10-17 22:xx D4-C 只读接口检查点
+
+> **性质**：D4-C 只新增只读接口/无状态适配器；未改 EconomyData/ChangeSet/codec/seed/命令，未跑测试。
+
+- **提交**：`75039da0 feat(economy)!: D4-C 资产占用/工资可支付库存只读接口`（已推送）。
+- **新增**：`AssetOccupancySnapshot`（`RevisionId` + unit/location/from/to + allocation/committed/unallocated/rejection）、`AssetOccupancyLookup.occupancyOf(unit, expectedRevision, fromTick, toTickExclusive)`、`WagePayableInventoryLookup.payableInventory(payer, ProductionLocation)`，以及 `UnavailableAssetOccupancyLookup`/`UnavailableWagePayableInventoryLookup`（均 `Optional.empty()`）。
+- **边界**：`Optional.empty()` = 不可用；空 Map = 合法零分配；接口不做 revision/地点/区间匹配判断（D4-I/调用方判 mismatch）；未引用 EconomyData/AssetBudgetBook/真实实现。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；`spotless:check` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **下一步**：按 D2 §13 先做 C1（production 角色执行：participant 契约/逐角色经验/Receipt/RoleDistribution），只编译 production；C1 后再 C2(32) 等共享 economy 组件。
