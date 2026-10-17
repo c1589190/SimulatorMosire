@@ -142,6 +142,11 @@
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块任何 scope 一律禁
+                         （main 编译期看不见领域类型；也不为它们开 test-scope include——
+                         core 的测试没有一处需要它们，不为对称提前开）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
                   <includes>
                     <include>io.mosire:simos-map:*:*:test</include>
@@ -165,7 +170,7 @@
                          ★ 判别力：把这条 include 删掉 ⇒ `simos-core` 的 `validate` 立刻红（本任务实测，红在 actor-api 那一行）。 -->
                     <include>io.mosire:simos-actor-api:*:*:test</include>
                   </includes>
-                  <message>simos-core 是组合与调度（**编译期看不见任何领域类型** —— 铁律 4 的结构化）：main 只许依赖 util（+ agentlib-mosire / jackson-databind / sqlite-jdbc），领域模块只在 test scope 出现，逐条口子见 includes（由 enforcer 自己逼出，不为对称提前开）；禁列 = 全仓 simos 模块 − 自己 − util（含 actor-api/army/gov/app 与运行框架 ga、已退役的 ledger）。★ 例外：calendar 与 social-api 由 test 路径 core(test) → social 传递带出，两条按 I-F1 不入禁列。</message>
+                  <message>simos-core 是组合与调度（**编译期看不见任何领域类型** —— 铁律 4 的结构化）：main 只许依赖 util（+ agentlib-mosire / jackson-databind / sqlite-jdbc），领域模块只在 test scope 出现，逐条口子见 includes（由 enforcer 自己逼出，不为对称提前开）；禁列 = 全仓 simos 模块 − 自己 − util（含 actor-api/army/gov/app 与运行框架 ga、已退役的 ledger）。★ 例外：calendar 与 social-api 由 test 路径 core(test) → social 传递带出，两条按 I-F1 不入禁列。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面（main scope），两条 exclude 同批补入、不开 test-scope include。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

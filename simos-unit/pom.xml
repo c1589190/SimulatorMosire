@@ -103,8 +103,11 @@
                     <exclude>io.mosire:simos-actor-api</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-unit 是编制树与单位（不依赖社会实现）：只许依赖 util/map/social-api/social + 工具契约层 ga-spi；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 actor/app/army/economy/gov/core、运行框架 ga 与已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：actor-api 与 economy-api 由 social → economy-api → actor-api 传递带出、calendar 由 social 传递带出，三条按 I-F1 不入禁列（见上方传递依赖例外注）；ga-spi 不在禁列（组合根与契约层，5 个模块按冻结文档 §4 I-F4 列了它，本模块不在其中）。</message>
+                  <message>simos-unit 是编制树与单位（不依赖社会实现）：只许依赖 util/map/social-api/social + 工具契约层 ga-spi；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 actor/app/army/economy/gov/core、运行框架 ga 与已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：actor-api 与 economy-api 由 social → economy-api → actor-api 传递带出、calendar 由 social 传递带出，三条按 I-F1 不入禁列（见上方传递依赖例外注）；ga-spi 不在禁列（组合根与契约层，5 个模块按冻结文档 §4 I-F4 列了它，本模块不在其中）。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

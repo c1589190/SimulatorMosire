@@ -80,8 +80,12 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面
+                         （calendar 纯计算，允许面只有 util/map）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-calendar 是纯计算历法（儒略历 + 24 节气/天文季界 + 分带季节，无状态、无存储、不碰 Jackson/文件系统）：只许依赖 util + map（util 供共享 YearFraction，map 供 HexCoord 判带）。★ 禁列 = 全仓 simos 模块 − 自己 − util/map（含全部契约层、运行框架 ga 与已退役的 ledger）。</message>
+                  <message>simos-calendar 是纯计算历法（儒略历 + 24 节气/天文季界 + 分带季节，无状态、无存储、不碰 Jackson/文件系统）：只许依赖 util + map（util 供共享 YearFraction，map 供 HexCoord 判带）。★ 禁列 = 全仓 simos 模块 − 自己 − util/map（含全部契约层、运行框架 ga 与已退役的 ledger）。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

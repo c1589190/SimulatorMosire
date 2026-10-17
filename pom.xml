@@ -55,6 +55,12 @@
          直连 social（人员/家户唯一域）；不被 core 依赖。
          后续 R2+ 的结算逻辑（人口→阶层、日/周期结算、税、市场）在本切片内续做。 -->
     <module>simos-economy</module>
+    <!-- ★★ 2026-10-15 D-031 Z5（接口先行；spec docs/superpowers/specs/2026-10-15-d031-interface-first-design.md
+         §4 / §13，plan 任务 0）：**生产与科技切片** —— 生产定义契约（IndustryDefinitionView /
+         ProductionDefinitionLookup / ProductionSkillLookup）+ 科技定义与掌握契约。允许面 =
+         util + map + economy-api（更上游稳定契约），**不得依赖 economy 实现 / culture / core / app**
+         （本模块 pom 的 enforcer 逐条强制）。排在其契约消费方 simos-economy 之后、组合根之前。 -->
+    <module>simos-production</module>
     <!-- ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：行政切片骨架——每 tick 行政读数（GovOfficeState）
          + 落盘切片/变更集/编解码。只依赖 util/map/unit/social/economy-api（本阶段只用 unit/economy-api 的类型），
          **不得依赖 core/app**（铁律 3：领域模块不认识组合与调度）。 -->
@@ -63,6 +69,13 @@
          做成纯派生视图（ArmyVision），不落盘、不算战力；方案 A 起允许直连 simos-social（人员/家户唯一域），
          连同 util/map/unit 一起是显式依赖面；仍不得依赖 sd/economy/actor/app/core 实现。 -->
     <module>simos-army</module>
+    <!-- ★★ 2026-10-15 D-031 Z5（接口先行；spec §4 / §13，plan 任务 0）：**文化与基层治理切片** ——
+         文化身份契约（CultureId / CultureTag / HouseholdCulture）+ 生产熟练度规则
+         （ProductionAptitudeRule）+ 只读口 CultureLookup + 三条命令 + 可测试纯服务
+         ProductionAptitudeComposer（P0 未接入日循环）。允许面 = util + map + social-api +
+         economy-api + production（只读其 contract 包）；本批不声明 social 实现。排在其依赖的
+         simos-production 之后、组合根之前。 -->
+    <module>simos-culture</module>
     <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
          §1 用户原话 ⑤ / §4.1 目标依赖图 / §4.5 内容表）：**运行框架** —— 工具运作 + 决策人运行。
          它依赖 core + sd + util + ga-spi + agentlib，**永不依赖 simos-app**（否则 app → ga → app 成环）；
@@ -168,6 +181,16 @@
            与其余模块同款在此集中版本；**唯一**声明它的是组合根 simos-app（其余模块一律禁）。 -->
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-ga</artifactId><version>${project.version}</version>
+      </dependency>
+      <!-- ★★ 2026-10-15 D-031 Z5（spec §4 / §13，plan 任务 0）：两个新模块的坐标集中在此。
+           - simos-production：生产与科技契约切片；economy 侧只读其 contract 包；
+           - simos-culture：文化切片；依赖 production（只读 contract）与 social-api。
+           版本与其余 simos 模块同款由父 POM 统一给出，模块 POM 不重复写。 -->
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-production</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-culture</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->

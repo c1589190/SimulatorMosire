@@ -105,8 +105,11 @@
                     <exclude>io.mosire:simos-ga-spi</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-actor 是 actor 切片的聚合实现（Actor 身份 + 产权"到格" + 商品库存"到 CommodityId" + 状态树/落盘切片/变更集）：只许依赖 actor-api/util/map/economy-api/social-api，且只允许类型依赖、不允许运行时领域控制流反向流入（S1 阶段 2 裁定）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 social 实现、同层 economy、army/calendar/gov、运行框架 ga 与已退役的 ledger）。</message>
+                  <message>simos-actor 是 actor 切片的聚合实现（Actor 身份 + 产权"到格" + 商品库存"到 CommodityId" + 状态树/落盘切片/变更集）：只许依赖 actor-api/util/map/economy-api/social-api，且只允许类型依赖、不允许运行时领域控制流反向流入（S1 阶段 2 裁定）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 social 实现、同层 economy、army/calendar/gov、运行框架 ga 与已退役的 ledger）。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

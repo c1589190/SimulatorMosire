@@ -84,6 +84,16 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-army</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-15 D-031 Z5（spec §4：`app →` 两新模块）：组合根装配 production 的具体目录
+         （ProductionSkillCatalog）并**构造注入** economy 适配器，同时注册 culture 的
+         codec/handler 与接线点（CultureAptitudeBridge）。★ 本模块不设 enforcer（组合根天然
+         认识全部领域模块与 AgentLib/MCP，见上方注）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-production</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-culture</artifactId>
+    </dependency>
     <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / 用户原话②「app只负责组装」）：**运行框架**（工具运作 + 决策人运行）。
          组合根是**唯一**认识它的模块：app 把宿主事实（工具名声明 AppDecisionToolNames、图片通路
          DecisionToolImages、权限链执行 DecisionCallerFactory、mapId / 会话库 / 每轮 LLM 客户端）交给它，

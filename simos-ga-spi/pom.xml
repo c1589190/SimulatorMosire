@@ -80,8 +80,11 @@
                          它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-ga-spi 是工具契约层（SimosTool 工具接口 + ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手，零逻辑零状态）：只许依赖 simos-util（状态协议）与 agentlib-mosire（工具/权限契约）。★ 禁列 = 全仓 16 个 simos 模块 − 自己 − util（含全部领域/编排模块与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 core**：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环（设计书 §4.2 末段 / I-G2）。</message>
+                  <message>simos-ga-spi 是工具契约层（SimosTool 工具接口 + ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手，零逻辑零状态）：只许依赖 simos-util（状态协议）与 agentlib-mosire（工具/权限契约）。★ 禁列 = 全仓 18 个 simos 模块 − 自己 − util（含全部领域/编排模块、本轮 D-031 新增的 production/culture 与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 core**：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环（设计书 §4.2 末段 / I-G2）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

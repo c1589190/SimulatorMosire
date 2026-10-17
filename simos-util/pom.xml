@@ -86,8 +86,12 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面
+                         （util 零 simos 依赖）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-util 是零依赖地基（地址/身份/时间/快照/变更集协议/SPI，不碰文件系统）：只许 Jackson(databind + datatype-jdk8) 与 SLF4J，不许依赖任何 simos 模块。★ 禁列 = 全仓 16 个 simos 模块 − 自己（一个不剩：含全部契约层 social-api/actor-api/economy-api/**ga-spi**、运行框架 **ga** 与已退役的 ledger），文案与强制一致。</message>
+                  <message>simos-util 是零依赖地基（地址/身份/时间/快照/变更集协议/SPI，不碰文件系统）：只许 Jackson(databind + datatype-jdk8) 与 SLF4J，不许依赖任何 simos 模块。★ 禁列 = 全仓 18 个 simos 模块 − 自己（一个不剩：含全部契约层 social-api/actor-api/economy-api/**ga-spi**、本轮 D-031 新增的 **production**/**culture**、运行框架 **ga** 与已退役的 ledger），文案与强制一致。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

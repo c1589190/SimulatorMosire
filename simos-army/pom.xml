@@ -134,8 +134,11 @@
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social + 工具契约层 ga-spi + gov（★ 2026-10-12 B3 第二域：军队的工具实现下放到本模块，只依赖 ga-spi、不依赖运行流 ga；★★ 2026-10-12 用户裁定「Army 很显然可以依赖GOV」：gov 由禁列移入允许面，本批只开依赖面、不新增使用；反向不对称不变——gov 侧仍禁 army）；禁列 = 全仓 16 个 simos 模块 − 自己 − 允许面（含 core/app/agentlib、运行框架 ga、兄弟切片 economy/actor、契约层 social-api/calendar/economy-api/actor-api 与已退役的 ledger 留痕），零例外。</message>
+                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social + 工具契约层 ga-spi + gov（★ 2026-10-12 B3 第二域：军队的工具实现下放到本模块，只依赖 ga-spi、不依赖运行流 ga；★★ 2026-10-12 用户裁定「Army 很显然可以依赖GOV」：gov 由禁列移入允许面，本批只开依赖面、不新增使用；反向不对称不变——gov 侧仍禁 army）；禁列 = 全仓 18 个 simos 模块 − 自己 − 允许面（含 core/app/agentlib、运行框架 ga、兄弟切片 economy/actor、契约层 social-api/calendar/economy-api/actor-api、本轮 D-031 新增的 production/culture 与已退役的 ledger 留痕），零例外。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

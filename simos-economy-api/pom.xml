@@ -85,8 +85,13 @@
                     <exclude>io.mosire:simos-ga-spi</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面，
+                         且 **本模块不得反向引用 production 新类型**（否则
+                         production → economy-api → production 成环，spec §4）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-economy-api 是经济切片共用的稳定契约（各类稳定 ID / CommodityId / 市场 / 货币 / 关系 / 转移形状；无 Snapshot、无存储、无公式）：只许依赖 actor-api/util/map/social-api（★ 三者都是更底层的另一份契约，不是领域模块）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含兄弟切片 economy/actor/gov/army、calendar、运行框架 ga 与已退役的 ledger）。</message>
+                  <message>simos-economy-api 是经济切片共用的稳定契约（各类稳定 ID / CommodityId / 市场 / 货币 / 关系 / 转移形状；无 Snapshot、无存储、无公式）：只许依赖 actor-api/util/map/social-api（★ 三者都是更底层的另一份契约，不是领域模块）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含兄弟切片 economy/actor/gov/army、calendar、运行框架 ga 与已退役的 ledger）。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture`（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入（★ production 由本模块**上游依赖**，反向引用 = 环，spec §4 明禁）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

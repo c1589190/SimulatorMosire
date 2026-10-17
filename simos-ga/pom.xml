@@ -102,7 +102,7 @@
                          设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + sd + map + unit
                          （+ agentlib-mosire，它不是 simos 模块故不在禁列；★★ map/unit 由批次 3b-4 按用户裁定
                          移入，见上方 dependency 注释）。禁列 = 全仓 16 个 simos 模块
-                         − 自己 − 允许面（10 条）+ 已退役 `simos-ledger` 留痕（`simos-sd` 本批随模块退役**整条撤出**，不留 exclude）。
+                         − 自己 − 允许面 + 已退役 `simos-ledger` 留痕（`simos-sd` 本批随模块退役**整条撤出**，不留 exclude）。
                          ★ 最要紧的一条是 `simos-app`：ga 依赖 app 就是 `app → ga → app` 环（Maven 建图期直接拒），
                            也是设计书 §1 用户原话②「app只负责组装」的反面。 -->
                     <exclude>io.mosire:simos-core</exclude>
@@ -123,8 +123,15 @@
                          **与 ledger 不同**：本批**不为它留 exclude**（禁列 = 全仓现存模块 − 自己 − 允许面，
                          零例外；防"同名模块被加回来"由 `ArchitectureGuardsTest` 的清单一致性判据承担）。
                          ⇒ 本模块的 `<message>` 里那句"两条留痕"随之改为只指 ledger。 -->
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5 回核：上级注释与 `<message>` 都声明"含已退役 ledger 留痕"，
+                         但本 pom 的 exclude **原先漏了这一条**（与其余 17 个模块的口径不一致）。
+                         本批按同一冻结口径补上（ledger 不存在、无传递链，加它零风险）。 -->
+                    <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
-                  <message>simos-ga 是推演框架（工具运作 + 决策人运行 + 决策层效果队列 + 决策族值类型，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-map / simos-unit（+ agentlib-mosire，不在禁列；★ map/unit 是 2026-10-12 批次 3b-4 按用户裁定「那让它依赖unit呗…Army和Nation都得依赖Unit作为地图实体」移入的，用于 Trigger.UnitAtHex(UnitId, HexCoord)）。★ 禁列 = 全仓 16 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕；`simos-sd` 本批已整模块退役、不再是允许面成员），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
+                  <message>simos-ga 是推演框架（工具运作 + 决策人运行 + 决策层效果队列 + 决策族值类型，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-map / simos-unit（+ agentlib-mosire，不在禁列；★ map/unit 是 2026-10-12 批次 3b-4 按用户裁定「那让它依赖unit呗…Army和Nation都得依赖Unit作为地图实体」移入的，用于 Trigger.UnitAtHex(UnitId, HexCoord)）。★ 禁列 = 全仓 18 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片、本轮 D-031 新增的 production/culture 与已退役的 ledger 留痕；`simos-sd` 本批已整模块退役、不再是允许面成员），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-culture</artifactId>
+  <name>CultureSimos</name>
+  <description>文化与基层治理切片（D-031 接口先行，namespace culture）：文化身份契约（CultureId / ReligionId / CustomTag / CultureTag / HouseholdCulture）+ 生产熟练度规则（ProductionAptitudeRule）+ 只读口 CultureLookup + 三条命令（SetHouseholdCulture / UpsertAptitudeRule / RemoveAptitudeRule）+ 可测试纯服务 ProductionAptitudeComposer（★ P0 未接入日循环，真实效果未启用）。生产技能键复用 simos-production 的 contract 类型，不拿 IndustryId 当跨地区技能键。</description>
+
+  <!-- ★★ 2026-10-15 D-031 Z5（机械面先行；spec §4 / §13，plan 任务 0）：本模块 = 文化与基层治理切片。
+       ★ 本批只有 pom、无 Java（Z1 写生产代码）。
+       ★ 允许面 = simos-util + simos-map + simos-social-api + simos-economy-api + simos-production：
+         - social-api 供 HouseholdId（家户身份）；economy-api 供接收口类型
+           （ProductionEfficiencyModifier）与只读口（ProductionLaborLookup / UnitProductionFacts /
+           HouseholdLaborShare）；
+         - production 只读其 **contract 包**（ProductionSkillKey / ProductionSkillLookup /
+           IndustryDefinitionView / ProductionDefinitionLookup），**不得** import 非 contract 包。
+       ★ 依赖方向（spec §4 无环证明）：culture → production → economy-api、
+         culture → social-api（→ map → util）均无回边到 culture。
+       ★ 本批**不声明 simos-social 实现**：spec §4 写「按需读家户」，而 plan 任务 3 的
+         ProductionAptitudeComposer 只消费 ProductionLaborLookup（economy-api）与 CultureLookup（本模块），
+         无一处需要 social 实现 ⇒ 按「不无故加依赖」纪律不声明，social 实现仍在下方禁列。
+       ★ Jackson 供 codec（CultureCodec）、SLF4J 供日志门面（CultureLog）。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-production</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合形制（照既有模块）：本仓的边界语义 = 「本模块不许**直接声明**
+                       某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查
+                       （enforcer 3.6.3 的 `searchTransitive` 默认 true，字节码核实）。
+                       禁列 = 全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
+                  <excludes>
+                    <!-- ★★ 2026-10-15 D-031 Z5：新增本模块（根 pom 16 → 18）。
+                         允许面 = util / map / social-api / economy-api / production ⇒ 其余 13 条
+                         （含已退役 ledger 留痕）全禁。
+                         ★ 最要紧的三条：**不许依赖 simos-economy 实现**（文化不碰经济结算）、
+                           **不许依赖 simos-social 实现**（本批按需未点用；要用须另裁改 pom）、
+                           也不许依赖 simos-core / simos-app（铁律 3）。 -->
+                    <exclude>io.mosire:simos-ga-spi</exclude>
+                    <exclude>io.mosire:simos-calendar</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-ga</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <!-- ★ `simos-ledger` 已于 2026-09-27 退役、当前无同名模块：照其余模块的冻结口径列入，
+                         作历史留痕与未来防线。 -->
+                    <exclude>io.mosire:simos-ledger</exclude>
+                  </excludes>
+                  <message>simos-culture 是本轮（D-031，2026-10-15）新增的文化与基层治理切片（namespace culture）：文化身份契约（CultureId / ReligionId / CustomTag / CultureTag / HouseholdCulture）+ 生产熟练度规则（ProductionAptitudeRule）+ 只读口 CultureLookup + 三条命令（SetHouseholdCulture / UpsertAptitudeRule / RemoveAptitudeRule）+ 可测试纯服务 ProductionAptitudeComposer（★ P0 未接入日循环，真实效果未启用）。只许依赖 simos-util / simos-map / simos-social-api / simos-economy-api / simos-production（只读其 contract 包）+ Jackson / SLF4J。★ 本批不声明 simos-social 实现（spec §4 写按需，plan 的 composer 只消费 ProductionLaborLookup 与 CultureLookup）⇒ 仍在禁列。★ 禁列 = 全仓 18 个 simos 模块 − 自己 − 允许面（含 simos-social 实现、simos-economy 实现、simos-core、simos-app 与已退役 simos-ledger 留痕），零例外。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

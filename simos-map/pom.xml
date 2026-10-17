@@ -95,8 +95,11 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-map 是地图与区域（地形/连通性/寻址），永不知道 SocialSimos / UnitSimos / ActorSimos 存在：只许依赖 simos-util 与 simos-ga-spi（工具契约层，只依赖 util —— 本模块的 15 个地图工具住在这里）。★ 禁列 = 全仓 simos 模块 − 自己 − {util, ga-spi}（含全部领域/编排模块与已退役的 ledger，作历史留痕与未来防线），也不依赖 AgentLibMosire、不做任何存储。</message>
+                  <message>simos-map 是地图与区域（地形/连通性/寻址），永不知道 SocialSimos / UnitSimos / ActorSimos 存在：只许依赖 simos-util 与 simos-ga-spi（工具契约层，只依赖 util —— 本模块的 15 个地图工具住在这里）。★ 禁列 = 全仓 simos 模块 − 自己 − {util, ga-spi}（含全部领域/编排模块与已退役的 ledger，作历史留痕与未来防线），也不依赖 AgentLibMosire、不做任何存储。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

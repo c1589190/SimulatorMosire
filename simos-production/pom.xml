@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-production</artifactId>
+  <name>ProductionSimos</name>
+  <description>生产与科技切片（D-031 P1 定义权威，namespace production）：产业/生产方式定义（IndustryDefinitionView / ProductionModeDefinitionView / AllocationRule / ClassSlot / MoneyOutput / ProductionRecipe）+ 只读契约（ProductionDefinitionLookup / ProductionSkillLookup / ProductionConsumerPort）+ 定义命令（production.UpsertIndustry / UpsertProductionMode / DeactivateProductionMode / Seed / ClearRegionDefinitions）+ 科技定义与掌握契约 + 本域 GM 窄工具（production.tools）。技能权威 = IndustryDefinitionView.skill；定义写入唯一经 Command→ChangeSet→Revision。</description>
+
+  <!-- ★★ 2026-10-15 D-031 Z5（机械面先行；spec §4 / §13，plan 任务 0）：本模块 = 生产与科技切片。
+       ★ 本批只有 pom、无 Java（Z2 写生产代码）。
+       ★ 允许面 = simos-util + simos-map + simos-economy-api + simos-ga-spi（工具契约）：
+         复用现有底层稳定 ID（IndustryId / ProductionModeId / RecipeId / AssetKind /
+         CommodityId / CurrencyId / SocialClassId / ClassStructureId / ProductionUnitId），
+         economy-api 是**更上游的稳定契约**，不是经济实现。
+       ★ 依赖方向（spec §4 无环证明）：production → economy-api 单向；
+         **production 不得依赖 economy 实现**、不得依赖 culture / core / app
+         （下面的 enforcer 逐条强制）。
+       ★ Jackson 供 codec（ProductionCodec）、SLF4J 供日志门面（ProductionLog）；
+         二者是本模块 main 直接 import 的基础库。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <!-- ★★ 2026-10-16 用户纠正（设计 §9.2）：生产定义的 GM 窄工具本体归 production 自己维护
+         （schema/description/preview/提交载荷 + 本域校验都住 simos-production.tools），故需要
+         simos-ga-spi 的工具契约（SimosTool / ToolResources / ToolSchema / ToolReadPort /
+         ToolWritePort / ToolResult / ToolRole）。方向：production → ga-spi →（util + agentlib）。
+         ★ 不依赖 ga 实现：下面 enforcer 仍禁 simos-ga；ga-spi 也不回指 production，无环。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合形制（照既有模块）：本仓的边界语义 = 「本模块不许**直接声明**
+                       某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查
+                       （enforcer 3.6.3 的 `searchTransitive` 默认 true，字节码核实）。
+                       禁列 = 全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
+                  <excludes>
+                    <!-- ★★ 2026-10-15 D-031 Z5：新增本模块（根 pom 16 → 18）。
+                         允许面 = util / map / economy-api / ga-spi（工具契约）⇒ 其余全禁。
+                         ★ 最要紧的两条：**不许依赖 simos-economy 实现**（spec §4 明禁）与
+                           **不许依赖 simos-culture**（防 production ↔ culture 成环）；
+                           也不许依赖 simos-core / simos-app（铁律 3：领域模块不认识组合与调度）。 -->
+                    <!-- ★★ 2026-10-16 用户纠正（设计 §9.2）：simos-ga-spi 是生产的 GM 窄工具契约依赖，
+                         从禁列移除；simos-ga 实现仍在禁列（不依赖实现）。 -->
+                    <exclude>io.mosire:simos-calendar</exclude>
+                    <exclude>io.mosire:simos-social-api</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-ga</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <!-- ★ `simos-ledger` 已于 2026-09-27 退役、当前无同名模块：照其余模块的冻结口径列入，
+                         作历史留痕与未来防线。 -->
+                    <exclude>io.mosire:simos-ledger</exclude>
+                  </excludes>
+                  <message>simos-production 是本轮（D-031，2026-10-15）新增的生产与科技切片（namespace production）：产业/生产方式定义与只读契约、定义命令面、科技定义与掌握契约、本域 GM 窄工具。定义权威唯一归 production（P1）。只许依赖 simos-util / simos-map / simos-economy-api（更上游稳定契约）+ simos-ga-spi（工具契约，设计 §9.2 用户指示）+ Jackson / SLF4J。★ 禁列 = 全仓 simos 模块 − 自己 − 允许面（含 simos-economy 实现、simos-culture、simos-core、simos-app、simos-ga 实现与已退役 simos-ledger 留痕），零例外；★ economy-api 不得反向引用本模块新类型（否则 production → economy-api → production 成环，spec §4）。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

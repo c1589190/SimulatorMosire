@@ -98,8 +98,12 @@
                          之后可以列入（`map → util` 只在本模块的传递闭包里，不再是本模块的直接声明）⇒ 零例外。 -->
                     <exclude>io.mosire:simos-util</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面
+                         （social-api 允许面只有 map）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-social-api 是人员/家户的低层身份契约（家户/人口批次 ID、性别、画像、人口事件与率、只读 SPI）：只许依赖 simos-map（HexCoord）与 jackson-annotations（类型注解）；禁列 = 全仓 simos 模块 − 自己 − map（含全部领域/编排模块与已退役的 ledger）。★ 例外：simos-util 由 map 传递带出（map → util），按 I-F1 不入禁列。</message>
+                  <message>simos-social-api 是人员/家户的低层身份契约（家户/人口批次 ID、性别、画像、人口事件与率、只读 SPI）：只许依赖 simos-map（HexCoord）与 jackson-annotations（类型注解）；禁列 = 全仓 simos 模块 − 自己 − map（含全部领域/编排模块与已退役的 ledger）。★ 例外：simos-util 由 map 传递带出（map → util），按 I-F1 不入禁列。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

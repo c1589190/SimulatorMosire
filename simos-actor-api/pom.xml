@@ -74,8 +74,12 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块也不在允许面
+                         （本模块主依赖为零，一个口子都不留）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-actor-api 是 actor 切片最底层的共用契约（ActorRef/ActorKind/AssetKind/AssetClassKey；主依赖为零、零 simos import）：不声明任何 simos 依赖 ⇒ 禁列 = 全仓其他 15 个 simos 模块全部（含 util/map/ga-spi 与全部契约层、已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役），一个口子都不留。</message>
+                  <message>simos-actor-api 是 actor 切片最底层的共用契约（ActorRef/ActorKind/AssetKind/AssetClassKey；主依赖为零、零 simos import）：不声明任何 simos 依赖 ⇒ 禁列 = 全仓其他 17 个 simos 模块全部（含 util/map/ga-spi 与全部契约层、本轮 D-031 新增的 production/culture、已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役），一个口子都不留。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

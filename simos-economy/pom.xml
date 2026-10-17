@@ -33,6 +33,14 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-15 D-031 Z5（spec §4；2026-10-15 复核决定放行）：economy 只读 production 的
+         **contract 包**（IndustryDefinitionView / ProductionDefinitionLookup / ProductionSkillLookup），
+         由 app 装配具体目录（ProductionSkillCatalog）并**构造注入**；**不得** import 非 contract 包，
+         **不得**依赖 simos-culture，也不得反向让 economy-api 引用 production 新类型。
+         ⇒ simos-production **不在**本模块禁列（见下方 bannedDependencies）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-production</artifactId>
+    </dependency>
     <!-- ★★ H4：市场表键 = HexCoord（见上面的依赖面注释）。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
@@ -114,8 +122,13 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：只补 `simos-culture`
+                         （不在允许面）；`simos-production` 由同日复核**移入允许面**
+                         （只读 contract 包），**不得**进禁列——否则上方 dependency 会被自己的
+                         enforcer 当场拦。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
                   </excludes>
-                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social + 工具契约层 ga-spi（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域；★★ 2026-10-12 B3 第三域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
+                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social + 工具契约层 ga-spi（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域；★★ 2026-10-12 B3 第三域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。 ★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：`simos-culture` 补入禁列；`simos-production` 由 2026-10-15 复核**移入允许面**（只读 contract 包，见上方显式 dependency），故不在禁列——本模块仍禁 culture，且不得 import production 非 contract 包。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

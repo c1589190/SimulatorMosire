@@ -115,8 +115,13 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-actor-api</exclude>
+                    <!-- ★★ 2026-10-15 D-031 Z5（根 pom 16 → 18）：新增两模块均不在本模块允许面
+                         （social 允许面 = util/map/calendar/social-api/economy-api/ga-spi；
+                          culture 的 simos-social 实现依赖是**反方向**，由 culture 侧声明）。 -->
+                    <exclude>io.mosire:simos-culture</exclude>
+                    <exclude>io.mosire:simos-production</exclude>
                   </excludes>
-                  <message>simos-social 是人口的唯一权威（生死/劳动/需求/家户工单与 SocialProvisioning）：只许依赖 util/map/calendar/social-api/economy-api + 工具契约层 ga-spi（★★ 2026-10-12 B3 第四域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app/gov/army、运行框架 ga 与兄弟切片 economy/actor，以及已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：simos-actor-api 由 economy-api 传递带出，按 I-F1 不入禁列。</message>
+                  <message>simos-social 是人口的唯一权威（生死/劳动/需求/家户工单与 SocialProvisioning）：只许依赖 util/map/calendar/social-api/economy-api + 工具契约层 ga-spi（★★ 2026-10-12 B3 第四域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app/gov/army、运行框架 ga 与兄弟切片 economy/actor，以及已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：simos-actor-api 由 economy-api 传递带出，按 I-F1 不入禁列。 ★ 2026-10-15 D-031 Z5：新增 `simos-production` 与 `simos-culture` 两模块（根 pom 16 → 18）均不在本模块允许面，两条 exclude 同批补入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

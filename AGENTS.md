@@ -9,7 +9,7 @@
 
 **SimulatorMosire（simos）** 是 GSimulator 的重构：把原本单一功能的地图推演工具，解放为**可分模块生长**的模拟引擎。
 - 参考项目 `~/DevMosire/GSimulator`（**只作参考、不作依赖**）与 `~/ProjectMosire/AgentLibMosire`（CoreSimos 整包依赖）。
-- 形态：Maven 多模块（根 pom **16 个模块** = 15 个 `simos-*` 领域/契约/编排模块 + 组合根 `simos-app`）；
+- 形态：Maven 多模块（根 pom **18 个模块** = 17 个 `simos-*` 领域/契约/编排模块 + 组合根 `simos-app`）；
   领域模块只拥有自己的数据（`MapSimos` 不知道 `SocialSimos`/`UnitSimos` 存在），Core 只组合与调度。
 - 权威顺序：**用户原话 > 用户设计原稿 > 最新落盘文档 > 本文件 > 旧文档**（口径细则见 `docs/AGENTS.md`）。
 - 「当前状态」**不在本文件抄写**：看 `git log --oneline -20`、`.superpowers/sdd/*/progress.md`，
@@ -48,11 +48,13 @@
 | `simos-actor-api` | **不声明任何主依赖**（★ 详见 `01-〇` §simos-actor-api） |
 | `simos-actor` | actor-api + util + map + economy-api + `simos-social-api` + jackson（★ 详见 `01-〇` §simos-actor） |
 | `simos-economy-api` | **actor-api** + util + map + `simos-social-api`（★ 详见 `01-〇` §simos-economy-api） |
-| `simos-economy` | actor-api + util + economy-api + **map** + `simos-social-api` + `simos-social`（★ 详见 `01-〇` §simos-economy） |
+| `simos-economy` | actor-api + util + economy-api + **map** + `simos-social-api` + `simos-social` **+ `simos-production`**（只读 contract 包；★ 详见 `01-〇` §simos-economy） |
+| `simos-production` | `simos-util` + `simos-map` + `simos-economy-api` + **`simos-ga-spi`**（工具契约；★ 2026-10-16 用户纠正，详见 `01-〇` §simos-production） |
+| `simos-culture` | `simos-util` + `simos-map` + `simos-social-api` + `simos-economy-api` + `simos-production`（**只读 contract 包**；★ 详见 `01-〇` §simos-culture） |
 | `simos-gov` | util + map + unit + social + `economy-api` + **`simos-ga-spi`**（★ 详见 `01-〇` §simos-gov） |
 | `simos-army` | util + map + unit + social **+ gov**（★ 详见 `01-〇` §simos-army） |
 | ~~`simos-ledger`~~ | ——（已于 2026-09-27 退役；★ 详见 `01-〇` §simos-ledger） |
-| `simos-app`（组合根） | **全部 15 个 simos 模块**（core + util + ga-spi + map + calendar + social-api + social + unit + actor-api + actor + economy-api + economy + gov + army + **ga**）+ agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现（不设 enforcer；★ 详见 `01-〇` §simos-app） |
+| `simos-app`（组合根） | **全部 17 个 simos 模块**（core + util + ga-spi + map + calendar + social-api + social + unit + actor-api + actor + economy-api + economy + production + culture + gov + army + **ga**）+ agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现（不设 enforcer；★ 详见 `01-〇` §simos-app） |
 | `simos-ga-spi` | `simos-util` + `agentlib-mosire`（★ 详见 `01-〇` §simos-ga-spi） |
 | `simos-ga` | `simos-util` + `simos-ga-spi` + `map` + `unit` + `agentlib-mosire`（★ 详见 `01-〇` §simos-ga） |
 
@@ -93,8 +95,26 @@
 | `docs/superpowers/specs/2026-09-16-simos-master-design.md` | **总纲**：五模块边界、八大件原语、两层地址、两阶段时间推进、存储分层、里程碑（已批准） |
 | `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 分解 + M1~M6 路线图 |
 | `docs/superpowers/specs/2026-10-02-architecture-design-source.md` | **用户设计原稿（D-xxx）＝ 最高权威** |
+| `docs/superpowers/specs/2026-10-17-d032-production-execution-decision.md` | **D-032 补充裁决（已记录，未实现）**：D3 直接删；D4 归 production，提供预计/实际生产及状态变化能力，economy 处理经济关系；附原话及工程边界（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-production-runtime-boundary-decision.md` | **D-032 工程裁决（已定，未实现）**：实例/进度/经验/产出覆盖归 production，分配/经营状态留 economy；允许临时只读视图；到货、铸币与账户提交边界明确，接续设计无需重复询问工程分工（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-stage1-deviation-review-decision.md` | **D-032 阶段 1 偏离复核（已定，修正未实现）**：方案多地复用不降级；熟练度不能偷换成只加劳动；经验须结转、逐 tick 增长，整周期贡献不能只看收获日；取代迁移设计 §12 对应处置（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-stage2-handoff-review-decision.md` | **D-032 阶段 2 交接复核（工程已定，集成待验）**：接受 A/B 重排；统一 tick 生效条件，批次故障零半提交，允许不可变回执，旧无效构造器须收口；补充/修正迁移设计 §13（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-final-independent-review.md` | **D-032 最终独立审核（发现待修复问题）**：预计/实际脱节、共享资产重复占用、执行绕过条件、零经验迁移平均、原始经验公式顺序依赖；含最终 JAR 独立复现及验证限度（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-production-line-replan-review.md` | **D-032 重规划 v1 审核（历史）**：旧公式复活、资产效力、写面与验收依赖冲突；后续 v2 已处置，见 v2 复核（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-production-line-replan-v2-review.md` | **D-032 重规划 v2 复核通过**：可冻结规划基线、继续详细设计；经验归一化为可配置工程默认、R2 仍未修，未验收 F1/F2 实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-cooperative-production-proposal.md` | **D-032 多家户合作生产提案（待用户修改/确认）**：现有多人劳动/分账事实、共同经验、角色分配模型、参与名册、资格主体与本地资产占用建议；未实施（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-distribution-wage-offer-proposal.md` | **D-032 产品分配/现金与抵物/自主工资报价调查提案**：地主权益不要求下地劳动；角色经验量独立配置；工资报价、家户比较与本地反馈机制待确认，未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-wage-settlement-simplification-decision.md` | **D-032 工资简化裁决**：直接支付、库存不足成债、再生产权益不入活动库存仍有效；定价公式建议已被后续选业前定价分析取代，未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-preselection-wage-feasibility-analysis.md` | **D-032 选业前雇工定价历史分析**：工资前置入候选成本仍有效；工资下限解释由后续地主主动出价重设计收窄，未实现、未仿真（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-employer-posted-wage-redesign.md` | **D-032 地主主动出价历史重设计**：零/极低工资及非正收益过滤偏差；必须从业前提与当 tick 求价已由后续闲置/逐 tick 反馈方案调整，未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-tick-wage-feedback-proposal.md` | **D-032 工资逐 tick 反馈（最新裁定见 §11）**：快速累加加价、缓慢加速降价；欠薪不影响择业、禁止预付，先钱后按活动库存数量降序抵付，余款成债；未实现、未仿真（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-production-runtime-migration-design.md` | ★ **D-032 约束设计书（可派单，未实现）**：状态归属落形、方案/经验条/受限表达式公式、试算·执行两步契约、同 tick 原子提交（含 actor 账户与铸币权威收口）、不变量 I1–I16、验收 V1–V12、责任区与迁移面重算命令（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-production-experience-choice-design.md` | **D-032 最新生产设计（仅记录，未实现）**：家户经验与共用经验、公式可配置、解锁、需求—利润选择后派生主副业、通用拆合；取代文化直接加生产倍率的方向（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d033-parish-household-faith-design.md` | **D-033 文化/宗教调查与规划（草案，未实现）**：独有家户文化记录、地方教区、奉献与税分离、真实利益建议、共享流动表上的择优信奉；源码事实与建议分列（2026-10-17） |
 | `docs/superpowers/specs/` 与 `plans/` 下的其余按日期文件 | 各阶段的 spec/plan：M1 util、M2 map、M3 social+unit、M4 core、M5 shell、M6 导入器、M7 webui、M8 地图编辑、M9 大图性能、M10 部署、Unit 扩容、SDSimos、工具面… |
 | `docs/superpowers/status/2026-10-16-work-state-after-gm-dm-tools.md` | ★★ **最新存档与交接（下次开工的唯一入口）**：批 K→V 六批全入账 · 门禁基线 3356/0/0/7 · ★ **`stash@{0}` 里未落盘的改动与恢复方法** · 环境事实（本地 LLM / 项目级 Maven 锁 / 三条工作树）· 今晚 9 条新纪律 · **待办 A–G 与待用户裁决** · **未验证/没做**清单（2026-10-16） |
+| `docs/superpowers/status/2026-10-16-d031-p1-worktree-progress.md` | **D-031 P1侧线恢复入口**：迁移工作树、P0基线、实现/测试证据、当前进度与未完成项；状态以正文为准（2026-10-16） |
+| `docs/superpowers/status/2026-10-16-d031-interface-first-result.md` | **D-031 最新状态**：文化/生产与科技 P0 接口、状态、命令及中性接线已实现；主树完整门禁 3422/0/0/7、前端 412/412；定义迁移/真实效果/共享流动表仍待后续；已同步主树，未提交（2026-10-16） |
 | `docs/superpowers/status/2026-10-15-gm-dm-tool-classes-progress.md` | **上一段存档**：GM⇄DM 轮次协议 + 工具三分类（3a/3b）+ 两个同源缺陷 + planOnly 双写；含**未验证清单** / 下一步 / 口径要点 / 复跑命令（2026-10-15） |
 | `docs/superpowers/status/2026-10-13-outstanding-work-survey.md` | **最新未完成清单**（口径以此为准） |
 | `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` | **回代码核实版**：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档 |
