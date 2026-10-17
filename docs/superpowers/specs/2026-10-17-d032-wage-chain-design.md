@@ -423,6 +423,27 @@ record LivelihoodAlternative(
     Map<CommodityId, Long> expectedInKindMilli,      // 仅该 tick 可交付的实物收入；不是周期累计
     Map<CommodityId, Long> expectedProductShareMilli) {} // 仅该 tick 可交付的产品份额实物；不得先折成钱
 
+// N-04/F-04：D2 cycle Prospect → D3 next-tick 的唯一转换器（W2b owner，纯只读）
+record NextTickIncomeProjectionRequest(
+    HouseholdId household,
+    long nextTick,
+    long cycleStartTick,
+    long cycleEndTick,
+    java.util.Map<ProductionRoleId, Long> expectedNextTickLaborMilli,
+    Optional<ProductionWageQuote> quote,
+    OptionalLong targetLaborMilliPerDay,
+    java.util.Map<CommodityId, Long> cycleProductShareMilli) {}
+
+record NextTickIncomeProjectionResult(
+    java.util.Map<CurrencyId, Long> expectedMoneyIncomeMilli,
+    java.util.Map<CommodityId, Long> expectedInKindMilli,
+    java.util.Map<CommodityId, Long> expectedProductShareMilli,
+    long incomeAvailableAtTick) {}
+
+interface NextTickIncomeProjection {
+  NextTickIncomeProjectionResult project(NextTickIncomeProjectionRequest request);
+}
+
 record LocalReachabilityFacts(Map<CommodityId, LocalCommodityReachability> byCommodity) {}
 
 record LocalCommodityReachability(
@@ -473,6 +494,14 @@ enum SurvivalOutlookReason {
   SUBSISTENCE_SHORTFALL
 }
 ```
+
+#### 2.5.1.0 `NextTickIncomeProjection`（N-04/F-04，当前有效）
+
+- **owner/落点**：`NextTickIncomeProjection` 由 **W2b 唯一新增/实现**，文件 `time/NextTickIncomeProjection.java`，纯只读、无状态、无账户/市场写。D2 `Prospect`/候选周期值只能作为输入，不得直接塞入 `LivelihoodAlternative.expected*`。
+- **输入**：D2 cycle `Prospect`/候选、`nextTick`、`production cycleStartTick/cycleEndTick`、当前 locked quote/target、下一 tick 预计/实际劳动计划。
+- **输出**：只输出**下一 tick 可交付**的 `expectedMoneyIncomeMilli`/`expectedInKindMilli`/`expectedProductShareMilli` 与 `incomeAvailableAtTick`。工资按下一 tick 实际/预计劳动和 locked quote 计；产品份额只有 `cycleEndTick <= nextTick` 才计入，否则该结果此项为 0（或另出 `incomeAvailableAtTick=cycleEndTick` 的 future-only 结果，W2b 不得把 future-only 当 next-tick alternative）。周期 `× cycleDays` 的 D2 预计不得直接填入 D3 下一 tick 字段。
+- **失败语义**：缺 `cycleStartTick`/`cycleEndTick`/`nextTick`/quote/target/劳动计划或 cycle 区间非法 ⇒ `survival-income-projection-missing` / `survival-income-timing-unknown` fail-closed；不得静默把缺输入当 0 后继续。已知 `cycleEndTick > nextTick` 的 product share 是合法的“本 tick 0 覆盖 + 具名 `income-not-yet-available`”，不是缺输入。
+- **边界**：W2b 将投影结果包装成 `LivelihoodAlternative`（补 id/labor/resourceClaims），evaluator 仍只做 §2.5.1.1 时间和需求覆盖；W1 的周期工资成本仍按 D2 `×cycleDays` 计算，不因本 adapter 改成日成本。
 
 #### 2.5.1.1 逐需求行覆盖算法（当前有效，R-04）
 
@@ -929,7 +958,7 @@ MONEY_WAGE 角色的自动候选必须同时满足：
 
 ### 5.1 雇主候选：全部应付工资进入成本
 
-对每个候选经营单位，**先做 W1 共享 payer 级地点预检**（§6.9.1）：把该候选当前涉及的 settlement location 去重；同一 payer >1 location ⇒ 候选不可行/`wage-payer-location-unsupported`，**不调用 `WagePayableInventoryLookup`、不算工资成本/候选净额**；通过后才进入下列成本计算。
+对每个候选经营单位，**先做 W1 共享 payer 级地点预检**（§6.9.1）：构造 `WagePayerLocationSnapshot(payer, existingSettlementLocations ∪ candidateSettlementLocations)`，existing 来自当前 revision 该 payer 的全部已有 unit/roster/posting 地点；>1 location ⇒ 候选不可行/`wage-payer-location-unsupported`，**不调用 `WagePayableInventoryLookup`、不算工资成本/候选净额**；通过后才进入下列成本计算。
 
 ```text
 targetLaborMilliPerDay(role)
@@ -957,7 +986,7 @@ expectedWageCostMilli
 
 ### 5.2 雇工候选收入
 
-对每个可成为 MONEY_WAGE worker 的家户，**先做 W2b 共享 payer 级地点预检**（§6.9.1）：把该匹配候选当前涉及的 settlement location 去重；同一 payer >1 location ⇒ 该候选 skip/`wage-payer-location-unsupported`，**不调用 lookup、不进入排序、不写 allocations**；通过后才进入下列收入计算。
+对每个可成为 MONEY_WAGE worker 的家户，**先做 W2b 共享 payer 级地点预检**（§6.9.1）：构造 `WagePayerLocationSnapshot(payer, existingSettlementLocations ∪ candidateSettlementLocations)`，existing 来自当前 revision 该 payer 的全部已有 unit/roster/posting 地点；>1 location ⇒ 该候选 skip/`wage-payer-location-unsupported`，**不调用 lookup、不进入排序、不写 allocations**；通过后才进入下列收入计算。
 
 ```text
 expectedWorkableLaborMilliPerCycle
@@ -1020,7 +1049,7 @@ carryAfter = num % 1000
 
 - **付款人 = organizer household**（D2 唯一 organizer）；不得从 `ProductionEnterprise` 另猜，不得由 cohort 虚拟收款。
 - 同一 organizer 跨 unit/role/worker 的义务按 `(unit, role, household)` 规范 id 升序处理。
-- **B4 首期前置（当前有效，R-05/N-02）**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationPrecheck`。W3 在任何支付、库存查询或债务写入**之前**，先按 **payer** 聚合本次 tick 的全部工资义务；若同一 payer 出现 **>1 个不同 settlement location**，整组具名业务拒绝 `wage-payer-location-unsupported`，**不做任何部分支付、不调用 lookup、不写新债、不改 carry**。W1/W2b 在候选成本/排序前同样用该预检，>1 location 的候选不可行/skip。不得按 location 分别继续，也不得把一个地点当作“主地点”吞掉其他义务。
+- **B4 首期前置（当前有效，R-05/N-02/F-01）**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationPrecheck`。W3 在任何支付、库存查询或债务写入**之前**，读取 `WagePayerLocationSnapshot` = 该 payer 当前 revision **全部已有 unit/roster/posting 地点 ∪ 本次 tick 全部工资义务地点**；若 >1 settlement location，整组具名业务拒绝 `wage-payer-location-unsupported`，**不做任何部分支付、不调用 lookup、不写新债、不改 carry**。W1/W2b 在候选成本/排序前同样用“已有 + 候选”完整 snapshot；>1 location（例如已有 unit A + candidate B）候选不可行/skip。不得只传候选地点。
 - **唯一地点才可结算**：通过上述预检的 payer 只有一个 settlement location；该组调用一次 §6.9 lookup，作为该组共享库存预算。不得跨格合并库存，也不得用 A 格库存抵 B 格工资。
 - **货币腿（户级账户）**：货币余额/冻结的权威是 `AccountSession` 的**户级账户**，不是 `HouseholdInventory` 直接结构；W3 只读 `AccountSession` 快照并按稳定义务序逐笔扣减，**不得用同一笔钱重复付**。同一 payer 多地点情形已在预检整组拒绝，故不会出现两个地点各读一份户级余额再支付。
 - 义务表先算全部 due，再按稳定序逐条支付；后续义务看到的是前面已扣减后的共享预算。
@@ -1166,7 +1195,7 @@ interface WagePayableInventoryLookup {
 - 返回量必须**已经扣完**：`AccountSession` 户级冻结、**该 payer 全部地点**的 ACTIVE 生产占用（`InventoryReservation`）、再生产权益/已投入资料（由 D4/权益与占用所有者唯一权威计算）。**W1/W2b/W3 不再做第二次减法**，也**不得回退**到“账户余额即全部可支付”。
 - **`Optional.empty()` 条件（写死，R-05）**：仅当 ① D4 lookup 尚未接线/明确 disabled；② payer 无法解析为已登记家户账户（`AccountSession` 无该户）；③ 实现明确不可用。**不得**因商品余额为 0、没有 ACTIVE 预留、没有该商品或该 place 暂无商品而返回 empty——这些是可用读口的空 `Map`。location 为 `null`/`UNSPECIFIED`/非法格式时不进入 lookup，按 `asset-location-missing` fail-closed。
 - **`Optional.empty()` 的 W3 行为**：**货币腿仍可按 U21 先付**；**库存腿全部跳过**，记 `wage-inventory-scope-unavailable`；剩余 due 成债。不得回退账户原始余额。
-- **payer 级地点预检先于 lookup**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationPrecheck`；同一 payer 当前操作涉及 >1 个 settlement location ⇒ W3 整组 `wage-payer-location-unsupported`，W1/W2b 候选不可行/skip，**均不调用 lookup、不逐 location 复用、不做部分支付**（B4/N-02）。通过预检的单地点组只调用一次 lookup，作为该组义务的共享库存预算快照；lookup 内部仍扣除该 payer 全部地点的 ACTIVE 预留（N-01）。
+- **payer 级地点预检先于 lookup**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；snapshot 必须包含 payer 现有 unit/roster/posting 地点 ∪ 候选/本次地点。合并后 >1 settlement location ⇒ W3 整组 `wage-payer-location-unsupported`，W1/W2b 候选不可行/skip，**均不调用 lookup、不逐 location 复用、不做部分支付**（B4/N-02/F-01）。通过预检的单地点组只调用一次 lookup，作为该组义务的共享库存预算快照；lookup 内部仍扣除该 payer 全部地点的 ACTIVE 预留（N-01）。
 - **账户权威**：lookup 读取的 payer 商品余额/冻结必须来自 **`AccountSession` 的户级账户快照**（`AccountSession` 是货币/商品余额与冻结的权威读面）；`HouseholdInventory` 只是 actor 侧存储表示，D3 不得直接按地点拆一份 `HouseholdInventory` 当第二本库存。`settlementLocation` 不能改变户级余额的扣减基数。
 - **权威归属（R-16）**：读口由 **D4-I 唯一新增/实现**；W3 只消费 D4-I 已编译的读口，**不新增、不实现 `WagePayableInventoryLookup.java`**，不写回、不复制第二套减法。D4 未接时 D3 只写接口契约，不冒充 D4 已实现。
 - 预计/排队与执行使用同一读口（D4 规则）；W1/W2b 不自行扫份额/库存，也不另写第二套可支付量公式。W1/W2b 在调用读口前必须先执行 §6.9.1 的 payer 级地点预检。
@@ -1174,20 +1203,24 @@ interface WagePayableInventoryLookup {
 ### 6.9.1 `WagePayerLocationPrecheck`（W1/W2b/W3 共享，N-02）
 
 ```java
-record WagePayerLocationCheck(
+record WagePayerLocationSnapshot(
     ActorRef payer,
-    java.util.Set<io.mosire.simos.production.contract.ProductionLocation> locations) {}
+    java.util.Set<io.mosire.simos.production.contract.ProductionLocation> existingSettlementLocations,
+    java.util.Set<io.mosire.simos.production.contract.ProductionLocation> candidateSettlementLocations) {
+  // allSettlementLocations() = existing ∪ candidate；只读、去重、稳定排序
+}
 
 enum WagePayerLocationDecision { OK, MULTIPLE_LOCATIONS }
 
 interface WagePayerLocationPrecheck {
-  WagePayerLocationDecision evaluate(WagePayerLocationCheck check);
+  WagePayerLocationDecision evaluate(WagePayerLocationSnapshot snapshot);
 }
 ```
 
-- **单一实现/owner**：`WagePayerLocationPrecheck` 由 **W2a** 新增并唯一实现（纯函数，无状态、无账户读取）；W1/W2b/W3 只消费同一实现，不得各自复制地点聚合逻辑。
-- **输入**：当前操作涉及的 payer + 该操作的 settlement location 集合。W1 用候选/实例当前涉及的 posting/default 地点；W2b 用匹配候选涉及的 unit 地点；W3 用本次 tick 全部工资义务的地点。
-- **规则**：`locations` 去重后 >1 ⇒ `MULTIPLE_LOCATIONS`，在所有 lookup/候选成本/匹配/支付之前失败。W1/W2b 返回候选不可行/skip（具名 `wage-payer-location-unsupported`），W3 整组业务拒绝（同词），均零 lookup、零部分支付、零新债、零 carry 变化。`locations` 为空/单地点 ⇒ `OK`，但仍须继续做 §6.9 lookup 的全地点预留扣减。
+- **单一实现/owner**：`WagePayerLocationSnapshot` 与 `WagePayerLocationPrecheck` 由 **W2a** 新增并唯一实现（纯只读，无账户读取）；W1/W2b/W3 只消费同一实现，不得各自复制地点聚合逻辑，也不得由 app 另编。
+- **输入（F-01，必须覆盖已有 + 候选/本次）**：`existingSettlementLocations` 必须由 economy 当前 revision 的**现有生产状态**汇总：`ProductionProcess.operator == payer actor` 的 unit.location、`productionRosters` organizer == payer 的 unit.location、以及这些 unit 的 `productionWagePostings` 所指向的 settlement location；`candidateSettlementLocations` 是本次候选/操作的 unit 地点。不得只传候选地点，也不得扫描 `AccountSession` 或让 app 自行拼集合。W1 用候选 `Prospect` 涉及的 payer；W2b 用匹配候选的 payer；W3 用本次 tick 全部工资义务；三者都传完整 snapshot。
+- **规则**：`existing ∪ candidate` 去重后 >1 ⇒ `MULTIPLE_LOCATIONS`，在所有 lookup/候选成本/匹配/支付之前失败。W1/W2b 返回候选不可行/skip（具名 `wage-payer-location-unsupported`），W3 整组业务拒绝（同词），均零 lookup、零部分支付、零新债、零 carry 变化。空/单地点 ⇒ `OK`，但仍须继续做 §6.9 lookup 的全地点预留扣减。
+- **反例必须红（F-01）**：同一 payer 已有 unit A（location A）+ 当前 candidate B（location B）。W1/W2b 必须用 `{A,B}` 在候选阶段即拒绝/skip，不得只看到 `{B}` 而候选 OK；W3 也不得等到支付时才拒。`snapshot` 缺 existing 集合或调用方自行缩减集合 ⇒ 契约故障/测试红。
 - **证明边界**：预检不能替代 N-01 的 lookup 全地点预留扣减；它解决“多地点义务各自读同一户级余额”，N-01 解决“其他地点生产预留被当可花”。两者都必须通过。
 
 ## §7 tick 时序
@@ -1291,6 +1324,8 @@ survival-need-missing
 survival-need-stale
 survival-input-invalid
 survival-market-facts-missing
+survival-income-projection-missing
+survival-income-timing-unknown
 survival-combination-limit
 debt-source-missing
 debt-source-mismatch
@@ -1307,7 +1342,7 @@ debt-source-mismatch
 - `wage-barter-reference-price-unsupported`：`BarterDiscountPolicy.referencePrice` 不是 `LOCAL_BID`/`LOCAL_ASK`；契约/跨切片故障，ERROR 且不得降级成默认 bid。
 - `IDLE_ELIGIBLE`：`SurvivalOutlook.idleEligible=true` 的资格读数，**不等于** `IDLE_CHOSEN`；最终是否闲置看 §4.4 选择结果。
 - `UNALLOCATED_LABOR`：正收益工作已选中后剩余未花劳动；不是 `IDLE_CHOSEN`。
-- `survival-need-missing`/`survival-need-stale`/`survival-input-invalid`/`survival-market-facts-missing`/`survival-combination-limit`：§2.5.1 `SurvivalOutlook` 的契约失败；ERROR 不降级，不得把缺输入当无需求/零价/空可行集合继续算；组合超限不得返回截断 best 或写 `idleEligible`。
+- `survival-need-missing`/`survival-need-stale`/`survival-input-invalid`/`survival-market-facts-missing`/`survival-income-projection-missing`/`survival-income-timing-unknown`/`survival-combination-limit`：§2.5.1/§2.5.1.0 的契约失败；ERROR 不降级，不得把缺输入当无需求/零价/空可行集合继续算；组合超限不得返回截断 best 或写 `idleEligible`。
 - `wage-debt-same-day-repay-blocked`：同日新工资债被还款轮排除的 INFO 读数；不是失败。
 - `wage-settlement-not-implemented`：W2b 尚未接 W3 时，含 MONEY_WAGE 角色的**整 tick** 执行边界；预检在任何抽料/写回/进度/经验/实际劳动之前（§4.7/§7.2）；D2 §8.4 保留。
 - `wage-target-missing`：缺目标（既无候选 default 也无实例 posting 给 `targetLaborMilliPerDay`）；不得静默 0 当“没有岗位”。
@@ -1328,7 +1363,7 @@ debt-source-mismatch
 
 1. **D3-I1 报价锁定**：本 tick 匹配/结算只读本 tick quote 快照；U20/命令改价只影响后续 tick；已发生 due 不追溯。
 2. **D3-I2 三数守恒**：逐义务 `due = paidMoney + Σ paidBarterValue + arrears`；不得超付、不得重复减本金。
-3. **D3-I3 共享预算（B4/R-05）**：W3 在任何支付/lookup 前先按 payer 聚合；同一 payer 有 >1 个 `production.contract.ProductionLocation` 的工资义务 ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付。通过预检的 payer 只有一个地点，其该组义务只有一份**库存**预算；货币腿是 `AccountSession` 同一户钱包，逐笔扣减，不得双付。
+3. **D3-I3 共享预算（B4/R-05/F-01）**：W1/W2b/W3 共用 `WagePayerLocationSnapshot`（payer 当前 revision 的已有 unit/roster/posting 地点 ∪ 候选/本次 unit 地点）；>1 settlement location 时 W1/W2b 候选不可行/skip、W3 整组 `wage-payer-location-unsupported`，均零 lookup、不做部分支付。通过预检的 payer 只有一个地点，其该组义务只有一份**库存**预算；货币腿是 `AccountSession` 同一户钱包，逐笔扣减，不得双付。
 4. **D3-I4 库存不双付/冻结不越（B3/N-01）**：`WagePayableInventoryLookup` 的形参地点类型必须是已有 `production.contract.ProductionLocation`；返回量必须按 **payer×commodity 全地点**扣除 `AccountSession` 冻结与全部 ACTIVE `InventoryReservation`，location 只作结算/预算分组；W1/W2b/W3 不再二次减冻结/占用/权益；D4 未接 ⇒ 库存腿跳过并记 `wage-inventory-scope-unavailable`、余款成债；不得回退“账户余额即全部可支付”；不得用再生产权益抵工资。
 5. **D3-I5 缺 quote ≠ 0**：`Optional.empty()` 与显式 0 分开；缺 quote 不得生成 0 工资/0 债务。
 6. **D3-I6 欠薪不影响择业**：W1/W2b 不读历史欠薪/兑付率/黑名单/信用折扣作为候选输入。
@@ -1350,7 +1385,7 @@ debt-source-mismatch
 22. **D3-I22 候选 default 闭环（A3）**：新进入候选读 `ProductionWageDefault`；选中后同一合法 Revision 建实例 + posting；未选候选零实例/零 posting；default 不是第二份执行报价；缺 default 且无 posting ⇒ `wage-quote-missing`，缺目标 ⇒ `wage-target-missing`。
 23. **D3-I23 折价可配置（U23-c）**：`BarterDiscountPolicy` 单一来源、参考价类型**仅 `LOCAL_BID`/`LOCAL_ASK`** + 系数可 <1；economy 唯一 helper 先 `hasPrice` 再选 `bidPriceOf`/`askPriceOf`；折后 0/缺价/缺币种 ⇒ 该商品 skip 且保留剩余债务；排序仍按可用数量降序，不按价值。
 24. **D3-I24 工资债零息与来源（U23-a/R-11）**：工资债同时带 `DebtSource.WAGE_ARREARS` + `wageArrearsDefault()` 0‰；普通贷款带 `ORDINARY_LOAN` 并保原 terms；`capitalizeArrears(WAGE)` 写 `WAGE_ARREARS` 0‰；旧工资欠款不再生息；不得套 legacy 20‰；source 进 codec/ChangeSet 往返。
-25. **D3-I25 payer 级地点闭合（B4/R-05）**：W3 在任何支付/lookup/新债前先按 payer 聚合；同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，零部分支付、零 lookup；库存余额的账户权威是 `AccountSession` 户级账户，地点类型统一 `production.contract.ProductionLocation`；同一账户、两地、一份库存不得双付。
+25. **D3-I25 payer 级地点闭合（B4/R-05/F-01/F-03）**：W1/W2b/W3 在任何 lookup/候选成本/匹配/支付/新债前共同消费 `WagePayerLocationSnapshot`（已有 unit/roster/posting 地点 ∪ 候选/本次地点）；>1 settlement location 时 W1/W2b 候选不可行/skip、W3 整组 `wage-payer-location-unsupported`，零部分支付、零 lookup；库存余额的账户权威是 `AccountSession` 户级账户，地点类型统一 `production.contract.ProductionLocation`；同一账户、两地、一份库存不得双付。
 26. **D3-I26 生存预测只读（U23-b）**：`SurvivalOutlookEvaluator.evaluate` 是纯只读函数，输入/输出/组合确定性/空集合具名原因/缺价不可达不折算/预测不抵实收均按 §2.5.1；不写状态；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态。
 
 ### 8.4 正向验收判据
@@ -1399,7 +1434,7 @@ debt-source-mismatch
 | P38 | **B3 可支付库存读口** | `WagePayableInventoryLookup.payableInventory(ActorRef, production.contract.ProductionLocation)`；D4 lookup 不可用 ⇒ 货币先付、库存腿跳过 + `wage-inventory-scope-unavailable`、余款成债；可用 ⇒ 每份只扣一次，权益/占用为零可付 |
 | P38b | **全地点 ACTIVE 预留扣除（N-01）** | `grain=1000`、冻结 0、B 地点有 ACTIVE 预留 300、A 是唯一 W3 地点且只有工资义务 ⇒ `lookup(A)` 返回 `grain=700`；只扣 A 地点预留 ⇒ P38b 红；支付/成债不得超过 700 |
 | P39 | **B4 payer 级地点预检（R-05）** | 同一 payer 两 location ⇒ W1/W2b 候选不可行/skip、W3 在 lookup/支付前整组 `wage-payer-location-unsupported`，均零部分支付、零 lookup、零新债、零 carry 变化；同账户、两地、一份库存不得被双付；通过预检的单地点组只调用一次 lookup，共享预算 |
-| P39b | **W1/W2b 共用预检（N-02）** | 同一 payer 两地点在 W1/W2b 也只能得到候选不可行/skip，不能先按 location 各 lookup 一次；W1 不计算工资成本、W2b 不进入排序/allocations；W2a 的 `WagePayerLocationPrecheck` 是 W1/W2b/W3 唯一实现 |
+| P39b | **W1/W2b 共用预检（N-02/F-01）** | 同一 payer 已有 unit A（location A）+ candidate B（location B）：W1/W2b 必须用完整 `WagePayerLocationSnapshot` 在候选阶段 fail/skip，不能只看到 B 而通过，也不能先按 location 各 lookup 一次；W1 不计算工资成本、W2b 不进入排序/allocations；W2a 的 `WagePayerLocationPrecheck` 是 W1/W2b/W3 唯一实现 |
 | P40 | **A5 工资池收窄** | 预计/未到账份额不计入支付能力；已到账且经 lookup 确认的本人粮按 U21 参与抵物；他户份额/权益不得抵 |
 | P41 | **SurvivalOutlook 纯只读契约** | 缺 Social 下一 tick 需求 ⇒ ERROR `survival-need-missing`；组合不重复劳动/资源；空可行不判最大值；缺价/不可达不作 0 或 1:1；返回 `idleEligible` 与具名 reason，不写 `idleChosen`；调用前后状态零变化 |
 | P42 | **R-04 收入接入 coverage：0/10 与 1/10** | 需求 10、当前库存 0；预计货币收入 10、当地可达价 1、供给 ≥10 ⇒ `coverage=1000‰`、`idleEligible=false`；同例预计收入改成 1 ⇒ `coverage=100‰`、`subsistence-shortfall`、`idleEligible=true`；`provenance.fromMoney` 分别=10/1 |
@@ -1411,6 +1446,7 @@ debt-source-mismatch
 | P48 | **量纲口径（R-07）** | `1 小时 = 1000 毫小时`；`laborMilli=1000` 即 1 小时；`standardLaborMilliPerCycle=1000` 即 1 小时/周期；`quote=2000` 表示 2000 毫货币/小时 = 2 货币/小时；工资 = `quote × laborMilli / 1000`（laborMilli 为毫小时）。任一按“千分劳动”解释 ⇒ 红 |
 | P49 | **下一 tick/周期时间门槛（N-04）** | `nextTickNeed.forTick=1`；product share 1000 单位只在 `incomeAvailableAtTick=100`（cycle=100）交付 ⇒ 本 tick 覆盖必须为 0（或仅计另一份 `incomeAvailableAtTick<=1` 的 10 单位）；把整季 1000 当下一 tick 口粮 ⇒ P49 红；D2 `×cycleDays` 周期预计不得原样传入 SurvivalOutlook |
 | P50 | **组合枚举上限（N-09）** | `maxCombinations=3` 且可行替代产生 >3 个非空子集 ⇒ ERROR `survival-combination-limit`，不返回截断 best/idleEligible；提高上限后同一输入可确定复算；同一上限重复运行结果一致；不得静默近似 |
+| P51 | **D2→D3 下一 tick adapter（F-04）** | `NextTickIncomeProjection` 是 W2b 唯一实现；缺 cycle 起止/quote/target/劳动计划 ⇒ `survival-income-projection-missing`/`survival-income-timing-unknown`，不静默 0。cycle=100、nextTick=1、期末 product share=1000 ⇒ 投影本 tick=0；cycleEnd=nextTick 且 1000 份额 ⇒ 可计 1000；D2 周期 `×cycleDays` 值不得直接填入 `expected*` |
 
 ### 8.5 负向/变异判据（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 一致）
 
@@ -1484,6 +1520,9 @@ debt-source-mismatch
 | 把整季 product share/工资周期累计当下一 tick 可交付收入 | P49 |
 | 忽略 `incomeAvailableAtTick` 或缺失字段仍继续 | P49/`survival-input-invalid` |
 | 组合数超过 `maxCombinations` 后静默截断或返回近似 best | P50/`survival-combination-limit` |
+| 把 D2 cycle Prospect 的周期值直接填进 `LivelihoodAlternative.expected*` | P51 |
+| cycle 起止/quote/target/劳动计划缺失时静默按 0 继续 | P51/`survival-income-projection-missing` |
+| cycle 区间非法/nextTick 不明仍继续 | P51/`survival-income-timing-unknown` |
 | 生存预测写入状态或由 evaluator 暗设 `idleChosen` | P41/P30 |
 
 ### 8.6 数值例（W5 用）
@@ -1513,13 +1552,13 @@ debt-source-mismatch
 >
 > **命名兼容**：本册其它节若仍写“W2”，按本表理解为 **W2a**（default/posting/quote 读口）或 **W2b**（角色级匹配/idle/U20），以该处描述的内容为准。
 >
-> **共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
+> **共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
 
 | 批次 | 可写方向 | 禁止/边界 |
 |---|---|---|
 | **W2a（候选 default + posting/quote 读口 + `WagePayerLocationPrecheck`）** | `simos-economy/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`；`codec/EconomyCodec.java`；新增 `model/ProductionWageDefault.java`、`WageDefaultKey.java`、`ProductionWagePosting.java`、`WagePostingKey.java`、`ProductionWageDefaultLookup.java`、`ProductionWageQuote.java`、`ProductionWageQuoteLookup.java`；`spi/EconomySetProductionWageDefaultHandler.java`、`EconomySetProductionWagePostingHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`EconomyReferenceValidation.java`；新增 `time/ProductionWageBook.java`（default/posting 读口）；新增并唯一实现 `time/WagePayerLocationPrecheck.java`（§6.9.1 纯函数，供 W1/W2b/W3 共享） | **不实现**匹配/idle/U20（W2b）、支付/抵物/债（W3）；`householdLaborChoices`/`allowIdle` 已撤回，不新增对应状态/命令/seed；不写测试。W1 依赖本批的真实读口，C2 的永远 empty lookup **不得**被当作候选能力完成 |
 | **W1（工资前置估值）** | `simos-economy/.../time/ExpectedProfitBook.java`（`expectedWageCostMilli`/`wageProspect`/理由词）；W1 所需只读 helper | 只基于 W2a 的真实 default/posting 读口和 `WagePayerLocationPrecheck`；>1 settlement location 的 payer 候选不可行，不 lookup；不改 `LaborQueueBook` 排序/过滤；不实现支付/抵物/债；不写测试 |
-| **W2b（角色级匹配/idle/U20）** | `simos-economy/.../EconomyData.java` 补第 35 `wageCarryRemainders`、`EconomyDayView`/`EconomyBoundaryView`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；新增 `WageCarryKey.java`；`time/ProductionWageBook.java`（carry/U20）；新增 `time/SurvivalOutlook.java`/`SurvivalOutlookEvaluator.java` 及其只读入参值类型（§2.5.1）；`model/EconomyPolicyKey.java`（`SURVIVAL_IDLE_POLICY` 策略键）；`time/LaborQueueBook.java`、`ActivitySelector.java`（仅复用/必要可见性）、`LaborQueueSettlement.java`（角色级 offer、`IdleOption`、生存资格接入）；`EconomyReferenceValidation.java` | **B2**：W3 未启用时真实 `settleOneDayInto` 在任何抽料/写回/进度/经验/实际劳动之前整 tick `wage-settlement-not-implemented`；**只消费 W2a 的 `WagePayerLocationPrecheck`，>1 settlement location 的候选 skip 且不 lookup**；匹配只在只读/dry-run 验证；不实现 W3 支付；不跨区自动招募；不写产品份额分配；不改 app；不写测试；`SurvivalOutlook` 纯只读；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态 |
+| **W2b（角色级匹配/idle/U20）** | `simos-economy/.../EconomyData.java` 补第 35 `wageCarryRemainders`、`EconomyDayView`/`EconomyBoundaryView`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；新增 `WageCarryKey.java`；`time/ProductionWageBook.java`（carry/U20）；新增 `time/SurvivalOutlook.java`/`SurvivalOutlookEvaluator.java` 及其只读入参值类型（§2.5.1）；新增 `time/NextTickIncomeProjection.java`（N-04/F-04，唯一 owner）；`model/EconomyPolicyKey.java`（`SURVIVAL_IDLE_POLICY` 策略键）；`time/LaborQueueBook.java`、`ActivitySelector.java`（仅复用/必要可见性）、`LaborQueueSettlement.java`（角色级 offer、`IdleOption`、生存资格接入）；`EconomyReferenceValidation.java` | **B2**：W3 未启用时真实 `settleOneDayInto` 在任何抽料/写回/进度/经验/实际劳动之前整 tick `wage-settlement-not-implemented`；**只消费 W2a 的 `WagePayerLocationPrecheck`，>1 settlement location 的候选 skip 且不 lookup**；匹配只在只读/dry-run 验证；不实现 W3 支付；不跨区自动招募；不写产品份额分配；不改 app；不写测试；`SurvivalOutlook` 纯只读；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态 |
 | **W3（支付/抵物/债，含 N-05 debt source 写面）** | `simos-economy/.../time/EconomySettlement.java`（工资结算、同日排除、`capitalizeArrears` WAGE/RENT source 映射）、新增 `time/WageSettlement.java`/`WageSettlementReadout`、`ProductionSettlement.java` 旧 wage 调用面、`TransferReason.java`（`WAGE_PAYMENT`）、`DebtTerms.java`（`wageArrearsDefault()`）、`simos-economy-api/.../api/debt/DebtSource.java`（新增）、`model/DebtContract.java`（加 source）、`time/DebtContractBook.java`（source 入参与不合并）、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`/债务表往返；**普通贷款/迁移/seed 写入点**：`UnitBorrowHandler.java`、`MoneyMarketSettlement.java`、`MarketSettlement.java`、`MintSettlement.java`、`ModeMigrationSettlement.java`、`LotMigrationBook.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`（各自按 §2.9.1 映射） | **只消费 D4-I 已编译的 `WagePayableInventoryLookup`**；不新增/不实现 `WagePayableInventoryLookup.java`；不修 R2/资产占用（D4）；**不二次扣减**库存（B3）；W1/W2b/W3 共享 `WagePayerLocationPrecheck`，payer 级地点预检先于 lookup；普通贷款 `ORDINARY_LOAN`、迁移保 source、seed 显式 source；不改 AssetKind/POM/XML；不写测试；不直接改账户 Map；与 W2a/W2b/D4-I 共享 economy 文件时严格按 N-08 顺序串行 |
 | **W4（tick/Social）** | `simos-app/.../PopulationEconomyTimeParticipant.java`（tick 时序/Social 回写接线）、`EconomyDayStepper.java`/`EconomySettlement.step` 的调用顺序、只读 app 读口 | 不在 app 实现生存判定/报价/匹配/支付/折价公式；不复制 economy 逻辑；不写测试 |
 | **W5（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`、`simos-production/src/test/**`、门禁守卫清单 | 按 §8 判据与 §8.6 数值例写测；含负向/变异；不由实现 owner 写/跑测试 |

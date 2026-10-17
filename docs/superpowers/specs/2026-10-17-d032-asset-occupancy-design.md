@@ -8,7 +8,7 @@
 >
 > **效力与边界**：本文中的“**用户已定**”只逐字来自用户原话；“**工程默认**”均是控制方为落实用户口径而冻结的接口/分配/失败语义，不是新玩法裁定，也不是用户已经选过参数。D4 不重开独立土地账，不把再生产权益变成活动库存，不新增工资、价格、利率、折价或土地制度玩法。
 >
-> **2026-10-17 D1–D4 第三次定点修正注（N-01/N-02/N-03/N-08，当前有效）**：本册把 `InventoryReservation` overcommit 与 lookup 改为按 payer×commodity **全地点**汇总 ACTIVE 预留；W1/W2b/W3 共享 `WagePayerLocationPrecheck`；`ShareTuple` 纳入 `location`；共享 economy 文件交接顺序写死为 `C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。以下旧的“R-05/R-08”修正注保留为历史。
+> **2026-10-17 D1–D4 第三次定点修正注（N-01/N-02/N-03/N-08，当前有效）**：本册把 `InventoryReservation` overcommit 与 lookup 改为按 payer×commodity **全地点**汇总 ACTIVE 预留；W1/W2b/W3 共享 `WagePayerLocationPrecheck`；`ShareTuple` 纳入 `location`；共享 economy 文件交接顺序写死为 `C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。以下旧的“R-05/R-08”修正注保留为历史。
 >
 > **2026-10-17 D1–D4 独立复核局部修正注（R-01/R-05/R-08/R-10/R-15/R-16，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：`AssetKind` 只用 `SMALL_TOOL`/`LARGE_TOOL`，二者分别定义 horizon，`TOOL` 输入具名拒；W3 在 lookup/支付前按 payer 聚合，跨 settlement location 整组拒绝；`AccountSession` 是账户余额/冻结权威；`OwnershipStake.location` 的构造/seed 入口在 D4-I 全部列明；`requestedScale` 默认 1 只留“已存在单实例且无请求”兼容路径；location 采用规范 `<q>_<r>` 格式；`WagePayableInventoryLookup.java` 唯一新增/实现 owner = D4-I，W3 只消费。旧正文保留为历史 provenance。
 
@@ -552,7 +552,7 @@ interface WagePayableInventoryLookup {
 - **输出**：该付款人**最终可支付**的逐商品数量（毫商品单位），按 `CommodityId.value` 升序冻结为不可变表；只保留 `>0` 的项，缺项 = 0。**计算时减去该 payer 全部地点的 ACTIVE `InventoryReservation`，不是只减 `settlementLocation` 的预留**；`settlementLocation` 只作为本次结算/W3 预算分组的上下文，不把其他地点的预留当可花。
 - **`Optional.empty()`（R-05，写死）**：仅当 ① D4 lookup 尚未接线/明确 disabled；② payer 无法解析为已登记家户账户（`AccountSession` 无该户）；或 ③ 实现明确不可用。**不是“余额为 0”**。商品余额为 0、没有 ACTIVE `InventoryReservation`、没有某商品或该地点当前无货 ⇒ 返回**空 `Map`**。location 为 `null`/`UNSPECIFIED`/非法 `<q>_<r>` ⇒ 不进入 lookup，按 `asset-location-missing` fail-closed。
 - **空 `Map`**：读口可用，但该 payer×location 没有任何可支付商品（与 `Optional.empty()` 严格区分）。
-- **payer 级地点预检由 W1/W2b/W3 的共享 `WagePayerLocationPrecheck` 负责**：D4 lookup 不负责合并/拆分多地点义务；任何消费者若发现同一 payer 当前操作涉及 >1 个 settlement location，必须在 lookup/候选成本/匹配/支付前按上下文拒绝或 skip（W3 整组 `wage-payer-location-unsupported`；W1/W2b 候选不可行/skip），不得先各地点 lookup 一次。
+- **payer 级地点预检由 W1/W2b/W3 的共享 `WagePayerLocationSnapshot`/`WagePayerLocationPrecheck` 负责**：D4 lookup 不负责合并/拆分多地点义务；snapshot 必须包含 payer 当前所有已有 unit/roster/posting 地点 ∪ 候选/本次地点；>1 settlement location 时必须在 lookup/候选成本/匹配/支付前按上下文拒绝或 skip（W3 整组 `wage-payer-location-unsupported`；W1/W2b 候选不可行/skip），不得只传候选地点或先各地点 lookup 一次。
 - **W1/W2b/W3 不二次扣减（库存腿）**：三者只能把该返回值当作共享库存预算；不得再用 `AccountSession` 的**商品**余额、`frozenGoods`、`OwnershipStake` 或 `cycleInputUsedMilli` 对库存腿做第二次减法。货币腿仍按 D3 直接用 `AccountSession` 的 `money − frozenMoney`，不受本条影响。
 - **唯一实现 owner（R-16）**：`WagePayableInventoryLookup.java` 由 **D4-I 唯一新增/实现**；W1/W2b/W3 只消费 D4-I 已编译的读口，不新增/不实现该文件，不复制第二套库存减法。批次 D4-I→D4-T→W3（W1/W2b 在 W2a→W1→W2b 内先完成读口消费面，D4-I 交付后再做真实库存读口联调）。
 - **W3 不重定价**：lookup 只回答数量；零价/缺价/抵物折价由 W3 的 D3 §6.4 处理，D4 不内置价格。
@@ -608,7 +608,7 @@ W3 对本次 tick 的全部工资义务先按 payer 聚合，再做地点预检�
 
 ### 7.4 同 payer × location 预算（B4）
 
-- **首期唯一合法形态（R-05/N-01）**：同一 `(payer, settlementLocation)` 的工资义务共享一份库存预算；该组只调用一次 lookup。W3 在支付/lookup 前按 **payer** 聚合全部工资义务；同一 payer 有 >1 个不同 settlement location ⇒ **整组**具名 `wage-payer-location-unsupported`，零支付/零 lookup/零新债/零 carry 变化，不做部分支付。即使只在一个 W3 地点结算，lookup 也必须先扣除该 payer 在其他地点的全部 ACTIVE 生产预留，其他地点预留不得成为本地点可支付库存。
+- **首期唯一合法形态（R-05/N-01/F-01）**：同一 `(payer, settlementLocation)` 的工资义务共享一份库存预算；该组只调用一次 lookup。W1/W2b/W3 使用同一 `WagePayerLocationSnapshot`（payer 当前全部已有 unit/roster/posting 地点 ∪ 候选/本次地点）；同一 payer 合并后 >1 个不同 settlement location ⇒ W1/W2b 候选不可行/skip、W3 **整组**具名 `wage-payer-location-unsupported`，零支付/零 lookup/零新债/零 carry 变化，不做部分支付。即使只在一个 W3 地点结算，lookup 也必须先扣除该 payer 在其他地点的全部 ACTIVE 生产预留，其他地点预留不得成为本地点可支付库存。
 - **不得跨格合并/抵付**：不得把两个 location 的库存合并，也不得用 A 格库存抵 B 格工资。
 - **账户权威**：`AccountSession` 是户级余额/冻结的唯一读面；同一户在不同 location 的义务不得各读一份同一余额后重复付。W1/W2b/W3 共享 `WagePayerLocationPrecheck`；首期 W3 用整组拒绝消除多地点义务风险，lookup 仍按全地点预留扣除消除跨地点生产占用风险。
 - 工资义务的稳定序仍由 D3 负责：`(unit, role, household)` 升序；D4 只提供库存预算。
@@ -618,7 +618,7 @@ W3 对本次 tick 的全部工资义务先按 payer 聚合，再做地点预检�
 | 词 | 级别 | 语义 |
 |---|---|---|
 | `wage-inventory-scope-unavailable` | INFO（D3 非失败标记） | D4 lookup 未接/不可用；货币腿仍可付，库存腿全部跳过，余款成债；不得回退整账户余额 |
-| `wage-payer-location-unsupported` | INFO/业务拒绝 | 同一 payer 当前操作涉及 >1 个 settlement location；W3 在任何 lookup/支付前整组拒绝，W1/W2b 候选不可行/skip；零部分支付/零 lookup/零新债/零 carry 变化 |
+| `wage-payer-location-unsupported` | INFO/业务拒绝 | 同一 payer 的现有 unit/roster/posting 地点 ∪ 候选/本次地点合并后 >1 settlement location；W3 在任何 lookup/支付前整组拒绝，W1/W2b 候选不可行/skip；零部分支付/零 lookup/零新债/零 carry 变化 |
 | `asset-kind-retired:TOOL` | INFO/解析拒绝 | 已退役 `TOOL` 输入；不得静默映射为 `SMALL_TOOL`/`LARGE_TOOL` |
 | `wage-barter-price-missing:<commodity>` | INFO skip | W3 缺价/0 价；该商品不抵付，债务不消失 |
 | `wage-barter-discount-zero:<commodity>` | INFO skip | 折后单位价值 ≤0；该商品不抵付 |
@@ -758,7 +758,7 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 | P24 | `OwnershipStake.location` 全入口（R-08） | `rg -n 'new OwnershipStake' simos-economy/src/main simos-app/src/main` 的每个构造点都带 location；`EconomySeeder` 每条 `assetShares` seed 都带合法 location；编译通过且创世不出现 `asset-location-missing`；漏一入口 ⇒ 红 |
 | P24b | `OwnershipStakeBook.ShareTuple` 纳入 location（N-03） | `ShareTuple`/`buildTupleIndex`/Move/split/rebuild/transfer 的合并键包含 `ProductionLocation`；A/B 两份同 industry/asset/owner/operator/kind 但 location 不同的份额，经 split/merge/rebuild 后仍是两行，location 逐值不变；同地点份额才合并。源码核对点：`OwnershipStakeBook.java:247-252,371-374,486-489` |
 | P25 | location 格式（R-15） | `foo`、`1`、`1_`、`a_b`、`01_2`、`+1_2`、`-0_1` 均 ⇒ `asset-location-missing`；`0_0`/`-3_2` 合法；非法值不得进入 allocation/lookup |
-| P26 | W1/W2b/W3 共享 payer 预检（N-02） | 同一 payer 两 settlement location：W1 候选不可行、W2b 候选 skip、W3 整组 `wage-payer-location-unsupported`；三者都在 lookup 前失败，均零 lookup；不得出现 W1/W2b 各读同一户级余额 |
+| P26 | W1/W2b/W3 共享 payer 预检（N-02/F-01） | 已有 unit A（location A）+ candidate B（location B）：W1/W2b 必须用 `{A,B}` 在候选阶段即不可行/skip，W3 整组 `wage-payer-location-unsupported`；三者都在 lookup 前失败，均零 lookup；不得只传 B 导致候选 OK |
 
 ### 10.2 负向 / 变异判据
 
@@ -786,7 +786,7 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 | 跨格工资预算合并/跨格抵付 | P18 |
 | `InventoryReservation` overcommit 或 lookup 只按当前 location 汇总预留 | P13/P18c |
 | 把其他地点 ACTIVE 预留当作本地点可支付库存 | P18c |
-| W1/W2b 不做 payer 地点预检、先 lookup 再估价/匹配 | P26/P39b |
+| W1/W2b 只传候选地点、不并入已有 unit/roster/posting 地点 | P26/P39b |
 | 用 `HashMap` 遍历决定并列/余数 | P21 |
 | 漏掉 `OwnershipStake.location` 或 grant interval 的 codec/ChangeSet 字段 | P21 |
 | 把 `asset-scope-shared:awaiting-D4` 当 D4 完成后的正常运行词 | §6 文档验收 + 扫描 |
@@ -896,7 +896,7 @@ A 的 progress/经验/投入/账户与 B 的 grant 同 revision；若 B 任一�
 | **W3（后续）** | **只消费 D4-I 已编译的 `WagePayableInventoryLookup` 读口**与既有 D3 契约；在 D4-I/D4-T 后串行开始 | **不新增/不实现 `WagePayableInventoryLookup.java`**；不实现第二套库存减法；W3 在 lookup/支付前按 payer 聚合，同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付；不改 D4 占用/grant 文件；W3 的支付/抵物/债务公式仍按 D3/U23 |
 | **R2 关闭** | D4-T 结果 + 控制方复核 | 只有在 §6.2 全部门通过后，才可删除 `asset-scope-shared:awaiting-D4` 并声明 R2 完整修复；D4-D0 本身不关闭 R2 |
 
-**批次顺序**：D4-D0（本文）→ **共享 economy 文件交接：C0/C0-A → C2 → W2a → W1 → W2b** → D4-I（economy 编译通过）→ D4-T（独立测试，含原 R2 复现）→ 控制方复核 → 才允许 W3 接入与 R2 关闭。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；D4-I 必须等 C2/W2a/W1/W2b 全部交账停手后开工，D4-I 不并行碰 D3/W3 文件；W3 不并行碰 D4 状态文件。
+**批次顺序（F-02，当前有效）**：D4-D0（本文）→ **共享 economy 文件交接：C0/C0-A → C2 → D4-I（economy 编译通过）→ D4-T（独立测试，含原 R2 复现）→ W2a → W1 → W2b → W3**。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；D4-I 必须等 C2 交账停手后开工，W2a/W1/W2b 必须等 D4-I 的 `WagePayableInventoryLookup` 已编译、D4-T 交账后开始；W3 最后。D4-I 不并行碰 D3/W3 文件；W3 不并行碰 D4 状态文件。旧 N-08 顺序（W2a/W1/W2b 先于 D4-I）已由本顺序取代。
 
 > **`EconomySeeder.java` 的串行边界**：该文件会出现在 C0-A（仅 `AssetKind` seed 字面量）、C3（名册/装配）与 D4-I（`OwnershipStake` seed 的 `location`）三个不同批次，但**绝不允许并行**；每次只允许当前批次 owner 按列明字段改，前一 owner 交账并停手后下一 owner 才可开工。C0-A 不写 location，D4-I 不重写名册/装配语义。
 

@@ -201,7 +201,7 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
   - R-16：`WagePayableInventoryLookup.java` 唯一新增/实现 owner = D4-I；W3 只消费已编译读口；批次 D4-I→D4-T→W3。
   - R-17：D1 末尾补未实现/未编译/未验证声明。
   - R-18：replan Phase W 标旧顺序并被 W2a→W1→W2b→W3→W4→W5 局部取代；status 组件号更正。
-- **共享 economy 文件 owner 交接顺序（N-08）**：`C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。
+- **共享 economy 文件 owner 交接顺序（N-08）**：`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`；C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。
 - **未做/未验证**：R-01..R-18 的修正仍只是设计文字；未实现、未编译、未跑测试/仿真/门禁，未验证任何数值例；未修 R2；`WagePayableInventoryLookup`/`DebtSource`/D4 occupancy 均未落形。
 - **下一步**：对修正后的 D1–D4 做独立复评；通过后才派 D4-I（唯一写代码 owner，只编译）→ D4-T（独立测试）→ W3；任何提交/同步按另行授权。
 
@@ -217,6 +217,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **N-05**：`DebtSource` 写入点/owner 补全：普通贷款/市场延期/铸币 = `ORDINARY_LOAN`；迁移/合户逐值保留 source；seed/codec/ChangeSet 显式 source；`LEGACY_UNKNOWN` 不冒充工资债；P29b/负向判据。
 - **N-06（P2）**：D3 删除“D4 正文仍未完成/本次不修改 replan”旧句，改为当前现状：D4 已落盘、replan 已同步、lookup 未实现。
 - **N-07（P2）**：D1 U14/U15 blockquote 去控制方括注，原文逐字保留；解释移到引文外的控制方说明。
-- **N-08（P2）**：共享 economy 文件 owner 交接顺序写死为 `C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；C1/C3 不插入共享 economy 文件；C2/W2a/W2b/D4-I 不并行改同一 economy 文件。
+- **N-08（P2）**：共享 economy 文件 owner 交接顺序写死为 `C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`；C1/C3 不插入共享 economy 文件；C2/W2a/W2b/D4-I 不并行改同一 economy 文件。
 - **N-09（P2）**：`SurvivalOutlookRequest.maxCombinations`（工程默认 4096，可配置，>0）限制确定性 DFS 枚举；超限 `survival-combination-limit` fail-closed，不返回截断 best/idleEligible；P50/负向判据。
 - **未做/未验证**：仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何 N 判据；未提交/推送/同步主树。
+
+## 十五、2026-10-17 终局复核 F-01..F-04 定点修正记录
+
+> **性质**：只改 D1/D2/D3/D4、replan 与本 status；未改代码/测试，未跑 Maven/测试/仿真/门禁，未提交/推送/同步主树。
+
+- **F-01**：`WagePayerLocationPrecheck` 输入升级为 `WagePayerLocationSnapshot`：`existingSettlementLocations`（当前 revision 该 payer 全部已有 production unit/roster/posting 地点）+ `candidateSettlementLocations`（候选/本次 unit 地点），由 W2a 唯一实现；W1/W2b/W3 均用完整集合。已有 unit A + candidate B ⇒ W1/W2b 候选立即不可行/skip、W3 整组拒绝，均不 lookup。D3 §5.1/§5.2/§6.2/§6.9/§6.9.1、D4 §7.4/§7.5、D2 §10.1 与 P22/P26/P39b 同步。
+- **F-02**：共享 economy 文件 owner 交接顺序改为 **`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`**；W1/W2b 在 D4-I 交付 `WagePayableInventoryLookup` 后开始，W3 最后。旧 N-08 顺序（W2a/W1/W2b 先于 D4-I）已作废，仅作历史。D2 §13、D3 §9.1、D4 §11、replan Phase W/A、本 status 当前段落统一。
+- **F-03**：D3-I3/I25 改为 W1/W2b/W3 共用 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；W1/W2b 候选不可行/skip、W3 整组 `wage-payer-location-unsupported`，均零 lookup/零部分支付/零新债/零 carry 变化。
+- **F-04**：新增 W2b 唯一 pure `NextTickIncomeProjection`（`time/NextTickIncomeProjection.java`）：输入 D2 cycle `Prospect`/候选 + `nextTick` + cycleStart/End + locked quote/target + 下一 tick 劳动计划，输出下一 tick 可交付 `expected*` 与 `incomeAvailableAtTick`。cycleEnd > nextTick 的 product share 本 tick 为 0；cycleEnd <= nextTick 才可计。缺 cycle 边界/quote/target/劳动计划 ⇒ `survival-income-projection-missing`/`survival-income-timing-unknown` fail-closed；D2 §8.2/P23、D3 §2.5.1.0/P51 同步。
+- **未做/未验证**：F-01..F-04 仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何判据；未提交/推送/同步主树。
