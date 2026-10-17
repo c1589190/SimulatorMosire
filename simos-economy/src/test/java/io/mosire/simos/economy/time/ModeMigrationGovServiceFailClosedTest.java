@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -114,7 +115,8 @@ class ModeMigrationGovServiceFailClosedTest {
               "other-free-work",
               200L,
               1L,
-              LaborCommitmentKind.PRODUCTION));
+              LaborCommitmentKind.PRODUCTION,
+              java.util.Optional.of(ProductionRoleId.parse("operator"))));
     }
     EconomyData base = base(commitments);
     EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
@@ -155,7 +157,15 @@ class ModeMigrationGovServiceFailClosedTest {
   void migrationStillRunsForSourceWithOnlyProductionCommitment() {
     HouseholdLaborCommitment legacyProduction =
         new HouseholdLaborCommitment(
-            ALLOC, LOT, SOURCE, HouseholdActors.of(SOURCE), "free-work", 600L, 1L);
+            ALLOC,
+            LOT,
+            SOURCE,
+            HouseholdActors.of(SOURCE),
+            "free-work",
+            600L,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            java.util.Optional.of(ProductionRoleId.parse("operator")));
     assertThat(legacyProduction.kind()).isEqualTo(LaborCommitmentKind.PRODUCTION);
     EconomyData base = base(Map.of(ALLOC, legacyProduction));
     EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
@@ -215,7 +225,17 @@ class ModeMigrationGovServiceFailClosedTest {
 
   private static HouseholdLaborCommitment commitment(LaborCommitmentKind kind, long laborMilli) {
     return new HouseholdLaborCommitment(
-        ALLOC, LOT, SOURCE, HouseholdActors.of(SOURCE), "free-work", laborMilli, 1L, kind);
+        ALLOC,
+        LOT,
+        SOURCE,
+        HouseholdActors.of(SOURCE),
+        "free-work",
+        laborMilli,
+        1L,
+        kind,
+        kind == LaborCommitmentKind.PRODUCTION
+            ? java.util.Optional.of(ProductionRoleId.parse("operator"))
+            : java.util.Optional.empty());
   }
 
   private static EconomyData base(Map<LaborAllocationId, HouseholdLaborCommitment> commitments) {

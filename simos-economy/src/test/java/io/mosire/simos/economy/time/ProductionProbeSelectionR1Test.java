@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -36,6 +37,7 @@ import io.mosire.simos.production.contract.ExpressionDefinition;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionCreationRequest;
 import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExecutionOutcome;
@@ -349,10 +351,15 @@ class ProductionProbeSelectionR1Test {
                             HouseholdActors.of(MASTER_LOW),
                             "mode:" + planId.value())),
                     Long.MAX_VALUE,
-                    Map.of(MASTER_LOW, laborMilli),
+                    List.of(
+                        new ParticipantContribution(
+                            MASTER_LOW, ProductionRoleId.parse("operator"), laborMilli)),
                     Map.of(AssetKind.WORKSHOP, 100L),
                     Map.of(),
-                    ExternalAttributeFacts.EMPTY));
+                    ExternalAttributeFacts.EMPTY,
+                    Map.of(),
+                    Map.of(MASTER_LOW, laborMilli),
+                    Map.of()));
     return executed.receipt().grossOutput().getOrDefault(GRAIN, 0L);
   }
 
@@ -399,13 +406,20 @@ class ProductionProbeSelectionR1Test {
     OwnershipStake workshopShare =
         new OwnershipStake(
             OwnershipStake.idOf(
-                id, AssetKind.WORKSHOP, operator, operator, AssetRightKind.OWNED, 0L),
+                id,
+                AssetKind.WORKSHOP,
+                operator,
+                operator,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             id,
             AssetKind.WORKSHOP,
             operator,
             operator,
             1L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     Map<AssetShareId, OwnershipStake> shares = Map.of(workshopShare.id(), workshopShare);
     HouseholdEconomy row = row(MASTER_LOW, 10_000L, Map.of());
     Map<HouseholdId, HouseholdEconomy> households = Map.of(MASTER_LOW, row);
@@ -440,6 +454,7 @@ class ProductionProbeSelectionR1Test {
         Optional.of(MODE),
         MODE.value(),
         MASTER_LOW,
+        ProductionRoleId.parse("operator"),
         world.session());
   }
 
@@ -483,13 +498,20 @@ class ProductionProbeSelectionR1Test {
     OwnershipStake workshop =
         new OwnershipStake(
             OwnershipStake.idOf(
-                id, AssetKind.WORKSHOP, operator, operator, AssetRightKind.OWNED, 0L),
+                id,
+                AssetKind.WORKSHOP,
+                operator,
+                operator,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             id,
             AssetKind.WORKSHOP,
             operator,
             operator,
             3L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     Map<AssetShareId, OwnershipStake> shares = Map.of(workshop.id(), workshop);
 
     MarketTable market = market();
@@ -571,13 +593,21 @@ class ProductionProbeSelectionR1Test {
     ActorRef actor = HouseholdActors.of(household);
     OwnershipStake share =
         new OwnershipStake(
-            OwnershipStake.idOf(planId, AssetKind.WORKSHOP, actor, actor, AssetRightKind.OWNED, 0L),
+            OwnershipStake.idOf(
+                planId,
+                AssetKind.WORKSHOP,
+                actor,
+                actor,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             planId,
             AssetKind.WORKSHOP,
             actor,
             actor,
             100L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     return Map.of(share.id(), share);
   }
 

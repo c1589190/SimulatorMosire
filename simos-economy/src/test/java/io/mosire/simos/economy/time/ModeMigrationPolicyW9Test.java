@@ -19,6 +19,7 @@ import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -428,7 +429,7 @@ class ModeMigrationPolicyW9Test {
                         "no-slots",
                         new RegimeId("household"),
                         10L,
-                        Map.of(AssetKind.TOOL, 120L),
+                        Map.of(AssetKind.SMALL_TOOL, 120L),
                         Map.of(),
                         0L,
                         1_000L,
@@ -473,7 +474,7 @@ class ModeMigrationPolicyW9Test {
   /** {@code supportedTierIndex} 的薄封装（只为让上面的逐值表读起来像表）。 */
   private static int tier(IndustryDefinitionView industry, long laborMilli, long carriedToolMilli) {
     Map<AssetKind, Long> carried =
-        carriedToolMilli > 0L ? Map.of(AssetKind.TOOL, carriedToolMilli) : Map.of();
+        carriedToolMilli > 0L ? Map.of(AssetKind.SMALL_TOOL, carriedToolMilli) : Map.of();
     return ModeMigrationPolicy.supportedTierIndex(industry, laborMilli, carried);
   }
 
@@ -490,12 +491,12 @@ class ModeMigrationPolicyW9Test {
     ActorRef other = HouseholdActors.of(HouseholdId.parse("hh-w9-carried-other"));
     IndustryId industry = IndustryHexKeys.id("carried-w9", H.q(), H.r());
 
-    OwnershipStake myTool = share(industry, AssetKind.TOOL, me, me, 5_000L, 0L);
+    OwnershipStake myTool = share(industry, AssetKind.SMALL_TOOL, me, me, 5_000L, 0L);
     OwnershipStake myLand = share(industry, AssetKind.LAND, me, me, 7L, 1L);
     OwnershipStake myShip = share(industry, AssetKind.SHIP, me, me, 300L, 2L);
     OwnershipStake myMachine = share(industry, AssetKind.MACHINE, me, me, 400L, 3L);
-    OwnershipStake notMine = share(industry, AssetKind.TOOL, other, other, 900L, 4L);
-    OwnershipStake claimedTool = share(industry, AssetKind.TOOL, me, me, 8_000L, 5L);
+    OwnershipStake notMine = share(industry, AssetKind.SMALL_TOOL, other, other, 900L, 4L);
+    OwnershipStake claimedTool = share(industry, AssetKind.SMALL_TOOL, me, me, 8_000L, 5L);
     OwnershipStake emptyCattle = share(industry, AssetKind.CATTLE, me, me, 0L, 6L);
 
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
@@ -513,19 +514,20 @@ class ModeMigrationPolicyW9Test {
 
     assertThat(carried)
         .as("★ 只有工具与可移动自有份额算作业资本：5,000 工具份额 + 2,000 工具商品 = 7,000；粮食不是作业资本")
-        .containsExactlyInAnyOrderEntriesOf(Map.of(AssetKind.TOOL, 7_000L, AssetKind.SHIP, 300L));
+        .containsExactlyInAnyOrderEntriesOf(
+            Map.of(AssetKind.SMALL_TOOL, 7_000L, AssetKind.SHIP, 300L));
     assertThat(carried)
         .as("★ 不可移动的 LAND 不计（「带不走」的唯一拼写点 = isMobileAsset）")
         .doesNotContainKey(AssetKind.LAND);
     assertThat(carried).as("★ 被既有组织/在产 unit 占用的份额不计（claimed）").doesNotContainKey(AssetKind.MACHINE);
-    assertThat(carried.get(AssetKind.TOOL))
+    assertThat(carried.get(AssetKind.SMALL_TOOL))
         .as("★ 900 毫别人的工具 + 8,000 毫被占用的工具都不得混进来")
         .isEqualTo(7_000L);
     Map<AssetKind, Long> nothingClaimed =
         ModeMigrationPolicy.carriedCapitalByKind(household, shares, Set.of(), Map.of());
     assertThat(nothingClaimed)
         .as("★ 去掉 claimed 之后，那份 8,000 毫工具份额与 400 毫机器份额都计入（判据是 claimed，不是资产种类）")
-        .containsEntry(AssetKind.TOOL, 13_000L)
+        .containsEntry(AssetKind.SMALL_TOOL, 13_000L)
         .containsEntry(AssetKind.MACHINE, 400L);
   }
 
@@ -536,9 +538,20 @@ class ModeMigrationPolicyW9Test {
       ActorRef operator,
       long quantity,
       long sequence) {
+    ProductionLocation location = locationOf(industry);
     AssetShareId id =
-        OwnershipStake.idOf(industry, asset, owner, operator, AssetRightKind.OWNED, sequence);
-    return new OwnershipStake(id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED);
+        OwnershipStake.idOf(
+            industry, asset, owner, operator, AssetRightKind.OWNED, location, sequence);
+    return new OwnershipStake(
+        id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED, location);
+  }
+
+  /** 测试事实：产业 id 的 {@code @<q>_<r>} 格段就是本夹具的地点（不调用生产的 ofPlan）。 */
+  private static ProductionLocation locationOf(IndustryId industry) {
+    return ProductionLocation.parse(
+        IndustryHexKeys.hexKeyOf(industry)
+            .orElseThrow(
+                () -> new IllegalArgumentException("fixture industry lacks a hex: " + industry)));
   }
 
   // ── §D 档位 → 落点位置（升序位阶）──────────────────────────────────────────────────────

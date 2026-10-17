@@ -21,6 +21,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -598,9 +600,22 @@ class D031P1AuthoritySwitchTest {
   private static OwnershipStake stake(ActorRef operator, long workshops) {
     var id =
         OwnershipStake.idOf(
-            CRAFT, AssetKind.WORKSHOP, operator, operator, AssetRightKind.OWNED, 0L);
+            CRAFT,
+            AssetKind.WORKSHOP,
+            operator,
+            operator,
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"),
+            0L);
     return new OwnershipStake(
-        id, CRAFT, AssetKind.WORKSHOP, operator, operator, workshops, AssetRightKind.OWNED);
+        id,
+        CRAFT,
+        AssetKind.WORKSHOP,
+        operator,
+        operator,
+        workshops,
+        AssetRightKind.OWNED,
+        new ProductionLocation("0_0"));
   }
 
   private static HouseholdLaborCommitment commitment(
@@ -616,7 +631,9 @@ class D031P1AuthoritySwitchTest {
         operator,
         ProductionUnitId.idOf(CRAFT, operator).value(),
         laborMilli,
-        1L);
+        1L,
+        LaborCommitmentKind.PRODUCTION,
+        Optional.of(ProductionRoleId.parse("operator")));
   }
 
   private static HouseholdEconomy row(HouseholdId household, CohortKey view) {

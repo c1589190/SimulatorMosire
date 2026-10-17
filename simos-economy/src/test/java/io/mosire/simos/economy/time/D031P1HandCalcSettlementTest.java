@@ -20,6 +20,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -510,18 +512,33 @@ class D031P1HandCalcSettlementTest {
     OwnershipStake workshops =
         new OwnershipStake(
             OwnershipStake.idOf(
-                industry.id(), AssetKind.WORKSHOP, OPERATOR, OPERATOR, AssetRightKind.OWNED, 0L),
+                industry.id(),
+                AssetKind.WORKSHOP,
+                OPERATOR,
+                OPERATOR,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             industry.id(),
             AssetKind.WORKSHOP,
             OPERATOR,
             OPERATOR,
             WORKSHOPS,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     HouseholdEconomy row =
         new HouseholdEconomy(HOUSEHOLD, VIEW, 100L, LABOR_MILLI, 1000, 0L, Map.of(), Map.of(), 0L);
     HouseholdLaborCommitment commitment =
         new HouseholdLaborCommitment(
-            ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), laborMilli, 1L);
+            ALLOCATION,
+            LOT,
+            HOUSEHOLD,
+            OPERATOR,
+            UNIT.value(),
+            laborMilli,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator")));
     // ★★ <b>D-032 T2b 更新（测试面欠账，不是放宽）</b>：现扣周期投入**从 relation 指名的供方账上出**
     //   （`EconomySettlement.drawCycleInputs` 的 H3 口径）⇒ 声明了 `cycleInputPerUnit` 的世界**必须**有这条
     //   relation，且供方要指向**真持有粮的那一户**（`HOUSEHOLD_ACTOR`）。旧夹具没有 relation ⇒ 可供量恒 0

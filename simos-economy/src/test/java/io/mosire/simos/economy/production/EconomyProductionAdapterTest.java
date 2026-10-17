@@ -86,7 +86,7 @@ class EconomyProductionAdapterTest {
     assertThat(view.laborPerUnit()).isEqualTo(120L);
     assertThat(view.outputPerUnit()).containsExactly(Map.entry(GRAIN, 7L));
     assertThat(view.cycleInputPerUnit())
-        .containsExactly(Map.entry(AssetKind.TOOL, Map.of(GRAIN, 1L)));
+        .containsExactly(Map.entry(AssetKind.SMALL_TOOL, Map.of(GRAIN, 1L)));
     assertThat(view.slots()).hasSize(1);
     assertThat(view.slots().get(0).id()).isEqualTo(SocialClassId.POOR_PEASANT);
     assertThat(view.slots().get(0).name()).isEqualTo("贫农");
@@ -182,7 +182,7 @@ class EconomyProductionAdapterTest {
             40L,
             120L,
             Map.of(GRAIN, 7L),
-            Map.of(AssetKind.TOOL, Map.of(GRAIN, 1L)),
+            Map.of(AssetKind.SMALL_TOOL, Map.of(GRAIN, 1L)),
             List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 1_000)),
             new AllocationRule.Split(600, 400),
             new MoneyOutput(Map.of(SILVER, 5L)),

@@ -194,10 +194,24 @@ class MarketDemandBookTest {
             Map.of(),
             Map.of());
     AssetShareId shareId =
-        OwnershipStake.idOf(CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetRightKind.OWNED, 0L);
+        OwnershipStake.idOf(
+            CRAFT,
+            AssetKind.WORKSHOP,
+            ACTOR,
+            ACTOR,
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"),
+            0L);
     OwnershipStake share =
         new OwnershipStake(
-            shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, AssetRightKind.OWNED);
+            shareId,
+            CRAFT,
+            AssetKind.WORKSHOP,
+            ACTOR,
+            ACTOR,
+            1L,
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(GRAIN, 300L), Map.of(), Map.of(), Map.of());

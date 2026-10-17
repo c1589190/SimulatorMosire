@@ -41,6 +41,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.MarketMandateId;
@@ -54,6 +55,7 @@ import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -63,6 +65,9 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.api.stock.DeductionReason;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
+import io.mosire.simos.economy.model.AssetOccupancyStatus;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
@@ -77,6 +82,9 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
+import io.mosire.simos.economy.model.InventoryReservationStatus;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -85,8 +93,14 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.TransferRule;
+import io.mosire.simos.economy.model.WageCarryKey;
+import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
@@ -243,6 +257,11 @@ class EconomyRoundTripTest {
   private static final ProductionUnitId FARM_UNIT =
       ProductionUnitId.idOf(FARM, NON_DEFAULT_OPERATOR);
 
+  /** D-032 C2/D3：单角色方案的稳定缺省角色 id（与 production 的 defaultOperator 同键）。 */
+  private static final ProductionRoleId OPERATOR_ROLE = ProductionRoleId.parse("operator");
+
+  private static final ProductionLocation FARM_LOCATION = new ProductionLocation("0_0");
+
   /** ★ R3B.1：assetShares 夹具的键（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_SHARE =
       OwnershipStake.idOf(
@@ -251,6 +270,7 @@ class EconomyRoundTripTest {
           NON_DEFAULT_OPERATOR,
           NON_DEFAULT_OPERATOR,
           AssetRightKind.OWNED,
+          FARM_LOCATION,
           0L);
 
   /** ★ R4-E2：后两个组件的夹具键。 */
@@ -545,8 +565,8 @@ class EconomyRoundTripTest {
    * 组件数**实测值**，两侧子集断言仍然双向成立 ⇒ 再动状态必须同步本用例。
    */
   @Test
-  void changeSetHasExactlyThirtyOneComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(31);
+  void changeSetHasExactlyThirtySevenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -584,6 +604,60 @@ class EconomyRoundTripTest {
   /** ★★ Z1：生产单元的效率累计夹具（五个字段全非零；域与 {@code FARM.cycleDays()==120}、{@code lpu==7} 相容）。 */
   private static ProductionEfficiencyState efficiencyState() {
     return new ProductionEfficiencyState(new PerCycleCarry(120_000L, 3L, 1L));
+  }
+
+  /** C2：最小自洽名册（恰好一个 organizer；角色与 production 默认角色同键）。 */
+  private static ProductionRoster roster() {
+    return new ProductionRoster(
+        FARM_UNIT, FARM, List.of(ProductionParticipant.of(KEY_HH, OPERATOR_ROLE, true, 1_000L)));
+  }
+
+  private static ProductionWageDefault wageDefault() {
+    return new ProductionWageDefault(FARM, OPERATOR_ROLE, MARKET, 5L, 1_000L);
+  }
+
+  private static ProductionWagePosting wagePosting() {
+    return new ProductionWagePosting(
+        FARM_UNIT,
+        OPERATOR_ROLE,
+        1_000L,
+        SILVER,
+        5L,
+        WageQuoteSource.SEED,
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        0L);
+  }
+
+  private static AssetOccupancyGrant assetOccupancy() {
+    return new AssetOccupancyGrant(
+        AssetOccupancyGrantId.idOf(FARM_UNIT, FARM_SHARE, 0L),
+        FARM_SHARE,
+        FARM_UNIT,
+        1L,
+        0L,
+        30L,
+        AssetOccupancyStatus.ACTIVE,
+        -1L);
+  }
+
+  private static InventoryReservation inventoryReservation() {
+    ActorRef payer = HouseholdActors.of(KEY_HH);
+    return new InventoryReservation(
+        InventoryReservationId.idOf(FARM_UNIT, payer, FARM_LOCATION, GRAIN, 0L),
+        FARM_UNIT,
+        payer,
+        FARM_LOCATION,
+        GRAIN,
+        1L,
+        0L,
+        30L,
+        InventoryReservationStatus.ACTIVE,
+        -1L);
   }
 
   private static EconomyData mutate(EconomyData base, String name) {
@@ -730,6 +804,33 @@ class EconomyRoundTripTest {
                           30L,
                           0L,
                           "round-trip-fixture")));
+      // ★★ D-032 C2/W2a/W2b/D4-Ib1：第 32–37 个组件。每个目标都非空，且键 == 值内身份。
+      case "productionRosters" -> {
+        ProductionRoster value = roster();
+        yield base.withProductionRosters(Map.of(value.unit(), value));
+      }
+      case "productionWageDefaults" -> {
+        ProductionWageDefault value = wageDefault();
+        yield base.withProductionWageDefaults(Map.of(value.key(), value));
+      }
+      case "productionWagePostings" -> {
+        ProductionWagePosting value = wagePosting();
+        yield base.withProductionWagePostings(Map.of(value.key(), value));
+      }
+      case "wageCarryRemainders" ->
+          base.withWageCarryRemainders(
+              Map.of(
+                  new WageCarryKey(
+                      FARM_UNIT, OPERATOR_ROLE, new HouseholdId("hh-wage-carry-roundtrip")),
+                  7L));
+      case "assetOccupancies" -> {
+        AssetOccupancyGrant value = assetOccupancy();
+        yield base.withAssetOccupancies(Map.of(value.id(), value));
+      }
+      case "inventoryReservations" -> {
+        InventoryReservation value = inventoryReservation();
+        yield base.withInventoryReservations(Map.of(value.id(), value));
+      }
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -785,6 +886,12 @@ class EconomyRoundTripTest {
       case "govMarketMandates" -> cs.govMarketMandates().changed();
       // ★★ W1 的第 40 个组件（见 mutate 的同名 case）
       case "marketRoundStats" -> cs.marketRoundStats().changed();
+      case "productionRosters" -> cs.productionRosters().changed();
+      case "productionWageDefaults" -> cs.productionWageDefaults().changed();
+      case "productionWagePostings" -> cs.productionWagePostings().changed();
+      case "wageCarryRemainders" -> cs.wageCarryRemainders().changed();
+      case "assetOccupancies" -> cs.assetOccupancies().changed();
+      case "inventoryReservations" -> cs.inventoryReservations().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -902,7 +1009,15 @@ class EconomyRoundTripTest {
    */
   static HouseholdLaborCommitment laborAllocation() {
     return new HouseholdLaborCommitment(
-        ALLOCATION, LOT, KEY_HH, NON_DEFAULT_OPERATOR, FARM_UNIT.value(), 60_000L, 1L);
+        ALLOCATION,
+        LOT,
+        KEY_HH,
+        NON_DEFAULT_OPERATOR,
+        FARM_UNIT.value(),
+        60_000L,
+        1L,
+        LaborCommitmentKind.PRODUCTION,
+        Optional.of(OPERATOR_ROLE));
   }
 
   /** ★ R3B.1 的资产份额夹具：键 == 值内 id、industry 存在；键与值都由 {@link #FARM_SHARE} 一处拼写。 */
@@ -914,7 +1029,8 @@ class EconomyRoundTripTest {
         NON_DEFAULT_OPERATOR,
         NON_DEFAULT_OPERATOR,
         1L,
-        AssetRightKind.OWNED);
+        AssetRightKind.OWNED,
+        FARM_LOCATION);
   }
 
   /**
@@ -1228,7 +1344,13 @@ class EconomyRoundTripTest {
         base.householdDebtRefs(),
         base.commodityFreightBaseMilli(),
         base.govMarketMandates(),
-        base.marketRoundStats());
+        base.marketRoundStats(),
+        base.productionRosters(),
+        base.productionWageDefaults(),
+        base.productionWagePostings(),
+        base.wageCarryRemainders(),
+        base.assetOccupancies(),
+        base.inventoryReservations());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {

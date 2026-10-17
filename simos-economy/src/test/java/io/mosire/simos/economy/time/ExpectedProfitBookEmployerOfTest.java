@@ -127,9 +127,20 @@ class ExpectedProfitBookEmployerOfTest {
       ActorRef operator,
       long quantity,
       long sequence) {
+    ProductionLocation location = locationOf(industry);
     AssetShareId id =
-        OwnershipStake.idOf(industry, asset, owner, operator, AssetRightKind.OWNED, sequence);
-    return new OwnershipStake(id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED);
+        OwnershipStake.idOf(
+            industry, asset, owner, operator, AssetRightKind.OWNED, location, sequence);
+    return new OwnershipStake(
+        id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED, location);
+  }
+
+  /** 测试事实：产业 id 的 {@code @<q>_<r>} 格段就是本夹具的地点（不调用生产的 ofPlan）。 */
+  private static ProductionLocation locationOf(IndustryId industry) {
+    return ProductionLocation.parse(
+        IndustryHexKeys.hexKeyOf(industry)
+            .orElseThrow(
+                () -> new IllegalArgumentException("fixture industry lacks a hex: " + industry)));
   }
 
   private static ProductionProcess unit(
@@ -145,19 +156,22 @@ class ExpectedProfitBookEmployerOfTest {
         Map.of());
   }
 
-  /** 一条按 labor 给本户发固定货币工资的关系：prospect 收入 = amount ⇒ 可反证选中的雇主 unit。 */
+  /**
+   * ★ D3 §2.2.1：运行时不得回读旧 {@code FIXED_MONEY_WAGE.fixedAmount}。本类只借一条**可计价收入**反证选中的 employer，故用
+   * {@code OUTPUT_SHARE} 的率作为各 unit 的可区分标记；收入 = 该 unit 毛值 × 率 ÷ 1000。
+   */
   private static ProductionRules wageRelation(
-      ProductionUnitId unitId, ActorRef operator, long amount) {
+      ProductionUnitId unitId, ActorRef operator, long ratePerMille) {
     CompensationRule rule =
         new CompensationRule(
-            RuleType.FIXED_MONEY_WAGE,
+            RuleType.OUTPUT_SHARE,
             new Payee.ToHousehold(WORKER),
-            Pool.FIXED_AMOUNT,
+            Pool.GROSS_OUTPUT,
             Weight.NONE,
-            0,
-            amount,
+            Math.toIntExact(ratePerMille),
+            0L,
+            Optional.of(GRAIN),
             Optional.empty(),
-            Optional.of(SILVER),
             10);
     return new ProductionRules(
         unitId, operator, new Payee.ToActor(operator), List.of(rule), operator, LaborSource.WAGE);
@@ -337,7 +351,7 @@ class ExpectedProfitBookEmployerOfTest {
     units.put(unitA.id(), unitA);
     units.put(unitB.id(), unitB);
     Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
-    relations.put(unitA.id(), wageRelation(unitA.id(), ESTATE_A, 100L));
+    relations.put(unitA.id(), wageRelation(unitA.id(), ESTATE_A, 223L));
     relations.put(unitB.id(), wageRelation(unitB.id(), ESTATE_B, 777L));
 
     ExpectedProfitBook.Prospect p =
@@ -368,7 +382,7 @@ class ExpectedProfitBookEmployerOfTest {
     units.put(directHit.id(), directHit);
     units.put(regimeMatch.id(), regimeMatch);
     Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
-    relations.put(directHit.id(), wageRelation(directHit.id(), ESTATE_A, 100L));
+    relations.put(directHit.id(), wageRelation(directHit.id(), ESTATE_A, 556L));
     relations.put(regimeMatch.id(), wageRelation(regimeMatch.id(), ESTATE_B, 777L));
 
     ExpectedProfitBook.Prospect p =
@@ -418,7 +432,7 @@ class ExpectedProfitBookEmployerOfTest {
     units.put(zeroRank2.id(), zeroRank2);
     units.put(usableRank1.id(), usableRank1);
     Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
-    relations.put(usableRank1.id(), wageRelation(usableRank1.id(), ESTATE_B, 500L));
+    relations.put(usableRank1.id(), wageRelation(usableRank1.id(), ESTATE_B, 794L));
 
     ExpectedProfitBook.Prospect p =
         prospect(base(industry, shares, units, relations), industry, shares, units, relations);

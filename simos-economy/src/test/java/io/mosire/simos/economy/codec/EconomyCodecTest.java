@@ -13,6 +13,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
@@ -33,6 +34,7 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.MarketZone;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -41,6 +43,9 @@ import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
+import io.mosire.simos.economy.model.AssetOccupancyStatus;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -50,9 +55,20 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
+import io.mosire.simos.economy.model.InventoryReservationStatus;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionParticipant;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
+import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
@@ -162,7 +178,15 @@ class EconomyCodecTest {
   /** ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_LAND_SHARE =
       OwnershipStake.idOf(
-          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, AssetRightKind.OWNED, 0L);
+          FARM,
+          AssetKind.LAND,
+          FARM_OPERATOR,
+          FARM_OPERATOR,
+          AssetRightKind.OWNED,
+          new ProductionLocation("0_0"),
+          0L);
+
+  private static final ProductionRoleId OPERATOR_ROLE = ProductionRoleId.parse("operator");
 
   // ── ★★ W1 收尾批（2026-10-11）：市场夹具（本文件原先**一个市场都没有**）───────────────────────────────
   //   为什么必须有：`MarketTable.isEmpty()` 是**派生判断**、不是状态组件 ⇒ 它一旦漏掉 `@JsonIgnore`，
@@ -855,7 +879,15 @@ class EconomyCodecTest {
     allocations.put(
         ALLOCATION,
         new HouseholdLaborCommitment(
-            ALLOCATION, LOT, FARM_HH, FARM_OPERATOR, FARM_UNIT.value(), 58_000L, 1L));
+            ALLOCATION,
+            LOT,
+            FARM_HH,
+            FARM_OPERATOR,
+            FARM_UNIT.value(),
+            58_000L,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator"))));
     // ★★ T2/R3B.2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Payee}）与**一条货币规则**
     //   （{@code commodity} 空 = `Optional` 的空侧）；空表会让那两处**永远不被走到**（"注册了却测不到"= 假覆盖）。
     //   ★ 键 / activity = unit id，operator 与 unit.operator 逐字相同（跨表守卫要求两处拼写一致）。
@@ -874,7 +906,8 @@ class EconomyCodecTest {
             FARM_OPERATOR,
             FARM_OPERATOR,
             1000L,
-            AssetRightKind.OWNED));
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0")));
     // ★ E1–E6：用 withX 逐组件搭（避免 28 参 record arity 漂移）。P2-A 已删 laborSupply / memberships。
     return EconomyData.empty()
         .withMeta(Optional.of(meta()))
@@ -898,7 +931,69 @@ class EconomyCodecTest {
                 MARKET,
                 roundStats(9L, 3_200L, 6_400L, 5_601L),
                 ZONE,
-                roundStats(11L, 900L, 1_800L, 1_200L)));
+                roundStats(11L, 900L, 1_800L, 1_200L)))
+        // ★★ D-032 C2/W2a/W2b/D4-Ib1：六个新组件都非空 ⇒ 键解析/线格式真的被走到。
+        .withProductionRosters(Map.of(FARM_UNIT, codecRoster()))
+        .withProductionWageDefaults(
+            Map.of(
+                new WageDefaultKey(FARM, OPERATOR_ROLE, MARKET),
+                new ProductionWageDefault(FARM, OPERATOR_ROLE, MARKET, 5L, 1_000L)))
+        .withProductionWagePostings(
+            Map.of(
+                new WagePostingKey(FARM_UNIT, OPERATOR_ROLE),
+                new ProductionWagePosting(
+                    FARM_UNIT,
+                    OPERATOR_ROLE,
+                    1_000L,
+                    CURRENCY,
+                    5L,
+                    WageQuoteSource.SEED,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L)))
+        .withWageCarryRemainders(
+            Map.of(
+                new WageCarryKey(FARM_UNIT, OPERATOR_ROLE, new HouseholdId("hh-codec-wage-carry")),
+                7L))
+        .withAssetOccupancies(Map.of(codecOccupancy().id(), codecOccupancy()))
+        .withInventoryReservations(Map.of(codecReservation().id(), codecReservation()));
+  }
+
+  private static ProductionRoster codecRoster() {
+    return new ProductionRoster(
+        FARM_UNIT, FARM, List.of(ProductionParticipant.of(FARM_HH, OPERATOR_ROLE, true, 1_000L)));
+  }
+
+  private static AssetOccupancyGrant codecOccupancy() {
+    return new AssetOccupancyGrant(
+        AssetOccupancyGrantId.idOf(FARM_UNIT, FARM_LAND_SHARE, 0L),
+        FARM_LAND_SHARE,
+        FARM_UNIT,
+        1L,
+        0L,
+        30L,
+        AssetOccupancyStatus.ACTIVE,
+        -1L);
+  }
+
+  private static InventoryReservation codecReservation() {
+    ActorRef payer = HouseholdActors.of(FARM_HH);
+    ProductionLocation location = new ProductionLocation("0_0");
+    return new InventoryReservation(
+        InventoryReservationId.idOf(FARM_UNIT, payer, location, GRAIN, 0L),
+        FARM_UNIT,
+        payer,
+        location,
+        GRAIN,
+        1L,
+        0L,
+        30L,
+        InventoryReservationStatus.ACTIVE,
+        -1L);
   }
 
   // ── ★★ W1 收尾批：市场夹具（两种形态 + 统计簿） ─────────────────────────────────────────────
@@ -983,7 +1078,17 @@ class EconomyCodecTest {
   private static HouseholdLaborCommitment laborCommitment(
       LaborAllocationId id, LaborCommitmentKind kind, long laborMilli) {
     return new HouseholdLaborCommitment(
-        id, LOT, FARM_HH, FARM_OPERATOR, FARM_UNIT.value(), laborMilli, 1L, kind);
+        id,
+        LOT,
+        FARM_HH,
+        FARM_OPERATOR,
+        FARM_UNIT.value(),
+        laborMilli,
+        1L,
+        kind,
+        kind == LaborCommitmentKind.PRODUCTION
+            ? Optional.of(ProductionRoleId.parse("operator"))
+            : Optional.empty());
   }
 
   /**
@@ -1159,7 +1264,7 @@ class EconomyCodecTest {
         new RegimeId("capitalist"),
         30L,
         Map.of(AssetKind.WORKSHOP, 1L), // ★ 产能锚：规模单位 = 1 座工坊
-        Map.of(AssetKind.TOOL, Map.of(GRAIN, 2L)),
+        Map.of(AssetKind.SMALL_TOOL, Map.of(GRAIN, 2L)),
         300L,
         1000L,
         Map.of(CLOTH, 5L),

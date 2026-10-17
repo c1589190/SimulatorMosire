@@ -20,7 +20,9 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.population.LotChange;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -258,7 +260,15 @@ class DeathDebtWriteOffTest {
             Map.of(
                 ALLOC,
                 new HouseholdLaborCommitment(
-                    ALLOC, LOT, DEBTOR, ESTATE, UNIT.value(), 60_000L, 1L)));
+                    ALLOC,
+                    LOT,
+                    DEBTOR,
+                    ESTATE,
+                    UNIT.value(),
+                    60_000L,
+                    1L,
+                    LaborCommitmentKind.PRODUCTION,
+                    Optional.of(ProductionRoleId.parse("operator")))));
   }
 
   /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */

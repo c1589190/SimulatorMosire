@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -122,13 +123,21 @@ class UnifiedBudgetNoDoubleBookingTest {
     // 一份 1,000 千分亩的 LAND 份额，industry = FARM（份额身份带产业键）。
     OwnershipStake farmLand =
         new OwnershipStake(
-            OwnershipStake.idOf(FARM, AssetKind.LAND, OPERATOR, OPERATOR, AssetRightKind.OWNED, 0L),
+            OwnershipStake.idOf(
+                FARM,
+                AssetKind.LAND,
+                OPERATOR,
+                OPERATOR,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             FARM,
             AssetKind.LAND,
             OPERATOR,
             OPERATOR,
             1_000L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> stakes =
         Map.of(farmLand.id(), farmLand);
 
@@ -166,7 +175,9 @@ class UnifiedBudgetNoDoubleBookingTest {
    * 每个 unit 的可用资产/产能规模 = 0（不再是各 1、合计 2）
    * </pre>
    *
-   * <p>★ <b>这不是完整 R2/D4</b>：多实例的真实实例/地点占用、占用期、释放与统一预算仍归 D4/A；本条只证明 "同一份资产不再被同 scope 的多个实例整池复制"。
+   * <p>★★ <b>D4-T 待重写（C4a 明确标 BLOCKED，不把旧 guard 当新路径通过）</b>：当前 {@code
+   * SettlementIndex.assetRejectionOf} 仍返回 {@code asset-scope-shared:awaiting-D4}；D4-Ib2a 的新多实例路径应以
+   * {@code asset-occupancy-request-missing:<unit>}（或真实占用分配）表达。生产修复前本条禁用，判据保留。
    *
    * <p>★ <b>判别力</b>：若实现把整池复制回每个 unit，{@code usableAssetsOf} 会重新出现 LAND=1,000、规模 变成 1+1=2 ⇒ 本条当场红。
    */
@@ -174,13 +185,21 @@ class UnifiedBudgetNoDoubleBookingTest {
   void r2SamePlanTwoInstancesNoLongerDoubleBookTheSameAssetStake() {
     OwnershipStake sharedLand =
         new OwnershipStake(
-            OwnershipStake.idOf(FARM, AssetKind.LAND, OPERATOR, OPERATOR, AssetRightKind.OWNED, 0L),
+            OwnershipStake.idOf(
+                FARM,
+                AssetKind.LAND,
+                OPERATOR,
+                OPERATOR,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             FARM,
             AssetKind.LAND,
             OPERATOR,
             OPERATOR,
             1_000L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> stakes =
         Map.of(sharedLand.id(), sharedLand);
 
@@ -195,20 +214,24 @@ class UnifiedBudgetNoDoubleBookingTest {
             Map.of(),
             Map.of(),
             Map.of(),
-            Map.of());
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            0L);
 
     assertThat(index.usableAssetsOf(first)).as("R2 修复后：第一个实例的可用资产为空（不再拿整份 1,000）").isEmpty();
     assertThat(index.usableAssetsOf(second)).as("R2 修复后：第二个实例的可用资产也为空").isEmpty();
-    assertThat(index.assetBudget().unallocated())
-        .as("★ 整池 1,000 保留在 unallocated（只读可见，不静默丢弃、不搬给任一实例）")
-        .containsEntry(
-            new AssetBudgetBook.AssetScope(FARM, OPERATOR), Map.of(AssetKind.LAND, 1_000L));
+    assertThat(index.d4AssetOccupancyBudget()).as("D4-Ib2a 统一占用预算必须在场").isPresent();
+    assertThat(index.d4AssetOccupancyBudget().orElseThrow().unallocated().values())
+        .as("★ 整池 1,000 保留在 D4 unallocated（只读可见，不静默丢弃、不搬给任一实例）")
+        .anySatisfy(kinds -> assertThat(kinds).containsEntry(AssetKind.LAND, 1_000L));
     assertThat(index.assetRejectionOf(first.id()))
-        .as("第一个实例得到具名拒绝")
-        .contains(AssetBudgetBook.SHARED_SCOPE_REJECTION);
+        .as("第一个实例得到 D4-Ib2a 具名拒绝 = 没有资产占用请求")
+        .contains("asset-occupancy-request-missing:" + first.id().value());
     assertThat(index.assetRejectionOf(second.id()))
-        .as("第二个实例得到同一个具名拒绝")
-        .contains(AssetBudgetBook.SHARED_SCOPE_REJECTION);
+        .as("第二个实例得到同一个 D4-Ib2a 具名拒绝")
+        .contains("asset-occupancy-request-missing:" + second.id().value());
 
     long firstScale = ProductionProcessBook.capacityScaleOf(first, plan(FARM), index);
     long secondScale = ProductionProcessBook.capacityScaleOf(second, plan(FARM), index);
@@ -227,6 +250,7 @@ class UnifiedBudgetNoDoubleBookingTest {
   private static LaborQueueBook.Offer offer(String unit, long netPerLaborScaled, long absorbable) {
     return new LaborQueueBook.Offer(
         new ProductionUnitId(unit),
+        ProductionRoleId.parse("operator"),
         Optional.empty(),
         unit,
         absorbable,

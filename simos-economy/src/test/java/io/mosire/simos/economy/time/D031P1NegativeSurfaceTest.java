@@ -23,6 +23,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -98,10 +100,9 @@ class D031P1NegativeSurfaceTest {
     assertThat(components)
         .as("★★ 旧定义表 industries/modes 必须从 economy 的完整状态里消失（定义权威在 production）")
         .doesNotContain("industries", "modes")
-        // ★★ D-032 T2b 更新（测试面欠账，不是放宽）：计数是"组件集没被悄悄塞回东西"的绊线，
-        //   迁移把生产定义/实例/进度三路迁走 ⇒ 37 → 33 → **31**（§14.3 原文的 37→33→31）。
-        //   实测 31（below 的失败原文逐名列出 31 个组件，与 migration 后的权威面一致）。
-        .hasSize(31);
+        // ★★ D-032 C2/W2a/W2b/D4-Ib1 更新：31 → 37。计数是"组件集没被悄悄塞回东西"的绊线；
+        //   新增的 32–37（名册/工资默认/工资岗位/进位/占用/预留）必须与 ChangeSet 同步。
+        .hasSize(37);
 
     List<String> methods = new ArrayList<>();
     for (Method method : EconomyData.class.getMethods()) {
@@ -343,7 +344,11 @@ class D031P1NegativeSurfaceTest {
               thrown ->
                   assertThat(thrown)
                       .isInstanceOf(IllegalStateException.class)
-                      .hasMessageContaining("生产单元指名的产业模板不存在"));
+                      .hasMessageContaining("生产单元指名的产业模板不存在"),
+              thrown ->
+                  assertThat(thrown)
+                      .isInstanceOf(IllegalStateException.class)
+                      .hasMessageContaining("asset-occupancy-unavailable"));
     } finally {
       stepper.close();
     }
@@ -551,16 +556,31 @@ class D031P1NegativeSurfaceTest {
     OwnershipStake cattle =
         new OwnershipStake(
             OwnershipStake.idOf(
-                FARM, AssetKind.CATTLE, OPERATOR, OPERATOR, AssetRightKind.OWNED, 0L),
+                FARM,
+                AssetKind.CATTLE,
+                OPERATOR,
+                OPERATOR,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             FARM,
             AssetKind.CATTLE,
             OPERATOR,
             OPERATOR,
             10L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     HouseholdLaborCommitment commitment =
         new HouseholdLaborCommitment(
-            ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), 30_000L, 1L);
+            ALLOCATION,
+            LOT,
+            HOUSEHOLD,
+            OPERATOR,
+            UNIT.value(),
+            30_000L,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator")));
     return EconomyData.empty()
         .withMeta(Optional.of(meta()))
         .withHouseholdEconomies(Map.of(HOUSEHOLD, row))

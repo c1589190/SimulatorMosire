@@ -79,7 +79,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
   void requiredWorkCapitalScaleIsTheFloorOfLaborOverPerUnitWithAFloorOfOne() {
     IndustryDefinitionView trade = MerchantTradeTemplate.industry(H2);
     long laborPerUnit = trade.recipe().laborPerUnit();
-    long toolPerUnit = trade.recipe().capacityPerUnit().get(AssetKind.TOOL);
+    long toolPerUnit = trade.recipe().capacityPerUnit().get(AssetKind.SMALL_TOOL);
 
     assertThat(laborPerUnit).as("★ 前置：trade 模板的劳动/规模是唯一拼写点给的（不写死）").isPositive();
     assertThat(toolPerUnit).as("★ 前置：作业资本那一维 = TOOL").isNotZero();
@@ -329,7 +329,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
     for (long carried : new long[] {0L, 120L, 7_000L, 200_000L}) {
       assertThat(
               ModeMigrationPolicy.supportedTierIndex(
-                  trade, belowOneUnit, Map.of(AssetKind.TOOL, carried)))
+                  trade, belowOneUnit, Map.of(AssetKind.SMALL_TOOL, carried)))
           .as(
               "labor=%d（&lt; laborPerUnit=%d ⇒ 规模 0）× 携带工具 %d ⇒ 档位必须 == 0（U5：规模 0 ⇒ 最低档）",
               belowOneUnit, laborPerUnit, carried)
@@ -343,10 +343,10 @@ class ModeMigrationWorkCapitalScaleW9fTest {
 
     // ★ 反面对照（判别力）：labor = 1 个规模单位 且 带足作业资本 ⇒ 档位可以 &gt; 0（证明上面那组不是"恒 0"的假绿）。
     long highCarried =
-        Math.multiplyExact(1_000L, trade.recipe().capacityPerUnit().get(AssetKind.TOOL));
+        Math.multiplyExact(1_000L, trade.recipe().capacityPerUnit().get(AssetKind.SMALL_TOOL));
     assertThat(
             ModeMigrationPolicy.supportedTierIndex(
-                trade, laborPerUnit, Map.of(AssetKind.TOOL, highCarried)))
+                trade, laborPerUnit, Map.of(AssetKind.SMALL_TOOL, highCarried)))
         .as("labor=1 单位规模 × 带足 %d 毫工具 ⇒ 档位允许 &gt; 0（否则 U5 那条判据是假的）", highCarried)
         .isGreaterThan(0);
   }
@@ -363,7 +363,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
         "custom-labor-per-unit",
         new RegimeId("household"),
         10L,
-        Map.of(AssetKind.TOOL, 1L),
+        Map.of(AssetKind.SMALL_TOOL, 1L),
         Map.of(),
         0L,
         laborPerUnit,

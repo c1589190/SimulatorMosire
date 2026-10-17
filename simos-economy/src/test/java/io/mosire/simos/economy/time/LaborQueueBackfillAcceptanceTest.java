@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.List;
 import java.util.Optional;
@@ -54,6 +55,7 @@ class LaborQueueBackfillAcceptanceTest {
   private static LaborQueueBook.Offer offer(String id, long netPerLaborScaled, long absorbable) {
     return new LaborQueueBook.Offer(
         /* unitId= */ unit(id),
+        /* role= */ ProductionRoleId.parse("operator"),
         /* modeId= */ Optional.empty(),
         /* rankModeKey= */ id,
         /* maxAbsorbableLaborMilli= */ absorbable,
@@ -100,7 +102,7 @@ class LaborQueueBackfillAcceptanceTest {
                 + "（旧口径「释放出来的时间留在空缺」在这里会给 C 0）")
         .isEqualTo(500L);
     assertThat(decisions.get(2).outcome())
-        .as("⑤ C 的结局是 GRANTED（不是 IDLE_BUDGET_EXHAUSTED —— 预算确有余量给它）")
+        .as("⑤ C 的结局是 GRANTED（不是 UNALLOCATED_LABOR —— 预算确有余量给它）")
         .isEqualTo("GRANTED");
 
     assertThat(decisions.stream().mapToLong(LaborQueueBook.Decision::grantedLaborMilli).sum())
@@ -112,7 +114,7 @@ class LaborQueueBackfillAcceptanceTest {
   }
 
   /**
-   * ★ 反向对照（同一套规则）：预算**小于**全部候选的可吸收量之和时，只有排在前面的人拿到， 后面的拿 0 且理由是具名的 {@code IDLE_BUDGET_EXHAUSTED} ——
+   * ★ 反向对照（同一套规则）：预算**小于**全部候选的可吸收量之和时，只有排在前面的人拿到， 后面的拿 0 且理由是具名的 {@code UNALLOCATED_LABOR} ——
    * 证明上面那条"落到 C 上 500"不是 "无脑给满"的假象。
    */
   @Test
@@ -125,7 +127,7 @@ class LaborQueueBackfillAcceptanceTest {
     assertThat(plan.decisions().get(1).grantedLaborMilli())
         .as("预算真的没了 ⇒ 第二条 0（不是「回填」能变出来的）")
         .isZero();
-    assertThat(plan.decisions().get(1).outcome()).isEqualTo("IDLE_BUDGET_EXHAUSTED");
+    assertThat(plan.decisions().get(1).outcome()).isEqualTo("UNALLOCATED_LABOR");
     assertThat(
             plan.decisions().stream().mapToLong(LaborQueueBook.Decision::grantedLaborMilli).sum())
         .as("发放之和恰 = 预算 500（第二条不是「超发」出来的）")

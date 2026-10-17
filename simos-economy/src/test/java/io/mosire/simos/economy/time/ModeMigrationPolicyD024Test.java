@@ -258,6 +258,7 @@ class ModeMigrationPolicyD024Test {
             sourceActor,
             sourceActor,
             AssetRightKind.OWNED,
+            new ProductionLocation(IndustryHexKeys.hexKey(H1.q(), H1.r())),
             0L);
     OwnershipStake h1Share =
         new OwnershipStake(
@@ -267,7 +268,8 @@ class ModeMigrationPolicyD024Test {
             sourceActor,
             sourceActor,
             1L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation(IndustryHexKeys.hexKey(H1.q(), H1.r())));
     ActorRef targetShareOwner = targetShareOwnedByEstate ? ESTATE : sourceActor;
     AssetShareId h2ShareId =
         OwnershipStake.idOf(
@@ -276,6 +278,7 @@ class ModeMigrationPolicyD024Test {
             targetShareOwner,
             targetShareOwner,
             AssetRightKind.OWNED,
+            new ProductionLocation(IndustryHexKeys.hexKey(H2.q(), H2.r())),
             0L);
     OwnershipStake h2Share =
         new OwnershipStake(
@@ -285,7 +288,8 @@ class ModeMigrationPolicyD024Test {
             targetShareOwner,
             targetShareOwner,
             h2ShareQuantity,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation(IndustryHexKeys.hexKey(H2.q(), H2.r())));
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(h1ShareId, h1Share);
     shares.put(h2ShareId, h2Share);

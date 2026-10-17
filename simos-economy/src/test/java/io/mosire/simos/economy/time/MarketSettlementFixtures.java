@@ -333,7 +333,14 @@ final class MarketSettlementFixtures {
       assetShares.put(
           shareId,
           new io.mosire.simos.economy.model.OwnershipStake(
-              shareId, industry.id(), means, actor, actor, meansQty, AssetRightKind.OWNED));
+              shareId,
+              industry.id(),
+              means,
+              actor,
+              actor,
+              meansQty,
+              AssetRightKind.OWNED,
+              ProductionLocation.parse(IndustryHexKeys.hexKey(hex.q(), hex.r()))));
       return this;
     }
 

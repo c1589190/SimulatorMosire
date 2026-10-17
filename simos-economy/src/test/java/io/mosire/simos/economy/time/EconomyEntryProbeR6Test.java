@@ -36,6 +36,7 @@ import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -272,13 +273,20 @@ class EconomyEntryProbeR6Test {
       OwnershipStake land =
           new OwnershipStake(
               OwnershipStake.idOf(
-                  LAND_INDUSTRY, AssetKind.LAND, ESTATE, ESTATE, AssetRightKind.OWNED, 0L),
+                  LAND_INDUSTRY,
+                  AssetKind.LAND,
+                  ESTATE,
+                  ESTATE,
+                  AssetRightKind.OWNED,
+                  new ProductionLocation("0_0"),
+                  0L),
               LAND_INDUSTRY,
               AssetKind.LAND,
               ESTATE,
               ESTATE,
               sourceLand,
-              AssetRightKind.OWNED);
+              AssetRightKind.OWNED,
+              new ProductionLocation("0_0"));
       sourceShareId = land.id();
       shares.put(sourceShareId, land);
     }
@@ -393,7 +401,8 @@ class EconomyEntryProbeR6Test {
         fixture.householdMoney(),
         fixture.composition(),
         MarketIndex.of(fixture.marketTables(), Map.of()),
-        fixture.day());
+        fixture.day(),
+        new LinkedHashMap<>());
   }
 
   private static IndustryId materializedPlan() {

@@ -177,7 +177,7 @@ class MerchantOnDemandTradeW7Test {
   private static final long SOURCE_TOOL_GOODS_MILLI = 12_000L;
 
   /**
-   * ★ 源户自备的<b>作业资本</b>（{@code AssetKind.TOOL} 的产权份额，毫工具）。
+   * ★ 源户自备的<b>作业资本</b>（{@code AssetKind.SMALL_TOOL} 的产权份额，毫工具）。
    *
    * <p>逐值取 {@code 12,000} = 创世给城市格"商号本金主"播的那一份（{@code
    * EconomySeeder.MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}）—— 本类**不引用**它（app 在 economy 的 enforcer
@@ -307,7 +307,7 @@ class MerchantOnDemandTradeW7Test {
     assertThat(first.regime().value()).isEqualTo("merchant");
     assertThat(first.recipe().capacityPerUnit())
         .as("★ 作业资本那一维 = TOOL（用户裁定：牲口要求取消）——每 1 单位规模压 TOOL_PER_UNIT 毫工具")
-        .containsEntry(AssetKind.TOOL, MerchantTradeTemplate.TOOL_PER_UNIT);
+        .containsEntry(AssetKind.SMALL_TOOL, MerchantTradeTemplate.TOOL_PER_UNIT);
     assertThat(first.recipe().capacityPerUnit())
         .as("★★ §一.11：配方里一个 CATTLE 字段都不留（旧机制本身已不存在，故删旧断言而不是放宽它）")
         .doesNotContainKey(AssetKind.CATTLE);
@@ -316,14 +316,14 @@ class MerchantOnDemandTradeW7Test {
             MerchantTradeTemplate.HAUL_COMMODITY, MerchantTradeTemplate.HAUL_PER_UNIT_CYCLE);
     assertThat(first.cycleInputPerUnit())
         .as("★ 周期投入只挂在 TOOL 这一维（外层分路键随作业资本一起从 CATTLE 改成 tool）")
-        .containsOnlyKeys(AssetKind.TOOL);
-    assertThat(first.cycleInputPerUnit().get(AssetKind.TOOL))
+        .containsOnlyKeys(AssetKind.SMALL_TOOL);
+    assertThat(first.cycleInputPerUnit().get(AssetKind.SMALL_TOOL))
         .as("周期投入（工具）—— 值 100 毫/规模·周期一字未改，只是分路键改了名")
         .containsEntry(
             MerchantTradeTemplate.TOOL_COMMODITY, MerchantTradeTemplate.TOOL_MILLI_PER_UNIT_CYCLE);
     assertThat(MerchantTradeTemplate.capacityKinds())
         .as("★ 作业资本那一维的唯一拼写点 = {TOOL}（执行期随迁算式读它，不各自写死 AssetKind）")
-        .containsExactly(AssetKind.TOOL);
+        .containsExactly(AssetKind.SMALL_TOOL);
   }
 
   // ── ② 执行层：带不来作业资本 ⇒（W9）先问买/租得到；都不行 ⇒ 具名跳过；带得来 ⇒ 建商号 + 守恒 ────────
@@ -438,8 +438,8 @@ class MerchantOnDemandTradeW7Test {
    * ★★★ <b>W9 判据（用户裁定 v3.29 §7 第 3 条）第二支负向：**买得到、但租不到** ⇒ 仍然整笔跳过、且卡点具名</b>。
    *
    * <p>★ <b>为什么必须有这一条</b>：W9 的放行判据是**两条同时成立** —— ① 目标格市场交易 {@code tool}（买 / 赊购通道）； ②
-   * 本格有**闲置**的同种作业资本（真让商号开起来的物理前提，因为本模型没有资本品市场：{@code AssetKind.TOOL} 份额不会从商品买入里长出来）。 只测"两条都成立 ⇒
-   * 放行"会让"只看市场不看闲置"这种半截实现**静默存活**；这条把 ① 单独钉住：市场明明有价， 但本格一份闲置工具都没有 ⇒ 必须维持跳过（否则 {@code
+   * 本格有**闲置**的同种作业资本（真让商号开起来的物理前提，因为本模型没有资本品市场：{@code AssetKind.SMALL_TOOL} 份额不会从商品买入里长出来）。
+   * 只测"两条都成立 ⇒ 放行"会让"只看市场不看闲置"这种半截实现**静默存活**；这条把 ① 单独钉住：市场明明有价， 但本格一份闲置工具都没有 ⇒ 必须维持跳过（否则 {@code
    * createEnterpriseAndProcess} 会当场抛、整个 tick 炸）。
    */
   @Test
@@ -552,7 +552,7 @@ class MerchantOnDemandTradeW7Test {
         session.sheet().assetShares().values().stream()
             .filter(
                 share ->
-                    share.asset() == AssetKind.TOOL
+                    share.asset() == AssetKind.SMALL_TOOL
                         && share.operator().equals(HouseholdActors.of(NEW_TARGET)))
             .toList();
     assertThat(leasedShares).as("③ 租佃真的发生：新商号名下**恰一条** TOOL 作业资本份额（operator = 新商号）").hasSize(1);
@@ -639,7 +639,7 @@ class MerchantOnDemandTradeW7Test {
    */
   @Test
   void migrationWithCarriedToolInputCreatesTheTemplateAndConservesTool() {
-    OwnershipStake sourceTool = share(SOURCE, AssetKind.TOOL, SOURCE_TOOL_INPUT_MILLI);
+    OwnershipStake sourceTool = share(SOURCE, AssetKind.SMALL_TOOL, SOURCE_TOOL_INPUT_MILLI);
     Map<AssetShareId, OwnershipStake> shares = Map.of(sourceTool.id(), sourceTool);
     EconomyData base = base(shares, 0L);
     EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
@@ -679,7 +679,7 @@ class MerchantOnDemandTradeW7Test {
         .isEqualTo(MerchantTradeTemplate.industry(H2));
     assertThat(created.recipe().capacityPerUnit())
         .as("②′ 它的作业资本那一维 = TOOL（真长出来的商号不再押在牲口上）")
-        .containsOnlyKeys(AssetKind.TOOL);
+        .containsOnlyKeys(AssetKind.SMALL_TOOL);
 
     // ★★ P0（2026-10-10）后的口径：迁移执行器**只推投影账 + 瞬态 outbox**，绝不写 householdEconomies 行的
     //   人口/劳动 —— App 的 MigrationSocialBridge 才按 outbox 把 Social 真值 delta 落下去（AGENTS 模块表 economy 行）。
@@ -713,13 +713,13 @@ class MerchantOnDemandTradeW7Test {
         .isEqualTo(targetGot);
     assertThat(session.sheet().assetShares().values())
         .as("⑤ 没有「凭空多出来的」作业资本：>0 的 TOOL 份额恰好 2 条（源 7,200 + 目标 4,800）")
-        .filteredOn(share -> share.asset() == AssetKind.TOOL && share.quantity() > 0L)
+        .filteredOn(share -> share.asset() == AssetKind.SMALL_TOOL && share.quantity() > 0L)
         .hasSize(2);
     assertThat(session.sheet().assetShares().values())
         .as("⑤′ 目标侧那份份额必须挂在**新长出来的商号**下（trade@H2），不是别的产业")
         .filteredOn(
             share ->
-                share.asset() == AssetKind.TOOL
+                share.asset() == AssetKind.SMALL_TOOL
                     && share.owner().equals(HouseholdActors.of(NEW_TARGET)))
         .allSatisfy(
             share -> assertThat(share.industry()).isEqualTo(MerchantTradeTemplate.industryId(H2)));
@@ -733,7 +733,7 @@ class MerchantOnDemandTradeW7Test {
    */
   @Test
   void fullMoveCarriesAllToolInputAndKeepsTheTotalUnchanged() {
-    OwnershipStake sourceTool = share(SOURCE, AssetKind.TOOL, SOURCE_TOOL_INPUT_MILLI);
+    OwnershipStake sourceTool = share(SOURCE, AssetKind.SMALL_TOOL, SOURCE_TOOL_INPUT_MILLI);
     Map<AssetShareId, OwnershipStake> shares = Map.of(sourceTool.id(), sourceTool);
     EconomyData base = base(shares, 0L);
     EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
@@ -761,6 +761,7 @@ class MerchantOnDemandTradeW7Test {
 
   /** 一条挂在 {@link #FARM} 下的产权份额（作业资本那一维由调用方指定：TOOL = 新口径，CATTLE = 负向对照）。 */
   private static OwnershipStake share(HouseholdId owner, AssetKind asset, long quantity) {
+    ProductionLocation location = new ProductionLocation(IndustryHexKeys.hexKey(H1.q(), H1.r()));
     AssetShareId id =
         OwnershipStake.idOf(
             FARM,
@@ -768,6 +769,7 @@ class MerchantOnDemandTradeW7Test {
             HouseholdActors.of(owner),
             HouseholdActors.of(owner),
             AssetRightKind.OWNED,
+            location,
             0L);
     return new OwnershipStake(
         id,
@@ -776,13 +778,14 @@ class MerchantOnDemandTradeW7Test {
         HouseholdActors.of(owner),
         HouseholdActors.of(owner),
         quantity,
-        AssetRightKind.OWNED);
+        AssetRightKind.OWNED,
+        location);
   }
 
   private static long toolTotal(Map<AssetShareId, OwnershipStake> shares) {
     long total = 0L;
     for (OwnershipStake share : shares.values()) {
-      if (share.asset() == AssetKind.TOOL) {
+      if (share.asset() == AssetKind.SMALL_TOOL) {
         total += share.quantity();
       }
     }
@@ -793,7 +796,7 @@ class MerchantOnDemandTradeW7Test {
     ActorRef actor = HouseholdActors.of(owner);
     long total = 0L;
     for (OwnershipStake share : shares.values()) {
-      if (share.asset() == AssetKind.TOOL && share.owner().equals(actor)) {
+      if (share.asset() == AssetKind.SMALL_TOOL && share.owner().equals(actor)) {
         total += share.quantity();
       }
     }
@@ -945,10 +948,12 @@ class MerchantOnDemandTradeW7Test {
   /** H2 的一份**闲置** TOOL 份额（挂在 {@link #H2_FARM} 下；owner == operator，没人在用）。 */
   private static OwnershipStake idleToolShareInH2(long quantity) {
     ActorRef owner = new ActorRef(ActorKind.HOUSEHOLD, "hh-w9-h2-idle-tool-owner");
+    ProductionLocation location = new ProductionLocation(IndustryHexKeys.hexKey(H2.q(), H2.r()));
     AssetShareId id =
-        OwnershipStake.idOf(H2_FARM, AssetKind.TOOL, owner, owner, AssetRightKind.OWNED, 0L);
+        OwnershipStake.idOf(
+            H2_FARM, AssetKind.SMALL_TOOL, owner, owner, AssetRightKind.OWNED, location, 0L);
     return new OwnershipStake(
-        id, H2_FARM, AssetKind.TOOL, owner, owner, quantity, AssetRightKind.OWNED);
+        id, H2_FARM, AssetKind.SMALL_TOOL, owner, owner, quantity, AssetRightKind.OWNED, location);
   }
 
   /** 某个 actor（此处 = 新商号）名下**当作业资本用**的 TOOL 份额合计（OWNED + TENANCY 都算）。 */
@@ -957,7 +962,7 @@ class MerchantOnDemandTradeW7Test {
     ActorRef actor = HouseholdActors.of(operator);
     long total = 0L;
     for (OwnershipStake share : shares.values()) {
-      if (share.asset() == AssetKind.TOOL && share.operator().equals(actor)) {
+      if (share.asset() == AssetKind.SMALL_TOOL && share.operator().equals(actor)) {
         total += share.quantity();
       }
     }

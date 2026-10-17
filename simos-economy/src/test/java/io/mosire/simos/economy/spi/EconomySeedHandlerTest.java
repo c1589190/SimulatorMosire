@@ -193,11 +193,12 @@ class EconomySeedHandlerTest {
                   + "{\"id\":\"alloc-farm@0_0-rural:0_0:MALE:1-hh-0_0-rural-poor_peasant\","
                   + "\"group\":\"rural:0_0:MALE:1\",\"household\":\"hh-0_0-rural-poor_peasant\","
                   + "\"actor\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
-                  + "\"activity\":\"farm\",\"laborMilli\":225000,\"period\":1},"
+                  + "\"activity\":\"farm\",\"productionRole\":\"operator\","
+                  + "\"laborMilli\":225000,\"period\":1},"
                   + "{\"id\":\"alloc-farm@0_0-rural:0_0:MALE:1-hh-0_0-rural-landlord\","
                   + "\"group\":\"rural:0_0:MALE:1\",\"household\":\"hh-0_0-rural-landlord\","
                   + "\"actor\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
-                  + "\"activity\":\"farm\",\"laborMilli\":25000,\"period\":1}]}]}");
+                  + "\"activity\":\"farm\",\"productionRole\":\"operator\",\"laborMilli\":25000,\"period\":1}]}]}");
 
   /**
    * ★★ `WageFirst`（资本主义工业）在 v1 没有结算实现 ⇒ 必须**播种期**拒（v2 spec §八.4）。
@@ -396,8 +397,9 @@ class EconomySeedHandlerTest {
   void anAllocationNamingAMissingUnitIsRejectedInsteadOfLeaking() {
     String payload =
         PAYLOAD_WITH_LABOR.replace(
-            "\"activity\":\"farm\",\"laborMilli\":225000",
-            "\"activity\":\"unit-farm@9_9-ORGANIZATION-farm@9_9\",\"laborMilli\":225000");
+            "\"activity\":\"farm\",\"productionRole\":\"operator\",\"laborMilli\":225000",
+            "\"activity\":\"unit-farm@9_9-ORGANIZATION-farm@9_9\","
+                + "\"productionRole\":\"operator\",\"laborMilli\":225000");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
 
     HandlerOutcome outcome =
@@ -453,7 +455,8 @@ class EconomySeedHandlerTest {
             "\"assetShares\":[{\"industry\":\"farm@0_0\","
                 + "\"owner\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
                 + "\"operator\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
-                + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\"}],"
+                + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\","
+                + "\"location\":\"0_0\"}],"
                 + "\"classes\":[");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
     EconomyData after = apply(payload, EconomyData.empty(), T7);

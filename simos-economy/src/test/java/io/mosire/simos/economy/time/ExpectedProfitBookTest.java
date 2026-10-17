@@ -148,10 +148,20 @@ class ExpectedProfitBookTest {
   }
 
   private static OwnershipStake workshopShare(IndustryId industry, long quantity) {
+    ProductionLocation location = locationOf(industry);
     AssetShareId id =
-        OwnershipStake.idOf(industry, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetRightKind.OWNED, 0L);
+        OwnershipStake.idOf(
+            industry, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetRightKind.OWNED, location, 0L);
     return new OwnershipStake(
-        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, AssetRightKind.OWNED);
+        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, AssetRightKind.OWNED, location);
+  }
+
+  /** 测试事实：产业 id 的 {@code @<q>_<r>} 格段就是本夹具的地点（不调用生产的 ofPlan）。 */
+  private static ProductionLocation locationOf(IndustryId industry) {
+    return ProductionLocation.parse(
+        IndustryHexKeys.hexKeyOf(industry)
+            .orElseThrow(
+                () -> new IllegalArgumentException("fixture industry lacks a hex: " + industry)));
   }
 
   private static MarketDemandBook.Book demandBook(
@@ -601,13 +611,20 @@ class ExpectedProfitBookTest {
     OwnershipStake estateShare =
         new OwnershipStake(
             OwnershipStake.idOf(
-                CRAFT, AssetKind.WORKSHOP, ESTATE, ESTATE, AssetRightKind.OWNED, 0L),
+                CRAFT,
+                AssetKind.WORKSHOP,
+                ESTATE,
+                ESTATE,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             CRAFT,
             AssetKind.WORKSHOP,
             ESTATE,
             ESTATE,
             3L,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(estateShare.id(), estateShare);
 

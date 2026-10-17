@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
@@ -29,6 +30,7 @@ import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.CycleContribution;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionExecutionOutcome;
 import io.mosire.simos.production.contract.ProductionExecutionRequest;
 import io.mosire.simos.production.contract.ProductionLocation;
@@ -135,10 +137,15 @@ class ProductionSettlementContributionHandCalcTest {
                 Optional.of(UNIT),
                 Optional.empty(),
                 1L, // grantedScale = 基准规模上限 1（资产/投入两路都恰是 1）
-                Map.of(H1, LABOR_H1, H2, LABOR_H2),
+                List.of(
+                    new ParticipantContribution(H1, ProductionRoleId.parse("operator"), LABOR_H1),
+                    new ParticipantContribution(H2, ProductionRoleId.parse("operator"), LABOR_H2)),
                 Map.of(AssetKind.LAND, 1_000L),
                 Map.of(GRAIN, 1_000L),
-                ExternalAttributeFacts.EMPTY));
+                ExternalAttributeFacts.EMPTY,
+                Map.of(),
+                Map.of(H1, LABOR_H1, H2, LABOR_H2),
+                Map.of()));
     assertThat(outcome)
         .as("两户协作必须被执行（不是业务拒绝）")
         .isInstanceOf(ProductionExecutionOutcome.Executed.class);

@@ -22,6 +22,7 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.population.LotChange;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -143,7 +144,8 @@ class GovServiceCommitmentC7Test {
    */
   @Test
   void laborQueueRefusesToOverwriteGovServiceOnGeneratedIdCollision() {
-    LaborAllocationId collided = HouseholdLaborCommitment.idOf(UNIT, LOT, H);
+    ProductionRoleId role = ProductionRoleId.parse("operator");
+    LaborAllocationId collided = HouseholdLaborCommitment.idOfProduction(UNIT, role, LOT, H);
     HouseholdLaborCommitment govService =
         new HouseholdLaborCommitment(
             collided, LOT, H, OP, "free-work", 4_000L, 1L, LaborCommitmentKind.GOV_SERVICE);
@@ -340,7 +342,18 @@ class GovServiceCommitmentC7Test {
 
   private static HouseholdLaborCommitment commitment(
       LaborAllocationId id, LaborCommitmentKind kind, long laborMilli) {
-    return new HouseholdLaborCommitment(id, LOT, H, OP, UNIT.value(), laborMilli, 1L, kind);
+    return new HouseholdLaborCommitment(
+        id,
+        LOT,
+        H,
+        OP,
+        UNIT.value(),
+        laborMilli,
+        1L,
+        kind,
+        kind == LaborCommitmentKind.PRODUCTION
+            ? java.util.Optional.of(ProductionRoleId.parse("operator"))
+            : java.util.Optional.empty());
   }
 
   private static HouseholdEconomy household(long laborMilli) {
@@ -385,8 +398,18 @@ class GovServiceCommitmentC7Test {
   }
 
   private static OwnershipStake share(long quantity) {
-    AssetShareId id = OwnershipStake.idOf(FARM, AssetKind.LAND, OP, OP, AssetRightKind.OWNED, 0L);
-    return new OwnershipStake(id, FARM, AssetKind.LAND, OP, OP, quantity, AssetRightKind.OWNED);
+    AssetShareId id =
+        OwnershipStake.idOf(
+            FARM, AssetKind.LAND, OP, OP, AssetRightKind.OWNED, new ProductionLocation("0_0"), 0L);
+    return new OwnershipStake(
+        id,
+        FARM,
+        AssetKind.LAND,
+        OP,
+        OP,
+        quantity,
+        AssetRightKind.OWNED,
+        new ProductionLocation("0_0"));
   }
 
   /** production 定义权威夹具（FARM 定义由 production 持久，不再住 EconomyData）。 */

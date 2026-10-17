@@ -24,6 +24,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -843,7 +844,7 @@ class EconomyInvariantsTest {
 
   /** ★★ **六种键都允许**（spec §3.3：协议上不设限；R3 只让农业/织机/作坊真的读到它）。 */
   @Test
-  void acceptsCycleInputForAllSixAssetKinds() {
+  void acceptsCycleInputForAllSevenAssetKinds() {
     Map<AssetKind, Map<CommodityId, Long>> input = new LinkedHashMap<>();
     for (AssetKind kind : AssetKind.values()) {
       input.put(kind, Map.of(GRAIN, 1L));
@@ -855,7 +856,8 @@ class EconomyInvariantsTest {
         .containsOnlyKeys(
             AssetKind.LAND,
             AssetKind.CATTLE,
-            AssetKind.TOOL,
+            AssetKind.SMALL_TOOL,
+            AssetKind.LARGE_TOOL,
             AssetKind.WORKSHOP,
             AssetKind.MACHINE,
             AssetKind.SHIP);
@@ -1273,7 +1275,9 @@ class EconomyInvariantsTest {
             new ActorRef(ActorKind.ORGANIZATION, FARM.value()),
             "farm",
             1L,
-            1L);
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator")));
     assertThatThrownBy(() -> economyWith(100_000L, Map.of(ALLOC_A, orphan)))
         .as("配额的家户必须在 classes 里（否则这份劳动没有归属）")
         .isInstanceOf(IllegalArgumentException.class)
@@ -1383,6 +1387,14 @@ class EconomyInvariantsTest {
   private static HouseholdLaborCommitment allocation(
       LaborAllocationId id, PeopleLotId group, String actorId, ActorKind kind, long laborMilli) {
     return new HouseholdLaborCommitment(
-        id, group, PEASANT_HOUSE, new ActorRef(kind, actorId), "farm", laborMilli, 1L);
+        id,
+        group,
+        PEASANT_HOUSE,
+        new ActorRef(kind, actorId),
+        "farm",
+        laborMilli,
+        1L,
+        LaborCommitmentKind.PRODUCTION,
+        Optional.of(ProductionRoleId.parse("operator")));
   }
 }

@@ -24,9 +24,11 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
@@ -660,16 +662,31 @@ class MintProductionSettlementTest {
     OwnershipStake workshops =
         new OwnershipStake(
             OwnershipStake.idOf(
-                MINT, AssetKind.WORKSHOP, TREASURY, TREASURY, AssetRightKind.OWNED, 0L),
+                MINT,
+                AssetKind.WORKSHOP,
+                TREASURY,
+                TREASURY,
+                AssetRightKind.OWNED,
+                new ProductionLocation("0_0"),
+                0L),
             MINT,
             AssetKind.WORKSHOP,
             TREASURY,
             TREASURY,
             furnaces,
-            AssetRightKind.OWNED);
+            AssetRightKind.OWNED,
+            new ProductionLocation("0_0"));
     HouseholdLaborCommitment commitment =
         new HouseholdLaborCommitment(
-            ALLOCATION, LOT, GOV_HOUSEHOLD, TREASURY, UNIT.value(), LABOR_PER_UNIT * furnaces, 1L);
+            ALLOCATION,
+            LOT,
+            GOV_HOUSEHOLD,
+            TREASURY,
+            UNIT.value(),
+            LABOR_PER_UNIT * furnaces,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator")));
     return EconomyData.empty()
         .withMeta(Optional.of(meta(lastClosedCycle)))
         .withGovernments(Map.of(government.id(), government))
