@@ -148,3 +148,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
   - 未发现生产代码 bug；唯一全量失败是 `N23` 源码行号漂移，已按既定测试载体同步，消息与判据未放宽。
 - **仍未关闭/未验证**：多实例真实实例/地点占用、占用期、释放、统一预算仍归 D4/A；R2 只证明“不再整池复制”，不写成完整关闭。未跑 `clean verify`/`tools/gate.sh`；app 7 条 skip 为既有；未做真实世界/18Lvt 多实例长周期；未逐消费者分别做独立变异（由 P4/P5 同源断言与台账覆盖）。
 - **下一步**：处理 D3/D2 设计债（A1–A5、B1–B4、U23 三项更新），再完成 D4 正文与 D1–D4 统一；之后独立复核、终局门禁、C0 派单。提交/推送按小分支检查点继续，主树仍未合并/同步。
+
+## 十一、2026-10-17 21:15 D1–D3 设计整合与 U23 收口（侧线工作树）
+
+> **性质**：只改 D1/D2/D3 设计正文；未改 Java/XML/POM/测试，未跑 Maven/测试/门禁，未提交 main/同步主树。
+
+- **设计提交**：commit `4c34b3d9`（已推送 `origin/parallel/side-module`）。D1 215 行 / D2 797 行 / D3 1455 行。
+- **U23 三项已并入当前有效正文**：欠薪零息（区分普通贷款、旧工资欠款不再 20‰）；撤回 `allowIdle`/`householdLaborChoices`，改为下一 tick 生存条件资格 `idleEligible` + 独立选择 `idleChosen`；抵物折价 `BarterDiscountPolicy`（仅 `LOCAL_BID`/`LOCAL_ASK` + `discountPerMille` 可 <1000）由 production 定义、economy 执行。
+- **A1–A5**：候选窗口统一 `cycleDays`、实际 due 逐 tick 不乘；idle 独立 `IdleOption`/`Plan.idleChosen`，不经过 `queueable()/maxAbsorbable`；候选级 `ProductionWageDefault`（33）解决新进入报价闭环，执行期 `ProductionWagePosting`（34）仍唯一；降价条件 `satisfiedStreak > decreaseDelayTicks`；产品池措辞收窄。
+- **B1–B4**：批次重排 W2a→W1→W2b→W3→W4→W5；W2b 未接 W3 时在任何抽料/写回/进度/经验/实际劳动前全 tick fail-closed；W3 唯一 `WagePayableInventoryLookup`（地点用 `production.contract.ProductionLocation`），D4 未接时库存腿跳过并成债；同 payer×location 预算，跨格 `wage-payer-location-unsupported`。
+- **U23-b 选择细化（控制方工程默认，用户可推翻）**：新增 `EconomyPolicyKey.SURVIVAL_IDLE_POLICY`，默认 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET`（1）使 `idleEligible=true` 有实际 `IDLE_CHOSEN` 路径；`BEST_EFFORT_WORK`（0）允许正收益工作即使不足生存仍被选中。该键不是 per-household `allowIdle`，不恢复 `householdLaborChoices`；默认值不冒充用户裁定。
+- **SurvivalOutlook 纯只读契约**：D3 §2.5.1 定义输入/输出、逐需求行覆盖、库存/收入去重、同劳动/资源预算组合、空集合具名原因、缺价/不可达不折算、预测不抵实际消费；O9（Social 下一 tick 需求投影）、O10（可达购买价/供给/币种事实）、O11（既有债务/不可用权益快照）仍为开放工程项。
+- **组件号**：32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`；无第 36 个；D1/D2/D3 一致。
+- **原话核对**：U15–U21 D2/D3 逐字相同；U22/U23 与 architecture source/decision doc 逐字匹配。`git diff --check` 通过；无 `LOCAL_LAST_TRADE`/`referencePriceOf`/`SettlementLocationRef` 残留。
+- **未做/未验证**：所有 P/负向判据仍只是设计判据；D4 正文未完成；未实现工资链/生存判定/抵物；R2 多实例真实分配仍归 D4/A；未跑 `clean verify`/`tools/gate.sh`。下一步：D4 正文与 D1–D4 统一，再独立复核、提交检查点、C0 派单。
