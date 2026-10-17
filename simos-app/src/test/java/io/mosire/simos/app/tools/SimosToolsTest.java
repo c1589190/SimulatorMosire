@@ -743,12 +743,13 @@ class SimosToolsTest {
       concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES);
 
   /**
-   * catalog 预期的 <b>148</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   * catalog 预期的 <b>152</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
    *
    * <p>★★ <b>D-031 Z6（2026-10-16）</b>：{@code simos-production} / {@code simos-culture} 两个新模块的 5 条
    * handler 进扫描面 ⇒ 143 → <b>148</b>；本表与 {@code catalogCoversEveryCommandHandlerImplementation} 的
-   * {@code hasSize(148)} 必须同轮改。★ 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★
-   * 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
+   * {@code hasSize(152)} 必须同轮改。★★ D-032 C4b：C3/D4-Ib2b 注册 economy.SetProductionRoster /
+   * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>。 ★
+   * 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★ 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
    *
    * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
    * {@code catalogCoversEveryCommandHandlerImplementation} 的 {@code hasSize(141 → 142)} 必须同轮改。 ★
@@ -821,6 +822,10 @@ class SimosToolsTest {
           "economy.SetGovServiceCommitment",
           // ★★ D-032 B3（裁定十一 + 裁定十二）：方案经济关系声明的写口（候选面退役时被删掉的那条写面补回）。
           "economy.SetPlanSources",
+          // ★★★ D-032 C3 / D4-Ib2b：生产名册与工资默认/执行报价三条 GM-only 写口。
+          "economy.SetProductionRoster",
+          "economy.SetProductionWageDefault",
+          "economy.SetProductionWagePosting",
           "economy.SetGovernmentMintScale",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
@@ -1261,7 +1266,7 @@ class SimosToolsTest {
                 + "★ 扫描器本轮补了一条**跨类限定常量**解析：`CreateInstanceHandler.TYPE ="
                 + " ProductionCommandTypes.CREATE_INSTANCE` 是类型限定名，旧扫描器只认字面量与同类常量 ⇒"
                 + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。")
-        .hasSize(149);
+        .hasSize(152);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

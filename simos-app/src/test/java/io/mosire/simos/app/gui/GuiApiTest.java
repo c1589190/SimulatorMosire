@@ -46,6 +46,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -72,6 +74,7 @@ import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -854,6 +857,7 @@ class GuiApiTest {
             farmOperator,
             farmOperator,
             io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
+            ProductionLocation.parse(IndustryHexKeys.hexKey(H11.q(), H11.r())),
             0L);
     OwnershipStake farmLandShare =
         new OwnershipStake(
@@ -863,7 +867,8 @@ class GuiApiTest {
             farmOperator,
             farmOperator,
             1_000_000L,
-            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED);
+            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
+            ProductionLocation.parse(IndustryHexKeys.hexKey(H11.q(), H11.r())));
     // ★ P2-A：memberships 已迁 Social（EconomyData 不再持有）⇒ 夹具直接以 classes + allocations 自洽；
     //   LaborSupply 也已删除，配额上限由 HouseholdEconomy.laborMilli 承担（本夹具 H11 行 = 915,000 / H12 行 =
     // 91,500）。
@@ -1574,11 +1579,21 @@ class GuiApiTest {
       ActorRef actor,
       String activity,
       long laborMilli) {
-    LaborAllocationId id = new LaborAllocationId("alloc-" + actor.id() + "-" + group.value());
+    ProductionRoleId role = new ProductionRoleId("operator");
+    LaborAllocationId id =
+        new LaborAllocationId("alloc-" + actor.id() + "-" + role.value() + "-" + group.value());
     allocations.put(
         id,
         new HouseholdLaborCommitment(
-            id, group, household, actor, activity, laborMilli, FIRST_PERIOD));
+            id,
+            group,
+            household,
+            actor,
+            activity,
+            laborMilli,
+            FIRST_PERIOD,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(role)));
   }
 
   /** 与 {@code QueryServiceTest.populationSeries()} 同款：anchor 10000、growth 2%→1%→−3%、t=45 减 800。 */

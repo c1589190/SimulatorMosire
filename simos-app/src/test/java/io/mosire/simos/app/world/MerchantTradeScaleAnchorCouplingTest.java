@@ -130,8 +130,8 @@ class MerchantTradeScaleAnchorCouplingTest {
     for (IndustryDefinitionView trade : tradeIndustries) {
       assertThat(trade.recipe().capacityPerUnit())
           .as("★ 作业资本那一维 = TOOL（用户裁定：牲口要求取消）——%s", trade.id().value())
-          .containsOnlyKeys(AssetKind.TOOL);
-      long perUnitMilli = trade.recipe().capacityPerUnit().get(AssetKind.TOOL);
+          .containsOnlyKeys(AssetKind.SMALL_TOOL);
+      long perUnitMilli = trade.recipe().capacityPerUnit().get(AssetKind.SMALL_TOOL);
       assertThat(perUnitMilli)
           .as("★ 播种出来的配方锚 = 模板锚（同一拼写点）")
           .isEqualTo(MerchantTradeTemplate.TOOL_PER_UNIT);
@@ -150,7 +150,7 @@ class MerchantTradeScaleAnchorCouplingTest {
   private static long toolCapacityUnder(EconomyData economy, String industryId) {
     long total = 0L;
     for (OwnershipStake share : economy.assetShares().values()) {
-      if (share.asset() == AssetKind.TOOL && share.industry().value().equals(industryId)) {
+      if (share.asset() == AssetKind.SMALL_TOOL && share.industry().value().equals(industryId)) {
         total += share.quantity();
       }
     }

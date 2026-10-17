@@ -137,8 +137,8 @@ class HaulServiceCommoditySeedTest {
       //   {@code MerchantTradeScaleAnchorCouplingTest} 守。
       assertThat(trade.capacityPerUnit())
           .as("★ 作业资本那一维 = TOOL：每 1 单位规模压 TOOL_PER_UNIT 毫工具（牲口已退出配方）")
-          .containsOnlyKeys(AssetKind.TOOL)
-          .containsEntry(AssetKind.TOOL, MerchantTradeTemplate.TOOL_PER_UNIT);
+          .containsOnlyKeys(AssetKind.SMALL_TOOL)
+          .containsEntry(AssetKind.SMALL_TOOL, MerchantTradeTemplate.TOOL_PER_UNIT);
     }
 
     // ── 单套化的"唯一强度常量"派生式（T-H1「与趟耗同口径」的算式面）────────────────────────────

@@ -1268,7 +1268,7 @@ class GovAdminSalaryBudgetZ6Test {
         Optional.empty(),
         30L,
         0L /* ★ D-032 T1：buildDays 新增组件（中性 0，与 testing.IndustryViews 同款）*/,
-        Map.of(AssetKind.TOOL, 1L),
+        Map.of(AssetKind.SMALL_TOOL, 1L),
         Map.of(),
         0L,
         16_000L,

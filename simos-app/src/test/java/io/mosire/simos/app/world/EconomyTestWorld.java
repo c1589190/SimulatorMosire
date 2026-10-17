@@ -21,6 +21,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -604,12 +606,12 @@ public final class EconomyTestWorld {
             "家庭纺织",
             EconomySeeder.REGIME_HOUSEHOLD,
             new AllocationRule.Split(300, 700),
-            Map.of(AssetKind.TOOL, 1L),
+            Map.of(AssetKind.SMALL_TOOL, 1L),
             // ★★ H0.3（K3）：产能 = 本格**织机总数**（旧版四行各一份、Σ 才是总数）。
-            Map.of(AssetKind.TOOL, looms),
+            Map.of(AssetKind.SMALL_TOOL, looms),
             EconomySeeder.LABOR_MILLI_PER_LOOM,
             Map.of(CLOTH, clothPerLoom()),
-            Map.of(AssetKind.TOOL, Map.of(FIBER, fiberPerLoom))));
+            Map.of(AssetKind.SMALL_TOOL, Map.of(FIBER, fiberPerLoom))));
     // ★★ H0.2：**纤维并入农村四行**（旧版落在"家庭纺织"那四行上）—— 织布是农村池的活，账只能记在自家户名下。
     //   ★ 逐值同式：每户分到的织机数 × 一台织机一个周期的用量（夹具的"估计来源"，与真档的"田里一个周期的副产"同性质）。
     for (int i = 0; i < EconomySeeder.CLASS_IDS.length; i++) {
@@ -677,7 +679,9 @@ public final class EconomyTestWorld {
         new ActorRef(kind, industry.value()),
         activity,
         laborMilli,
-        EconomySeeder.FIRST_PERIOD);
+        EconomySeeder.FIRST_PERIOD,
+        LaborCommitmentKind.PRODUCTION,
+        Optional.of(new ProductionRoleId("operator")));
   }
 
   /** 配额落点家户：该产业同格、同居住类型、第一个阶层槽位（与 {@link #syntheticLot} 的居住类型判据同源）。 */

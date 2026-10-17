@@ -69,6 +69,7 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.codec.ProductionCodec;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -196,6 +197,10 @@ class McpCoverageTest {
           "economy.SetGovernmentMintScale",
           // ★★ D-032 B3（裁定十一/十二）：方案经济关系声明写口（候选面退役时被删掉的那条写面补回）。
           "economy.SetPlanSources",
+          // ★★★ D-032 C3 / D4-Ib2b：生产名册与工资默认/执行报价三条 GM-only 写口。
+          "economy.SetProductionRoster",
+          "economy.SetProductionWageDefault",
+          "economy.SetProductionWagePosting",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
@@ -409,6 +414,11 @@ class McpCoverageTest {
           //   要有"进入算法方案池的非格方案 + 后续读点"，那是 `D031P1*` 那批判据的面；
           //   本用例的义务只是"每条 catalog type 都能经 MCP 到达且要么生效要么具名拒"。
           "economy.SetPlanSources",
+          // ★★★ D-032 C3 / D4-Ib2b：三条 GM-only 写口在本夹具没有 production 实例/方案/市场区前置
+          //   ⇒ 载荷形状合法但域层具名拒（零 revision）。
+          "economy.SetProductionRoster",
+          "economy.SetProductionWageDefault",
+          "economy.SetProductionWagePosting",
           // ★★★ D-032 T6：B2c 裁定十的实例写面；本夹具的定义权威是空的（`production.Seed` 空载荷）⇒ 具名拒。
           "production.CreateInstance",
           "unit.AssignExternalGovPost",
@@ -497,6 +507,15 @@ class McpCoverageTest {
           Map.entry("unit.SetFormationOffset", "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}"),
           // ★★★ D-032 T6：两条声明都不给 ⇒ handler 的 `no-declaration` 具名拒（形状合法、零 revision）。
           Map.entry("economy.SetPlanSources", "{\"plan\":\"farm\"}"),
+          // ★★★ D-032 C3 / D4-Ib2b：三条写口都要求 production 实例或方案定义；本夹具 `production.Seed`
+          //   是空载荷 ⇒ 分别具名拒 unit-unknown / wage-default-plan-unknown / wage-posting-unit-unknown。
+          Map.entry(
+              "economy.SetProductionRoster", "{\"unit\":\"unit-missing\",\"participants\":[]}"),
+          Map.entry(
+              "economy.SetProductionWageDefault",
+              "{\"plan\":\"plan-missing\",\"marketZone\":\"zone-missing\",\"roles\":[]}"),
+          Map.entry(
+              "economy.SetProductionWagePosting", "{\"unit\":\"unit-missing\",\"postings\":[]}"),
           // ★★★ D-032 T6：plan 指一个 production 定义权威里不存在的方案（本夹具 industries=[]）⇒ 域层具名拒、零 revision。
           Map.entry(
               "production.CreateInstance",
@@ -627,6 +646,7 @@ class McpCoverageTest {
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
+          ProductionLocation.parse(IndustryHexKeys.hexKey(H11.q(), H11.r())),
           0L);
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
@@ -855,7 +875,10 @@ class McpCoverageTest {
             + "\"assetShares\":[{\"industry\":\"farm@1_1\","
             + "\"owner\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
             + "\"operator\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
-            + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\"}],"
+            + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\","
+            + "\"location\":\""
+            + IndustryHexKeys.hexKey(H11.q(), H11.r())
+            + "\"}],"
             + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":1000,"
             + "\"laborMilli\":580000,\"participationPerMille\":950}]}],"
             // ★★ W1g：**市场播种**（W1 起价表按市场一张，且 `economy.SetMarketPrice` 只改**已存在**的市场）。
@@ -1137,10 +1160,10 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 **149** 个 handler 同源（★★★ D-032 T6（2026-10-17）：D1/D2 把"
+            "catalog 列出的 type 与 Shell 注册的 **152** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 T6（2026-10-17）：D1/D2 把"
                 + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
                 + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
-                + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148 → **149**；"
+                + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148；"
                 + "本表与 SimosToolsTest.EXPECTED_COMMAND_TYPES 两处计数必须逐字相同。原文：R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**；★★ D-031 Z6（2026-10-16）新增 production/culture 五条 ⇒ **148**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
