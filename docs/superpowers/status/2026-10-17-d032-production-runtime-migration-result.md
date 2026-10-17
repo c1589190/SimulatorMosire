@@ -388,3 +388,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界**：未实现 `AssetOccupancyHorizonPolicy`/`AssetOccupancyView`；`AssetOccupancyAllocation/Rejection` 为 unit×assetKind 派生；清区直接移除占用/预留（不生成悬空 RELEASED 行）；消费者未接新 allocator/lookup，R2 未关闭，`asset-scope-shared:awaiting-D4` 保留。
 - **测试影响**：`EconomyRoundTripTest` 31→37 组件、直接 `new EconomyData(...)` 缺 2 参；D4-T 统一迁移/验证；未写/未跑测试。
 - **下一步**：D4-Ib2a（economy 消费者统一：`SettlementIndex`/`ProductionProcessBook`/`EconomySettlement`/`ExpectedProfitBook`/`LaborQueueBook`/`DebtCapacityBook`/`MarketDemandBook`/`HouseholdClassRule` 共用 `AssetOccupancyBook`/`AssetOccupancyLookup`；AssetOccupancyHorizonPolicy/View；R2 新路径与旧 guard；D4-T 前不删除旧证据）；只编译 economy/app，不写/不跑测试、不提交。
+
+## 二十六、2026-10-17 22:xx D4-Ib2a 占用消费者同源检查点
+
+> **性质**：D4-Ib2a 生产代码已实现并编译/格式检查通过；未接 app 真实 lookup，未跑 D4-T。
+
+- **提交**：`b095d66c feat(economy)!: D4-Ib2a 生产链统一 AssetOccupancyBudget 与 horizon/readout`（已推送）。
+- **单一预算**：`SettlementIndex.build` → `ProductionProcessBook.assetOccupancyBudget` → `AssetOccupancyBook.allocate` 一次；`EconomySettlement.driveProductionDay` 的 Step 使用同一 allocation，grant/release 与生产 Step 同一 ChangeSet；不先给整池、不伪造等分、不二次扣 ownership/cycleInput。
+- **消费链**：`ExpectedProfitBook`/`MarketDemandBook`/`DebtCapacityBook`/`ModeMigrationPolicy` 增 D4 budget 重载；`LaborQueueBook`/`HouseholdClassRule` 经 `SettlementIndex` 读口优先 D4。生产执行不再走旧整池 `usableAssets`。
+- **horizon/readout**：`AssetOccupancyHorizonPolicy`（LAND/CATTLE/WORKSHOP/MACHINE/LARGE_TOOL=CYCLE；SMALL_TOOL/SHIP=TICK；未知 fail-closed）；`AssetOccupancyView` 只读派生，不进 ChangeSet/codec。
+- **R2**：同 scope 两实例若有无资产请求事实 ⇒ 整数最大余数分配且 Σ≤100；无请求事实 ⇒ `asset-occupancy-request-missing:<unit>` 且 unallocated；旧 `asset-scope-shared:awaiting-D4` 保留为 D4-T 前证据，不声明 R2 关闭。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；spotless `-pl simos-economy,simos-app -am` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：Entry/Enterprise 候选资产来源/租佃拆分仍有 OwnershipStake 遍历（非已存在实例占用读口）；Migration 份额移动仍是所有权搬迁；旧 8 参 `SettlementIndex.build` 不建 D4 budget；app 仍用 Unavailable；D4-T 未跑。
+- **测试影响**：`R2SharedAssetScopeTest`/`UnifiedBudgetNoDoubleBookingTest`/`R2AssetBudgetReadoutTest` 旧 guard/读口断言需 D4-T/D4-Ib2b 迁移；未写/未跑测试。
+- **下一步**：D4-Ib2b（app 真实装配：`AppProductionLookups` 替换 Unavailable、`AccountInventorySnapshotLookup` provider、W2a 两个 wage handler 注册、ApiViews assetOccupancy/wage readout、`rosterIncomes` 完整重载）；只编译 app，不写/不跑测试、不提交；随后 D4-T。
