@@ -33,7 +33,7 @@
 #     为什么：架构调整轮**从没跑过 `clean verify`**（只跑 `-DskipTests package spotbugs:check`）⇒
 #     没有任何机制构造真 `Shell` ⇒ `SimosSdReportsTool.roles()` 写成 `{GM}` 而它注册在 DM 桶 ⇒
 #     `Shell` 构造函数当场抛 ⇒ **GUI 5 个提交起不来**（`simos-app` 445 E，其中 378 同此一因）。
-#     拦截点：① `guards` 子命令跑 5 条护栏（`ShellAssemblySmokeTest` 真的调 `Shell.start(...)` 构造组合根 +
+#     拦截点：① `guards` 子命令跑 7 条护栏（`ShellAssemblySmokeTest` 真的调 `Shell.start(...)` 构造组合根 +
 #              `ArchitectureGuardsTest` + `Ga/Gov/ArmyRoundTripTest`）；`full` 里也跑（verify 覆盖 test）；
 #              ② `guards`/`full` 跑完**逐条断言每个护栏类真的执行了**：读
 #              `<module>/target/surefire-reports/TEST-<fqcn>.xml`，要求 `tests>0 且 failures=errors=0`
@@ -80,7 +80,7 @@
 #   tools/gate.sh pre                          跑前自检（本仓服务 / .mvn-lock.d / 工作树脏度）
 #   tools/gate.sh full                         ★ 完整验收：`clean verify`（零参数、零 skip）+ `-DskipTests validate`
 #   tools/gate.sh focused <module> [args…]     ★ 聚焦跑；默认 `-am`（上游来自工作树）；去 `-am` 要显式签字
-#   tools/gate.sh guards                       ★ 5 条关键护栏（含真构造组合根）+ 逐条断言「真的跑了」
+#   tools/gate.sh guards                       ★ 7 条关键护栏（含真构造组合根）+ 逐条断言「真的跑了」
 #   tools/gate.sh add <path> [path…]           ★ 白名单式 `git add` + 回显即将提交的清单
 #   tools/gate.sh selftest                     本脚本自己的红/绿对照（不需要 Maven，秒级）
 # =============================================================================
@@ -91,12 +91,16 @@ LOCK="$ROOT/tools/mvn-lock.sh"
 SELF="$ROOT/tools/gate.sh"
 LOCK_DIR="$ROOT/.mvn-lock.d"
 
-# 5 条护栏：<module> <全限定类名>。★ 与源码一一对应，改名/删除 ⇒ 门禁红（见 claim_guard_sources）。
+# 7 条护栏：<module> <全限定类名>。★ 与源码一一对应，改名/删除 ⇒ 门禁红（见 claim_guard_sources）。
+# ★★ D-031 Z6（2026-10-16）：新增 simos-production / simos-culture 两条往返守卫；护栏数量文案按
+#    GUARDS_TABLE 实际条数（7）同步，不改任何命令运行逻辑。
 GUARDS_TABLE='simos-core io.mosire.simos.core.ArchitectureGuardsTest
 simos-ga io.mosire.simos.ga.change.GaRoundTripTest
 simos-gov io.mosire.simos.gov.change.GovRoundTripTest
 simos-army io.mosire.simos.army.change.ArmyRoundTripTest
-simos-app io.mosire.simos.app.ShellAssemblySmokeTest'
+simos-app io.mosire.simos.app.ShellAssemblySmokeTest
+simos-production io.mosire.simos.production.change.ProductionRoundTripTest
+simos-culture io.mosire.simos.culture.change.CultureRoundTripTest'
 
 # 疑似「本仓 app 服务」的命令行特征（只认本仓独有的入口名，不认泛化的 java）。
 SERVICE_PAT='io\.mosire\.simos\.app\.ShellMain|simos-app-[^ ]*-shaded\.jar|simos-shaded-[^ ]*\.jar'
@@ -742,7 +746,7 @@ parse_guards_args() {
 cmd_guards() {
   parse_guards_args "$@"
   hr
-  log "★ guards = 5 条关键护栏（含**真的构造组合根**的那一条）"
+  log "★ guards = 7 条关键护栏（含**真的构造组合根**的那一条）"
   log "  为什么：架构轮只跑 -DskipTests package spotbugs:check ⇒ 没有任何机制构造真 Shell ⇒"
   log "          SimosSdReportsTool.roles()={GM} 却注册在 DM 桶 ⇒ Shell 构造当场抛 ⇒ GUI 5 个提交起不来。"
   log "  口径：-pl simos-app -am ⇒ 组合根与它的**全部上游都从工作树**构建（不是 ~/.m2 的旧 jar）"
@@ -752,9 +756,9 @@ cmd_guards() {
 
   local logf rc vrc=0
   logf="$(mktemp /tmp/simos-gate-guards-XXXXXX.log)"
-  log "运行：tools/mvn-lock.sh -pl simos-app -am -Dtest=<5 条护栏> -Dsurefire.failIfNoSpecifiedTests=false test"
-  log "  ★ 那个 failIfNoSpecifiedTests=false 不是放松：上游模块里没有这 5 个类，surefire 会因「没找到点名的测试」报错；"
-  log "    放行它之后，本脚本**逐类断言** 5 个报告真的存在且 tests>0 —— 比 surefire 自己的检查更严。"
+  log "运行：tools/mvn-lock.sh -pl simos-app -am -Dtest=<7 条护栏> -Dsurefire.failIfNoSpecifiedTests=false test"
+  log "  ★ 那个 failIfNoSpecifiedTests=false 不是放松：上游模块里没有这 7 个类，surefire 会因「没找到点名的测试」报错；"
+  log "    放行它之后，本脚本**逐类断言** 7 个报告真的存在且 tests>0 —— 比 surefire 自己的检查更严。"
   run_mvn_logged "$logf" -pl simos-app -am \
     -Dtest="$(guard_class_names)" \
     -Dsurefire.failIfNoSpecifiedTests=false \
@@ -778,7 +782,7 @@ cmd_guards() {
     bad "guards 结论：FAIL（见上）；日志：$logf"
     return 1
   fi
-  ok "guards 结论：PASS —— 5 条护栏逐条真的跑了且 0 红；日志：$logf"
+  ok "guards 结论：PASS —— 7 条护栏逐条真的跑了且 0 红；日志：$logf"
   return 0
 }
 
@@ -1042,7 +1046,7 @@ cmd_selftest() {
 
   printf '\n[selftest] 三、门禁自身的证据与清单\n'
   if claim_guard_sources "selftest" >/dev/null 2>&1; then
-    st_ok "5 条护栏源码在位（GUARDS_TABLE 未腐烂）"
+    st_ok "7 条护栏源码在位（GUARDS_TABLE 未腐烂）"
   else
     st_bad "护栏源码与 GUARDS_TABLE 不一致"
   fi
