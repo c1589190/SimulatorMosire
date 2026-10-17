@@ -16,6 +16,10 @@ import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.time.AccountSession;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -27,6 +31,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +69,41 @@ class Z7FleeTest {
   private static final HouseholdId CENTRAL_TREASURY = GovernmentHouseholds.of("gov-central");
   private static final UnitId CENTRAL = UnitId.parse("gov-central");
 
+  /**
+   * ★★★ D-032 T1：原 `ProductionAptitudeAssembly.definitionLookup(state)`（D2 已随文化加成链整体退役）。 定义权威改从
+   * **production 切片**现读（与 app 组合根的既有写法同款：`state.module("production")` 转 {@link ProductionSnapshot}
+   * 再取 {@code state()}；{@code ProductionData} 自己实现 {@link ProductionDefinitionLookup}）。
+   */
+  private static ProductionDefinitionLookup definitionsOf(SimulationState state) {
+    return productionOf(state);
+  }
+
+  /**
+   * ★★★ D-032 T1：组合根各桥的 {@code productionUnits} 入参（B2b 起实例权威在 production，桥不再读
+   * `EconomyData.units()`）——本文件直接从 production 切片现取实例投影。
+   */
+  private static Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess>
+      productionUnitsOf(SimulationState state) {
+    return productionOf(state).instances();
+  }
+
+  private static ProductionData productionOf(SimulationState state) {
+    Snapshot snapshot = state.modules().get("production");
+    if (!(snapshot instanceof ProductionSnapshot production)) {
+      throw new IllegalStateException("state 的 production 切片不是 ProductionSnapshot: " + snapshot);
+    }
+    return production.state();
+  }
+
+  /**
+   * ★ T9（R1 签名）：{@code GovernmentServiceDesertionBridge.execute} 的去向排序物理量取自 production 试算 —— 本助手就是
+   * 测试内既有的 {@code ProductionRuntimeEngine} 夹具（同一份 production 切片）。
+   */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      SimulationState state) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(productionOf(state));
+  }
+
   @Test
   void driverRisesFastOnUnderpaidAddsHungerAndFallsSlowlyWhenSatisfied() {
     SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
@@ -77,6 +117,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             social,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(OFFICIAL, 160L),
@@ -94,6 +137,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             hungry,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(),
@@ -109,6 +155,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             hungry,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(OFFICIAL, 160L),
@@ -127,6 +176,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             falling,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(),
@@ -145,6 +197,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             nearlyZero,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(),
@@ -164,6 +219,9 @@ class Z7FleeTest {
           GovernmentServiceDesertionBridge.execute(
               capped,
               economy,
+              productionUnitsOf(base),
+              definitionsOf(base),
+              runtimeOf(base),
               () -> economy,
               units,
               Map.of(OFFICIAL, 1L),
@@ -205,6 +263,9 @@ class Z7FleeTest {
         GovernmentServiceDesertionBridge.execute(
             ready,
             economy,
+            productionUnitsOf(base),
+            definitionsOf(base),
+            runtimeOf(base),
             () -> economy,
             units,
             Map.of(OFFICIAL, 160L),
@@ -294,12 +355,21 @@ class Z7FleeTest {
     assertThat(officialCommitments.get(0).laborMilli())
         .as("★ 新口径：承诺劳动不被人口缩减（满员承诺原值 32000 毫小时/tick）")
         .isEqualTo(32_000L);
+    //   ★★ D-032 T6（a 桶夹具欠账）：入参 `productionUnits` 从**本用例自己的 state** 现取
+    //   （`productionUnitsOf(runner.state())` = `production` 切片的实例投影），不再传空表 ——
+    //   空表 ⇒ `serviceUnitIdsOf` 找不到该 GOV 的 office unit ⇒ 该户的 GOV_SERVICE 承诺**一条都算不上**
+    //   ⇒ `projectedStaff` 恒 0（旧稿在 Z3b 引入 productionUnits 入参后没跟上，7z 的 `Map.of()` 是迁移期残留）。
+    //   这里与 app 组合根的既有写法同源（`AppGovToolViews:38-44` 传
+    // `EconomyProductionDefinitions.stateOf(state).instances()`）。
     assertThat(
-            HouseholdUnitConsistency.staffHouseholdProjection(economy, social, units, 1L)
+            HouseholdUnitConsistency.staffHouseholdProjection(
+                    economy, productionUnitsOf(runner.state()), social, units, 1L)
                 .getOrDefault("gov-central:POST", 0L))
         .as("★ 新口径：projectedStaff 不随人口降为 0（32000 ÷ 标准定额 16000 = 2 人当量）")
         .isEqualTo(2L);
-    assertThat(HouseholdUnitConsistency.staffProjectionMismatches(economy, social, units, 1L))
+    assertThat(
+            HouseholdUnitConsistency.staffProjectionMismatches(
+                economy, productionUnitsOf(runner.state()), social, units, 1L))
         .as("跨切片一致性守卫不报不一致")
         .isEmpty();
     // ★ 新口径：职位与承诺都还在，但**有效供给** = min(承诺, 该户实际劳动) = min(32000, 0) = 0 ⇒ 效率如实降到 0。

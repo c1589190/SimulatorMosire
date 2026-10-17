@@ -1172,7 +1172,12 @@ public final class GuiServer implements AutoCloseable {
     }
     return Reply.of(
         200,
-        ApiViews.economyOwnership(coord, ApiViews.economyData(state), ApiViews.actorData(state)));
+        ApiViews.economyOwnership(
+            coord,
+            ApiViews.economyData(state),
+            io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+            io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+            ApiViews.actorData(state)));
   }
 
   private Reply mapHexReply(Map<String, String> params, DecisionMakerId actor, boolean asPresent) {
@@ -1341,6 +1346,8 @@ public final class GuiServer implements AutoCloseable {
             ApiViews.population(
                 social,
                 ApiViews.economyData(state),
+                io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+                io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
                 coord,
                 state.meta().timestamp(),
                 calendarService)));

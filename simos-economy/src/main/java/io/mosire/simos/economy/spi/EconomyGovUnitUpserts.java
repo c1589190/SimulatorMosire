@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -16,10 +18,10 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -190,21 +192,29 @@ public final class EconomyGovUnitUpserts {
    * @param base 当前 economy 状态
    * @param social 当前 Social 状态（判 {@code hh-gov-<govUnitId>} 是否在 Social 家户表；economy 直连 social
    *     是既有的允许面）
+   * @param definitions ★★ <b>机械修正（D-032 A 批续做）：产业定义的只读来源</b>（U2 起定义权威在 production； 由组合根以 {@code
+   *     EconomyProductionDefinitions.of(state)} 注入，工具/handler 两侧同一份）
    * @param payloadJson {@code economy.UpsertGovUnit} 载荷（形状见类注）
    * @throws Rejection 业务/世界规则拒绝（零 revision；理由具名）
    * @throws IllegalArgumentException 载荷形状/坏 id/负值/未知资产等（handler 同折 INFO + {@code Rejected}）
    * @throws IllegalStateException 写出后的状态违反 {@link EconomyData} 跨表契约（一致性故障，不是载荷错）
    */
-  public static Projection project(EconomyData base, SocialData social, String payloadJson) {
+  public static Projection project(
+      Map<ProductionUnitId, ProductionProcess> units,
+      EconomyData base,
+      SocialData social,
+      ProductionDefinitionLookup definitions,
+      String payloadJson) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）");
     Objects.requireNonNull(payloadJson, "payloadJson");
     JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
     Intent intent = parseIntent(payload);
-    Industry industry = requireOfficeIndustry(base, intent.industryId());
+    IndustryDefinitionView industry = requireOfficeIndustry(definitions, intent.industryId());
     requireActivatedHex(base, intent.industryId());
     requireGovernmentEnvelope(base, social, intent);
-    return reconcile(base, intent, industry);
+    return reconcile(units, base, intent, industry);
   }
 
   /** 载荷形状（字段缺失/类型/坏 id/负值/未知资产）→ 普通 IAE；不判任何世界状态。 */
@@ -241,8 +251,9 @@ public final class EconomyGovUnitUpserts {
   /**
    * 产业守卫：必须已存在、base kind = {@link #OFFICE_BASE_KIND}（{@code office}/{@code office_v2}…；Z1a 版本约定）。
    */
-  private static Industry requireOfficeIndustry(EconomyData base, IndustryId industryId) {
-    Industry industry = base.industries().get(industryId);
+  private static IndustryDefinitionView requireOfficeIndustry(
+      ProductionDefinitionLookup definitions, IndustryId industryId) {
+    IndustryDefinitionView industry = definitions.industries().get(industryId);
     if (industry == null) {
       throw new Rejection(
           COMMAND + " 的产业不存在: " + industryId.value() + "（先用 economy.UpsertIndustry 创建）");
@@ -327,16 +338,27 @@ public final class EconomyGovUnitUpserts {
   }
 
   /** unit/relations/assetShares 三表的最小重建；全部可失败判据已在前面完成，这里只落工作副本。 */
-  private static Projection reconcile(EconomyData base, Intent intent, Industry industry) {
+  private static Projection reconcile(
+      Map<ProductionUnitId, ProductionProcess> units,
+      EconomyData base,
+      Intent intent,
+      IndustryDefinitionView industry) {
     ProductionUnitId unitId = ProductionUnitId.idOf(intent.industryId(), intent.operator());
-    ProductionProcess existingUnit = base.units().get(unitId);
-    ProductionProcess nextUnit = null;
-    boolean unitCreated = false;
+    ProductionProcess existingUnit = units.get(unitId);
+    boolean unitCreated = false; // ★ B2b：实例不再由本命令创建 ⇒ 恒 false（保留读数位，工具/日志仍在读它）
     if (existingUnit == null) {
-      nextUnit =
-          new ProductionProcess(
-              unitId, intent.industryId(), intent.operator(), intent.modeKey(), 0L, 0L, Map.of());
-      unitCreated = true;
+      // ★★ B2b：本命令**不再自建实例**（`EconomyData.units` 已删；实例的唯一权威在 production，
+      //   而命令 handler 只能写自己模块的切片）。⇒ 缺实例 = 具名拒绝，指路 production 的实例写面；
+      //   **不**静默跳过（那会让 office 服务单位凭空消失，而账面上看不出是谁弄丢的）。
+      throw new Rejection(
+          COMMAND
+              + " OFFICE_UNIT_NOT_IN_PRODUCTION: 该 GOV 的 office 生产实例不存在（实例的唯一权威在 production）：unit="
+              + unitId.value()
+              + " industry="
+              + intent.industryId().value()
+              + " operator="
+              + intent.operator()
+              + "；请先用 production 的实例写面（`production.Seed` 的 instances 段 / 组合根 `createInstance`）建档");
     } else {
       if (!existingUnit.industry().equals(intent.industryId())) {
         throw fieldConflict(
@@ -423,7 +445,7 @@ public final class EconomyGovUnitUpserts {
                 kind,
                 intent.operator(),
                 intent.operator(),
-                OwnershipStake.RightKind.OWNED);
+                AssetRightKind.OWNED);
         OwnershipStake share =
             new OwnershipStake(
                 shareId,
@@ -432,15 +454,14 @@ public final class EconomyGovUnitUpserts {
                 intent.operator(),
                 intent.operator(),
                 delta,
-                OwnershipStake.RightKind.OWNED);
+                AssetRightKind.OWNED);
         assetShares.put(shareId, share);
         sharesCreated.add(shareId);
         totalsAfter.put(kind, Math.addExact(existing, delta));
       }
     }
 
-    EconomyData projected =
-        apply(base, unitId, nextUnit, expectedRelation, relationCreated, assetShares);
+    EconomyData projected = apply(base, unitId, expectedRelation, relationCreated, assetShares);
     EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
     return new Projection(
         intent.govUnitId(),
@@ -477,17 +498,12 @@ public final class EconomyGovUnitUpserts {
   private static EconomyData apply(
       EconomyData base,
       ProductionUnitId unitId,
-      ProductionProcess nextUnit,
       ProductionRules expectedRelation,
       boolean relationCreated,
       Map<AssetShareId, OwnershipStake> assetShares) {
     EconomyData projected = base;
     try {
-      if (nextUnit != null) {
-        Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>(base.units());
-        units.put(unitId, nextUnit);
-        projected = projected.withProcesses(units);
-      }
+      // ★★ B2b：`withProcesses` 那条腿已删（实例的唯一权威在 production；缺实例时 reconcile 已具名拒）。
       if (relationCreated) {
         Map<ProductionUnitId, ProductionRules> relations =
             new LinkedHashMap<>(projected.relations());
@@ -527,7 +543,7 @@ public final class EconomyGovUnitUpserts {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
     for (long sequence = 0L; ; sequence++) {
       AssetShareId candidate =
           OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);

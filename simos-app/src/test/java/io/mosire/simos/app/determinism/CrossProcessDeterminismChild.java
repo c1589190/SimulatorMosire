@@ -4,6 +4,7 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.world.ThreePowersWorld;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.store.CheckpointEncoder;
+import io.mosire.simos.culture.codec.CultureCodec;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -11,6 +12,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.production.codec.ProductionCodec;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -59,9 +61,19 @@ public final class CrossProcessDeterminismChild {
 
   /** 参与比较的模块 namespace，与 {@link CheckpointEncoder} 的逐段载荷一一对应。 */
   static final List<String> MODULES =
-      List.of("map", "social", "unit", "ga", "economy", "actor", "gov", "army");
+      List.of(
+          "map",
+          "social",
+          "unit",
+          "ga",
+          "economy",
+          "actor",
+          "gov",
+          "army",
+          "production",
+          "culture");
 
-  /** 8 个模块的 codec（namespace → codec），与生产装配同序。 */
+  /** 10 个模块的 codec（namespace → codec），与生产装配同序。 */
   static Map<String, ModuleCodec> codecs() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
@@ -73,7 +85,10 @@ public final class CrossProcessDeterminismChild {
             new ActorCodec(),
             new EconomyCodec(),
             new GovCodec(),
-            new ArmyCodec())) {
+            new ArmyCodec(),
+            // ★★ D-031 Z6（2026-10-16）：新切片在场 ⇒ codec 表必须随之长（与 T12 同款装配欠账）。
+            new ProductionCodec(),
+            new CultureCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

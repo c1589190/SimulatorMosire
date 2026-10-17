@@ -18,11 +18,11 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.ga.GaSnapshot;
@@ -42,6 +42,8 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.gen.WorldgenConfig;
@@ -197,6 +199,9 @@ public final class CompactThreeNationsWorld {
             "unit", new UnitSnapshot(ref, t0, UnitState.empty()),
             "ga", new GaSnapshot(ref, t0, GaState.empty()),
             "economy", new EconomySnapshot(ref, t0, EconomyData.empty()),
+            "production",
+                new io.mosire.simos.production.ProductionSnapshot(
+                    ref, t0, io.mosire.simos.production.ProductionData.empty()),
             "actor", new ActorSnapshot(ref, t0, ActorData.empty())),
         InMemoryInfoSystem.empty());
   }
@@ -597,10 +602,15 @@ public final class CompactThreeNationsWorld {
     out.put("totalPopulation", rural + urban);
     out.put("classRows", (long) economy.classes().size());
     out.put("flowRows", (long) economy.flows().size());
-    out.put("industries", (long) economy.industries().size());
-    out.put("productionUnits", (long) economy.units().size());
+    // ★★ D-032 T1：**定义与实例的读数一律改从 production 切片现读** —— `EconomyData.industries()/modes()/units()`
+    //   三条读数点已随 B2b（裁定六，实例）/ B4（裁定十五，产业定义）/ B5（裁定十八，生产方式定义）整段迁出；
+    //   裸 `EconomyData` 上那三个读口现在走接口 default ⇒ **运行期 fail-closed**（误用当场抛，不是静默空表）。
+    //   读数语义一字未改：仍是"本世界种下了几张产业定义 / 几个生产方式 / 几个生产实例"。
+    ProductionData production = productionOf(state);
+    out.put("industries", (long) production.industries().size());
+    out.put("productionUnits", (long) production.instances().size());
     // ★ P1 地基/自动组织读数（不参与旧断言；只把"完整世界真的种下了什么"打印出来）。
-    out.put("modes", (long) economy.modes().size());
+    out.put("modes", (long) production.modes().size());
     out.put("classStructures", (long) economy.classStructures().size());
     out.put("classPositions", (long) economy.classPositions().size());
     out.put("classStandings", (long) economy.classStandings().size());
@@ -746,6 +756,14 @@ public final class CompactThreeNationsWorld {
     return ((EconomySnapshot) module(state, "economy")).data();
   }
 
+  /**
+   * ★★ D-032 T1：production 切片（定义 + 实例的唯一权威）。本类的汇总读数用它替代已退役的三条 economy 读口 （{@code
+   * EconomyData.industries()/modes()/units()}）。
+   */
+  public static ProductionData productionOf(SimulationState state) {
+    return ((ProductionSnapshot) module(state, "production")).state();
+  }
+
   public static ActorData actorOf(SimulationState state) {
     return ((ActorSnapshot) module(state, "actor")).data();
   }
@@ -786,6 +804,9 @@ public final class CompactThreeNationsWorld {
   public static Map<String, Map<String, Object>> nationReadings(SimulationState state) {
     EconomyData economy = economyOf(state);
     SocialData social = socialOf(state);
+    // ★★ D-032 T1：产业定义（"这个 region 里有几个产业"）的唯一权威在 production ⇒ 与 {@link #readings} 同口径换片
+    //   （裸 `EconomyData.industries()` 走接口 default ⇒ 运行期 fail-closed）。
+    ProductionData production = productionOf(state);
     Map<String, Map<String, Object>> out = new LinkedHashMap<>();
     for (RegionId region : NATION_REGIONS) {
       Region area = mapOf(state).regions().get(region);
@@ -810,7 +831,7 @@ public final class CompactThreeNationsWorld {
               .filter(area::contains)
               .count();
       long industries = 0L;
-      for (IndustryId id : economy.industries().keySet()) {
+      for (IndustryId id : production.industries().keySet()) {
         Optional<String> hexKey = IndustryHexKeys.hexKeyOf(id);
         if (hexKey.isPresent() && area.contains(HexCoord.parse(hexKey.get()))) {
           industries++;

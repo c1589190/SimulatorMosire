@@ -2,6 +2,7 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryId;
 
@@ -23,7 +24,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
  *
  * <p>★ <b>量纲</b>：{@code LAND} 千分亩、其余件（同 {@link AssetKind}）；{@code quantity ≥ 0}（0 是合法状态）。
  *
- * @param id 稳定身份；见 {@link #idOf(IndustryId, AssetKind, ActorRef, ActorRef, RightKind, long)}
+ * @param id 稳定身份；见 {@link #idOf(IndustryId, AssetKind, ActorRef, ActorRef, AssetRightKind, long)}
  * @param industry 这份份额登记在哪个产业（旧 {@code UseRight.activity} 的对应字段，一对一迁移时原样保留）
  * @param asset 实物资产种类；不得为 null
  * @param owner 所有权主体；不得为 null
@@ -38,17 +39,7 @@ public record OwnershipStake(
     ActorRef owner,
     ActorRef operator,
     long quantity,
-    RightKind kind) {
-
-  /** 资产份额的权利性质（R3B.1 词表；沿用旧 {@code UseRight.RightKind}）。 */
-  public enum RightKind {
-    /** 自有（旧档一对一迁移/default 物化的默认档）。 */
-    OWNED,
-    /** 租佃（{@code owner != operator} 时的常见档；地租仍在 ProductionRules 结算）。 */
-    TENANCY,
-    /** 公地/共同使用。 */
-    COMMUNAL
-  }
+    AssetRightKind kind) {
 
   public OwnershipStake {
     if (id == null) {
@@ -81,15 +72,15 @@ public record OwnershipStake(
    * <p>★ {@code sequence} 由状态内确定性计数给出（同一状态的重放/分支得到同一批 id；禁止随机数/时间戳/UUID）。 ★ <b>不含 {@code
    * "."}</b>：若任一段带点会与 {@code AddressParser} 的第一个点截断约定冲突 ⇒ 当场抛， 不静默造一个解析不到的地址。
    *
-   * <p>★ <b>旧档 id 不重算</b>：{@code LegacyHouseholdMigration} 一对一搬运旧 {@code UseRight} 时直接沿用原 id 字符串
-   * （{@link AssetShareId#parse(String)} 是 opaque 的），本工厂只服务新生成的份额。
+   * <p>★ <b>旧档 id 不重算</b>：旧档迁移器（B2b 已删）一对一搬运旧 {@code UseRight} 时直接沿用原 id 字符串 （{@link
+   * AssetShareId#parse(String)} 是 opaque 的），本工厂只服务新生成的份额。
    */
   public static AssetShareId idOf(
       IndustryId industry,
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      RightKind kind,
+      AssetRightKind kind,
       long sequence) {
     if (industry == null) {
       throw new IllegalArgumentException("OwnershipStake.idOf 的 industry 不得为 null");

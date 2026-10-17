@@ -10,6 +10,10 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.change.ProductionChangeSet;
+import io.mosire.simos.production.spi.ProductionSeedHandler;
 import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.ResolvedNation;
 import io.mosire.simos.social.gen.SettlementGenerator;
@@ -35,11 +39,16 @@ import org.junit.jupiter.api.Test;
  * <ol>
  *   <li>不写 class-first 顶层键（P0.1 后 {@code classFirst} 组件已删除，载荷不得再出该键）；
  *   <li>载荷顶层带 P1/P2 目录五表：{@code modes/classStructures/classPositions/classStandings/assetRules}；
- *   <li>每条 entry 都是完整生产结构（{@code industries} + {@code units/assetShares/allocations}），
- *       且至少一条真的有产业/生产单元/资产份额/劳动配额（P2-A 后 {@code laborSupply}/{@code memberships} 已退役）；
+ *   <li>每条 entry 都是完整生产结构（{@code plans} + {@code units/assetShares/allocations}），
+ *       且至少一条真的有方案节点/生产单元/资产份额/劳动配额（P2-A 后 {@code laborSupply}/{@code memberships} 已退役）；
  *   <li>载荷被真 {@link EconomySeedHandler} 接受（{@code Applied}），落出的 {@link EconomyData} 里 mode ≥ 7、
  *       classStructure ≥ 7、生产结构非空、classFirst 空。
  * </ol>
+ *
+ * <p>★★ <b>D-032 T6（a 桶锚点，B5 裁定十九的后果）</b>：entry 里的产业声明键由 {@code industries} 改名 {@code plans} ——
+ * 旧键自带"一整套产业定义 + 旧形状实例字段"，而那些定义**从未进过 economy 状态**（定义唯一权威在 production，随 {@code production.Seed}
+ * 落账）⇒ 键名改成 {@code plans}：它现在只声明"这一格有哪些方案节点" （每个节点仍是 unit 节点的宿主 + trade 的显式 relation 来源）。现场： {@code
+ * EconomySeeder.java:3863 entry.put("plans", industries)}（B5 注释原文）。
  *
  * <p>★ 夹具照 {@code ClassFirstEconomySeedTest}/{@code CompactThreeNationsWorld}：只取紧凑三国的一国（48 格），
  * 人口批次与 worldgen 走同一条 {@link PopulationSeeder#groups} 路径，不另造第二套世界。
@@ -52,7 +61,7 @@ class ProductionRuntimeSeedSmokeTest {
   private static final ObjectMapper JSON = SimosObjectMapper.create();
 
   private static final List<String> PRODUCTION_STRUCTURE_KEYS =
-      List.of("industries", "units", "assetShares", "allocations");
+      List.of("plans", "units", "assetShares", "allocations");
 
   @Test
   void productionRuntimeSeedCarriesCatalogAndFullProductionEntriesThenHandlerAppliesThem()
@@ -99,7 +108,7 @@ class ProductionRuntimeSeedSmokeTest {
         .as("production-runtime 不发顶层 classFirst")
         .isTrue();
 
-    boolean anyIndustries = false;
+    boolean anyPlans = false;
     boolean anyUnits = false;
     boolean anyAssetShares = false;
     boolean anyAllocations = false;
@@ -108,39 +117,63 @@ class ProductionRuntimeSeedSmokeTest {
         assertThat(entry.hasNonNull(key)).as("每条 entry 都必须带 %s（缺键 = 结构不完整）", key).isTrue();
         assertThat(entry.path(key).isArray()).as("entry.%s 必须是数组", key).isTrue();
       }
-      anyIndustries |= entry.path("industries").size() > 0;
+      anyPlans |= entry.path("plans").size() > 0;
       anyUnits |= entry.path("units").size() > 0;
       anyAssetShares |= entry.path("assetShares").size() > 0;
       anyAllocations |= entry.path("allocations").size() > 0;
     }
-    assertThat(anyIndustries).as("至少一条 entry 有非空 industries").isTrue();
+    assertThat(anyPlans).as("至少一条 entry 有非空 plans（方案节点声明）").isTrue();
     assertThat(anyUnits).as("至少一条 entry 有非空 units").isTrue();
     assertThat(anyAssetShares).as("至少一条 entry 有非空 assetShares").isTrue();
     assertThat(anyAllocations).as("至少一条 entry 有非空 allocations").isTrue();
     // ★ P2-A：laborSupply 已删除、memberships 已迁 Social ⇒ 载荷结构键与断言同步收敛。
 
-    SimulationState empty =
+    // ★★★ D-032 T6（a 桶夹具欠账）：**production.Seed 先落账**（N20 的次序：定义 + 实例的唯一权威在
+    //   production），economy.Seed 再引用它。旧稿两段各起一个只含**本切片**的 SimulationState，先把
+    //   economy 载荷交给 EconomySeedHandler ⇒ 它的跨域校验读到"没有 production 切片"⇒ 具名拒
+    //   `Rejected[reason=state 里没有 production 切片（装配故障：实例/覆盖权威必须存在）]`（1 红即此形态）。
+    //   本方法照真世界的次序重排**并让两段共用同一份 state 链**。
+    SimulationState productionState =
         new SimulationState(
             new StateMeta(REF, T0),
-            Map.of("economy", new EconomySnapshot(REF, T0, EconomyData.empty())),
+            Map.of("production", new ProductionSnapshot(REF, T0, ProductionData.empty())),
             InMemoryInfoSystem.empty());
-    HandlerOutcome outcome = new EconomySeedHandler().handle(empty, seed.economyPayload());
+    HandlerOutcome productionOutcome =
+        new ProductionSeedHandler().handle(productionState, seed.productionPayload());
+    assertThat(productionOutcome)
+        .as("真播种器产出的 production 载荷必须被真 handler 接受：%s", productionOutcome)
+        .isInstanceOf(HandlerOutcome.Applied.class);
+    ProductionData production =
+        ProductionChangeSet.apply(
+            (ProductionChangeSet) ((HandlerOutcome.Applied) productionOutcome).changeSet(),
+            ProductionData.empty());
+
+    SimulationState bothSlices =
+        new SimulationState(
+            new StateMeta(REF, T0),
+            Map.of(
+                "production", new ProductionSnapshot(REF, T0, production),
+                "economy", new EconomySnapshot(REF, T0, EconomyData.empty())),
+            InMemoryInfoSystem.empty());
+    HandlerOutcome outcome = new EconomySeedHandler().handle(bothSlices, seed.economyPayload());
     assertThat(outcome)
-        .as("真播种器产出的 production-runtime 载荷必须被真 handler 接受：%s", outcome)
+        .as("真播种器产出的 economy 载荷必须被真 handler 接受：%s", outcome)
         .isInstanceOf(HandlerOutcome.Applied.class);
 
     EconomyData economy =
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    assertThat(economy.modes()).as("落盘 modes ≥ 7").hasSizeGreaterThanOrEqualTo(7);
+    // ★ P1：生产定义权威在 production ⇒ modes/industries/instances 逐条读 production 落账后的切片。
+    assertThat(production.modes()).as("落盘 modes ≥ 7").hasSizeGreaterThanOrEqualTo(7);
     assertThat(economy.classStructures())
         .as("落盘 classStructures ≥ 7")
         .hasSizeGreaterThanOrEqualTo(7);
     assertThat(economy.classPositions()).as("落盘 classPositions 不得为空").isNotEmpty();
     assertThat(economy.classStandings()).as("落盘 classStandings 不得为空").isNotEmpty();
     assertThat(economy.assetRules()).as("落盘 assetRules 不得为空").isNotEmpty();
-    assertThat(economy.industries()).as("industries 非空").isNotEmpty();
-    assertThat(economy.units()).as("units 非空").isNotEmpty();
+    assertThat(production.industries()).as("industries 非空").isNotEmpty();
+    // ★★ D-032 T1：实例读数改读 production 切片（`EconomyData.units()` 已随迁移删除）。
+    assertThat(production.instances()).as("production 的生产实例非空").isNotEmpty();
     assertThat(economy.assetShares()).as("assetShares 非空").isNotEmpty();
     assertThat(economy.allocations()).as("allocations 非空").isNotEmpty();
     // ★ P2-A A4 / §13.2：laborSupply 已删除、memberships 已迁 Social ⇒ 改为钉家户时间预算的载体。

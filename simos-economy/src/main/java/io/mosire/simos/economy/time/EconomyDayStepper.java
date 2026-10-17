@@ -1,17 +1,16 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -56,6 +55,13 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   private final EconomySession session;
   private final AccountSession accounts;
+
+  /**
+   * ★★ <b>D-032 U2：本段 Advance 的生产运行时只读投影</b>（组合根在推进起点新建；见带 runtime 的构造器）。
+   *
+   * <p>★ 可能为 null（只做家户/债务的窄会话）；那种会话读生产实例会 fail-closed 抛 （{@link EconomyStateBuilder#units()}）。
+   */
+  private final io.mosire.simos.production.contract.ProductionRuntime runtime;
 
   /** 「家户 → (lot → count)」只读投影（P2-A A3；由调用方从 Social 注入，不进任何 Economy 状态）。 */
   private Map<HouseholdId, Map<PeopleLotId, Long>> composition = Map.of();
@@ -113,43 +119,61 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   private boolean lastCycleClosed;
 
-  /** ★★ <b>组合根入口（区域拓扑版）</b>：账户会话由调用方载入；行为旋钮取出厂默认值。 */
-  public EconomyDayStepper(EconomyData base, AccountSession accounts, MarketTopology topology) {
+  /**
+   * ★★★ <b>D-032 U2 的装配口（组合根用）</b>：除定义只读来源外，另注入本段 Advance 的 <b>生产运行时只读投影</b>（{@code
+   * production.contract.ProductionRuntime}）。
+   *
+   * <p>★★ <b>生命周期硬约束</b>：{@code runtime} 必须由组合根在<b>每次 Advance 起点</b>新建 （{@code new
+   * ProductionRuntimeEngine(productionSlice)}）并独占使用到底；<b>不得</b>跨 Advance 复用 —— 引擎持有"当刻候选态"，复用它就是
+   * I13 禁止的"跨 revision 陈旧"。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology) {
     this(
         base,
+        definitions,
+        runtime,
         accounts,
         topology,
         EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
         EconomyParallelism.singleThreaded());
   }
 
-  /** ★ 单模块/手搭夹具：没有城市信息 ⇒ 每格一区、不跨区（M2-L1 的既有行为）。 */
-  public EconomyDayStepper(EconomyData base, AccountSession accounts) {
-    this(base, accounts, MarketTopology.singleHex(base.marketTables(), base.marketZones()));
-  }
+  // ★★★ D-032 B3（§13.13.7 第 8 条 / §13.3 第 2 条）：三个 **runtime = null** 的旧构造器已**删除**
+  //   （4 参「组合根入口（区域拓扑版）」/ 3 参「单模块夹具」/ 6 参「行为旋钮可注入」）—— 它们都委托
+  //   `this(..., null, ...)`，而 null runtime 的会话在任何日推进上都会 fail-closed ⇒ **没有实际可用职责**。
+  //   ★ 合法装配只有下面两个（都显式收 runtime）：组合根用的 5 参（区域拓扑，出厂默认旋钮 + 单线程）与
+  //     全参 7 参。★ 需要"零实例"世界请传空候选态的 runtime，不要传 null。
 
-  /**
-   * ★ <b>行为旋钮可注入</b>（公开：契约层的常量的唯一拼写点）：先播种还是先吃饭 —— 理由逐字见 {@code
-   * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}。
-   *
-   * <p>★★ <b>W3（2026-10-11）：原第二个旋钮 {@code famineMortalityPerMille}（饿死致死率）已删</b> —— 死亡率的权威在
-   * Social（AGENTS §〇 模块表 / 约束设计书 §2 的 S-11 第②半）；经济侧只<b>报缺口</b>（见 {@link
-   * #drainPendingHouseholdGaps()}），不再持有任何"致死"口径。旧类型直接删（AGENTS §一.11）。
-   */
+  /** ★★★ <b>D-032 U2：全参构造器（带生产运行时只读投影）</b>。 */
   public EconomyDayStepper(
       EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
       EconomyParallelism parallelism) {
     this.lastCycleClosed = false;
-    this.session = new EconomySession(Objects.requireNonNull(base, "base"));
+    // ★★ B3：runtime 必须非 null（同上：生产实例的唯一权威在 production）。
+    this.runtime =
+        Objects.requireNonNull(runtime, "runtime（D-032：生产实例的唯一权威在 production，必须显式注入合法运行时）");
+    this.session =
+        new EconomySession(
+            Objects.requireNonNull(base, "base"),
+            Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）"),
+            runtime);
     this.accounts = Objects.requireNonNull(accounts, "accounts（账户会话是会话状态，必须由调用方载入）");
     this.topology =
         Objects.requireNonNull(topology, "topology（M2.3：没有城市信息用 MarketTopology.singleHex）");
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
-    this.profitCycle = base.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
+    this.profitCycle =
+        definitions.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
@@ -281,6 +305,38 @@ public final class EconomyDayStepper implements AutoCloseable {
     return accounts;
   }
 
+  /**
+   * ★★★ <b>D-032 U2：本段 Advance 的生产运行时只读投影</b>（组合根新建、推进结束后由它取走本域变更集）。
+   *
+   * <p>★★ <b>为什么要开这个读口</b>：① 组合根在推进收尾处要调 {@code runtime.changeSet()} 把 production
+   * 本域变更集汇入同一次提案（I11：与 ACTOR 账户同一条 Revision）；② app 侧读实例/方案的路径（ {@code ApiViews}/{@code
+   * ToolSupport}/{@code CrisisMonitor}…）改读这份当刻投影（§9 第 3 条 / U9）。
+   *
+   * <p>★★ <b>B12 登记：EI_EXPOSE_REP 是孤立例外，不是缺陷</b>（§14.25.3 裁定四十五第 3 条）—— 理由见 {@link
+   * EconomySession#productionRuntime()} 的同一条账：返回的是**注入的契约端口接口**（economy 调 production
+   * 的唯一通道），防御性拷贝语义为零；例外由下面这条**具名** {@code @SuppressFBWarnings} 登记（不是静默排除）。
+   *
+   * @return 本会话注入的运行时；<b>未注入时为 null</b>（只做家户/债务的窄会话 —— 调用方须自行 fail-closed）
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "孤立例外（§14.25.3 裁定四十五第 3 条）：返回的是组合根注入的契约端口接口 ProductionRuntime —— economy 读/写生产候选态的唯一通道；接口没有拷贝契约，拷贝掉就不再是同一份权威候选态（changeSet()/beginTick() 会丢失），调用面限于 economy 域内与组合根收尾。登记见 impl-ledger B12")
+  public io.mosire.simos.production.contract.ProductionRuntime productionRuntime() {
+    return runtime;
+  }
+
+  /**
+   * ★★ <b>本会话按需创建、尚未登记的产业定义</b>（瞬态候选态）：app 组合根在 Advance 收尾时投影成 production 的 ChangeSet，与经济实例变更集在同一次
+   * Advance 原子提交（D-031 §9.1）。空表 = 本段没有新定义。
+   */
+  public Map<
+          io.mosire.simos.economy.api.id.IndustryId,
+          io.mosire.simos.production.contract.IndustryDefinitionView>
+      createdIndustryDefinitions() {
+    return session.createdIndustryDefinitions();
+  }
+
   /** 本期的流水累加器（**只读视图**；键序 = 行的插入序）。 */
   public Map<HouseholdId, FlowRow> flows() {
     return session.flowsView();
@@ -372,27 +428,9 @@ public final class EconomyDayStepper implements AutoCloseable {
     if (day < 1L) {
       throw new IllegalArgumentException("结算的日号必须 ≥ 1（创世是第 0 天）: " + day);
     }
-    // ★★ Z1（§8）：PRODUCTION_MODIFIER_INJECTED INFO，每日一条（day/count/非中性数）—— 修正注入集在当日 step 之前由
-    //   协调器替换，这里带着 day 落地；未注入 ⇒ count=0（中性）。
-    Map<ProductionUnitId, ProductionEfficiencyModifier> injected =
-        session.productionModifiersView();
-    long nonNeutral = 0L;
-    for (ProductionEfficiencyModifier modifier : injected.values()) {
-      if (modifier.modifierPerMille() != 1_000L) {
-        nonNeutral++;
-      }
-    }
-    EventLog.channel(LOG)
-        .info(
-            LogEvent.of(
-                "PRODUCTION_MODIFIER_INJECTED",
-                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
-                "day",
-                day,
-                "count",
-                injected.size(),
-                "nonNeutral",
-                nonNeutral));
+    // ★★ D-032（D2 直接删）：`PRODUCTION_MODIFIER_INJECTED` 每日 INFO 已随注入链退役——没有注入集，
+    //   就没有"本日注入了几个、几个非中性"这条读数。生产侧的对应读数改由 production 的
+    //   `PRODUCTION_CYCLE_CLOSED` / `PRODUCTION_EXPERIENCE_*` 事件承担（见 ProductionLog.runtime()）。
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
     // ★ Z7c：关账事实在 step 前抓一份、step 后再读一次（与 EconomySettlement 的 anyCycleClosed 同源：
     //   有任一周期关账 ⇒ lastClosedCycle 从旧值/空变成 currentCycle）。只开读数，不改行为。
@@ -431,7 +469,9 @@ public final class EconomyDayStepper implements AutoCloseable {
                   "rows",
                   session.sheet().householdEconomies().size(),
                   "units",
-                  session.sheet().units().size(),
+                  // ★★ D-032 U2：实例数的权威在 production 的当刻候选态（本会话的运行时只读投影）；
+                  //   未注入运行时（窄会话）⇒ 本读数记为 -1（**不**把"没有运行时"写成 0 —— 那与"没有实例"不可分）。
+                  runtime.units().size(), // ★ B3：runtime 恒非 null（构造器保证）
                   "transfers",
                   result.transfers().size(),
                   "marketReport",
@@ -461,74 +501,10 @@ public final class EconomyDayStepper implements AutoCloseable {
     EconomySettlement.applyNaturalNeedsInto(session, needsByHousehold);
   }
 
-  /**
-   * ★★ <b>Z1（§5.2）：替换本 tick 的程序内修正参数注入集</b>（由 app 组合根在当日 {@link #step(long)} <b>之前</b>调用，与 {@link
-   * #updateNaturalNeeds(Map)} / {@link #recomputeLaborBudgets(Map)} 同日序先例）。
-   *
-   * <p>语义：<b>替换</b>而非累加；未注入的 unit = 1000‰（中性）；当日结算消费后由 Z2 的结算路径清空（本区只提供会话暂存）。
-   * 机制的输入必须是<b>已持久化状态的纯函数</b>（本批不提供持久化修正表，§5.2）。
-   *
-   * <p>★★ <b>具名拒绝（INFO + {@link IllegalArgumentException}，同 updateNaturalNeeds 的 fail-closed
-   * 口径）</b>：
-   *
-   * <ul>
-   *   <li>{@code modifiers == null} / 含 null 项 ⇒ 拒（不猜"空"）；
-   *   <li>未知 unit（不在当前 {@code units} 表）⇒ 拒 {@code unknown-unit}；
-   *   <li>同一 unit 重复出现 ⇒ 拒 {@code duplicate-unit}。
-   * </ul>
-   *
-   * <p>★ <b>越界（不属于 [0,2000]）在本方法不可达</b>：{@link ProductionEfficiencyModifier} 的构造期守卫已经
-   * fail-closed（§5.1）—— 本方法收到的 record 必然合法；命令边界之外的"拒绝日志"因此只覆盖本方法能看见的三种。
-   *
-   * @param modifiers 本 tick 的全量注入集（可空列表 = 全部 unit 中性）；不得为 null、不得含 null/重复/未知 unit
-   */
-  public void updateProductionModifiers(List<ProductionEfficiencyModifier> modifiers) {
-    if (modifiers == null) {
-      logProductionModifierRejected("null-modifier-list", null, null);
-      throw new IllegalArgumentException(
-          "updateProductionModifiers 的 modifiers 不得为 null（没有注入用空列表）");
-    }
-    Map<ProductionUnitId, ProductionEfficiencyModifier> replacements = new LinkedHashMap<>();
-    // ★ unitsOrBase：只判存在，不为一次查询整表拷一份工作副本。
-    Map<ProductionUnitId, ?> units = session.sheet().unitsOrBase();
-    for (ProductionEfficiencyModifier modifier : modifiers) {
-      if (modifier == null) {
-        logProductionModifierRejected("null-modifier", null, null);
-        throw new IllegalArgumentException("updateProductionModifiers 不得含 null 修正项");
-      }
-      ProductionUnitId unit = modifier.unit();
-      if (!units.containsKey(unit)) {
-        logProductionModifierRejected("unknown-unit", unit, modifier.modifierPerMille());
-        throw new IllegalArgumentException(
-            "updateProductionModifiers 指向未知 unit（不在 units 表）: " + unit.value());
-      }
-      if (replacements.putIfAbsent(unit, modifier) != null) {
-        logProductionModifierRejected("duplicate-unit", unit, modifier.modifierPerMille());
-        throw new IllegalArgumentException(
-            "updateProductionModifiers 同一 unit 重复注入: " + unit.value());
-      }
-    }
-    session.replaceProductionModifiers(replacements);
-  }
-
-  /**
-   * ★★ Z1（§8）：{@code PRODUCTION_MODIFIER_REJECTED} INFO（reason/unit/modifierPerMille；缺值记 {@code
-   * -}）。
-   */
-  private static void logProductionModifierRejected(
-      String reason, ProductionUnitId unit, Long modifierPerMille) {
-    EventLog.channel(LOG)
-        .info(
-            LogEvent.of(
-                "PRODUCTION_MODIFIER_REJECTED",
-                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
-                "reason",
-                reason,
-                "unit",
-                unit == null ? "-" : unit.value(),
-                "modifierPerMille",
-                modifierPerMille == null ? "-" : modifierPerMille));
-  }
+  // ★★ D-032（D2 直接删）：`updateProductionModifiers(List<ProductionEfficiencyModifier>)` 与
+  //   `PRODUCTION_MODIFIER_REJECTED` 日志已随"文化 → 生产效率倍率"整条通路退役（用户 U5）。
+  //   ★ 新口径：效率 = 家户熟练度经方案公式解释出的倍率，归 production；economy 不再有可注入的修正集，
+  //   也没有"未知 unit ⇒ 具名拒"这一层（实例的存在性与引用完整性改由 production 的候选态只读校验承担）。
 
   /**
    * ★★ 把**外部（社会/命令面）报来的**逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。

@@ -19,6 +19,7 @@ import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.household.MigrationSocialBridge;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
@@ -147,6 +148,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   private static final String ECONOMY = "economy";
   private static final String SOCIAL = "social";
+
+  /** ★★ D-031 P1：production 切片（按需产业定义的投影落点）。 */
+  private static final String PRODUCTION = "production";
 
   /** ★★ P2-D：gov 切片（GOV 单位 → 每 tick 行政读数）。 */
   private static final String GOV = "gov";
@@ -289,6 +293,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     SocialData socialBase = socialOf(state);
     // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
     ActorData actor = actorOf(state);
+    // ★★★ D-032 U2（§12.3 第 1 条）：**组合根装配生产运行时引擎** —— 本次 Advance 起点新建一个实例，独占使用到底；
+    //   它的 changeSet() 在推进收尾处汇入 moduleChanges（与 ACTOR 账户同一次 Revision，I11）。
+    //   ★ 生命周期硬约束（I13）：引擎持有"当刻候选态" ⇒ 不得跨 Advance 复用（那正是"跨 revision 陈旧"）。
+    //   ★ 为什么 new 在这里而不是 economy：引擎是非 contract 包的 production 内部实现，I4/V11 禁止 economy import 它。
+    io.mosire.simos.production.ProductionRuntimeEngine productionRuntime =
+        new io.mosire.simos.production.ProductionRuntimeEngine(
+            // ★★ B1（D-032 §13.3 第 3 条）：**基态由组合根本地读切片**（`productionDataOf(state)`）——
+            //   它**不是** economy 越界：本类是组合根（simos-app 允许直接依赖 production 全部包）。
+            //   旧形态经 `EconomyProductionDefinitions.runtimeDataOf` 让 **economy 读 production 内部状态类型**
+            //   （`io.mosire.simos.production.ProductionData`）再回传 —— 那条 import 已删除（V11 扫描面）。
+            //   ★ 实例/经验/解锁/效率/覆盖的读与写此后一律走 `ProductionRuntime` 自己的口；
+            //     本域变更集由 `ProductionChangeSet.between(段首基态, 当刻候选态)` 派生（铁律 5）。
+            productionDataOf(state));
     // ★★ S3b（2026-10-09）：Unit/Gov 的 households ↔ Social 家户位置一致性 + HouseholdEconomy 人口向 Social 家户投影。
     //   两件事都必须在日循环之前做：它们改的是本轮推进的**基态**，终端变更集相对 economyBase/socialBase 取差分。
     UnitState units = unitStateOf(state);
@@ -318,7 +335,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       HouseholdUnitConsistency.requireConsistent(social, units);
       Map<String, Long> staffProjection =
           HouseholdUnitConsistency.staffHouseholdProjection(
-              economyBase, social, units, range.from().tick());
+              economyBase,
+              io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+              social,
+              units,
+              range.from().tick());
       if (!staffProjection.isEmpty()) {
         TIME.info(
             LogEvent.of(
@@ -338,7 +359,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       //   这里每日聚合一条 INFO（保留事件名与 count/first），不用 WARN/DEBUG 淹没日志。
       List<String> staffMismatches =
           HouseholdUnitConsistency.staffProjectionMismatches(
-              economyBase, social, units, range.from().tick());
+              economyBase,
+              io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+              social,
+              units,
+              range.from().tick());
       if (!staffMismatches.isEmpty()) {
         TIME.info(
             LogEvent.of(
@@ -378,7 +403,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       //   就跟随 unit.PlaceAt / 行军 / 迁都。HEX 家户原样不动。
       HouseholdPositionResolver.Alignment alignment =
           HouseholdPositionResolver.alignHouseholdEconomyViews(
-              economyBase, social, units, range.from());
+              economyBase, social, units, EconomyProductionDefinitions.of(state), range.from());
       economyAligned = alignment.data();
       if (alignment.moved() > 0) {
         TIME.info(
@@ -431,7 +456,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     //   切片存在且带 GovernmentFormation——Z1c handler 编译期看不见 unit，app GM 窄工具做 preview/apply 预检，
     //   但 GM 裸 simos.command.submit 可绕过；本组合根检查是最终具名拒（不静默继续）。unit 切片缺席 + 存在 service
     //   unit 也是不一致。
-    GovernmentServiceUnitConsistency.requireConsistent(economy, units);
+    GovernmentServiceUnitConsistency.requireConsistent(
+        economy,
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+        units);
     // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔
     // 国库账户"
     //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
@@ -468,7 +496,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
-    for (IndustryId id : economy.industries().keySet()) {
+    for (IndustryId id : productionDataOf(state).industries().keySet()) {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
@@ -579,6 +607,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       EconomyDayStepper stepper =
           new EconomyDayStepper(
               economy,
+              EconomyProductionDefinitions.of(state),
+              productionRuntime,
               session,
               flightTopology,
               EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
@@ -609,10 +639,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         stepper.updateMarketExcludedHouseholds(unitHouseholdExclusions(units));
         ActorData currentBooks = migratedBooks;
         SocialData currentSocial = social;
-        // ★★ Z7d-1：基态逐户粮缺口累计基线 —— {@link FlowRow#unmetNeed()} 是"本周期累计"，当日断顿要用
-        //   与前一日（或 revision 基态）的差分；周期第一天清零 ⇒ 差分 < 0 时读作"当日值"。
-        Map<HouseholdId, Long> previousCumulativeGrainUnmet =
-            cumulativeGrainUnmetOf(stepper.flows());
+        // ★★★ B12 / DEF-T6-1：**本段日循环不持任何跨日/跨 advance 的缺口基线**。当日缺口在 ③ 由结算
+        //   自己逐日交出（`drainPendingHouseholdGaps()` 的 `rationGapMilli` = 当日 `unmetToday[grain]`），
+        //   ④ 直接拿它回写。
+        //   ★ 旧稿用 `FlowRow.unmetNeed`（**本周期累计**）与前一日累计做差，并用"累计 < 上一基线"猜
+        //     "周期第一天"；周期复位日一旦"当日缺口 ≥ 上一基线"（实测 167 vs 166），整日就被读成 1 毫
+        //     ⇒ satiety 少跌一次 ⇒ 串行两次推进 ≠ 一次两天推进（N22 红）。差分口径的第二个读源从此删除。
         // ★★ P2-D：gov 状态（每 tick 行政读数）+ 跨日累计读数（只进日志，不进状态）。
         GovState currentGov = bootstrappedGov;
         AdminTotals adminTotals = new AdminTotals();
@@ -634,6 +666,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           Map<HouseholdId, Map<CommodityId, Long>> dayNaturalNeeds =
               naturalNeedsOf(currentSocial, day);
           stepper.updateNaturalNeeds(dayNaturalNeeds);
+          // ── ★★ D-032（D2 直接删）：原"文化加成中性接线点"（CultureAptitudeBridge）已随
+          //   "文化 → 生产效率倍率"整条通路退役（用户 U5）。⇒ 这里**不再有任何效率修正注入**：
+          //   生产效率的新口径 = 家户熟练度经方案公式解释出的倍率，归 production（见
+          //   {@code production.contract.ProductionExperienceUse} 与 {@code ProductionEfficiency}）
+          //   由生产运行时在试算/执行里算，不由经济日循环注入。
+          // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：**每 tick 恰开一次生产推进**
+          //   （先按明确日序衰减一次经验，再冻结本 tick 的生效条件）。必须在**任何**试算/执行之前。
+          //   ★ 为什么 tick 身份用世界日：日循环的 `day` 就是既有调度上下文给出的世界 tick（与
+          //     `new EconomyDayStepper` 的 range 同一把尺子）；引擎按它判"同一 tick 重复开启/回退"，
+          //     并让本 tick 的全部实例读**同一份**熟练度快照（实例处理先后不再改变另一实例的加成）。
+          //   ★ "同 tick 重复开启/回退/未开启即衰减"是**契约故障**，由引擎具名抛出（ERROR 不降级）
+          //     ⇒ 整次 Advance 被拒；这里**不**捕获、不吞错（§13.7 第 2 条）。
+          productionRuntime.beginTick(day);
           // ── ② 经济结算一天（消费/市场/借粮/还债/收获/迁移…；只推事实，不判死、不缩劳动）──────────
           //   ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
           //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
@@ -683,17 +728,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             }
           }
           // ── ④ 断顿→饱食度回写（Z7d-1；劳动口径仍归 Social）────────────────────────────────
-          // ★★ Z7d-1：经济→Social 断顿回写（同一 revision；当日结算后立刻生效于下一 tick 的劳动预算）。
-          //   数据源 = 当日 FlowRow.unmetNeed[grain]（本周期累计，基线差分取当日量）与当日注入的粮自然需求；
+          // ★★ Z7d-1/B12：经济→Social 断顿回写（同一 revision；当日结算后立刻生效于下一 tick 的劳动预算）。
+          //   数据源 = ③ 那份**当日** {@link EconomyHouseholdGap}（{@code rationGapMilli} = 当日
+          //   {@code unmetToday[grain]}，{@code rationNeedMilli} = 当日需求）与当日注入的粮自然需求；
           //   规则（用户冻结）：有粮 unmet ⇒ 快降 −150‰/日 × min(1000, unmet×1000/need)；无粮 unmet ⇒ 慢升 +20‰；
           //   布不足不降劳动。Social 不反向依赖 economy —— 本回写由 app 组合根编排、经 HouseholdSatietyBridge 纯函数。
+          //   ★ 没有 gap 条目的经济行 = 当日无缺口（outbox 只报"口粮缺口 > 0 或生产花费缺口非空"的户）。
           currentSocial =
               applyHouseholdSatietyWriteback(
-                  currentSocial,
-                  previousCumulativeGrainUnmet,
-                  stepper.flows(),
-                  dayNaturalNeeds,
-                  day);
+                  currentSocial, householdGaps, stepper.flows().keySet(), dayNaturalNeeds, day);
           // ★★ P0（2026-10-10）：经济腿迁移 outbox → Social 工单 → 经济行人口回写。次序（缺一不可）：
           //   ① drain：ModeMigrationSettlement 已在 step 内按投影账把资产/钱/债/组织/劳动配额落好，
           //      只把"搬了多少人、从谁到谁"留在瞬态 outbox；
@@ -737,8 +780,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     "economyPopulationAfter",
                     totalEconomyPopulation(stepper.householdEconomies())));
           }
-          // ★★ Z7d-1：当日结算后的缺口累计基线（迁移可能新增目标行；基线随最新工作副本刷新，日序稳定）。
-          previousCumulativeGrainUnmet = cumulativeGrainUnmetOf(stepper.flows());
+          // ★★ B12：日末**不刷新任何缺口基线**（旧稿在这里把 `previousCumulativeGrainUnmet` 刷成当日累计）——
+          //   当日缺口已由 ③ 的 outbox 一天一份交给 ④，跨日记忆整体废除（见上面对 N22 的说明）。
           // ── ⑤ Social 算死亡率（含饿死）────────────────────────────────────────────────────────
           //   ★ 输入 = ③ 那份逐户缺口（经济只给事实：口粮缺口 + 当日需求 + 逐商品生产花费未满足量）；
           //     **口径在 Social**（FamineMortality：断顿比例 → ppm/tick，走既有 DEATH 余数累加器）。
@@ -830,6 +873,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     map,
                     currentSocial,
                     economy,
+                    io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
                     stepper.householdEconomies(),
                     dayModifiers,
                     day,
@@ -975,6 +1019,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     units,
                     currentSocial,
                     economy,
+                    io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
                     stepper.accounts(),
                     computed.byUnit(),
                     computed.supplyByUnit(),
@@ -1000,7 +1045,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             // ★★ Z7b：俸禄（ADMIN_STIPEND）的粮/布腿由 oracle 转给官吏户（按 GOV_SERVICE 承诺份额分摊）；
             //   传入 economy 是为了读承诺份额的唯一权威（GovernmentServiceLaborBridge），不写任何状态。
             GovernmentUpkeepOracle oracle =
-                new GovernmentUpkeepOracle(stepper.accounts(), units, economy);
+                new GovernmentUpkeepOracle(
+                    stepper.accounts(),
+                    units,
+                    economy,
+                    io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state)
+                        .instances());
             GovDaily.Outcome settled =
                 GovDaily.settle(
                     currentGov,
@@ -1051,6 +1101,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 GovernmentServiceDesertionBridge.execute(
                     currentSocial,
                     economy,
+                    io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+                    // ★★★ D-032 B3（§13.13.7 第 4 条）：逃亡桥的产业定义（需求簿与可吸收劳动余量）读 production 的
+                    //   当刻权威 —— A 批续做时它"收了不用"被删掉，本轮收口把真实消费者接回来。
+                    io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+                    // ★★★ D-032 §15.12 B（R1）：去向排序的物理量（预计产出/所需劳动/所需投入）取自本会话的
+                    //   production 运行时 —— 与当日结算**同一份候选态**（不得跨 revision 陈旧）。
+                    stepper.productionRuntime(),
                     stepper::data,
                     units,
                     salaryShortfallsByHousehold,
@@ -1121,7 +1178,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             MilitaryPayRuleBridge.Report militaryPayReport =
                 units == null
                     ? MilitaryPayRuleBridge.Report.empty()
-                    : MilitaryPayRuleBridge.deriveReport(units, currentSocial, economy, day);
+                    : MilitaryPayRuleBridge.deriveReport(
+                        units,
+                        currentSocial,
+                        economy,
+                        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state)
+                            .instances(),
+                        day);
             if (TIME.isDebugEnabled()) {
               TIME.debug(
                   LogEvent.of(
@@ -1212,6 +1275,33 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         moduleChanges.put(ECONOMY, EconomyChangeSet.between(economyBase, currentEconomy));
         moduleChanges.put(SOCIAL, SocialChangeSet.between(socialBase, currentSocial));
         moduleChanges.put(ACTOR, ActorChangeSet.between(actor, currentBooks));
+        // ★★ D-031 P1 §9.1：本段按需创建（跑商/进入生产）的产业定义必须投影成 production 的 ChangeSet，
+        //   与经济实例变更集在**同一次 Advance/同一条 revision**原子落账 —— 不能只活在 sheet overlay（否则
+        //   finish/replay 丢定义）。定义寄存器归 production；本参与者只把候选态交给 production 的 ChangeSet。
+        Map<
+                io.mosire.simos.economy.api.id.IndustryId,
+                io.mosire.simos.production.contract.IndustryDefinitionView>
+            createdDefinitions = stepper.createdIndustryDefinitions();
+        // ★★★ D-032 U2/§12.3 第 9 条（I11）：**production 本域变更集汇入 S11 的同一个汇合点** ——
+        //   与经济实例/经验/解锁/效率/覆盖的候选态、以及 ACTOR 账户的 ChangeSet 落在**同一条 Revision** 里
+        //   （任一步失败 ⇒ 零部分提交）。
+        //   ★ 由 production 自己从完整本域候选态派生（边界裁决 §2 末条）：economy/app 都不 import
+        //     ProductionChangeSet、不拼它的组件，只把 runtime.changeSet() 原样汇入。
+        //   ★ 合并口径：起点必须是**引擎当刻候选态**（它含本次 execute 推进的实例/经验/效率/覆盖），
+        //     而不是推进起点的 productionDataOf(state) —— 否则引擎的候选态会被静默丢弃。
+        //   ★ 按需定义与引擎候选态的合流同样交给 production 自己的登记投影（DefinitionRegistration），
+        //     app 只转接候选态；两条候选态因此落在**一份** ChangeSet 里（不会出现"先 put 后被覆盖"）。
+        io.mosire.simos.production.ProductionData productionCandidate = productionRuntime.state();
+        if (!createdDefinitions.isEmpty()) {
+          io.mosire.simos.production.spi.DefinitionRegistration.Projection registered =
+              io.mosire.simos.production.spi.DefinitionRegistration.registerCreated(
+                  productionCandidate, createdDefinitions);
+          productionCandidate = registered.projected();
+        }
+        moduleChanges.put(
+            PRODUCTION,
+            io.mosire.simos.production.change.ProductionChangeSet.between(
+                productionDataOf(state), productionCandidate));
         if (govActive) {
           // ★ 基线取**未引导**的 govState：本推进新补的空读数（GovOfficeState.empty）也是本轮的合法结果，
           //   不能因为"它本来就是空的"被差分成 Unchanged 而丢掉（否则首建 GOV 永远不会激活结算）。
@@ -1288,6 +1378,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           "state 的 economy 切片不是 EconomySnapshot: " + snapshot.getClass().getName());
     }
     return economySnapshot.data();
+  }
+
+  /** ★★ D-031 P1：production 切片状态（按需定义投影的基线；装配故障当场炸）。 */
+  private static io.mosire.simos.production.ProductionData productionDataOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(PRODUCTION)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 production 切片（装配故障：定义权威必须在场）"));
+    if (!(snapshot instanceof io.mosire.simos.production.ProductionSnapshot productionSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 production 切片不是 ProductionSnapshot: " + snapshot.getClass().getName());
+    }
+    return productionSnapshot.state();
   }
 
   private static SocialData socialOf(SimulationState state) {
@@ -1455,6 +1558,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       GameMap map,
       SocialData social,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       Map<HouseholdId, HouseholdEconomy> currentHouseholdRows,
       Map<UnitId, GovEfficiencyModifier> modifiers,
       long day,
@@ -1494,7 +1601,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       GovAdministrationPlan plan = economy.governmentOrDefault(unitId.value()).administrationPlan();
       GovernmentServiceLaborBridge.Supply supply =
           GovernmentServiceLaborBridge.supply(
-              economy, currentHouseholdRows, unitId, formation, day);
+              economy, productionUnits, currentHouseholdRows, unitId, formation, day);
       GovEfficiencyModifier modifier = modifiers.get(unitId);
       long securitySupplyModifier =
           modifier == null
@@ -1888,63 +1995,53 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     return composition;
   }
 
-  /** ★★ Z7d-1：经济侧逐户粮缺口累计（{@link FlowRow#unmetNeed()} 的粮维，本周期累计）→ household 表（保序只读）。 */
-  private static Map<HouseholdId, Long> cumulativeGrainUnmetOf(Map<HouseholdId, FlowRow> flows) {
-    Map<HouseholdId, Long> cumulative = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
-      cumulative.put(
-          entry.getKey(), entry.getValue().unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L));
-    }
-    return cumulative;
-  }
-
   /**
    * ★★ <b>Z7d-1 经济→Social 断顿回写（app 组合根编排的唯一落点）</b>：把"当日粮缺口 + 当日粮需求"经 {@link HouseholdSatietyBridge}
    * 纯函数折成逐户 satietyPerMille，返回**新的** SocialData（同一 revision 内生效）。
    *
    * <pre>
-   * 当日缺口 = FlowRow.unmetNeed[grain]（本周期累计） − 前一日/基态累计
-   *            （累计 < 上一基线 ⇒ 周期第一天清零，当日缺口 = 当前累计）
+   * 当日缺口 = 结算当日交出的 EconomyHouseholdGap.rationGapMilli（= 当日 unmetToday[grain]）
    * 有缺口   ⇒ satiety ← max(0, satiety − ⌊150 × min(1000, ⌊缺口×1000÷当日需求⌋) ÷ 1000⌋)
    * 无缺口   ⇒ satiety ← min(1000, satiety + 20)
    * 缺口为 0 且 satiety=1000 的户不写回（保持表稀疏；缺键语义 = 1000）
    * </pre>
    *
+   * <p>★★ <b>B12 / DEF-T6-1：当日量只从"当天"读，不跨日/跨 advance 做差</b> —— 旧稿拿 {@link
+   * FlowRow#unmetNeed()}（**本周期累计**）减"上一日累计"，并用"累计 &lt; 上一基线"猜周期复位； 复位日一旦"当日缺口 ≥ 上一基线"就把整日读成差额（实测
+   * 167 − 166 = 1 毫）⇒ 跌幅 0 ⇒ 串行两次推进 ≠ 一次两天推进（N22）。现在分子直接取结算 outbox 的当日值，会话不带任何跨日基线（B2 分段等价的硬前提）。
+   *
    * <p>★ <b>布不足不在这里发生</b>：{@code unmetNeed[cloth]} 照旧只进经济读口/告警，不降劳动。
    *
    * @param social 当前 SocialData（含本日生死结算后的状态）
-   * @param previousCumulativeGrainUnmet 上一日（或 revision 基态）逐户粮缺口累计基线；不得为 null
-   * @param flows 当日结算后的经济流水（{@code stepper.flows()}）；不得为 null
+   * @param dailyGaps 结算当日交出的逐户缺口 outbox（{@code stepper.drainPendingHouseholdGaps()}）；不得为 null
+   * @param householdsWithFlowRow 当刻经济流水表的家户键集（{@code stepper.flows().keySet()}；没有流水行的 Social
+   *     户不回写、不造行）；不得为 null
    * @param dayNaturalNeeds 当日注入的逐户自然需求（{@code naturalNeedsOf(currentSocial, day)}）；不得为 null
    * @param day 世界日（只进日志）
    */
   private SocialData applyHouseholdSatietyWriteback(
       SocialData social,
-      Map<HouseholdId, Long> previousCumulativeGrainUnmet,
-      Map<HouseholdId, FlowRow> flows,
+      List<EconomyHouseholdGap> dailyGaps,
+      Set<HouseholdId> householdsWithFlowRow,
       Map<HouseholdId, Map<CommodityId, Long>> dayNaturalNeeds,
       long day) {
     Objects.requireNonNull(social, "social");
-    Objects.requireNonNull(previousCumulativeGrainUnmet, "previousCumulativeGrainUnmet");
-    Objects.requireNonNull(flows, "flows");
+    Objects.requireNonNull(dailyGaps, "dailyGaps");
+    Objects.requireNonNull(householdsWithFlowRow, "householdsWithFlowRow");
     Objects.requireNonNull(dayNaturalNeeds, "dayNaturalNeeds");
+    Map<HouseholdId, Long> dailyGrainUnmetByHousehold = new LinkedHashMap<>();
+    for (EconomyHouseholdGap gap : dailyGaps) {
+      dailyGrainUnmetByHousehold.putIfAbsent(gap.household(), gap.rationGapMilli());
+    }
     List<HouseholdId> ordered = new ArrayList<>(social.households().keySet());
     ordered.sort(Comparator.comparing(HouseholdId::value));
     List<HouseholdSatietyBridge.DailyFeed> feeds = new ArrayList<>();
     for (HouseholdId household : ordered) {
-      FlowRow flow = flows.get(household);
-      if (flow == null) {
+      if (!householdsWithFlowRow.contains(household)) {
         continue; // 该 Social 户没有经济行（旧档/装配边界）：没有断顿证据，不回写、不造行
       }
-      long cumulative = flow.unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L);
-      Long previous = previousCumulativeGrainUnmet.get(household);
-      long dailyGrainUnmetMilli;
-      if (previous == null || cumulative < previous.longValue()) {
-        // 周期第一天（FlowRow 清零）或首次观察：当前累计就是当日量。
-        dailyGrainUnmetMilli = cumulative;
-      } else {
-        dailyGrainUnmetMilli = Math.subtractExact(cumulative, previous.longValue());
-      }
+      // ★★ outbox 只报"口粮缺口 > 0 或生产花费缺口非空"的户 ⇒ 没条目 = 当日没缺口（不是"没结算"）。
+      long dailyGrainUnmetMilli = dailyGrainUnmetByHousehold.getOrDefault(household, 0L);
       long satiety = social.satietyPerMille(household);
       if (dailyGrainUnmetMilli <= 0L && satiety >= SocialData.SATIETY_FULL_PER_MILLE) {
         continue; // 吃饱且无新缺口：不写回（缺键 = 1000，保持表稀疏与逐字节稳定）

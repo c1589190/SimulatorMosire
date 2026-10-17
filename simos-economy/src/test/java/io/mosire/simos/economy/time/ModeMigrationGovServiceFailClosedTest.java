@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -20,16 +21,18 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
@@ -114,13 +117,16 @@ class ModeMigrationGovServiceFailClosedTest {
               LaborCommitmentKind.PRODUCTION));
     }
     EconomyData base = base(commitments);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     Map<LaborAllocationId, HouseholdLaborCommitment> allocationsBefore =
         new LinkedHashMap<>(session.sheet().laborCommitments());
     Map<HouseholdId, HouseholdEconomy> householdsBefore =
         new LinkedHashMap<>(session.sheet().householdEconomies());
 
-    assertThatThrownBy(() -> ModeMigrationSettlement.apply(session, accounts(), plan, base, 10L))
+    assertThatThrownBy(
+            () ->
+                ModeMigrationSettlement.apply(
+                    session, accounts(), plan, EconomyFixtures.dayView(base, defs()), 10L))
         .as("%s：含 GOV_SERVICE 的 source 必须 fail-closed", label)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("GOV_SERVICE")
@@ -152,9 +158,14 @@ class ModeMigrationGovServiceFailClosedTest {
             ALLOC, LOT, SOURCE, HouseholdActors.of(SOURCE), "free-work", 600L, 1L);
     assertThat(legacyProduction.kind()).isEqualTo(LaborCommitmentKind.PRODUCTION);
     EconomyData base = base(Map.of(ALLOC, legacyProduction));
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
-    ModeMigrationSettlement.apply(session, accounts(), plan(move(TARGET, H2, 50L)), base, 10L);
+    ModeMigrationSettlement.apply(
+        session,
+        accounts(),
+        plan(move(TARGET, H2, 50L)),
+        EconomyFixtures.dayView(base, defs()),
+        10L);
 
     assertThat(session.pendingPopulationTransfers()).as("正路必须留 outbox").hasSize(1);
     HouseholdLaborCommitment sourceAfter = session.sheet().laborCommitments().get(ALLOC);
@@ -209,7 +220,6 @@ class ModeMigrationGovServiceFailClosedTest {
 
   private static EconomyData base(Map<LaborAllocationId, HouseholdLaborCommitment> commitments) {
     return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(
@@ -220,15 +230,13 @@ class ModeMigrationGovServiceFailClosedTest {
             Map.of(
                 SOURCE, membership(SOURCE),
                 TARGET, membership(TARGET)))
-        .withIndustries(Map.of(TARGET_INDUSTRY, targetIndustry()))
-        .withProcesses(Map.of(TARGET_UNIT, targetProcess()))
         .withProductionEnterprises(Map.of(TARGET_ORGANIZATION, targetEnterprise()))
         .withLaborCommitments(commitments);
   }
 
   /** 目标户既有产业模板（只为让目标 unit 存在的合法支撑，不参与本用例的数值）。 */
-  private static Industry targetIndustry() {
-    return new Industry(
+  private static IndustryDefinitionView targetIndustry() {
+    return IndustryViews.industry(
         TARGET_INDUSTRY,
         "target-farm",
         new RegimeId("tenant"),
@@ -247,10 +255,11 @@ class ModeMigrationGovServiceFailClosedTest {
     return new ProductionProcess(
         TARGET_UNIT,
         TARGET_INDUSTRY,
+        ProductionLocation.ofPlan(TARGET_INDUSTRY).orElseThrow(),
         HouseholdActors.of(TARGET),
         TARGET_INDUSTRY.value(),
         0L,
-        0L,
+        Map.of(),
         Map.of());
   }
 
@@ -293,5 +302,17 @@ class ModeMigrationGovServiceFailClosedTest {
     accounts.registerHousehold(SOURCE, H1, Map.of(), Map.of(), Map.of(), Map.of());
     accounts.registerHousehold(TARGET, H2, Map.of(), Map.of(), Map.of(), Map.of());
     return accounts;
+  }
+
+  private static ProductionData defs() {
+    return ProductionData.empty()
+        .withModes(DefaultProductionModes.modes())
+        .withIndustry(targetIndustry());
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

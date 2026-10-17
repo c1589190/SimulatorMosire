@@ -44,6 +44,15 @@ public final class EconomySetEconomyPolicyHandler implements CommandHandler {
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetEconomyPolicy";
 
+  /**
+   * ★★★ <b>I12 收口后的具名拒绝理由（B2 批）</b>：GM 想用本命令改铸币产出率时的稳定短 id。
+   *
+   * <p>铸币产出率的唯一权威自 B2 起在 production 的产业定义（{@code IndustryDefinitionView.moneyOutputPerUnit}）， 写
+   * economy 的政策键不会改变任何行为 ⇒ 本命令对该键<b>具名拒</b>并指路真入口 （{@code production.UpsertIndustry} / {@code
+   * simos.economy.upsertIndustry} 的 {@code moneyOutputPerUnit}），而不是留一个"写进去、无人读"的静默失效旋钮。
+   */
+  public static final String MINT_RATE_MOVED_REASON = "mint-rate-moved-to-production-definition";
+
   private static final Logger LOG = EconomyLog.command();
 
   @Override
@@ -90,6 +99,39 @@ public final class EconomySetEconomyPolicyHandler implements CommandHandler {
       Optional<EconomyMeta> meta = base.meta();
       if (meta.isEmpty()) {
         return reject(keyText, valueText, "not-activated", "经济切片未激活（没有 meta ⇒ 没有政策宿主）");
+      }
+      if (key == EconomyPolicyKey.MINT_MILLI_PER_FURNACE_CYCLE) {
+        // ★★★ I12 / §13.10.2 更正一 / §13.10.4 第 6 条（B2 批）：本键的**运行期读取点已随 B2 退役**
+        //   （`MintSettlement` 不再读它 —— 铸币产出率的唯一权威改为 production 的有效参数
+        //   `IndustryDefinitionView.moneyOutputPerUnit`）。⇒ 继续让它"写进去、无人读"就是**静默失效**，
+        //   本仓最禁止的形态之一（表里有值、行为不变）。这里**具名拒**并把 GM 指到真入口，
+        //   而不是删掉提示再宣称收口。
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_POLICY_MISROUTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "key",
+                    key.name(),
+                    "reason",
+                    MINT_RATE_MOVED_REASON,
+                    "redirectCommand",
+                    "production.UpsertIndustry",
+                    "redirectTool",
+                    "simos.economy.upsertIndustry",
+                    "redirectField",
+                    "moneyOutputPerUnit",
+                    "note",
+                    "铸币产出率的权威在 production 的产业定义；政策键不再是读取点"));
+        return reject(
+            keyText,
+            valueText,
+            MINT_RATE_MOVED_REASON,
+            "铸币产出率已收口到 production 的产业定义（I12）：本政策键在 B2 批起**不再是读取点**，"
+                + "写它不会改变任何行为。改走 production 的定义写面 —— 命令 production.UpsertIndustry / "
+                + "工具 simos.economy.upsertIndustry 的 moneyOutputPerUnit 字段（GM-only）。"
+                + "★ 该定义写面对已被引用的产业只允许发新版本 id（kind_v2@q_r）；"
+                + "运行中产业【原地改产出率】的便捷入口按计划留 U10 后续批次（能力已具名，未实现）。");
       }
       long current = meta.get().policyOf(key);
       if (current == value) {

@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -17,12 +18,12 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -142,9 +143,14 @@ public final class DebtCapacityBook {
    * （本周期累计）；库存在函数被调用的那一刻读（时点）。
    */
   public static Map<HouseholdId, DebtCapacity> capacitiesForState(
-      EconomyData data, Function<HouseholdId, OptionalLong> grainStockMilliOf) {
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions,
+      Function<HouseholdId, OptionalLong> grainStockMilliOf) {
     return capacitiesForState(
         data,
+        units,
+        definitions,
         grainStockMilliOf,
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
         NO_UNIT_PRICES);
@@ -153,12 +159,18 @@ public final class DebtCapacityBook {
   /** ★★ 读口/审计入口（显式给政策钩子与债务价格钩子；见 {@link #NO_UNIT_PRICES}）。 */
   public static Map<HouseholdId, DebtCapacity> capacitiesForState(
       EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
     return capacitiesForState(
         data,
+        units,
+        definitions,
         data.classes().keySet(),
         grainStockMilliOf,
         pledgeableAssetPolicyValue,
@@ -173,10 +185,14 @@ public final class DebtCapacityBook {
    */
   public static Map<HouseholdId, DebtCapacity> capacitiesForState(
       EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions,
       Iterable<HouseholdId> householdKeys,
       Function<HouseholdId, OptionalLong> grainStockMilliOf) {
     return capacitiesForState(
         data,
+        units,
+        definitions,
         householdKeys,
         grainStockMilliOf,
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
@@ -186,11 +202,15 @@ public final class DebtCapacityBook {
   /** ★★ 只算指定家户的完整入口（显式政策钩子与价格钩子；见类注的窗口说明）。 */
   public static Map<HouseholdId, DebtCapacity> capacitiesForState(
       EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions,
       Iterable<HouseholdId> householdKeys,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
     Objects.requireNonNull(householdKeys, "householdKeys 不得为 null");
     Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>();
     Map<HouseholdId, Long> income = new LinkedHashMap<>();
@@ -223,10 +243,10 @@ public final class DebtCapacityBook {
         consumed,
         taxPaid,
         grainStockMilliOf,
-        cycleDaysByHousehold(data),
+        cycleDaysByHousehold(data, units, definitions),
         data.debtContracts(),
-        data.units(),
-        data.industries(),
+        units,
+        definitions.industries(),
         data.assetShares(),
         data.operatorConditions(),
         pledgeableAssetPolicyValue,
@@ -266,7 +286,7 @@ public final class DebtCapacityBook {
       Map<HouseholdId, Long> cycleDaysByHousehold,
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long pledgeableAssetPolicyValue,
@@ -390,7 +410,7 @@ public final class DebtCapacityBook {
   private static NextRoundNeed nextRoundNecessaryInput(
       HouseholdId household,
       Map<ActorRef, List<ProductionProcess>> unitsByOperator,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long consumedGrain,
@@ -402,7 +422,7 @@ public final class DebtCapacityBook {
     boolean anyResolved = false;
     boolean anyRecipeSeen = false;
     for (ProductionProcess unit : mine) {
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       if (industry == null) {
         continue; // 状态坏：不猜规模，也不把它算成“没有 unit”
       }
@@ -445,10 +465,14 @@ public final class DebtCapacityBook {
    *
    * <p>★ <b>没有配额的家户</b>（供给集合为空）：退回**本格产业的最长周期**；连产业都没有的格 ⇒ 记 0（保留额 0）。
    */
-  static Map<HouseholdId, Long> cycleDaysByHousehold(EconomyData data) {
+  static Map<HouseholdId, Long> cycleDaysByHousehold(
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions) {
     Objects.requireNonNull(data, "data 不得为 null");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
     Map<String, List<IndustryId>> industriesByHex = new LinkedHashMap<>();
-    for (IndustryId industryId : data.industries().keySet()) {
+    for (IndustryId industryId : definitions.industries().keySet()) {
       IndustryHexKeys.hexKeyOf(industryId)
           .ifPresent(
               hex ->
@@ -459,8 +483,7 @@ public final class DebtCapacityBook {
     Map<HouseholdId, Set<ProductionUnitId>> unitsOfHouseholds = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      if (!data.units().containsKey(unitId)
-          || !data.classes().containsKey(laborCommitment.household())) {
+      if (!units.containsKey(unitId) || !data.classes().containsKey(laborCommitment.household())) {
         continue;
       }
       unitsOfHouseholds
@@ -472,8 +495,9 @@ public final class DebtCapacityBook {
       Set<ProductionUnitId> supplied = unitsOfHouseholds.getOrDefault(key, Set.of());
       long cycleDays = 0L;
       for (ProductionUnitId unitId : supplied) {
-        ProductionProcess unit = data.units().get(unitId);
-        Industry industry = unit == null ? null : data.industries().get(unit.industry());
+        ProductionProcess unit = units.get(unitId);
+        IndustryDefinitionView industry =
+            unit == null ? null : definitions.industries().get(unit.industry());
         if (industry != null) {
           cycleDays = Math.max(cycleDays, industry.cycleDays());
         }
@@ -486,7 +510,7 @@ public final class DebtCapacityBook {
                   IndustryHexKeys.hexKey(
                       householdEconomy.view().hex().q(), householdEconomy.view().hex().r()),
                   List.of())) {
-            Industry industry = data.industries().get(industryId);
+            IndustryDefinitionView industry = definitions.industries().get(industryId);
             if (industry != null) {
               cycleDays = Math.max(cycleDays, industry.cycleDays());
             }

@@ -76,8 +76,12 @@ class Z7HungerTest {
                 .get(CENTRAL)
                 .module()
                 .orElseThrow();
+    //   ★★ D-032 T6（a 桶夹具欠账）：`productionUnits` 从**本用例自己的 state** 现取 —— 空表 ⇒
+    //   `serviceUnitIdsOf` 找不到该 GOV 的 office unit ⇒ 承诺/实际两边都算 0 ⇒「0 < 0」当场红（旧稿的
+    //   `Map.of()` 是 Z3b 加该入参后的迁移期残留）。写法与 `AppGovToolViews:30-44` 同源。
     GovernmentServiceLaborBridge.Supply supply =
-        GovernmentServiceLaborBridge.supply(economyAfterStarve, CENTRAL, formation, 1L);
+        GovernmentServiceLaborBridge.supply(
+            economyAfterStarve, productionUnitsOf(starved.state()), CENTRAL, formation, 1L);
     assertThat(supply.securityLaborMilli())
         .as("有效供给 = min(承诺, 实际) 必须低于承诺")
         .isLessThan(supply.committedSecurityLaborMilli());
@@ -204,5 +208,20 @@ class Z7HungerTest {
         "actor",
         new ActorSnapshot(
             state.meta().ref(), state.meta().timestamp(), actor.withInventories(inventories)));
+  }
+
+  /**
+   * ★★ D-032 T6：本用例 state 的 production 实例投影（组合根各桥的 `productionUnits` 入参）。
+   *
+   * <p>与 `AppGovToolViews` 同一读法：`production` 切片 → {@code ProductionSnapshot.state().instances()}。
+   */
+  private static Map<
+          io.mosire.simos.economy.api.id.ProductionUnitId,
+          io.mosire.simos.production.contract.ProductionProcess>
+      productionUnitsOf(SimulationState state) {
+    return ((io.mosire.simos.production.ProductionSnapshot)
+            state.module("production").orElseThrow())
+        .state()
+        .instances();
   }
 }

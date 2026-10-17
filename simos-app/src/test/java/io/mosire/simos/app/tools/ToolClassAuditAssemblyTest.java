@@ -90,7 +90,11 @@ class ToolClassAuditAssemblyTest {
    * <b>本条真跑实测</b>：红在「{@code 类1 GM_ONLY 条数锚点 … Expected size: 131 but was: 132}」（批 U 台账 §1）；★
    * 修后自洽：{@code 132 + 48(共享) = 180(GM 桶)}。
    */
-  private static final int GM_ONLY_SIZE = 132;
+  /**
+   * ★★★ D-032 T6（2026-10-17）：B3 补回 {@code simos.economy.setPlanSources}（{@code roles()={GM}} 的窄写） ⇒
+   * 132 → **133**（实测：本轮真跑本类红在「Expected size: 132 but was: 133」）。自洽：133 + 48(共享) = 181(GM 桶)。
+   */
+  private static final int GM_ONLY_SIZE = 133;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
@@ -119,7 +123,11 @@ class ToolClassAuditAssemblyTest {
    * simos.command.submitBatch} 只进类1 ⇒ 并集 +1；★ 本条真跑实测：「{@code 扫描器自证之三 … Expected size: 192 but was:
    * 193}」）。
    */
-  private static final int TOOL_UNION_SIZE = 193;
+  /**
+   * ★★★ D-032 T6（2026-10-17）：并集 = 类1 133 + 类2 24 + 类3 37 = **194**（实测：本条真跑红在 「Expected size: 193
+   * but was: 194」）。
+   */
+  private static final int TOOL_UNION_SIZE = 194;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
@@ -127,7 +135,11 @@ class ToolClassAuditAssemblyTest {
    * 180}（批 O 的 {@code simos.command.submitBatch}；本条真跑实测「{@code GM 桶条数 =
    * ShellAssemblySmokeTest.GM_BUCKET_SIZE … Expected size: 179 but was: 180}」）。
    */
-  private static final int GM_BUCKET_SIZE = 180;
+  /**
+   * ★★★ D-032 T6（2026-10-17）：GM 桶 = 类1 133 + 共享 48 = **181**（实测：{@code ShellAssemblySmokeTest}
+   * 真跑红在「GM 桶条数锚点（增删工具须显式改本行）Expected size: 180 but was: 181」）。
+   */
+  private static final int GM_BUCKET_SIZE = 181;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +

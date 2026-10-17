@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -9,12 +10,11 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -207,7 +207,7 @@ public final class MarketDemandBook {
       MarketTopology topology,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> shares,
       Map<ShipmentId, ShipmentBatch> shipments,
       AccountSession accounts,
@@ -261,7 +261,7 @@ public final class MarketDemandBook {
 
     for (ProductionUnitId unitId : sortedUnits(units)) {
       ProductionProcess unit = units.get(unitId);
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       HexCoord unitHex = unitHexOrNull(unit);
       if (unitHex == null) {
         continue; // 产业 id 里没有格键 ⇒ 不猜地点（该 unit 不计入任何区的引致需求/库存）
@@ -398,7 +398,7 @@ public final class MarketDemandBook {
   private static Set<CommodityId> commodityUniverse(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<MarketZoneId, MarketTable> markets) {
@@ -407,7 +407,7 @@ public final class MarketDemandBook {
       commodities.addAll(householdEconomy.naturalNeeds().keySet());
     }
     for (ProductionProcess unit : units.values()) {
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       if (industry != null) {
         commodities.addAll(industry.recipe().inputPerUnit().keySet());
         commodities.addAll(industry.recipe().outputPerUnit().keySet());

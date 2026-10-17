@@ -5,12 +5,13 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -28,20 +29,17 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -164,13 +162,29 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
                   regionId,
                   "hexes",
                   region.hexes().size(),
-                  "industriesBefore",
-                  base.industries().size(),
+                  // ★★★ D-032 B4（§13.14.2 裁定十五）：产业定义的权威在 production（economy 侧副本已删）
+                  //   ⇒ 这条读数改从 production 当刻定义取（不再是 economy 的 industries 分量）。
+                  "productionIndustriesBefore",
+                  EconomyProductionDefinitions.of(state).industries().size(),
                   "householdsBefore",
                   base.classes().size()));
     }
+    // ★★★ D-032 B4：**两个 production 来源在 try 之前解析** —— 缺切片/类型不符是**装配故障**
+    //   （{@code EconomyProductionDefinitions} 抛 ISE + ERROR），不许被下面那个
+    //   "命令可读的拒绝" catch（{@code IAE | ISE}）降级成业务拒绝（§一.9 日志纪律）。
+    //   ★ 定义（"哪些产业在本区"）只有 production 知道 —— economy 侧的 industries 副本已删
+    //   ⇒ 本命令读 production 当刻定义权威，一次定位、两处使用（摘行的依据 + 读数）。
+    io.mosire.simos.production.contract.ProductionDefinitionLookup productionDefinitions =
+        EconomyProductionDefinitions.of(state);
+    // ★★ B2b：被清产业名下的实例在 production —— 本命令读它的当刻候选态，只摘 economy 侧
+    //   指向这些实例的行（relations/operatorConditions/allocations）；实例本身的退役由同批的
+    //   `production.ClearRegionDefinitions` 承担（B2b 起它同时清掉这些定义的实例）。
+    Map<ProductionUnitId, ProductionProcess> productionInstances =
+        EconomyProductionDefinitions.stateOf(state).instances();
+    Set<IndustryId> inRegionIndustries =
+        inRegionIndustries(productionDefinitions.industries().keySet(), region.hexes());
     try {
-      EconomyData next = cleared(base, region.hexes());
+      EconomyData next = cleared(base, region.hexes(), productionInstances, inRegionIndustries);
       EventLog.channel(LOG)
           .info(
               LogEvent.of(
@@ -180,10 +194,12 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
                   regionId,
                   "hexes",
                   region.hexes().size(),
-                  "industriesRemoved",
-                  base.industries().size() - next.industries().size(),
-                  "unitsRemoved",
-                  base.units().size() - next.units().size(),
+                  // ★★★ D-032 B4：本命令**不再删定义**（定义权威与它的删除都归 production 的
+                  //   `production.ClearRegionDefinitions`）⇒ 只报"本区被识别出的定义数"（读数不说假话）。
+                  "industriesInRegion",
+                  inRegionIndustries.size(),
+                  "unitRelationsRemoved",
+                  base.relations().size() - next.relations().size(),
                   "householdsRemoved",
                   base.classes().size() - next.classes().size(),
                   "marketsRemoved",
@@ -214,6 +230,22 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     }
   }
 
+  /**
+   * ★★ <b>B4：本区里的产业定义</b>（从 production 当刻定义权威里按 id 的 {@code <kind>@<q>_<r>} 格段定位； 解析不出格段的 id
+   * <b>不动</b> —— 定位不可靠，见类注）。
+   */
+  private static Set<IndustryId> inRegionIndustries(
+      Set<IndustryId> productionIndustryIds, Set<HexCoord> targetHexes) {
+    Set<String> targetKeys = targetHexKeys(targetHexes);
+    Set<IndustryId> inRegion = new LinkedHashSet<>();
+    for (IndustryId id : productionIndustryIds) {
+      if (IndustryHexKeys.hexKeyOf(id).filter(targetKeys::contains).isPresent()) {
+        inRegion.add(id);
+      }
+    }
+    return inRegion;
+  }
+
   /** 目标 Region 的格键集合（{@link IndustryHexKeys#hexKey(int, int)} 是它的唯一拼写点）。 */
   private static Set<String> targetHexKeys(Set<HexCoord> targetHexes) {
     Set<String> keys = new LinkedHashSet<>();
@@ -229,21 +261,26 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
    * <p>★ 不变量由 {@link EconomyData} 构造器 fail-closed 把守：任何漏清的悬空引用都会在这里当场抛， 不会静默落一条"看起来清了、其实坏了"的
    * revision。
    */
-  private static EconomyData cleared(EconomyData base, Set<HexCoord> targetHexes) {
-    Set<String> targetHexKeys = targetHexKeys(targetHexes);
-
-    // ① 产业：id 的 <kind>@<q>_<r> 解析命中目标格键（解析不出的 id 不动——定位不可靠，见类注）。
-    Set<IndustryId> removedIndustries = new LinkedHashSet<>();
-    for (IndustryId id : base.industries().keySet()) {
-      if (IndustryHexKeys.hexKeyOf(id).filter(targetHexKeys::contains).isPresent()) {
-        removedIndustries.add(id);
-      }
-    }
+  private static EconomyData cleared(
+      EconomyData base,
+      Set<HexCoord> targetHexes,
+      Map<ProductionUnitId, ProductionProcess> productionInstances,
+      Set<IndustryId> inRegionIndustries) {
+    // ★ B12 / DEF-T6-4 #1（DLS_DEAD_LOCAL_STORE）：删去死局部量
+    //   `Set<String> targetHexKeys = targetHexKeys(targetHexes);` —— 本方法只用 `targetHexes` 本身
+    //   （家户 view 定位 + 三张表的 remaining 集合），从不读这份格键集合；删的是"算了不读"，
+    //   不触碰任何拒绝语义（`inRegionIndustries` 里另有同名局部，保留）。
+    // ① 产业：**由调用方从 production 当刻定义**定位好（见 {@link #inRegionIndustries}）—— 本命令只**定位**
+    //   （决定 economy 侧摘哪些行），定义的删除归同批的 `production.ClearRegionDefinitions`。
+    Set<IndustryId> removedIndustries = inRegionIndustries;
     Set<String> removedIndustryValues = idValues(removedIndustries);
 
-    // ② unit / 资产份额：按 unit.industry / share.industry 定位到被清产业。
+    // ② 被清产业名下的实例：从 production 的当刻投影里按 `unit.industry ∈ removedIndustries` 定位
+    //   （★ B2b：economy 不再持有实例表；判据与 production 侧的清区同一格键 + 同一"定义在区里"口径）。
+    //   economy 侧只摘**指向这些实例的行**（relations / operatorConditions / allocations）；
+    //   实例自身的退役由同批的 `production.ClearRegionDefinitions` 承担。
     Set<ProductionUnitId> removedUnits = new LinkedHashSet<>();
-    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : base.units().entrySet()) {
+    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : productionInstances.entrySet()) {
       if (removedIndustries.contains(entry.getValue().industry())) {
         removedUnits.add(entry.getKey());
       }
@@ -266,8 +303,9 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     }
 
     // ④ 各表新副本：没提到的组件直接 base 原值（= 逐组件 with* 的"其余原样带过"）。
-    Map<IndustryId, Industry> industries = withoutKeys(base.industries(), removedIndustries);
-    Map<ProductionUnitId, ProductionProcess> units = withoutKeys(base.units(), removedUnits);
+    // ★★★ D-032 B4（§13.14.2 裁定十五）：economy 侧不再有 industries 副本 ⇒ 这里也不再拼"删完的产业表"；
+    //   被清定义由同批 `production.ClearRegionDefinitions` 从 production 删（它先退役实例、再删无人引用的定义）。
+    // ★★ B2b：实例表已不在 economy（上面已从 production 投影定位 removedUnits）。
     Map<AssetShareId, OwnershipStake> assetShares = withoutKeys(base.assetShares(), removedShares);
     Map<ProductionUnitId, ProductionRules> relations = withoutKeys(base.relations(), removedUnits);
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
@@ -346,12 +384,8 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         markets.put(entry.getKey(), table.withHexes(remaining));
       }
     }
-    // ★★ Z1：产品产出数量覆盖表按被清产业（`IndustryId` 里的格键）删除 ⇒ 与 industries 同生共死；
-    //   生产效率表按被清 unit 删除 ⇒ 与 units 同生共死（unit 的产业已由 removedUnits 定位）。
-    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides =
-        withoutKeys(base.outputQuantityOverrides(), removedIndustries);
-    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency =
-        withoutKeys(base.productionEfficiency(), removedUnits);
+    // ★★ B2b：Z1 的产出数量覆盖表与生产效率表已不在 economy —— 覆盖表按方案 id 在 production 侧随定义一起
+    //   退役（`production.ClearRegionDefinitions`），效率表按实例在 production 侧随实例一起退役。
     Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
     householdDemands
         .entrySet()
@@ -387,16 +421,13 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
             .withHouseholdDemands(householdDemands)
             .withCrisisSignals(crisisSignals)
             .withClassMemberships(classMemberships)
-            .withProcesses(units)
             .withOwnershipStakes(assetShares)
-            .withMarketTables(markets)
-            .withIndustries(industries);
+            .withMarketTables(markets);
 
     // ⑥ classes 与 memberships **同一次规范构造**：先删任一侧的中间态都非法（另一侧悬空或 Σ 守恒失衡）。
     //    其余 28 个组件取 staged 的逐 with* 结果 ⇒ 等价于"32 个组件的同时复合"。
     return new EconomyData(
         staged.meta(),
-        staged.industries(),
         householdEconomies,
         staged.debtContracts(),
         staged.flows(),
@@ -406,10 +437,8 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.shipments(),
         staged.assetShares(),
         staged.operatorConditions(),
-        staged.units(),
         staged.demands(),
-        staged.candidates(),
-        staged.modes(),
+        // ★★★ B5（§13.15.2 裁定十八）：`modes`（第 17 个组件）已从 EconomyData 删除 ⇒ 无该实参。
         staged.classStructures(),
         staged.classPositions(),
         staged.classStandings(),
@@ -424,9 +453,8 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.classShares(),
         // ★★ P4a：清区域不碰周期规则，原样带过 staged 的表。
         staged.periodicAdjustments(),
-        // ★★ Z1：两个新组件按格键删除（先摘引用方、被引用的 industry/unit 同一次构造里一起摘）。
-        outputQuantityOverrides,
-        productionEfficiency,
+        // ★★ B2b：Z1 的两维（outputQuantityOverrides / productionEfficiency）已不在本类型 ——
+        //   它们随 production 侧的清区命令一起退役。
         // ★★ A1：货币词表是**世界级**的（不按格），清区域一字不动，原样带过 staged 的两张表。
         staged.currencies(),
         staged.moneyInstruments(),

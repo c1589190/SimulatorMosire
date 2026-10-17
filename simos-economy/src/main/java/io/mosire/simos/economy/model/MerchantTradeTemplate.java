@@ -2,9 +2,14 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionSkillKeys;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -197,7 +202,7 @@ public final class MerchantTradeTemplate {
    * <p>★★ <b>调用方须知</b>：本方法是<b>估算与按需创建共用的同一份值</b> —— 决策层拿它算预期利润（不落状态）， 迁移执行把它 put 进工作副本。两边同源 ⇒
    * "预估的那个商号"与"真的长出来的那个商号"不可能漂开。
    */
-  public static Industry industry(HexCoord hex) {
+  public static IndustryDefinitionView industry(HexCoord hex) {
     Map<AssetKind, Long> capacityPerUnit = new LinkedHashMap<>();
     // ★★ W7-fix：作业资本那一维 = 工具（牲口已退出配方，见类注）。★ 键集与每单位量都只有一处拼写：
     //   键集 = {@link #capacityKinds()}（需要"哪些 AssetKind 是作业资本"的调用方读它，不各自写死）。
@@ -212,11 +217,16 @@ public final class MerchantTradeTemplate {
     // ★★ W7-fix：外层分路键随作业资本维度一起改成 tool（{@code Industry.inputPerUnit()} 把各层摊平成
     //   {商品 → 毫}，故**内层**值侧口径一字未改：仍是 tool: 100 毫/规模·周期）。
     cycleInputPerUnit.put(AssetKind.TOOL, toolPerCycle);
-    return new Industry(
+    return new IndustryDefinitionView(
         industryId(hex),
         DISPLAY_NAME,
         REGIME,
+        java.util.Optional.of(ProductionSkillKeys.TRADING),
         CYCLE_DAYS,
+        // ★★ B2c（裁定八）：跑商模板不在"可被采用的方案池"里（它的 id 带格键 trade@q_r ⇒ 不绑地点的方案池
+        //   不收它），故 buildDays / acceptedRightKinds 取**与创世播种那一份逐值相同**的缺省（播种载荷不写这
+        //   两个键 ⇒ 0 / 空集）；本方法"逐字段等于播种出来的那一份"的承诺因此仍成立。
+        0L,
         capacityPerUnit,
         Map.of(),
         0L,
@@ -225,14 +235,11 @@ public final class MerchantTradeTemplate {
         cycleInputPerUnit,
         IndustryClassSlots.slots(),
         new AllocationRule.Split(SPLIT_MEANS_PER_MILLE, SPLIT_LABOR_PER_MILLE),
-        // ★ 末尾五个旧档兼容位逐值等于"新形状没有它们"（与 EconomyPayloads.industry(JsonNode) 的出口同值）：
-        //   operator=null / progressDays=0 / capacity={} / cycleLaborMilli=0 /
-        // cycleInputUsedMilli={}。
-        null,
-        0L,
-        Map.of(),
-        0L,
-        Map.of(),
-        MoneyOutput.NONE);
+        MoneyOutput.NONE,
+        // ★★ D-032：跑商模板是按需新建的**方案定义**（要经 production 的定义写入面落成），不是第二份权威；
+        //   它今天不挂经验面/可用性条件 ⇒ 取显式中性（NONE / 无条件），逐值等于改动前。
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        java.util.List.of(),
+        java.util.Set.of());
   }
 }

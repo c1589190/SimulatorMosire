@@ -178,12 +178,18 @@ public final class GovernmentServiceLaborBridge {
    * @param day 世界日（只进日志上下文；TICK origin 必带）
    */
   public static Map<HouseholdId, Long> committedLaborByHousehold(
-      EconomyData economy, UnitId govUnitId, long day) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      UnitId govUnitId,
+      long day) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(govUnitId, "govUnitId");
     HouseholdId govHousehold = governmentHouseholdOf(govUnitId, day);
     ActorRef operator = HouseholdActors.of(govHousehold);
-    Set<String> serviceUnitIds = serviceUnitIdsOf(economy, operator);
+    Set<String> serviceUnitIds = serviceUnitIdsOf(productionUnits, operator);
     Map<HouseholdId, Long> sums = new LinkedHashMap<>();
     List<LaborAllocationId> ordered = new ArrayList<>(economy.allocations().keySet());
     ordered.sort(Comparator.comparing(LaborAllocationId::value));
@@ -231,9 +237,16 @@ public final class GovernmentServiceLaborBridge {
    * @param day 世界日（只进日志上下文）
    */
   public static Supply supply(
-      EconomyData economy, UnitId govUnitId, GovernmentFormation formation, long day) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      UnitId govUnitId,
+      GovernmentFormation formation,
+      long day) {
     Objects.requireNonNull(economy, "economy");
-    return supply(economy, economy.classes(), govUnitId, formation, day);
+    return supply(economy, productionUnits, economy.classes(), govUnitId, formation, day);
   }
 
   /**
@@ -252,6 +265,10 @@ public final class GovernmentServiceLaborBridge {
    */
   public static Supply supply(
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       Map<HouseholdId, HouseholdEconomy> currentHouseholdRows,
       UnitId govUnitId,
       GovernmentFormation formation,
@@ -264,7 +281,8 @@ public final class GovernmentServiceLaborBridge {
     //   本方法只读它的 postTiers()，不写任何状态。
     GovAdministrationPlan plan =
         economy.governmentOrDefault(govUnitId.value()).administrationPlan();
-    Map<HouseholdId, Long> committed = committedLaborByHousehold(economy, govUnitId, day);
+    Map<HouseholdId, Long> committed =
+        committedLaborByHousehold(economy, productionUnits, govUnitId, day);
     if (committed.isEmpty()) {
       return new Supply(0L, 0L, 0L, 0L, 0L, 0L, 0L);
     }
@@ -388,10 +406,15 @@ public final class GovernmentServiceLaborBridge {
   }
 
   /** 该 GOV 的 service unit 集合（operator == {@code HOUSEHOLD:hh-gov-<govUnitId>} 的 unit id；确定性保序）。 */
-  private static Set<String> serviceUnitIdsOf(EconomyData economy, ActorRef operator) {
+  private static Set<String> serviceUnitIdsOf(
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      ActorRef operator) {
     Set<String> ids = new LinkedHashSet<>();
     List<String> ordered = new ArrayList<>();
-    for (var unit : economy.units().values()) {
+    for (var unit : productionUnits.values()) {
       if (unit.operator().equals(operator)) {
         ordered.add(unit.id().value());
       }

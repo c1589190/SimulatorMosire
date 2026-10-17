@@ -20,7 +20,6 @@ import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
 import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.Government;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.gov.AdministrationCoefficients;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovEfficiency;
@@ -29,6 +28,7 @@ import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovServiceFlow;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -108,10 +108,11 @@ class GovernmentServiceLaborBridgeZ6Test {
 
   @Test
   void emptyCommitmentsYieldZeroSupply() {
-    EconomyData economy = economy(List.of(serviceUnit("u1")), List.<HouseholdLaborCommitment>of());
+    Fixture fixture = economy(List.of(serviceUnit("u1")), List.<HouseholdLaborCommitment>of());
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            withPlan(fixture.economy(), plan(tiers(tier("t1", 500, 500)))),
+            fixture.productionUnits(),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
             DAY);
@@ -126,17 +127,21 @@ class GovernmentServiceLaborBridgeZ6Test {
     ProductionProcess u2 = serviceUnit("u2");
     HouseholdLaborCommitment a = commitmentOn("alloc-1", H1, 10_000L, u1.id().value());
     HouseholdLaborCommitment b = commitmentOn("alloc-2", H1, 6_001L, u2.id().value());
-    EconomyData economy = economy(List.of(u1, u2), List.of(a, b));
+    Fixture fixture = economy(List.of(u1, u2), List.of(a, b));
 
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            withPlan(fixture.economy(), plan(tiers(tier("t1", 500, 500)))),
+            fixture.productionUnits(),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
             DAY);
     assertThat(supply.securityLaborMilli()).isEqualTo(8000L);
     assertThat(supply.paperworkLaborMilli()).isEqualTo(8001L);
-    assertThat(GovernmentServiceLaborBridge.committedLaborByHousehold(economy, GOV, DAY).get(H1))
+    assertThat(
+            GovernmentServiceLaborBridge.committedLaborByHousehold(
+                    fixture.economy(), fixture.productionUnits(), GOV, DAY)
+                .get(H1))
         .as("逐户先加总 = 16001")
         .isEqualTo(16001L);
   }
@@ -147,13 +152,14 @@ class GovernmentServiceLaborBridgeZ6Test {
    */
   @Test
   void supplyCapsEffectiveLaborByHouseholdRowAndKeepsCommittedUncapped() {
-    EconomyData economy =
+    Fixture fixture =
         economyWithHouseholdLabor(
             List.of(serviceUnit("u1")), List.of(commitment("alloc-1", H1, 16_001L)), 10_000L);
 
     GovernmentServiceLaborBridge.Supply fromBase =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            withPlan(fixture.economy(), plan(tiers(tier("t1", 500, 500)))),
+            fixture.productionUnits(),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
             DAY);
@@ -167,7 +173,8 @@ class GovernmentServiceLaborBridgeZ6Test {
     HouseholdId govHousehold = GovernmentHouseholds.of(GOV.value());
     GovernmentServiceLaborBridge.Supply fromWorkingCopy =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            withPlan(fixture.economy(), plan(tiers(tier("t1", 500, 500)))),
+            fixture.productionUnits(),
             Map.of(H1, householdRow(H1, 8_000L), govHousehold, householdRow(govHousehold)),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
@@ -202,10 +209,11 @@ class GovernmentServiceLaborBridgeZ6Test {
   void commitmentWithoutPostYieldsZeroSupplyWithNamedInfoAndKeepsTheCommitment() {
     timeLog.clear();
     HouseholdLaborCommitment commitment = commitment("alloc-1", H1, 16001L);
-    EconomyData economy = economy(List.of(serviceUnit("u1")), List.of(commitment));
+    Fixture fixture = economy(List.of(serviceUnit("u1")), List.of(commitment));
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            withPlan(fixture.economy(), plan(tiers(tier("t1", 500, 500)))),
+            fixture.productionUnits(),
             GOV,
             formation(Map.of(), Map.of()),
             DAY);
@@ -220,8 +228,8 @@ class GovernmentServiceLaborBridgeZ6Test {
                 "first=hh-1 laborMilli=16001"))
         .as("无岗位必须具名 INFO（count/first）；实得 %s", timeLog.messages())
         .isTrue();
-    assertThat(economy.allocations()).hasSize(1);
-    assertThat(economy.allocations().values().iterator().next().laborMilli())
+    assertThat(fixture.economy().allocations()).hasSize(1);
+    assertThat(fixture.economy().allocations().values().iterator().next().laborMilli())
         .as("承诺行仍在且不改量（C7 不可缩）")
         .isEqualTo(16001L);
   }
@@ -246,8 +254,14 @@ class GovernmentServiceLaborBridgeZ6Test {
         commitment("alloc-1", H1, 100_000L),
         post(H1, "t1"),
         tiers(tier("t1", Long.MAX_VALUE, 0L)));
-    // (d) commitment.actor != unit.operator：★ 公开构造器（EconomyData）在结构守卫处先拒——桥内那条
-    //     "actor-mismatch" ERROR 是给 Codec/旧档旁路留的防御位，经公开构造器不可达（如实记入报告）。
+    // (d) commitment.actor != unit.operator：★★ D-032 T1 **判据换落点（不是放宽）**——
+    //     旧形状：economy 侧持有 unit 表 ⇒ `withProcesses` 在构造期把 actor **静默对齐**到 activity 指名的
+    //       unit.operator，于是桥内 "actor-mismatch" ERROR 防御位经公开构造器不可达。
+    //     新形状（B2b 裁定六 + B4 §3.2）：unit 表已迁 production ⇒ economy 侧**再没有可对齐的参照物**，
+    //       承诺行按其字面值落账；"两处拼写必须一致"这条守卫**没有消失**，而是升格为**候选态 fail-closed 拒绝**：
+    //       `EconomyReferenceValidation.validateUnitCrossReferences`（`:300-330`：命中实例时 actor 必须等于
+    //       unit.operator，否则 IllegalArgumentException，命令层折 Rejected、不留 revision）——比旧的静默对齐**更严**。
+    //     ⇒ 本处断言"按原样落账（无 economy 侧对齐）"，并保留原判据的结论面："该不一致经公开构造器不会被改写成一致"。
     HouseholdLaborCommitment wrongActor =
         new HouseholdLaborCommitment(
             LaborAllocationId.parse("alloc-1"),
@@ -258,9 +272,13 @@ class GovernmentServiceLaborBridgeZ6Test {
             100L,
             0L,
             LaborCommitmentKind.GOV_SERVICE);
-    EconomyData normalized = economy(List.of(serviceUnit("u1")), List.of(wrongActor));
-    assertThat(normalized.allocations().values().iterator().next().actor())
-        .as("结构构造期把 actor 对齐到 activity 指名的 unit.operator ⇒ 桥里 actor-mismatch 防御位经公开构造器不可达")
+    Fixture mismatched = economy(List.of(serviceUnit("u1")), List.of(wrongActor));
+    assertThat(mismatched.economy().allocations().values().iterator().next().actor())
+        .as("economy 侧不再有 unit 表 ⇒ 不对齐（不一致由候选态守卫拒，不在这里被悄悄改写成一致）")
+        .isEqualTo(HouseholdActors.of(new HouseholdId("hh-other")));
+    // ★ 该不一致现在必须指向一条**真实存在的实例**才有主语（实例权威在 production）。
+    assertThat(mismatched.productionUnits().values().iterator().next().operator())
+        .as("实例侧的 operator 仍是 GOV 家户 ⇒ 上一条的'不一致'不是空转")
         .isEqualTo(HouseholdActors.of(GovernmentHouseholds.of(GOV.value())));
   }
 
@@ -482,9 +500,14 @@ class GovernmentServiceLaborBridgeZ6Test {
   @Test
   void staffProjectionUsesCommitmentsAndMismatchIsDailyInfoNotWarn() {
     SimulationState genesis = GovZ6WorldFixture.smallWorldState("Map1");
+    // ★★ D-032 T1：`staffHouseholdProjection/staffProjectionMismatches` 新增第 2 形参 `productionUnits`
+    //   （B2b 裁定六：实例权威迁 production）。★ **必须传真创世的实例投影，不能填 `Map.of()`** ——
+    //   投影就是按 production 实例的 operator 找 GOV 服务 unit，空表会让"32000 ÷ 16000 = 2"这条变成空转。
+    Map<ProductionUnitId, ProductionProcess> productionUnits = productionInstances(genesis);
     Map<String, Long> projection =
         HouseholdUnitConsistency.staffHouseholdProjection(
             GovZ6WorldFixture.economySlice(genesis),
+            productionUnits,
             GovZ6WorldFixture.socialSlice(genesis),
             GovZ6WorldFixture.unitSlice(genesis),
             0L);
@@ -495,6 +518,7 @@ class GovernmentServiceLaborBridgeZ6Test {
     assertThat(
             HouseholdUnitConsistency.staffProjectionMismatches(
                 GovZ6WorldFixture.economySlice(genesis),
+                productionUnits,
                 GovZ6WorldFixture.socialSlice(genesis),
                 GovZ6WorldFixture.unitSlice(genesis),
                 0L))
@@ -506,6 +530,7 @@ class GovernmentServiceLaborBridgeZ6Test {
     assertThat(
             HouseholdUnitConsistency.staffProjectionMismatches(
                 GovZ6WorldFixture.economySlice(mutated),
+                productionInstances(mutated),
                 GovZ6WorldFixture.socialSlice(mutated),
                 GovZ6WorldFixture.unitSlice(mutated),
                 0L))
@@ -539,10 +564,11 @@ class GovernmentServiceLaborBridgeZ6Test {
       HouseholdLaborCommitment commitment,
       GovernmentPostOfHousehold post,
       List<GovPostTier> tiers) {
-    EconomyData economy = economy(List.of(serviceUnit("u1")), List.of(commitment));
+    Fixture fixture = economy(List.of(serviceUnit("u1")), List.of(commitment));
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            withPlan(economy, plan(tiers)),
+            withPlan(fixture.economy(), plan(tiers)),
+            fixture.productionUnits(),
             GOV,
             formation(Map.of(post.householdId(), post), Map.of()),
             DAY);
@@ -555,10 +581,12 @@ class GovernmentServiceLaborBridgeZ6Test {
       GovernmentPostOfHousehold post,
       List<GovPostTier> tiers) {
     timeLog.clear();
+    Fixture fixture = economy(List.of(serviceUnit("u1")), List.of(commitment));
     assertThatThrownBy(
             () ->
                 GovernmentServiceLaborBridge.supply(
-                    withPlan(economy(List.of(serviceUnit("u1")), List.of(commitment)), plan(tiers)),
+                    withPlan(fixture.economy(), plan(tiers)),
+                    fixture.productionUnits(),
                     GOV,
                     formation(Map.of(post.householdId(), post), Map.of()),
                     DAY))
@@ -571,6 +599,18 @@ class GovernmentServiceLaborBridgeZ6Test {
 
   private static EconomyData ecosystem(SimulationState state) {
     return GovZ6WorldFixture.economySlice(state);
+  }
+
+  /**
+   * ★★ D-032 T1：**生产实例**的当刻真值（跨模块测试只能经 production 切片读 —— 实例权威在 production）。形态同 {@code
+   * GovZ6WorldFixture} 的 {@code economySlice/unitSlice}，只是 production 侧没有共享助手。
+   */
+  private static Map<ProductionUnitId, ProductionProcess> productionInstances(
+      SimulationState state) {
+    return ((io.mosire.simos.production.ProductionSnapshot)
+            state.module("production").orElseThrow())
+        .state()
+        .instances();
   }
 
   private static GovOfficeState office(StateRunner runner, String govId) {
@@ -618,43 +658,37 @@ class GovernmentServiceLaborBridgeZ6Test {
             state.meta().ref(), state.meta().timestamp(), new UnitState(byId)));
   }
 
-  /** 最小 office 模板：只满足 process 的"产业必须存在"引用校验；桥不读模板内容。 */
-  private static io.mosire.simos.economy.model.Industry officeIndustry() {
-    return new io.mosire.simos.economy.model.Industry(
-        OFFICE,
-        "官署",
-        new io.mosire.simos.economy.api.id.RegimeId("gov_service"),
-        30L,
-        Map.of(io.mosire.simos.actor.api.asset.AssetKind.TOOL, 1L),
-        Map.of(),
-        0L,
-        1000L,
-        Map.of(),
-        Map.of(),
-        List.of(
-            new io.mosire.simos.economy.model.ClassSlot(
-                io.mosire.simos.economy.api.id.SocialClassId.OFFICIAL, "官吏", 1000)),
-        new io.mosire.simos.economy.model.AllocationRule.Split(500, 500));
-  }
-
   private static ProductionProcess serviceUnit(String suffix) {
     return new ProductionProcess(
         new ProductionUnitId("unit-" + suffix),
         new IndustryId("office@0_0"),
+        io.mosire.simos.production.contract.ProductionLocation.ofPlan(new IndustryId("office@0_0"))
+            .orElseThrow(),
         HouseholdActors.of(GovernmentHouseholds.of(GOV.value())),
         "gov_service",
         0L,
-        0L,
+        Map.of() /* ★ D-032 T1：cycleContributions（旧 long 周期劳动已替换；字面 0 ⇒ 空表逐值等价）*/,
         Map.of());
   }
 
-  private static EconomyData economy(
+  /**
+   * ★★ D-032 T1：本文件的夹具是**两半** —— economy 切片 + **production 实例投影**。
+   *
+   * <p>为什么必须是两半：生产实例的唯一权威已按 B2b（裁定六）迁到 production（{@code EconomyData.units()} 与 {@code
+   * withProcesses(...)} 都已删除）⇒ 旧夹具"把 unit 挂在 economy 上"这件事在新形状里不存在。 ★ **不能给桥传 {@code
+   * Map.of()}**：桥就是靠实例投影解析 GOV 服务 unit（operator/activity 的对账）， 空表会让"多 unit 求和 / activity
+   * 缺省解析"这些判据变成空转。
+   */
+  private record Fixture(
+      EconomyData economy, Map<ProductionUnitId, ProductionProcess> productionUnits) {}
+
+  private static Fixture economy(
       List<ProductionProcess> units, List<HouseholdLaborCommitment> commitments) {
     return economyWithHouseholdLabor(units, commitments, 100_000L);
   }
 
   /** 同 {@link #economy}，但把目标家户 H1 的 Economy 行 laborMilli 显式设为给定值（cap 判别力）。 */
-  private static EconomyData economyWithHouseholdLabor(
+  private static Fixture economyWithHouseholdLabor(
       List<ProductionProcess> units,
       List<HouseholdLaborCommitment> commitments,
       long householdLabor) {
@@ -667,14 +701,15 @@ class GovernmentServiceLaborBridgeZ6Test {
       allocationMap.put(commitment.id(), commitment);
     }
     HouseholdId governmentHousehold = GovernmentHouseholds.of(GOV.value());
-    return EconomyData.empty()
-        .withIndustries(Map.of(OFFICE, officeIndustry()))
-        .withHouseholdEconomies(
-            Map.of(
-                H1, householdRow(H1, householdLabor),
-                governmentHousehold, householdRow(governmentHousehold)))
-        .withProcesses(unitMap)
-        .withLaborCommitments(allocationMap);
+    EconomyData economy =
+        EconomyData.empty()
+            .withHouseholdEconomies(
+                Map.of(
+                    H1, householdRow(H1, householdLabor),
+                    governmentHousehold, householdRow(governmentHousehold)))
+            .withLaborCommitments(allocationMap);
+    // ★★ D-032 T1：`withProcesses(unitMap)` 已删除（方法类型已按 B2b 删除）——实例改由 production 侧承载。
+    return new Fixture(economy, unitMap);
   }
 
   private static HouseholdLaborCommitment commitment(

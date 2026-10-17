@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -14,11 +15,10 @@ import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.ArrayList;
@@ -46,10 +46,11 @@ import java.util.Set;
  * <p>★★ <b>并发安全</b>：所有字段在构造后不再变化；每个 {@code Map}/{@code List}/{@code Set} 都是不可修改视图， worker
  * 只读同一份快照。索引在协调器线程构建；worker 不持有可写结构。
  *
- * <p>★★ <b>与状态变更的关系</b>：{@code OwnershipStake}/{@code Industry}/{@code ProductionProcess}
- * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment} 会在劳动再分配与饿死缩放中被改写，故 {@link
- * #withLabor} 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
- * 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
+ * <p>★★ <b>与状态变更的关系</b>：{@code OwnershipStake}/{@code IndustryDefinitionView}/{@code
+ * ProductionProcess} 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment}
+ * 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor} 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故
+ * {@link #withDebtContracts} 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build}
+ * 中逐字保留的旧遍历序保证。
  */
 final class SettlementIndex {
 
@@ -131,7 +132,7 @@ final class SettlementIndex {
    */
   static SettlementIndex build(
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -154,7 +155,7 @@ final class SettlementIndex {
    */
   static SettlementIndex build(
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -447,11 +448,11 @@ final class SettlementIndex {
    */
   private static Map<ProductionUnitId, Long> capacityScale(
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<ProductionUnitId, Map<AssetKind, Long>> usable) {
     Map<ProductionUnitId, Long> scaleByUnit = new LinkedHashMap<>();
     for (ProductionProcess unit : units.values()) {
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       Map<AssetKind, Long> sums = usable.getOrDefault(unit.id(), Map.of());
       long scale = Long.MAX_VALUE;
       if (industry != null) {
@@ -632,7 +633,7 @@ final class SettlementIndex {
 
   /** 格 → 该格产业（序 = 产业表序；与 {@code 旧结算引擎（R3a 已删除）.industriesByHexMap} 逐值同）。 */
   private static Map<String, List<IndustryId>> industriesByHex(
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     Map<String, List<IndustryId>> raw = new LinkedHashMap<>();
     for (IndustryId id : industries.keySet()) {
       IndustryHexKeys.hexKeyOf(id)

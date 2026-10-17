@@ -95,7 +95,14 @@ public final class GovSalaryRuleBridge {
    *     GOV_SERVICE} 承诺 = 工资唯一的劳动口径）
    * @param day 世界日（只进日志/契约故障上下文）
    */
-  public static Report deriveReport(UnitState units, EconomyData economy, long day) {
+  public static Report deriveReport(
+      UnitState units,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      long day) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(economy, "economy");
     // ★ 要发薪的 GOV 集合 = unit 切片里带 GovernmentFormation 的单位（按 id 升序）。旧形状读的是
@@ -126,7 +133,8 @@ public final class GovSalaryRuleBridge {
       }
       governments++;
       Map<HouseholdId, Long> committed =
-          GovernmentServiceLaborBridge.committedLaborByHousehold(economy, govUnitId, day);
+          GovernmentServiceLaborBridge.committedLaborByHousehold(
+              economy, productionUnits, govUnitId, day);
       long govTotal = 0L;
       try {
         for (long laborMilli : committed.values()) {

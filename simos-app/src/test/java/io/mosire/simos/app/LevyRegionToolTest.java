@@ -57,6 +57,8 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -1152,6 +1154,7 @@ class LevyRegionToolTest {
                 "social", new SocialSnapshot(ref(1L), T7, social()),
                 "ga", new GaSnapshot(ref(1L), T7, GaState.empty()),
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
+                "production", new ProductionSnapshot(ref(1L), T7, ProductionData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
@@ -1165,6 +1168,7 @@ class LevyRegionToolTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     new ActorCodec())));
   }
 

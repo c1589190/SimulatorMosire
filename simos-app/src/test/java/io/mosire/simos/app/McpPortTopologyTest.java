@@ -266,7 +266,9 @@ class McpPortTopologyTest {
           "simos.economy.setGovernmentMintScale",
           "simos.economy.setMarketZoneLoanRateAlpha",
           // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：政策预设写口
-          "simos.economy.setEconomyPolicy");
+          "simos.economy.setEconomyPolicy",
+          // ★★★ D-032 T6（2026-10-17）：方案经济关系声明写口（B3 裁定十一/十二；窄写）
+          "simos.economy.setPlanSources");
 
   /**
    * GM 组的 67 条窄写：16 sd + 8 map + 9 economy zone/govMandate + 28 unit + 4 其他（★ 2026-10-13 急停协议
@@ -334,7 +336,7 @@ class McpPortTopologyTest {
 
       assertThat(toolNames(client))
           .as(
-              "J1：唯一口 = GM 组（178 条；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
+              "J1：唯一口 = GM 组（181 条；★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」）。原文沿革：★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
                   + "★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ **175**；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected: 175 but was: 178」）")
           .containsExactlyInAnyOrderElementsOf(
               concat(

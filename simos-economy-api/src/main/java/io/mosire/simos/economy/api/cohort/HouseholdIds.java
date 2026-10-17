@@ -14,9 +14,12 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>旧档视图 → 稳定身份（{@link #ofLegacy(CohortKey)}）与反向还原（{@link #legacyView(HouseholdId)}）；
- *   <li>创世家户 id 的规范拼写（{@link #ofSeed} / {@link #ofSeedRole}）；
- *   <li>旧档迁移占位（{@link #pendingLegacy(String)}）与它的判别（{@link #isPending(HouseholdId)}）。
+ *   <li>创世家户 id 的规范拼写（{@link #ofSeed} / {@link #ofSeedRole}）。
  * </ul>
+ *
+ * <p>★★ <b>B2c（§13.12.5）：旧档迁移占位 {@code pendingLegacy}/{@code isPending} 整套删除</b> —— 旧档迁移器 （{@code
+ * LegacyHouseholdMigration}）B2b 已整段删除，占位没有任何写者：载荷缺 {@code household} 当场具名拒、 旧档缺该键在 codec 反序列化边界
+ * fail-closed、构造期守卫不再为它开豁免。
  *
  * <p>★ 这些方法与常量原来住在 {@code economy-api} 的旧 {@code HouseholdId} 上；迁移时数值/字符串行为<b>逐字保留</b>，
  * 只换了调用点。运行期新代码仍不得从旧视图反推身份（{@link #ofLegacy} 只许旧档迁移调用）。
@@ -25,12 +28,6 @@ public final class HouseholdIds {
 
   /** 旧档迁移前缀（{@link #ofLegacy(CohortKey)} 的唯一落点）。 */
   public static final String LEGACY_PREFIX = "legacy-";
-
-  /**
-   * 旧档临时占位前缀（只由 {@code EconomyCodec} 的反序列化器在"旧 HouseholdLaborCommitment 缺 household"时造）：
-   * 迁移器必须在返回状态前把它换成真实家户。运行期不得使用（{@link #isPending(HouseholdId)} 可判）。
-   */
-  public static final String PENDING_LEGACY_PREFIX = "legacy-pending-";
 
   private HouseholdIds() {}
 
@@ -87,22 +84,6 @@ public final class HouseholdIds {
     }
     return new HouseholdId(
         "hh-" + hex + "-" + residence.value() + "-" + stratum.value() + "-" + roleSuffix);
-  }
-
-  /** 迁移期临时占位（见 {@link #PENDING_LEGACY_PREFIX}）；{@code oldAllocationKey} 用于让占位可追溯、不撞车。 */
-  public static HouseholdId pendingLegacy(String oldAllocationKey) {
-    if (oldAllocationKey == null || oldAllocationKey.isBlank()) {
-      throw new IllegalArgumentException("pendingLegacy 的 oldAllocationKey 不得为空白");
-    }
-    return new HouseholdId(PENDING_LEGACY_PREFIX + oldAllocationKey);
-  }
-
-  /** 是否是迁移期占位（迁移器消费它；运行期守卫见 {@code EconomyData}）。 */
-  public static boolean isPending(HouseholdId household) {
-    if (household == null) {
-      throw new IllegalArgumentException("HouseholdIds.isPending 的 household 不得为 null");
-    }
-    return household.value().startsWith(PENDING_LEGACY_PREFIX);
   }
 
   /** 是否由 {@link #ofLegacy(CohortKey)} 生成。 */

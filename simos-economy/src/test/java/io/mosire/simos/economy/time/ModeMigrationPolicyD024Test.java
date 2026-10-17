@@ -6,6 +6,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -17,6 +18,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -26,20 +28,22 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -84,6 +88,7 @@ class ModeMigrationPolicyD024Test {
    */
   private record Fixture(
       EconomyData base,
+      ProductionData definitions,
       AccountSession accounts,
       MarketTopology topology,
       Map<MarketZoneId, MarketTable> marketTables,
@@ -103,10 +108,11 @@ class ModeMigrationPolicyD024Test {
     return EconomyFixtures.quote(SILVER, prices);
   }
 
-  private static Industry industry(IndustryId id, String label, long outputUnits, long inputMilli) {
+  private static IndustryDefinitionView industry(
+      IndustryId id, String label, long outputUnits, long inputMilli) {
     Map<io.mosire.simos.actor.api.asset.AssetKind, Map<CommodityId, Long>> cycleInput =
         inputMilli <= 0L ? Map.of() : Map.of(AssetKind.WORKSHOP, Map.of(GRAIN, inputMilli));
-    return new Industry(
+    return IndustryViews.industry(
         id,
         label,
         new RegimeId("household"),
@@ -237,10 +243,10 @@ class ModeMigrationPolicyD024Test {
               household, position, position, Map.of(), 0L, 0L, "test-d024"));
     }
 
-    Industry sourceIndustry =
+    IndustryDefinitionView sourceIndustry =
         industry(SOURCE_INDUSTRY, "source-industry", sourceOutputUnits, sourceInputMilli);
-    Industry targetIndustry = industry(TARGET_INDUSTRY, "target-industry", 100L, 0L);
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    IndustryDefinitionView targetIndustry = industry(TARGET_INDUSTRY, "target-industry", 100L, 0L);
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     industries.put(SOURCE_INDUSTRY, sourceIndustry);
     industries.put(TARGET_INDUSTRY, targetIndustry);
 
@@ -251,7 +257,7 @@ class ModeMigrationPolicyD024Test {
             AssetKind.WORKSHOP,
             sourceActor,
             sourceActor,
-            OwnershipStake.RightKind.OWNED,
+            AssetRightKind.OWNED,
             0L);
     OwnershipStake h1Share =
         new OwnershipStake(
@@ -261,7 +267,7 @@ class ModeMigrationPolicyD024Test {
             sourceActor,
             sourceActor,
             1L,
-            OwnershipStake.RightKind.OWNED);
+            AssetRightKind.OWNED);
     ActorRef targetShareOwner = targetShareOwnedByEstate ? ESTATE : sourceActor;
     AssetShareId h2ShareId =
         OwnershipStake.idOf(
@@ -269,7 +275,7 @@ class ModeMigrationPolicyD024Test {
             AssetKind.WORKSHOP,
             targetShareOwner,
             targetShareOwner,
-            OwnershipStake.RightKind.OWNED,
+            AssetRightKind.OWNED,
             0L);
     OwnershipStake h2Share =
         new OwnershipStake(
@@ -279,7 +285,7 @@ class ModeMigrationPolicyD024Test {
             targetShareOwner,
             targetShareOwner,
             h2ShareQuantity,
-            OwnershipStake.RightKind.OWNED);
+            AssetRightKind.OWNED);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(h1ShareId, h1Share);
     shares.put(h2ShareId, h2Share);
@@ -287,7 +293,14 @@ class ModeMigrationPolicyD024Test {
     ProductionUnitId sourceUnitId = ProductionUnitId.idOf(SOURCE_INDUSTRY, sourceActor);
     ProductionProcess sourceUnit =
         new ProductionProcess(
-            sourceUnitId, SOURCE_INDUSTRY, sourceActor, "mode:family_farm", 0L, 0L, Map.of());
+            sourceUnitId,
+            SOURCE_INDUSTRY,
+            ProductionLocation.ofPlan(SOURCE_INDUSTRY).orElseThrow(),
+            sourceActor,
+            "mode:family_farm",
+            0L,
+            Map.of(),
+            Map.of());
     ProductionRules sourceRelation =
         new ProductionRules(
             sourceUnitId, sourceActor, new Payee.ToActor(sourceActor), List.of(), sourceActor);
@@ -298,15 +311,19 @@ class ModeMigrationPolicyD024Test {
     quotes.put(H2, market());
     Map<MarketZoneId, MarketTable> marketTables = EconomyFixtures.hexMarkets(quotes);
 
+    // ★★★ D-032 T1：本夹具的生产实例住在 production（唯一权威）—— 旧形状把它放在 economy 的 units 分量里；
+    //   现在随定义一起挂在 production 切片上（`instances()` 是 `ProductionRuntime.units()` 的同义读口）。
+    ProductionData definitions =
+        ProductionData.empty()
+            .withModes(DefaultProductionModes.modes())
+            .withIndustries(industries)
+            .withInstance(sourceUnit);
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(classes)
             .withClassMemberships(standings)
-            .withIndustries(industries)
-            .withProcesses(Map.of(sourceUnitId, sourceUnit))
             .withRelations(Map.of(sourceUnitId, sourceRelation))
             .withOwnershipStakes(shares)
             .withMarketTables(marketTables);
@@ -340,7 +357,11 @@ class ModeMigrationPolicyD024Test {
     accounts.registerHousehold(
         SOURCE,
         H1,
-        Map.of(),
+        // ★★ T9（R1 新语义）：§15.12 B 起候选/当前户的"所需投入"取自 probe，而 probe 的投入通道读本户商品余额
+        //   （缺键 ⇒ 0 ⇒ 具名 input-short）。本夹具的命题是"预期亏损驱动 A 规则"，不是"缺料被拒" ——
+        //   按 SOURCE_INDUSTRY 的每规模投入（sourceInputMilli）备**一档**料（scale=1 时恰够），
+        //   使候选仍可行、净收益仍为负；备料量不进入任何估值断言（inputCost 读 probe.inputRequired）。
+        sourceInputMilli <= 0L ? Map.of() : Map.of(GRAIN, sourceInputMilli),
         sourceMoney <= 0L ? Map.of() : Map.of(SILVER, sourceMoney),
         Map.of(),
         Map.of());
@@ -349,6 +370,7 @@ class ModeMigrationPolicyD024Test {
 
     return new Fixture(
         base,
+        definitions,
         accounts,
         MarketTopology.singleHex(marketTables, Map.of()),
         marketTables,
@@ -370,7 +392,7 @@ class ModeMigrationPolicyD024Test {
   private static Set<AssetShareId> claimedFrom(
       Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ModeMigrationPolicy.claimedOwnershipStakes(
-        organizations, fixture.base().units(), fixture.base().assetShares());
+        organizations, fixture.definitions().instances(), fixture.base().assetShares());
   }
 
   private static ModeMigrationPolicy.MigrationPlan plan(Fixture fixture) {
@@ -380,9 +402,9 @@ class ModeMigrationPolicyD024Test {
   private static ModeMigrationPolicy.MigrationPlan plan(
       Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ModeMigrationPolicy.plan(
-        fixture.base(),
+        EconomyFixtures.dayView(fixture.base(), fixture.definitions()),
         organizations,
-        fixture.base().units(),
+        fixture.definitions().instances(),
         fixture.base().classes(),
         fixture.base().classStandings(),
         fixture.base().assetShares(),
@@ -394,7 +416,9 @@ class ModeMigrationPolicyD024Test {
         new EnterpriseProfitBook.Book(Map.of(), Map.of(), Map.of()),
         10L,
         fixture.topology(),
-        List.of());
+        List.of(),
+        // ★ T9（R1 签名）：plan 内逐户/逐候选的物理量取自 production 试算。
+        EconomyFixtures.runtimeOf(fixture.definitions()));
   }
 
   private static ExpectedProfitBook.Prospect currentProspect(Fixture fixture) {
@@ -404,20 +428,21 @@ class ModeMigrationPolicyD024Test {
   private static ExpectedProfitBook.Prospect currentProspect(
       Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ExpectedProfitBook.prospect(
-        fixture.base(),
+        EconomyFixtures.dayView(fixture.base(), fixture.definitions()),
         SOURCE,
         DefaultProductionModes.FAMILY_FARM,
         H1,
-        fixture.base().industries().get(SOURCE_INDUSTRY),
+        fixture.definitions().industries().get(SOURCE_INDUSTRY),
         fixture.tableAt(H1),
         demandOf(fixture),
         fixture.base().assetShares(),
         claimedFrom(fixture, organizations),
         fixture.accounts(),
-        fixture.base().units(),
+        fixture.definitions().instances(),
         fixture.base().relations(),
         fixture.topology(),
-        10L);
+        10L,
+        EconomyFixtures.runtimeOf(fixture.definitions()));
   }
 
   private static ExpectedProfitBook.Prospect targetProspect(
@@ -430,20 +455,21 @@ class ModeMigrationPolicyD024Test {
       ProductionModeId mode,
       Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ExpectedProfitBook.prospect(
-        fixture.base(),
+        EconomyFixtures.dayView(fixture.base(), fixture.definitions()),
         SOURCE,
         mode,
         H2,
-        fixture.base().industries().get(TARGET_INDUSTRY),
+        fixture.definitions().industries().get(TARGET_INDUSTRY),
         fixture.tableAt(H2),
         demandOf(fixture),
         fixture.base().assetShares(),
         claimedFrom(fixture, organizations),
         fixture.accounts(),
-        fixture.base().units(),
+        fixture.definitions().instances(),
         fixture.base().relations(),
         fixture.topology(),
-        10L);
+        10L,
+        EconomyFixtures.runtimeOf(fixture.definitions()));
   }
 
   private static MarketDemandBook.Book demandOf(Fixture fixture) {
@@ -451,8 +477,8 @@ class ModeMigrationPolicyD024Test {
         List.of(),
         fixture.topology(),
         fixture.base().classes(),
-        fixture.base().units(),
-        fixture.base().industries(),
+        fixture.definitions().instances(),
+        fixture.definitions().industries(),
         fixture.base().assetShares(),
         fixture.base().shipments(),
         fixture.accounts(),
@@ -516,7 +542,7 @@ class ModeMigrationPolicyD024Test {
    * ★★★ <b>W9f 测试批（2026-10-11）：计划期"预留多少作业资本" == 执行期"索取多少"（尺度唯一的拼写点），且<b>少一份就必须在计划期被拒</b></b>。
    *
    * <p>★★ <b>这条判据补的是什么（W9-fix2 的判据缺口）</b>：W9-fix2 把"本笔需要多少作业资本"收成唯一拼写点 {@code
-   * ModeMigrationPolicy.requiredWorkCapitalScale(Industry, long)}，计划期<b>预留</b>（{@code
+   * ModeMigrationPolicy.requiredWorkCapitalScale(IndustryDefinitionView, long)}，计划期<b>预留</b>（{@code
    * reserveIdleAssetsFor}）与执行期<b>索取</b>（{@code ModeMigrationSettlement.createEnterpriseAndProcess →
    * planAssetMoves}）共用它。两侧一旦各拼一遍（W9-fix2 之前就是），缺口表现为 <b>计划期少留、执行期多要</b> ⇒ 撞 fail-closed 守卫 ⇒ <b>整个
    * tick 抛（真世界 three-powers day=270 HTTP 500）</b>。 而本批实跑全仓 3,464 条 0 红 ⇒
@@ -538,7 +564,7 @@ class ModeMigrationPolicyD024Test {
     long take =
         plan.moves().stream().mapToLong(ModeMigrationPolicy.MigrationMove::population).sum();
 
-    Industry targetIndustry = rich.base().industries().get(TARGET_INDUSTRY);
+    IndustryDefinitionView targetIndustry = rich.definitions().industries().get(TARGET_INDUSTRY);
     HouseholdEconomy source = rich.base().classes().get(SOURCE);
     long laborPerUnit = targetIndustry.recipe().laborPerUnit();
     long perUnit = targetIndustry.recipe().capacityPerUnit().get(AssetKind.WORKSHOP);
@@ -653,6 +679,7 @@ class ModeMigrationPolicyD024Test {
             shell, position, position, Map.of(), 0L, 0L, "test-d024-shell"));
     return new Fixture(
         base.base().withHouseholdEconomies(classes).withClassMemberships(standings),
+        base.definitions(),
         base.accounts(),
         base.topology(),
         base.marketTables(),
@@ -827,6 +854,7 @@ class ModeMigrationPolicyD024Test {
             DebtStatus.NORMAL);
     return new Fixture(
         fixture.base().withDebtContracts(Map.of(contract.id(), contract)),
+        fixture.definitions(),
         fixture.accounts(),
         fixture.topology(),
         fixture.marketTables(),
@@ -908,7 +936,7 @@ class ModeMigrationPolicyD024Test {
             .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
             .findFirst()
             .orElseThrow();
-    ProductionProcess beforeUnit = before.units().get(fixture.sourceUnitId());
+    ProductionProcess beforeUnit = fixture.definitions().instances().get(fixture.sourceUnitId());
 
     ModeMigrationPolicy.MigrationPlan plan = plan(fixture);
     assertThat(plan.moves()).as("基线迁移计划非空").isNotEmpty();
@@ -924,10 +952,15 @@ class ModeMigrationPolicyD024Test {
                 .orElseThrow()
                 .modeId())
         .isEqualTo(DefaultProductionModes.FAMILY_FARM);
-    assertThat(before.units().get(fixture.sourceUnitId()).modeKey()).isEqualTo("mode:family_farm");
+    assertThat(fixture.definitions().instances().get(fixture.sourceUnitId()).modeKey())
+        .isEqualTo("mode:family_farm");
 
     // 执行：源户只缩编、不被原地改成目标 mode；org/unit 身份字段不变。
-    EconomySession session = new EconomySession(before);
+    // ★★★ D-032 T1：实例读数改读 production 的**运行时**（唯一权威）——把 runtime 取到手上，
+    //   好在推进之后读 unit.modeKey（`EconomyData.units()` 已随迁移删除）。
+    io.mosire.simos.production.contract.ProductionRuntime runtime =
+        runtimeOf(fixture.definitions());
+    EconomySession session = new EconomySession(before, fixture.definitions(), runtime);
     session
         .flows()
         .put(
@@ -935,7 +968,12 @@ class ModeMigrationPolicyD024Test {
             new FlowRow(
                 SOURCE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L, Map.of(),
                 Map.of()));
-    ModeMigrationSettlement.apply(session, fixture.accounts(), plan, before, 10L);
+    ModeMigrationSettlement.apply(
+        session,
+        fixture.accounts(),
+        plan,
+        EconomyFixtures.dayView(before, fixture.definitions()),
+        10L);
     // ★★ P0（2026-10-10）：经济域**不写** householdEconomies 的 population/laborMilli —— 每笔 move 成功后
     //    只在会话 outbox 里留一条人口事实；由 App 翻译成 Social 工单、再把 Social 真值 delta 回写经济行。
     List<EconomyPopulationTransfer> transfers = session.drainPendingPopulationTransfers();
@@ -970,7 +1008,7 @@ class ModeMigrationPolicyD024Test {
     assertThat(afterOrganization.modeId())
         .as("★ D-022：源户 organization.modeId 不变")
         .isEqualTo(beforeOrganization.modeId());
-    assertThat(after.units().get(fixture.sourceUnitId()).modeKey())
+    assertThat(runtime.units().get(fixture.sourceUnitId()).modeKey())
         .as("★ D-022：源户 unit.modeKey 不变")
         .isEqualTo(beforeUnit.modeKey());
     // ★ W9（2026-10-11）：迁出人口不再写死 1 人 —— 速度改成**收益差驱动**之后，可迁人口 =
@@ -1057,5 +1095,11 @@ class ModeMigrationPolicyD024Test {
     assertThat(stalePlan.moves())
         .as("★ 区分对照：若从 base 快照重算 claimed（空）⇒ 回到旧的'可抢占'，H2 目标重新出现")
         .anyMatch(move -> move.targetHex().equals(H2));
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

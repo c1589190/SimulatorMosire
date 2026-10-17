@@ -6,7 +6,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.PopulationSeeder;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -70,6 +70,9 @@ final class RegionSeedPlan {
 
   /** {@code economy.Seed} 的命令类型（{@code includeEconomy=false} 时缺席）。 */
   static final String SEED_ECONOMY_TYPE = WorldgenInitializeTool.SEED_ECONOMY_TYPE;
+
+  /** ★★ D-031 P1：{@code production.Seed} 的定义播种命令类型（与 {@code economy.Seed} 同批）。 */
+  static final String SEED_PRODUCTION_TYPE = WorldgenInitializeTool.SEED_PRODUCTION_TYPE;
 
   /** {@code actor.Seed} 的命令类型（{@code includeActors=false} 时缺席）。 */
   static final String SEED_ACTOR_TYPE = WorldgenInitializeTool.SEED_ACTOR_TYPE;
@@ -436,6 +439,16 @@ final class RegionSeedPlan {
         },
         Object::toString);
     EconomyData economy = ToolSupport.economyData(state);
+    // ★★ D-031 P1：产业定义权威已迁入 production ⇒ "该区域是否已种过产业"读 production 切片。
+    io.mosire.simos.util.state.Snapshot productionSlice =
+        state
+            .module("production")
+            .orElseThrow(() -> new IllegalStateException("state 里没有 production 切片（装配故障）"));
+    if (!(productionSlice
+        instanceof io.mosire.simos.production.ProductionSnapshot productionSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 production 切片不是 ProductionSnapshot: " + productionSlice.getClass().getName());
+    }
     Set<String> regionHexKeys = new HashSet<>();
     for (HexCoord hex : hexes) {
       regionHexKeys.add(IndustryHexKeys.hexKey(hex.q(), hex.r()));
@@ -443,7 +456,7 @@ final class RegionSeedPlan {
     collect(
         hits,
         "economy.industry",
-        economy.industries().keySet(),
+        productionSnapshot.state().industries().keySet(),
         industryId ->
             IndustryHexKeys.hexKeyOf(industryId).filter(regionHexKeys::contains).isPresent(),
         industryId -> industryId.value());

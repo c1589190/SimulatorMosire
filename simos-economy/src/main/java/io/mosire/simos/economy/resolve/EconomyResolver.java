@@ -67,6 +67,8 @@ public final class EconomyResolver implements Resolver {
     }
     // 装配故障在解析任何 economy: 地址时就炸，不留到某个查询路径上静默 miss（先于段形状判定）
     EconomyData data = dataOf(ctx);
+    io.mosire.simos.production.contract.ProductionDefinitionLookup definitions =
+        productionDefinitionsOf(ctx);
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity root) || root.kind().isPresent()) {
       return empty(); // 第 2 段必须是根主体 Entity(∅,·)
@@ -84,7 +86,7 @@ public final class EconomyResolver implements Resolver {
       return empty();
     }
     return switch (entity.kind().get()) {
-      case "industry" -> resolveIndustry(data, mapId, entity.name());
+      case "industry" -> resolveIndustry(definitions, mapId, entity.name());
       case "debt" -> resolveDebt(data, mapId, entity.name());
       case "class" -> resolveHouseholdEconomy(data, mapId, entity.name());
       case "flow" -> resolveFlowRow(data, mapId, entity.name());
@@ -92,9 +94,12 @@ public final class EconomyResolver implements Resolver {
     };
   }
 
-  private static QueryResult resolveIndustry(EconomyData data, String mapId, String name) {
+  private static QueryResult resolveIndustry(
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      String mapId,
+      String name) {
     IndustryId id = IndustryId.parse(name); // 名字非法抛它自己的 IAE，不包不吞
-    if (!data.industries().containsKey(id)) {
+    if (definitions.industry(id).isEmpty()) {
       return empty(); // 合法但不存在的产业：空候选，不是错误
     }
     return single(
@@ -152,6 +157,24 @@ public final class EconomyResolver implements Resolver {
           "economy 模块切片不是 EconomySnapshot：" + snapshot.getClass().getName());
     }
     return economySnapshot.data();
+  }
+
+  /** ★★ D-031 P1：产业定义权威在 production ⇒ 经契约接口取（economy 不 import 生产实现）。 */
+  private static io.mosire.simos.production.contract.ProductionDefinitionLookup
+      productionDefinitionsOf(ResolveContext ctx) {
+    Snapshot snapshot =
+        ctx.state()
+            .module("production")
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "状态里没有 production 模块切片——产业解析需要 ProductionDefinitionLookup（装配故障）"));
+    if (!(snapshot
+        instanceof io.mosire.simos.production.contract.ProductionDefinitionLookup definitions)) {
+      throw new IllegalArgumentException(
+          "production 模块切片未实现 ProductionDefinitionLookup 契约：" + snapshot.getClass().getName());
+    }
+    return definitions;
   }
 
   // ★ canonical 一律由 Address AST 构造后调 canonical() 产出（R13）：§3.4 的加引规则不许在这里手写重实现。

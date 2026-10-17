@@ -63,8 +63,10 @@ class EconomyVocabularyGuardTest {
           "simos-actor",
           "simos-economy-api",
           "simos-economy",
+          "simos-production",
           "simos-gov",
           "simos-army",
+          "simos-culture",
           "simos-ga",
           "simos-app");
 

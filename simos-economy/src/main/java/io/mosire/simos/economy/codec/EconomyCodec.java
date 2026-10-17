@@ -20,6 +20,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.debt.DebtStatus;
@@ -27,7 +28,6 @@ import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -64,7 +64,6 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -245,9 +244,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     // ★★ M2.4：在途批次表的键 = ShipmentId（{@code sh-<day>-<seq>}）—— 与上面同一条口径：toString/parse 互逆，只需读侧。
     module.addKeyDeserializer(ShipmentId.class, keyDeserializer(ShipmentId::parse));
-    // ★★ R4-E2：demands / candidates 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    // ★★ R4-E2：demands 表的键（opaque 裸值，与 parse 互为逆，只需读侧）。
+    //   ★★ B2c：`candidates` 表已随候选面退役删除 ⇒ 它的键反序列化器一并删除。
     module.addKeyDeserializer(DemandId.class, keyDeserializer(DemandId::parse));
-    module.addKeyDeserializer(CandidateId.class, keyDeserializer(CandidateId::parse));
     // ★★ E1：modes / classStructures / classPositions / classStandings（键 = HouseholdId）四张新表，
     //   以及 ClassStructure.positions / defaultSharesPerMille 与
     // HouseholdClassMembership.retainedShares
@@ -523,10 +522,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1/Z1b：旧档 {@code HouseholdLaborCommitment} 的整形（S1 缺 {@code household} ⇒ 造 {@link
-   * HouseholdIds#pendingLegacy} 占位；Z1b 缺 {@code kind} ⇒ 补 {@link
-   * LaborCommitmentKind#PRODUCTION}）。真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code
-   * EconomyData} 构造期按行人口拆出。
+   * ★★ S1/Z1b：旧档 {@code HouseholdLaborCommitment} 的整形（Z1b 缺 {@code kind} ⇒ 补 {@link
+   * LaborCommitmentKind#PRODUCTION}）。
+   *
+   * <p>★★ <b>B2c（§13.12.5）：缺 {@code household} 不再造 {@code legacy-pending-} 占位 —— 当场
+   * fail-closed</b>。 理由：旧档家户归属迁移器（{@code LegacyHouseholdMigration}）B2b 已整段删除，占位<b>没有消费者</b>；留着它等于让
+   * 旧档继续定义新状态（Alpha：旧档作废、读不回来不是缺陷）。
    *
    * <p>★ 缺 {@code kind} 是**旧档事实**（Z1b 之前没有这一维），不是坏数据；未知 {@code kind} 值仍交给 Jackson 的枚举绑定
    * fail-closed（闭枚举，不猜）。
@@ -541,17 +542,14 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (!(raw instanceof ObjectNode node)) {
         throw new IllegalStateException("LaborAllocation 必须是 JSON 对象: " + raw);
       }
-      if (!node.hasNonNull("household") || !node.hasNonNull("kind")) {
+      if (!node.hasNonNull("household")) {
+        // ★★ B2c：旧档缺 household ⇒ 当场 fail-closed（不再造 pending 占位；见方法注）。
+        throw new IllegalStateException(
+            "LaborAllocation 缺 household（B2c 起不再有旧档 pending 占位补齐）: " + node);
+      }
+      if (!node.hasNonNull("kind")) {
         node = node.deepCopy();
-        if (!node.hasNonNull("household")) {
-          if (!node.hasNonNull("id")) {
-            throw new IllegalStateException("LaborAllocation 缺 household 且没有旧键 id，无法定位占位: " + node);
-          }
-          node.put("household", HouseholdIds.pendingLegacy(node.get("id").asText()).value());
-        }
-        if (!node.hasNonNull("kind")) {
-          node.put("kind", LaborCommitmentKind.PRODUCTION.name());
-        }
+        node.put("kind", LaborCommitmentKind.PRODUCTION.name());
       }
       try {
         return PLAIN.treeToValue(node, HouseholdLaborCommitment.class);
@@ -780,22 +778,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    * fail-closed（不静默丢弃、不放行悬空引用）。旧档缺该节点 ⇒ 空表（中性），本方法 no-op。
    */
   private static void requireOutputQuantityOverridesValid(EconomyData data) {
-    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry :
-        data.outputQuantityOverrides().entrySet()) {
-      IndustryId industryId = entry.getKey();
-      Industry industry = data.industries().get(industryId);
-      if (industry == null) {
-        throw outputQuantityContractError(
-            "产业不存在: " + industryId.value(), "outputQuantityOverrides");
-      }
-      for (CommodityId commodityId : entry.getValue().keySet()) {
-        if (!industry.recipe().outputPerUnit().containsKey(commodityId)) {
-          throw outputQuantityContractError(
-              "商品不在配方产出键里: industry=" + industryId.value() + ", commodity=" + commodityId.value(),
-              "outputQuantityOverrides");
-        }
-      }
-    }
+    // ★★ D-031 P1（设计 §3.3/§9）：`outputQuantityOverrides` 是既有 GM 运行期覆盖，但"产业存在"与"商品在该产业
+    //   配方产出键里"是**跨域**完整性 —— 定义权威在 production，纯 codec 只验证本片固有约束（键/值非空、值域由
+    //   EconomyData 构造期判），跨域校验在命令/执行边界显式做（见 EconomyGmAdjustments.setOutputQuantity）。
+    //   旧档作废、不做兼容 ⇒ 本方法只保留"本域无额外要做"的具名空实现。
   }
 
   /**
@@ -1255,7 +1241,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    *   <li>旧 {@code industries.<id>} 节点带 {@code operator/capacity/progressDays/cycleLaborMilli/
    *       cycleInputUsedMilli} ⇒ 合成一条默认 {@code units.<unitId>}（{@code idOf(industry, operator)}、
    *       {@code modeKey = industryId}、进度/劳动/投入原样），并从 {@code capacity}（含 0 值）合成整额 OWNED {@code
-   *       assetShares}；然后把这些旧键从 industry 节点摘掉（新 {@code Industry} 模板没有它们，不摘会被严格读入拒）；
+   *       assetShares}；然后把这些旧键从 industry 节点摘掉（新 {@code IndustryDefinitionView} 模板没有它们，不摘会被严格读入拒）；
    *   <li>{@code relations} 的键与 {@code activity}（旧 = industry 串）按 {@code (industry, operator)} 对齐到
    *       unit； 解析不到 unit 的条目丢弃（没有 unit ⇒ 没有生产活动，等价于旧档产能 0）；
    *   <li>{@code operatorConditions} 的键按值内 {@code industry} 对齐到唯一 unit（0 条丢弃、多条 fail-closed）；
@@ -1360,7 +1346,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
             sharesInDelta != null && hasShareForIndustry(sharesInDelta, industryKey);
         if (!hasCapacity && !hasSharesInDelta) {
           // capacity 与同批 assetShares 都没有实物 ⇒ 不造 unit（旧档规模恒 0 的等价路径）；
-          // 旧字段仍要摘掉，否则新 Industry 模板绑定会被未知属性拒。
+          // 旧字段仍要摘掉，否则新 IndustryDefinitionView 模板绑定会被未知属性拒。
           industry.remove("operator");
           industry.remove("capacity");
           industry.remove("progressDays");
@@ -1410,7 +1396,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     }
     if (!deltaUnits.isEmpty()) {
       upsertProcessesDelta(root, deltaUnits);
-      // ★★ 旧档的**首播/按格追加**变更集把产能总量放在 Industry.capacity 上（没有 assetShares 增量）⇒ 从这里
+      // ★★ 旧档的**首播/按格追加**变更集把产能总量放在 IndustryDefinitionView.capacity 上（没有 assetShares 增量）⇒ 从这里
       //   合成整额 OWNED 份额 upsert，否则重放出"unit 没有份额"的非法中间态（单位守卫当场拒）。
       //   ★ 只在这一批确实是"播种批"时做：assetShares 组件没有增量（unchanged/缺席，即旧形状）**且** relations
       //     组件有增量（播种批一定写 relations；旧代码的日结算只改 industries/meta，relations 不动）。
@@ -1465,8 +1451,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   /**
    * ★★ 旧 industry 节点判据（R3B.2b 起**按值**判，不再按"键是否出现"）：B.2b 给新模板的 canonical record 末尾加回了 5 个旧档 兼容位 ⇒
    * 新档序列化会写出中性值（{@code operator:null / progressDays:0 / capacity:{} / cycleLaborMilli:0 /
-   * cycleInputUsedMilli:{}}）。若仍按"键出现"判，<b>新档会被误当成旧档</b>（凭空合成 unit/份额、破坏新形状往返）。判据与 {@code
-   * EconomyData.hasLegacyProductionBits} 逐字一致：任一位非中性才算旧形状。
+   * cycleInputUsedMilli:{}}）。若仍按"键出现"判，<b>新档会被误当成旧档</b>（凭空合成 unit/份额、破坏新形状往返）。
+   * 判据就是下面这五条（本方法即唯一拼写点）：任一位非中性才算旧形状。
    */
   private static boolean isLegacyIndustry(ObjectNode industry) {
     return industry.hasNonNull("operator")
@@ -1514,7 +1500,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     ActorRef owner = actorOf(operatorNode);
     AssetShareId shareId =
         OwnershipStake.idOf(
-            new IndustryId(industryKey), asset, owner, owner, OwnershipStake.RightKind.OWNED, 0L);
+            new IndustryId(industryKey), asset, owner, owner, AssetRightKind.OWNED, 0L);
     ObjectNode share = JsonNodeFactory.instance.objectNode();
     share.put("id", shareId.value());
     share.set("industry", idNode(industryKey));
@@ -1522,7 +1508,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     share.set("owner", operatorNode.deepCopy());
     share.set("operator", operatorNode.deepCopy());
     share.put("quantity", quantity);
-    share.put("kind", OwnershipStake.RightKind.OWNED.name());
+    share.put("kind", AssetRightKind.OWNED.name());
     assetShares.putIfAbsent(shareId.value(), share);
   }
 

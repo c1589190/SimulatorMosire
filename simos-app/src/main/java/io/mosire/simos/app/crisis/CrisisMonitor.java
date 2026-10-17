@@ -3,13 +3,13 @@ package io.mosire.simos.app.crisis;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -98,7 +98,15 @@ public final class CrisisMonitor {
    * @param clock 历法时钟（保留参数：衣着需求已由 app 按历法展开进 {@code naturalNeeds}，本类不再直接读历法）
    */
   public static Map<HexCoord, List<Light>> lights(
-      EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      SocialData social,
+      long atTick,
+      CalendarClock clock) {
     // ★★ H0.2：**格直接住在行键里**（{@code CohortKey.hex()}）—— 旧版要靠"行属于哪个产业、产业 id 里带哪一格"
     //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
     //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
@@ -116,7 +124,16 @@ public final class CrisisMonitor {
     Map<HexCoord, List<Light>> out = new LinkedHashMap<>();
     for (String hexKey : hexKeys) {
       HexCoord coord = HexCoord.parse(hexKey);
-      List<Light> lights = lightsAt(coord, byHex.get(hexKey), economy, social, atTick, clock);
+      List<Light> lights =
+          lightsAt(
+              coord,
+              byHex.get(hexKey),
+              economy,
+              productionUnits,
+              definitions,
+              social,
+              atTick,
+              clock);
       if (!lights.isEmpty()) {
         out.put(coord, lights);
       }
@@ -130,7 +147,16 @@ public final class CrisisMonitor {
    * @param clock 历法时钟（衣着需求按历法年分数算；C5 起由 CalendarService 注入）
    */
   public static List<Light> lightsAt(
-      HexCoord coord, EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
+      HexCoord coord,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      SocialData social,
+      long atTick,
+      CalendarClock clock) {
     List<HouseholdId> keys = new ArrayList<>();
     for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
         economy.classes().entrySet()) {
@@ -138,13 +164,18 @@ public final class CrisisMonitor {
         keys.add(householdEconomyEntry.getKey());
       }
     }
-    return lightsAt(coord, keys, economy, social, atTick, clock);
+    return lightsAt(coord, keys, economy, productionUnits, definitions, social, atTick, clock);
   }
 
   private static List<Light> lightsAt(
       HexCoord coord,
       List<HouseholdId> keys,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       SocialData social,
       long atTick,
       CalendarClock clock) {
@@ -172,9 +203,9 @@ public final class CrisisMonitor {
       //   naturalNeeds[grain] 的累加，窗口 = 本周期实际经过的天），不再按 population 现算；布的逐商品累加器
       //   尚未实现（见 ClassRow.cycleNaturalNeedMilli 类注），故用该户当前注入的 naturalNeeds[cloth] × 已过天数
       //   —— 两栏都来自逐户注入，不再按人口 × 统一系数。
-      long elapsedDays = elapsedDaysOf(economy, key);
+      long elapsedDays = elapsedDaysOf(economy, productionUnits, definitions, key);
       elapsedDaysSeen = Math.max(elapsedDaysSeen, elapsedDays);
-      cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, key));
+      cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, definitions, key));
       grainNeed += householdEconomy.cycleNaturalNeedMilli();
       clothNeed += householdEconomy.expectedNeedMilli(commodityCloth(), elapsedDays);
       if (flow != null) {
@@ -262,31 +293,45 @@ public final class CrisisMonitor {
   }
 
   /**
-   * ★★ **该行所属产业在本周期"已过多少天"**（{@code Industry.progressDays}）—— B2 的分母基准。
+   * ★★ **该行所属产业在本周期"已过多少天"**（{@code IndustryDefinitionView.progressDays}）—— B2 的分母基准。
    *
    * <p>★ **周期第 0 天按 1 天算**：既不除零，也不把"周期刚开始"读成"完全满足"。 不设产业（手工搭的状态）⇒ 同样返回 1。
    */
-  private static long elapsedDaysOf(EconomyData economy, HouseholdId key) {
+  private static long elapsedDaysOf(
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      HouseholdId key) {
     long elapsed = 0L;
     HexCoord hex = economy.classes().get(key).view().hex();
     // ★★ R3B.2：相位住在 unit 上（同一格可能有多个 unit）；产业模板只回答 cycleDays。
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (ProductionProcess unit : economy.units().values()) {
+    for (ProductionProcess unit : productionUnits.values()) {
       if (IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isEmpty()) {
         continue;
       }
-      elapsed = Math.max(elapsed, phaseDaysOf(unit, economy.industries().get(unit.industry())));
+      // ★★★ D-032 B3：产业模板从 production 的**当刻定义权威**读（旧口径读 `EconomyData.industries`
+      //   = 阶段 2 的临时兼容组件，已随本批删除）。
+      elapsed =
+          Math.max(elapsed, phaseDaysOf(unit, definitions.industry(unit.industry()).orElse(null)));
     }
     // ★ 该格没有任何 unit（手工搭的状态）⇒ 按旧口径返回 1（既不除零，也不把"周期刚开始"读成"完全满足"）。
     return elapsed == 0L ? 1L : elapsed;
   }
 
   /** 该家户所属格的**整周期**天数（只用于 evidence 里标出相位）；该格没有产业 ⇒ 1。 */
-  private static long cycleDaysOf(EconomyData economy, HouseholdId key) {
+  private static long cycleDaysOf(
+      EconomyData economy,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      HouseholdId key) {
     long days = 0L;
     HexCoord hex = economy.classes().get(key).view().hex();
-    for (IndustryId id : IndustryHexKeys.at(economy.industries(), hex.q(), hex.r())) {
-      days = Math.max(days, economy.industries().get(id).cycleDays());
+    // ★★★ D-032 B3：同上 —— 本格产业清单与周期天数一律读 production 的定义视图。
+    for (IndustryId id : IndustryHexKeys.at(definitions.industries(), hex.q(), hex.r())) {
+      days = Math.max(days, definitions.industries().get(id).cycleDays());
     }
     return days == 0L ? 1L : days;
   }
@@ -302,7 +347,7 @@ public final class CrisisMonitor {
    *
    * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒ 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
    */
-  private static long phaseDaysOf(ProductionProcess unit, Industry industry) {
+  private static long phaseDaysOf(ProductionProcess unit, IndustryDefinitionView industry) {
     if (unit == null || industry == null) {
       return 1L;
     }

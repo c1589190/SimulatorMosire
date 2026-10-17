@@ -6,6 +6,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -13,6 +14,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -21,19 +23,21 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,9 +79,22 @@ class ExpectedProfitBookTest {
   /** ★ 过期快照回归用的 ESTATE 主体（owner==operator 自营份额；产业型 id 必须指向已存在产业）。 */
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, CRAFT.value());
 
-  /** 一个手搭的最小世界（新形状 Industry/Unit/OwnershipStake/Relation；无组织、无真实利润账）。 */
+  /**
+   * ★★ <b>T9（R1 新语义）：候选投入库存</b>。
+   *
+   * <p>§15.12 B 起 {@code productionProspect} 的"所需投入"取自 {@code probe}，而 probe 的投入通道读<b>本户商品余额</b>
+   * （缺账户/缺键 ⇒ 0 ⇒ 具名 {@code input-short}）—— 旧口径从不检查户里有没有原料，只按配方把成本算出来。
+   *
+   * <p>本类各用例的命题是"<b>产出/成本/需求</b>的量纲与排序"，不是"缺料被拒"（后者由 {@code ProductionProbeSelectionR1Test}
+   * 的负向用例覆盖）⇒ 夹具按 craft 配方 scale=3 的需量 （{@code 5,000 毫/规模 × 3 = 15,000}）备料，且刻意**多于**需量，使投入通道不成为约束。
+   * 备料量不进入任何估值断言（{@code inputCostMilli} 读 {@code probe.inputRequired}，与库存量无关）。
+   */
+  private static final long FIBER_INPUT_STOCK_MILLI = 15_000L;
+
+  /** 一个手搭的最小世界（新形状 IndustryDefinitionView/Unit/OwnershipStake/Relation；无组织、无真实利润账）。 */
   private record Fixture(
       EconomyData base,
+      ProductionData definitions,
       Map<AssetShareId, OwnershipStake> shares,
       AccountSession accounts,
       MarketTopology topology,
@@ -101,8 +118,8 @@ class ExpectedProfitBookTest {
   }
 
   /** craft 配方（手算基准）：cycle=10、WORKSHOP 1/规模、FIBER 5,000 毫/规模、labor 1,000、CLOTH 2 单位/规模。 */
-  private static Industry craft(IndustryId id) {
-    return new Industry(
+  private static IndustryDefinitionView craft(IndustryId id) {
+    return IndustryViews.industry(
         id,
         "craft-test",
         new RegimeId("handicraft"),
@@ -132,10 +149,9 @@ class ExpectedProfitBookTest {
 
   private static OwnershipStake workshopShare(IndustryId industry, long quantity) {
     AssetShareId id =
-        OwnershipStake.idOf(
-            industry, AssetKind.WORKSHOP, ACTOR, ACTOR, OwnershipStake.RightKind.OWNED, 0L);
+        OwnershipStake.idOf(industry, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetRightKind.OWNED, 0L);
     return new OwnershipStake(
-        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, OwnershipStake.RightKind.OWNED);
+        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, AssetRightKind.OWNED);
   }
 
   private static MarketDemandBook.Book demandBook(
@@ -147,8 +163,11 @@ class ExpectedProfitBookTest {
   }
 
   private static Fixture fixture(
-      Industry industry, long workshopQuantity, long laborMilli, MarketDemandBook.Book demand) {
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+      IndustryDefinitionView industry,
+      long workshopQuantity,
+      long laborMilli,
+      MarketDemandBook.Book demand) {
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     industries.put(industry.id(), industry);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     OwnershipStake share = workshopShare(industry.id(), workshopQuantity);
@@ -157,7 +176,14 @@ class ExpectedProfitBookTest {
     ProductionUnitId unitId = ProductionUnitId.idOf(industry.id(), ACTOR);
     ProductionProcess unit =
         new ProductionProcess(
-            unitId, industry.id(), ACTOR, "mode:handicraft_workshop", 0L, 0L, Map.of());
+            unitId,
+            industry.id(),
+            ProductionLocation.ofPlan(industry.id()).orElseThrow(),
+            ACTOR,
+            "mode:handicraft_workshop",
+            0L,
+            Map.of(),
+            Map.of());
     ProductionRules relation =
         new ProductionRules(unitId, ACTOR, new Payee.ToActor(ACTOR), List.of(), ACTOR);
 
@@ -167,9 +193,14 @@ class ExpectedProfitBookTest {
                 DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
     HouseholdEconomy row = row(laborMilli, Map.of(CLOTH, 100L));
+    // ★★★ D-032 T1：实例随定义一起挂在 production 切片上（唯一权威；economy 侧 `units()` 已删）。
+    ProductionData definitions =
+        ProductionData.empty()
+            .withModes(DefaultProductionModes.modes())
+            .withIndustries(industries)
+            .withInstance(unit);
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(Map.of(HOUSE, row))
@@ -178,18 +209,18 @@ class ExpectedProfitBookTest {
                     HOUSE,
                     new HouseholdClassMembership(
                         HOUSE, position, position, Map.of(), 0L, 0L, "test-profit")))
-            .withIndustries(industries)
-            .withProcesses(Map.of(unitId, unit))
             .withRelations(Map.of(unitId, relation))
             .withOwnershipStakes(shares)
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(
+        HOUSE, H, Map.of(FIBER, FIBER_INPUT_STOCK_MILLI), Map.of(), Map.of(), Map.of());
     MarketTopology topology =
         MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of());
     return new Fixture(
         base,
+        definitions,
         shares,
         accounts,
         topology,
@@ -212,17 +243,18 @@ class ExpectedProfitBookTest {
     return ModeMigrationPolicy.claimedOwnershipStakes(organizations);
   }
 
-  private static ExpectedProfitBook.Prospect prospect(Fixture fixture, Industry industry) {
+  private static ExpectedProfitBook.Prospect prospect(
+      Fixture fixture, IndustryDefinitionView industry) {
     return prospectWithClaimed(fixture, HOUSE, industry, claimedFrom(fixture.organizations()));
   }
 
   private static ExpectedProfitBook.Prospect prospectWithClaimed(
       Fixture fixture,
       HouseholdId household,
-      Industry industry,
+      IndustryDefinitionView industry,
       Set<AssetShareId> claimedByOrganizations) {
     return ExpectedProfitBook.prospect(
-        fixture.base(),
+        EconomyFixtures.dayView(fixture.base(), fixture.definitions()),
         household,
         DefaultProductionModes.HANDICRAFT_WORKSHOP,
         H,
@@ -232,10 +264,12 @@ class ExpectedProfitBookTest {
         fixture.shares(),
         claimedByOrganizations,
         fixture.accounts(),
-        fixture.base().units(),
+        fixture.definitions().instances(),
         fixture.base().relations(),
         fixture.topology(),
-        0L);
+        0L,
+        // ★ T9（R1 签名）：物理量改由 production 试算；本夹具用测试内既有 runtime 夹具（同一定义切片）。
+        EconomyFixtures.runtimeOf(fixture.definitions()));
   }
 
   @Test
@@ -283,15 +317,13 @@ class ExpectedProfitBookTest {
     Fixture noIndustry = fixture(craft(CRAFT), 1L, 10_000L, demandBook(CRAFT, CLOTH, 4_000L));
     // 该 fixture 仍带 craft 产业；换一个「没有产业」的世界重测。
     EconomyData emptyIndustry =
-        noIndustry
-            .base()
-            .withRelations(Map.of())
-            .withProcesses(Map.of())
-            .withOwnershipStakes(Map.of())
-            .withIndustries(Map.of());
+        noIndustry.base().withRelations(Map.of()).withOwnershipStakes(Map.of());
+
+    ProductionData emptyIndustryDefs =
+        ProductionData.empty().withModes(DefaultProductionModes.modes());
     ExpectedProfitBook.Prospect c2 =
         ExpectedProfitBook.prospect(
-            emptyIndustry,
+            EconomyFixtures.dayView(emptyIndustry, emptyIndustryDefs),
             HOUSE,
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             H,
@@ -304,7 +336,8 @@ class ExpectedProfitBookTest {
             Map.of(),
             Map.of(),
             noIndustry.topology(),
-            0L);
+            0L,
+            EconomyFixtures.runtimeOf(emptyIndustryDefs));
     assertThat(c2.feasible()).isFalse();
     assertThat(c2.reason()).isEqualTo("NO_INDUSTRY");
 
@@ -321,7 +354,7 @@ class ExpectedProfitBookTest {
         .doesNotContainKey(MerchantTradeTemplate.TOOL_COMMODITY);
     ExpectedProfitBook.Prospect merchant =
         ExpectedProfitBook.prospect(
-            emptyIndustry,
+            EconomyFixtures.dayView(emptyIndustry, emptyIndustryDefs),
             HOUSE,
             DefaultProductionModes.MERCHANT,
             H,
@@ -334,7 +367,8 @@ class ExpectedProfitBookTest {
             Map.of(),
             Map.of(),
             noIndustry.topology(),
-            0L);
+            0L,
+            EconomyFixtures.runtimeOf(emptyIndustryDefs));
     assertThat(merchant.feasible()).isFalse();
     assertThat(merchant.reason())
         .as("★ W9：买不到（手头无 tool ∧ 市场不交易 tool）⇒ 仍是这条具名理由")
@@ -348,8 +382,8 @@ class ExpectedProfitBookTest {
     ExpectedProfitBook.Prospect craftProspect = prospect(craftFixture, craft(CRAFT));
 
     // 候选 B：family 产业（household regime、labor 10/规模、CLOTH 10 单位/规模、FIBER 100 毫/规模）。
-    Industry family =
-        new Industry(
+    IndustryDefinitionView family =
+        IndustryViews.industry(
             CRAFT2,
             "family-test",
             new RegimeId("household"),
@@ -365,7 +399,7 @@ class ExpectedProfitBookTest {
     Fixture familyFixture = fixture(family, 1L, 10_000L, demandBook(CRAFT2, CLOTH, 4_000L));
     ExpectedProfitBook.Prospect familyProspect =
         ExpectedProfitBook.prospect(
-            familyFixture.base(),
+            EconomyFixtures.dayView(familyFixture.base(), familyFixture.definitions()),
             HOUSE,
             DefaultProductionModes.FAMILY_FARM,
             H,
@@ -375,10 +409,11 @@ class ExpectedProfitBookTest {
             familyFixture.shares(),
             claimedFrom(familyFixture.organizations()),
             familyFixture.accounts(),
-            familyFixture.base().units(),
+            familyFixture.definitions().instances(),
             familyFixture.base().relations(),
             familyFixture.topology(),
-            0L);
+            0L,
+            EconomyFixtures.runtimeOf(familyFixture.definitions()));
 
     // 手算 A：scale=min(3,10)=3；laborNeed=1,000×3×10=30,000；revenue=(1,000+3,000)×9/1000=36；
     //        inputCost=15,000×21/1000=315；laborCost=30,000×144×10/1e6=43；net=−322。见量纲专项用例逐值断言。
@@ -417,8 +452,8 @@ class ExpectedProfitBookTest {
   @Test
   void sameModeDifferentHexIsIndependent() {
     // 同 mode（HANDICRAFT_WORKSHOP）在 H2 的价格/需求独立：H2 需求为 0 ⇒ sellable=0，而 H 仍可卖。
-    Industry craft2 = craft(CRAFT2);
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    IndustryDefinitionView craft2 = craft(CRAFT2);
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     industries.put(CRAFT, craft(CRAFT));
     industries.put(CRAFT2, craft2);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
@@ -428,8 +463,26 @@ class ExpectedProfitBookTest {
     shares.put(s2.id(), s2);
     ProductionUnitId unit1 = ProductionUnitId.idOf(CRAFT, ACTOR);
     ProductionUnitId unit2 = ProductionUnitId.idOf(CRAFT2, ACTOR);
-    ProductionProcess u1 = new ProductionProcess(unit1, CRAFT, ACTOR, "m1", 0L, 0L, Map.of());
-    ProductionProcess u2 = new ProductionProcess(unit2, CRAFT2, ACTOR, "m1", 0L, 0L, Map.of());
+    ProductionProcess u1 =
+        new ProductionProcess(
+            unit1,
+            CRAFT,
+            ProductionLocation.ofPlan(CRAFT).orElseThrow(),
+            ACTOR,
+            "m1",
+            0L,
+            Map.of(),
+            Map.of());
+    ProductionProcess u2 =
+        new ProductionProcess(
+            unit2,
+            CRAFT2,
+            ProductionLocation.ofPlan(CRAFT2).orElseThrow(),
+            ACTOR,
+            "m1",
+            0L,
+            Map.of(),
+            Map.of());
     ProductionRules r1 =
         new ProductionRules(unit1, ACTOR, new Payee.ToActor(ACTOR), List.of(), ACTOR);
     ProductionRules r2 =
@@ -443,9 +496,15 @@ class ExpectedProfitBookTest {
     // ★★ W1：逐格报价 → 一格一张派生价表（键 = "hex:<q>_<r>"，与 MarketTopology.singleHex 的节点 id 同源）。
     Map<MarketZoneId, MarketTable> markets =
         EconomyFixtures.hexMarkets(Map.of(H, market(), H2, market()));
+    // ★★★ D-032 T1：本作用域的两个实例随定义一起进 production 切片。
+    ProductionData definitions =
+        ProductionData.empty()
+            .withModes(DefaultProductionModes.modes())
+            .withIndustries(industries)
+            .withInstance(u1)
+            .withInstance(u2);
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(Map.of(HOUSE, row))
@@ -454,13 +513,12 @@ class ExpectedProfitBookTest {
                     HOUSE,
                     new HouseholdClassMembership(
                         HOUSE, position, position, Map.of(), 0L, 0L, "test")))
-            .withIndustries(industries)
-            .withProcesses(Map.of(unit1, u1, unit2, u2))
             .withRelations(Map.of(unit1, r1, unit2, r2))
             .withOwnershipStakes(shares)
             .withMarketTables(markets);
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(
+        HOUSE, H, Map.of(FIBER, FIBER_INPUT_STOCK_MILLI), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(markets, Map.of());
     MarketDemandBook.Book demand =
         new MarketDemandBook.Book(
@@ -479,7 +537,7 @@ class ExpectedProfitBookTest {
 
     ExpectedProfitBook.Prospect atH =
         ExpectedProfitBook.prospect(
-            base,
+            EconomyFixtures.dayView(base, definitions),
             HOUSE,
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             H,
@@ -489,13 +547,14 @@ class ExpectedProfitBookTest {
             shares,
             claimedFrom(Map.of()),
             accounts,
-            base.units(),
+            definitions.instances(),
             base.relations(),
             topology,
-            0L);
+            0L,
+            EconomyFixtures.runtimeOf(definitions));
     ExpectedProfitBook.Prospect atH2 =
         ExpectedProfitBook.prospect(
-            base,
+            EconomyFixtures.dayView(base, definitions),
             HOUSE,
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             H2,
@@ -505,10 +564,11 @@ class ExpectedProfitBookTest {
             shares,
             claimedFrom(Map.of()),
             accounts,
-            base.units(),
+            definitions.instances(),
             base.relations(),
             topology,
-            0L);
+            0L,
+            EconomyFixtures.runtimeOf(definitions));
 
     assertThat(atH.sellableMilli().get(CLOTH)).isEqualTo(3_000L);
     assertThat(atH2.sellableMilli()).as("★ 同 mode 不同 hex 独立：H2 可寻址需求 0 ⇒ 无销量").isEmpty();
@@ -521,7 +581,7 @@ class ExpectedProfitBookTest {
    * #NEWCOMER} 在该格没有任何自有资产，因此它能否进产完全取决于这条份额是否被判为"闲置"。
    */
   private static Fixture staleSnapshotFixture() {
-    Industry industry = craft(CRAFT);
+    IndustryDefinitionView industry = craft(CRAFT);
     ClassPositionId position =
         DefaultProductionModes.positionId(
                 DefaultProductionModes.HANDICRAFT_WORKSHOP,
@@ -541,19 +601,22 @@ class ExpectedProfitBookTest {
     OwnershipStake estateShare =
         new OwnershipStake(
             OwnershipStake.idOf(
-                CRAFT, AssetKind.WORKSHOP, ESTATE, ESTATE, OwnershipStake.RightKind.OWNED, 0L),
+                CRAFT, AssetKind.WORKSHOP, ESTATE, ESTATE, AssetRightKind.OWNED, 0L),
             CRAFT,
             AssetKind.WORKSHOP,
             ESTATE,
             ESTATE,
             3L,
-            OwnershipStake.RightKind.OWNED);
+            AssetRightKind.OWNED);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(estateShare.id(), estateShare);
 
+    ProductionData definitions =
+        ProductionData.empty()
+            .withModes(DefaultProductionModes.modes())
+            .withIndustries(Map.of(CRAFT, industry));
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(Map.of(NEWCOMER, newcomerRow))
@@ -562,16 +625,17 @@ class ExpectedProfitBookTest {
                     NEWCOMER,
                     new HouseholdClassMembership(
                         NEWCOMER, position, position, Map.of(), 0L, 0L, "test-stale")))
-            .withIndustries(Map.of(CRAFT, industry))
             .withOwnershipStakes(shares)
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(NEWCOMER, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(
+        NEWCOMER, H, Map.of(FIBER, FIBER_INPUT_STOCK_MILLI), Map.of(), Map.of(), Map.of());
     MarketTopology topology =
         MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of());
     return new Fixture(
         base,
+        definitions,
         shares,
         accounts,
         topology,

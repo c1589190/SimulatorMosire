@@ -131,6 +131,10 @@ public final class GovBudgetExecutionBridge {
       UnitState units,
       SocialData social,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       AccountSession accounts,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       Map<UnitId, GovernmentServiceLaborBridge.Supply> supplyByUnit,
@@ -145,8 +149,9 @@ public final class GovBudgetExecutionBridge {
     Objects.requireNonNull(supplyByUnit, "supplyByUnit");
 
     MilitaryPayRuleBridge.Report militaryReport =
-        MilitaryPayRuleBridge.deriveReport(units, social, economy, day);
-    GovSalaryRuleBridge.Report salaryReport = GovSalaryRuleBridge.deriveReport(units, economy, day);
+        MilitaryPayRuleBridge.deriveReport(units, social, economy, productionUnits, day);
+    GovSalaryRuleBridge.Report salaryReport =
+        GovSalaryRuleBridge.deriveReport(units, economy, productionUnits, day);
 
     Map<UnitId, ResourceVector> militaryDemand = new LinkedHashMap<>();
     for (HouseholdPeriodicAdjustment rule : militaryReport.rules()) {

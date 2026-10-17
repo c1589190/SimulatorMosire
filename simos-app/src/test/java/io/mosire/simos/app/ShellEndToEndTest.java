@@ -40,6 +40,8 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -426,6 +428,8 @@ class ShellEndToEndTest {
                         ref("main", 1),
                         T7,
                         EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                // ★ P1：production 切片必须在场（定义权威；命令/推进落库前校验器 fail-closed）。
+                "production", new ProductionSnapshot(ref("main", 1), T7, ProductionData.empty()),
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty()),
                 // ★ 2026-10-13 急停协议：army 也成了时间参与者（ArmyTimeParticipant：逐日判"两军相遇"）
                 //   ⇒ 它同样要求切片在场（缺席是装配故障 —— 与上面 R3a/T5 同口径；本夹具未播种 ⇒ 不变提案）。
@@ -442,6 +446,7 @@ class ShellEndToEndTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     new ActorCodec(),
                     new ArmyCodec())));
   }

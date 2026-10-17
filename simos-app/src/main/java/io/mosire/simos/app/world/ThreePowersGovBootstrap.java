@@ -1,15 +1,20 @@
 package io.mosire.simos.app.world;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
+import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -24,11 +29,14 @@ import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
-import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.codec.ProductionCodec;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.spi.CreateInstanceHandler;
+import io.mosire.simos.production.spi.UpsertIndustryHandler;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -81,6 +89,7 @@ import java.util.Set;
  * → economy.RegisterGovernment（{@code issuable} 只在"既有币种"时显式声明，见 {@link GovSpec#declaredIssuable()}）
  * → [本 GOV 发行新币时] economy.DefineCurrency（币种进词表 + <币>-specie 进工具表 + 本 GOV 成为发行人）
  * → unit.SetJurisdiction（本级辖区：本 GOV 那一个行政区）
+ * → production.CreateInstance（★ B10：office 生产实例，身份四字段 = economy.UpsertGovUnit 的期望；次序不可换）
  * → economy.UpsertGovUnit（office unit + TOOL 份额 + 空规则关系）
  * → social.CreateHousehold(hh-unit:<id>, UNIT) → social.TransferHouseholdMembers（2 名成年男性）
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
@@ -635,9 +644,9 @@ public final class ThreePowersGovBootstrap {
     next =
         applier.apply(
             next,
-            EconomyUpsertIndustryHandler.TYPE,
-            new EconomyUpsertIndustryHandler(),
-            new EconomyCodec(),
+            UpsertIndustryHandler.TYPE,
+            new UpsertIndustryHandler(new AppProductionConsumerPort()),
+            new io.mosire.simos.production.codec.ProductionCodec(),
             officeIndustryPayload(officeIndustryId, spec));
     next =
         applier.apply(
@@ -692,6 +701,16 @@ public final class ThreePowersGovBootstrap {
             new SetJurisdictionHandler(),
             new UnitCodec(),
             setJurisdictionPayload(spec));
+    // ★★ B10（§14.20.2 裁定三十七）：**先**经 production 契约给这个 GOV 立 office 生产实例，**再**发 economy 侧
+    //   （economy 的具名拒 OFFICE_UNIT_NOT_IN_PRODUCTION 是 fail-closed 的正确行为，不放宽 —— 补的是"建实例的
+    //   入口"）。次序不可换：economy 侧要求实例已存在。与 GovWorldBootstrap:561-570 逐条同序。
+    next =
+        applier.apply(
+            next,
+            CreateInstanceHandler.TYPE,
+            new CreateInstanceHandler(),
+            new ProductionCodec(),
+            createOfficeInstancePayload(spec, officeIndustryId, reason));
     next =
         applier.apply(
             next,
@@ -825,6 +844,9 @@ public final class ThreePowersGovBootstrap {
     payload.put("id", industryId);
     payload.put("name", spec.name() + "官署");
     payload.put("regime", OFFICE_REGIME);
+    // ★★ D-031 P1 §9.2：office 属于 P0 声明的六 kind ⇒ 显式写入权威技能键（不解析 id 猜）。
+    payload.put(
+        "skill", io.mosire.simos.production.contract.ProductionSkillKeys.ADMINISTRATION.value());
     payload.put("cycleDays", OFFICE_CYCLE_DAYS);
     payload.put("capacityPerUnit", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("dailyInputPerUnit", new LinkedHashMap<>());
@@ -934,6 +956,32 @@ public final class ThreePowersGovBootstrap {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("unitId", spec.govId());
     payload.put("regions", List.of(spec.jurisdictionRegionId()));
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * ★★ <b>B10（§14.20.2 裁定三十七）：office 生产实例的载荷</b> —— 与 {@code
+   * GovWorldBootstrap#createOfficeInstancePayload} <b>同形</b>：身份四字段与 {@code economy.UpsertGovUnit}
+   * 的期望逐字对齐 （{@code operator = HOUSEHOLD:hh-gov-<govId>}、{@code unit =
+   * ProductionUnitId.idOf(officeIndustryId, operator)}、 {@code modeKey = OFFICE_REGIME}（= economy
+   * 侧缺省 {@code GOV_SERVICE_MODE_KEY}））；地点取 office 产业 id 的格段 （"把既有生成约定读成地点"，同一处约定不另抄坐标），判不出则不给该键、由
+   * production 侧具名拒。
+   */
+  private static String createOfficeInstancePayload(
+      GovSpec spec, String officeIndustryId, String reason) {
+    IndustryId plan = IndustryId.parse(officeIndustryId);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("plan", officeIndustryId);
+    payload.put(
+        "unit",
+        ProductionUnitId.idOf(plan, HouseholdActors.of(spec.governmentHouseholdId())).value());
+    payload.put(
+        "operator",
+        Map.of("kind", ActorKind.HOUSEHOLD.name(), "id", spec.governmentHouseholdId().value()));
+    payload.put("modeKey", OFFICE_REGIME);
+    ProductionLocation.ofPlan(plan)
+        .ifPresent(location -> payload.put("location", location.value()));
+    payload.put("reason", reason);
     return ToolSupport.json(payload);
   }
 

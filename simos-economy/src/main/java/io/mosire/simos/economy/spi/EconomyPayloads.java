@@ -3,11 +3,11 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -28,6 +28,7 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -50,10 +51,8 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -61,22 +60,22 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
-import io.mosire.simos.economy.model.MoneyOutput;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -98,13 +97,11 @@ import java.util.Set;
  *
  * <pre>{@code
  * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[
- *   {"q":0,"r":0,"industries":[
- *     {"id":"farm@0_0","name":"农业","regime":"feudal",
- *      "operator":{"kind":"ESTATE","id":"farm@0_0"},"cycleDays":120,"progressDays":0,
- *      "capacityPerUnit":{"LAND":1000},"capacity":{"LAND":3100000},"laborPerUnit":143,
+ *   {"q":0,"r":0,"plans":[
+ *     {"id":"farm@0_0","name":"农业","regime":"feudal","cycleDays":120,
+ *      "capacityPerUnit":{"LAND":1000},"laborPerUnit":143,
  *      "dailyInputPerUnit":{},"dailyLaborPerUnit":0,"outputPerUnit":{"grain":67,"fiber":12},
- *      "cycleInputPerUnit":{"LAND":{"grain":8000}},"cycleInputUsedMilli":{},
- *      "cycleLaborMilli":0,
+ *      "cycleInputPerUnit":{"LAND":{"grain":8000}},
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"poor_peasant","name":"贫农","laborParticipationPerMille":950}]}],
  *    "classes":[{"residence":"rural","slot":"poor_peasant","population":450,"laborMilli":261000,
@@ -118,11 +115,22 @@ import java.util.Set;
  *  "markets":{"0_0":{"numeraire":"silver","prices":{"grain":1,"cloth":5}}}}
  * }</pre>
  *
+ * <p>★★★ <b>B5（§13.15.3 裁定十九）</b>：上例的 `plans` 键原名 `industries`，且节点自带一整套产业定义 +
+ * 旧形状实例字段（`operator`/`capacity`/`progressDays`/`cycleLaborMilli`/`cycleInputUsedMilli`）。B5 起：
+ *
+ * <ol>
+ *   <li>产业定义<b>不进 economy 载荷</b> —— 唯一权威在 production 的 `production.Seed` `industries[]`
+ *       （`ProductionDefinitionLookup`）；
+ *   <li>旧形状实例字段<b>不再解析</b>（合成 unit / 整额 OWNED 份额那条路径已删；旧档 fail-closed 是 Alpha 允许的）；
+ *   <li>`plans[]` 只剩"该格有哪些方案节点"（每个节点是 unit 节点的宿主与 `relation` 的来源）； `units[]` 里逐项自带
+ *       `industry`/`operator`/`modeKey`，产业模板从 production 当刻定义权威取。
+ * </ol>
+ *
  * <p>★★ <b>R3B.2 的新形状（上面的样例是旧形状留痕）</b>：{@code industries[]} 只留模板（无 {@code operator/capacity/
  * progressDays/cycleLaborMilli/cycleInputUsedMilli}）；{@code units[]} 显式给生产单元（{@code id?/industry/
  * operator?/modeKey?/progressDays?/cycleLaborMilli?/cycleInputUsedMilli?}）；{@code
  * allocations[].activity} = unit id、{@code actor} = unit.operator。★ 上面的旧形状**仍可读**：industry
- * 的旧实例字段先合成一条默认 unit + 整额 OWNED 份额，再构造模板（见 {@code EconomyCodec} 与 {@code industrySpec}）。
+ * 的旧实例字段**不再解析**（B5 / §13.15.3 裁定十九：economy 载荷不再自带产业定义，旧形状合成路径已删）。
  *
  * <p>★★ <b>H0（2026-09-27，裁定 K2/K3 + R-N1-A）的三处形状变化 —— 三条都是"编译绿、运行红"的坑，逐条写清</b>：
  *
@@ -132,11 +140,12 @@ import java.util.Set;
  *       entry；{@code residence} 走 {@link ResidenceKind#parse}（词表外即抛）。★ <b>为什么必须显式给</b>：改前"行属于哪个产业"
  *       隐含了居住类型（{@code farm}/{@code weave} = 农村、{@code craft} = 城镇），H0 之后那层隐含没有了 —— 缺键就<b>抛</b>
  *       （不许按产业种类猜：{@code weave} 的家户就是农村那四行，猜出来的第二份约定会与配额表漂开）；
- *   <li>★★ <b>{@code meansOfProduction} 键<b>不再接受</b></b>（K3）：产能搬到 {@code Industry.capacity}。★ 留着不读
- *       = "看起来在记、其实被静默丢掉"（真档会变成"全格没有产能 ⇒ 绝收"而无人察觉）⇒ <b>给了即抛</b>，消息点名新键；
- *   <li>★★ <b>{@code Industry} 多一个 {@code capacity}（本格该产业的产能总量）</b>：缺键 ⇒ 空表 ⇒ 规模 0（= 本格没有产能，
- *       真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与 {@code
- *       capacityPerUnit} 的"必须 > 0"性质不同）。
+ *   <li>★★ <b>{@code meansOfProduction} 键<b>不再接受</b></b>（K3）：产能搬到 {@code
+ *       IndustryDefinitionView.capacity}。★ 留着不读 = "看起来在记、其实被静默丢掉"（真档会变成"全格没有产能 ⇒ 绝收"而无人察觉）⇒
+ *       <b>给了即抛</b>，消息点名新键；
+ *   <li>★★ <b>{@code IndustryDefinitionView} 多一个 {@code capacity}（本格该产业的产能总量）</b>：缺键 ⇒ 空表 ⇒ 规模 0（=
+ *       本格没有产能， 真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与
+ *       {@code capacityPerUnit} 的"必须 > 0"性质不同）。
  * </ol>
  *
  * <p>★★ <b>H1（2026-09-27，裁定 D3-C/K1）的第四处形状变化：{@code classes[].goods} 键<b>不再接受</b></b> —— 家户的商品库存住在
@@ -155,7 +164,7 @@ import java.util.Set;
  * <ul>
  *   <li>新增 {@code capacityPerUnit}（每 1 单位规模需要多少生产资料）与 {@code laborPerUnit}（每 1 单位规模需要多少劳动） —— 它们与
  *       {@code inputPerUnit}（由 {@code cycleInputPerUnit} 合计而来，**不进载荷**）和 {@code outputPerUnit} 一起构成
- *       {@code Industry.recipe()} 的四个分量；
+ *       {@code IndustryDefinitionView.recipe()} 的四个分量；
  *   <li>两个投入表的**值侧带上商品维度**：{@code "cycleInputPerUnit":{"LAND":8000}} ⇒ {@code
  *       "cycleInputPerUnit":{"LAND":{"grain":8000}}}（"消耗 IRON"这种话原来表达不了）； {@code
  *       "cycleSeedUsedMilli":0} ⇒ {@code "cycleInputUsedMilli":{}}（按商品的累加器）。
@@ -181,8 +190,8 @@ import java.util.Set;
  * 切片**（只有 map/social/unit），故这两处形状变化不影响它能否打开。
  *
  * <p>★ **S1 阶段 3：{@code operator} 是可选键**（上面的样例里就带着它）。**缺键 ⇒ 按 {@code regime} 推导** （{@link
- * RegimeOperators#defaultOperator}，裁定 R1）—— 这是**载荷边缘**的推导点：{@code Industry} 收了 {@code null}
- * 是**抛**，不是补（裁定 D1）。★ 与 {@code allocations[].actor} 的口径**刻意不同**：那里缺键是**拒**、 这里是**推导**，不许合并。
+ * RegimeOperators#defaultOperator}，裁定 R1）—— 这是**载荷边缘**的推导点：{@code IndustryDefinitionView} 收了 {@code
+ * null} 是**抛**，不是补（裁定 D1）。★ 与 {@code allocations[].actor} 的口径**刻意不同**：那里缺键是**拒**、 这里是**推导**，不许合并。
  *
  * <p>★★ <b>S1 阶段 4+5 Task 2：{@code relation} 是可选键</b>（产业对象内的第二个推导点，形态与 {@code operator} 同款）。<b>缺键 ⇒
  * 按 {@code regime} 推导</b>（{@link RegimeRelations#defaultRelation}，计划 R3/R8）； <b>给了 ⇒
@@ -290,9 +299,22 @@ final class EconomyPayloads {
    * 把载荷整份 materialize 成 {@link EconomyData}（含激活元信息）。
    *
    * @param at 世界当前时刻（{@code activatedDay} 取它的 {@link SimosTimestamp#tick()}）
+   * @param definitions ★★★ B5（§13.15.3 裁定十九）：production 当刻定义权威 —— 载荷 `industries[]` 键**已退役**
+   *     （economy 侧不再组装、也不再解析它），产业模板（id/regime/cycleDays…）一律从这份权威取；某个 unit 指名的 产业不在这里 ⇒
+   *     **具名拒**（不存在"economy 载荷自带一份定义"的第二权威）。
+   * @param productionInstances ★★ B2b：production 的当刻实例投影（`production.Seed` 已先落账）—— 载荷里的 `units[]`
+   *     现在只用来声明**逐 unit 的 relation 与配额归一**，实例本体归 production； 每个载荷 unit
+   *     必须能在投影里找到（plan/operator/modeKey 逐值一致），否则**具名拒** （不存在"economy 单方面声明一个实例"的第二权威）。
    */
-  static EconomyData toData(JsonNode payload, SimosTimestamp at) {
+  static EconomyData toData(
+      JsonNode payload,
+      SimosTimestamp at,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionProcess> productionInstances) {
     Objects.requireNonNull(at, "at");
+    Objects.requireNonNull(
+        definitions, "definitions（B5：载荷不再带 industries[]，产业定义权威在 production，必须显式注入）");
+    Objects.requireNonNull(productionInstances, "productionInstances（B2b：实例权威的只读投影，必须显式注入）");
     // ★★ E4c：`debtContracts` / `pledges` 从"只接受空数组"放开为可解析；结构与引用完整性走 EconomyData 构造期守卫
     //   （id 四元组派生、debtor/creditor 行存在、HouseholdEconomy.debts 引用存在、质押引用与 Σ活跃质押上界）。
     String mapId = requireText(payload, "mapId");
@@ -301,7 +323,10 @@ final class EconomyPayloads {
     if (entries.isEmpty()) {
       throw new IllegalArgumentException("entries 不得为空");
     }
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    // ★★★ B9（§14.18.3 纪律）：本表的值来自 production 当刻定义权威，写入点**唯一** —— 逐 unit 解析定义时
+    //   `industries.putIfAbsent(...)`；读者 = "逐 unit 落 relation"那一段的存在性守卫与取模板。改本表时
+    //   必须同时核它的读者（B5 曾删掉旧填表循环而留下读空表的守卫 ⇒ 关系表被静默丢掉）。
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     // ★★ R3B.2：第 14 个组件（生产单元）—— 新载荷显式给 units[]，旧载荷由 industry 的旧实例字段合成。
     Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
@@ -312,9 +337,11 @@ final class EconomyPayloads {
     Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<MarketZoneId, MarketTable> markets = markets(payload, entries);
-    // ★★ P1：E1/E2 的六个可选地基键（缺键 ⇒ 空表；旧载荷逐值不变）。解析只做形状/词表，
+    // ★★ P1：E1/E2 的可选地基键（缺键 ⇒ 空表；旧载荷逐值不变）。解析只做形状/词表，
     //   键身份、结构↔位置闭环、standing 家户/位置引用等由 EconomyData 构造期守卫 fail-closed。
-    Map<ProductionModeId, ProductionMode> modes = parseModes(payload);
+    //   ★★★ B5（§13.15.2 裁定十八）：顶层可选 `modes` 键**退役**（原 {@code parseModes} 已删）——
+    //     生产方式定义的唯一权威在 production，economy 侧不再有定义副本、也不再有它的播种写腿
+    //     （定义经 `production.Seed` 的 `modes[]` 落账）。
     Map<ClassStructureId, ClassStructure> classStructures = parseClassStructures(payload);
     Map<ClassPositionId, ProductionRole> classPositions = parseProductionRoles(payload);
     Map<HouseholdId, HouseholdClassMembership> classMemberships = parseClassMemberships(payload);
@@ -338,16 +365,15 @@ final class EconomyPayloads {
       for (JsonNode node : optionalArray(entry, "allocations")) {
         entryLaborCommitments.add(allocation(node));
       }
-      // ★★ R3B.2：产业模板 + 旧实例字段（旧载荷的 operator/capacity/progress/cycle）分两路读。
-      List<IndustrySpec> specs = new ArrayList<>();
-      for (JsonNode node : requireArray(entry, "industries")) {
-        IndustrySpec spec = industrySpec(node);
-        // ★★ R0：**entry 格 ↔ industry.id 格必须一致**（见 requireIndustryHexMatchesEntry）。
-        requireIndustryHexMatchesEntry(hex, spec.template().id());
-        if (industries.putIfAbsent(spec.template().id(), spec.template()) != null) {
-          throw new IllegalArgumentException("同一份载荷里产业 id 重复: " + spec.template().id());
-        }
-        specs.add(spec);
+      // ★★★ B5（§13.15.3 裁定十九）：原 `entry.industries[]`（产业定义节点）**已退役** —— economy 载荷不再
+      //   自带产业定义（旧形状的 operator/capacity/progress/cycle* 合成路径一并删除）。本键只剩"该格的方案
+      //   （产业/unit）落点"这一件事：每个节点仍是 unit 节点的宿主与 `relation` 的来源，
+      //   产业模板一律从 production 当刻定义权威取（`definitions`）。
+      List<JsonNode> planNodes = new ArrayList<>();
+      for (JsonNode node : requireArray(entry, "plans")) {
+        // ★★ R0：**entry 格 ↔ 节点自带产业 id 的格必须一致**（见 requireIndustryHexMatchesEntry）。
+        requireIndustryHexMatchesEntry(hex, IndustryId.parse(requireText(node, "id")));
+        planNodes.add(node);
       }
       // ★★ R3B.1：该格的实物资产份额（可选）。新键 = assetShares、旧键 = useRights；先解析，
       //   因为旧载荷的 capacity→整额 OWNED 物化要判"这一产业是不是已经有显式份额"。
@@ -363,7 +389,6 @@ final class EconomyPayloads {
       for (JsonNode node : optionalArray(entry, "useRights")) {
         addOwnershipStake(assetShares, ownershipStakeSequences, node, true);
       }
-      // 旧载荷：旧 Industry 的实例字段（operator/capacity/progress/cycle*）⇒ 合成默认 unit + 整额 OWNED 份额。
       Map<String, JsonNode> unitNodesById = new LinkedHashMap<>();
       for (JsonNode node : optionalArray(entry, "units")) {
         JsonNode idNode = node.get("id");
@@ -371,11 +396,17 @@ final class EconomyPayloads {
         if (idText == null) {
           // ★ id 缺省 = ProductionUnitId.idOf(industry, operator)（确定性工厂是契约层的唯一拼写点）。
           IndustryId industryId = IndustryId.parse(requireText(node, "industry"));
-          Industry template = industries.get(industryId);
-          if (template == null) {
-            throw new IllegalArgumentException(
-                "unit 指名的产业不存在（同一份载荷内）: " + node + " industry=" + industryId);
-          }
+          // ★★★ B5（§13.15.3 裁定十九）：定义从 production 当刻权威取（载荷不再自带定义）。
+          IndustryDefinitionView template =
+              definitions
+                  .industry(industryId)
+                  .orElseThrow(
+                      () ->
+                          new IllegalArgumentException(
+                              "unit 指名的产业不在 production 当刻定义权威里（economy 载荷不再自带产业定义）: "
+                                  + node
+                                  + " industry="
+                                  + industryId));
           JsonNode operatorNode = optionalObject(node, "operator");
           ActorRef operator =
               operatorNode == null
@@ -387,60 +418,32 @@ final class EconomyPayloads {
           throw new IllegalArgumentException("同一份载荷里 unit id 重复: " + idText);
         }
       }
-      for (IndustrySpec spec : specs) {
-        if (!spec.legacy()) {
-          continue;
-        }
-        ActorRef operator = spec.legacyOperator();
-        ProductionUnitId unitId = ProductionUnitId.idOf(spec.template().id(), operator);
-        if (unitNodesById.containsKey(unitId.value())) {
-          throw new IllegalArgumentException(
-              "旧形状 industry（带 operator/capacity/progress）与显式 units[] 同时给同一 (产业, 经营者) ⇒ "
-                  + "同一件事两处拼写，拒绝："
-                  + unitId);
-        }
-        // 只有"这一产业已有实物份额"时才建 unit（旧档 capacity 全 0 时没有份额 ⇒ 旧行为规模恒 0，不造假 unit）。
-        if (!hasShareForIndustry(assetShares, spec.template().id())) {
-          synthesizeOwnedShares(
-              assetShares,
-              ownershipStakeSequences,
-              spec.template().id(),
-              operator,
-              spec.capacity());
-        }
-        if (hasShareForIndustry(assetShares, spec.template().id())) {
-          JsonNode operatorNode =
-              MAPPER
-                  .createObjectNode()
-                  .put("kind", operator.kind().name())
-                  .put("id", operator.id());
-          ObjectNode unitNode = MAPPER.createObjectNode();
-          unitNode.put("id", unitId.value());
-          unitNode.put("industry", spec.template().id().value());
-          unitNode.set("operator", operatorNode);
-          unitNode.put("modeKey", spec.template().id().value());
-          unitNode.put("progressDays", spec.progressDays());
-          unitNode.put("cycleLaborMilli", spec.cycleLaborMilli());
-          ObjectNode used = MAPPER.createObjectNode();
-          for (Map.Entry<CommodityId, Long> usedEntry : spec.cycleInputUsedMilli().entrySet()) {
-            used.put(usedEntry.getKey().value(), usedEntry.getValue());
-          }
-          unitNode.set("cycleInputUsedMilli", used);
-          unitNodesById.put(unitId.value(), unitNode);
-        }
-      }
+      // ★★★ B5（§13.15.3 裁定十九）：原"旧形状 industry 节点（带 operator/capacity/progressDays/
+      //   cycleLaborMilli/cycleInputUsedMilli）⇒ 合成默认 unit + 整额 OWNED 份额"这一整段**已删除**
+      //   —— economy 载荷不再自带产业定义，旧形状路径一并退役（Alpha 不兼容旧档：旧档 fail-closed，
+      //   不许留兼容位）。实例本体一律由 `production.Seed` 的 `instances[]` 落账。
       // 逐 unit 落表 + 解析它自己的 relation（unit 节点可选给 relation；旧载荷/模板在 industry 节点上）。
       Map<ProductionUnitId, JsonNode> relationNodesByUnit = new LinkedHashMap<>();
       List<ProductionUnitId> entryUnitIds = new ArrayList<>();
       for (Map.Entry<String, JsonNode> unitEntry : unitNodesById.entrySet()) {
         JsonNode unitNode = unitEntry.getValue();
         IndustryId industryId = IndustryId.parse(requireText(unitNode, "industry"));
-        Industry industry = industries.get(industryId);
-        if (industry == null) {
-          throw new IllegalArgumentException(
-              "unit 指名的产业不存在（同一份载荷内）: unit=" + unitEntry.getKey() + " industry=" + industryId);
-        }
-        IndustrySpec spec = specOf(specs, industryId);
+        // ★★★ B5（§13.15.3 裁定十九）：产业模板从 **production 当刻定义权威**取（载荷不再自带定义）。
+        IndustryDefinitionView industry =
+            definitions
+                .industry(industryId)
+                .orElseThrow(
+                    () ->
+                        new IllegalArgumentException(
+                            "unit 指名的产业不在 production 当刻定义权威里（economy 载荷不再自带产业定义）: unit="
+                                + unitEntry.getKey()
+                                + " industry="
+                                + industryId));
+        // ★★★ B9（§14.18.2 裁定三十六 / §14.18.3 纪律）：本行是 `industries` 的**唯一写入者**。B5 退役载荷
+        //   `entry.industries[]` 时删掉了它的填表循环，`industries` 一度"只 new 从不 put" ⇒ `:511` 的存在性
+        //   守卫恒假、逐 unit 落 relation 整段成死代码（I14 回归）。写入内容 = production 当刻定义权威里
+        //   **已具名核过存在性**的那一条；`:511` 的守卫保留（它仍是真实的 unit→方案存在性核对）。
+        industries.putIfAbsent(industry.id(), industry);
         ActorRef operator =
             optionalObject(unitNode, "operator") == null
                 ? RegimeOperators.defaultOperator(industry.regime(), industryId)
@@ -449,9 +452,40 @@ final class EconomyPayloads {
         if (units.putIfAbsent(unit.id(), unit) != null) {
           throw new IllegalArgumentException("同一份载荷里 unit 重复: " + unit.id());
         }
+        // ★★ B2b：载荷 unit 必须与 production 的实例**逐值一致**（instance 本体在 production）。
+        ProductionProcess authoritative = productionInstances.get(unit.id());
+        if (authoritative == null) {
+          throw new IllegalArgumentException(
+              "载荷声明了 production 里不存在的实例（实例的唯一权威在 production；请把它放进 production.Seed 的"
+                  + " instances[]）: unit="
+                  + unit.id().value());
+        }
+        if (!authoritative.plan().equals(unit.industry())
+            || !authoritative.operator().equals(unit.operator())
+            || !authoritative.modeKey().equals(unit.modeKey())) {
+          throw new IllegalArgumentException(
+              "载荷 unit 与 production 实例不一致（同一件事两处拼写）: unit="
+                  + unit.id().value()
+                  + " 载荷 plan/operator/modeKey="
+                  + unit.industry().value()
+                  + "/"
+                  + unit.operator()
+                  + "/"
+                  + unit.modeKey()
+                  + " production="
+                  + authoritative.plan().value()
+                  + "/"
+                  + authoritative.operator()
+                  + "/"
+                  + authoritative.modeKey());
+        }
         JsonNode relationNode = optionalObject(unitNode, "relation");
-        if (relationNode == null && spec != null) {
-          relationNode = optionalObject(spec.node(), "relation");
+        if (relationNode == null) {
+          // ★★ B5（裁定十九）：`relation` 的宿主仍是该格的方案节点（`plans[]`；trade 的关系就发在这里）。
+          JsonNode planNode = planNodeOf(planNodes, industryId);
+          if (planNode != null) {
+            relationNode = optionalObject(planNode, "relation");
+          }
         }
         relationNodesByUnit.put(unit.id(), relationNode == null ? MAPPER.nullNode() : relationNode);
         entryUnitIds.add(unit.id());
@@ -485,7 +519,7 @@ final class EconomyPayloads {
         if (unit == null || !industries.containsKey(unit.industry())) {
           continue;
         }
-        Industry industry = industries.get(unit.industry());
+        IndustryDefinitionView industry = industries.get(unit.industry());
         JsonNode relationNode = relationNodesByUnit.get(unitId);
         ProductionRules relation =
             relationNode == null || relationNode.isNull()
@@ -532,9 +566,13 @@ final class EconomyPayloads {
     // ★★ E6a：可选初始模式变迁 / 阶层保留份额（缺键 ⇒ 空表；id 确定性派生、分组 Σ=1000 与引用完整性走构造期守卫）。
     Map<ModeTransitionId, ModeTransition> modeTransitions = modeTransitions(payload);
     Map<ClassShareId, ClassShare> classShares = classShares(payload);
+    // ★★★ D-032 B4/B5/B9（§13.14.2 裁定十五 / §13.15.3 裁定十九 / §14.18.2 裁定三十六）：载荷**不再读**
+    //   `entry.industries[]`（B5 退役该键），定义权威唯一在 production。⇒ 上面的 `industries` 是**本方法内的
+    //   局部索引**：逐个 unit 从 `definitions.industry(id)` 取到**已具名核过存在性**的那条后 `putIfAbsent` 填入
+    //   （B9 补写者），只服务"逐 unit 落 relation"那一段，**不是**第二份持久权威、也不进 `EconomyData`。
+    //   跨表引用（unit→方案）另由落库前的 state-aware 守卫读 production 当刻定义判（EconomyReferenceValidation）。
     return new EconomyData(
         Optional.of(meta),
-        industries,
         householdEconomies,
         debtContracts,
         Map.of(),
@@ -546,12 +584,11 @@ final class EconomyPayloads {
         assetShares,
         // ★ S3 预留的第 13 个组件：创世载荷暂不声明经营者状态（空表 = 尚未登记任何状态机状态）。
         Map.of(),
-        units,
-        // ★★ R4-E2：创世载荷不声明 GM 需求/候选预设（空表 = 由 economy.AddDemand/RegisterCandidate 注入）。
+        // ★★ R4-E2：创世载荷不声明 GM 需求（空表 = 由 economy.AddDemand 注入）。
+        //   ★★ B2c（裁定八）：候选预设表已从 EconomyData 删除 ⇒ 原来那一格（candidates）随之删除。
         Map.of(),
-        Map.of(),
-        // ★★ P1：E1 的四张地基表从载荷可选键解析（缺键 ⇒ 空表 = 旧路径继续跑）。
-        modes,
+        // ★★ P1：E1 的三张地基表从载荷可选键解析（缺键 ⇒ 空表 = 旧路径继续跑）。
+        //   ★★★ B5（裁定十八）：生产方式定义 `modes` 那一格**已删** —— 定义权威唯一在 production。
         classStructures,
         classPositions,
         classMemberships,
@@ -569,7 +606,18 @@ final class EconomyPayloads {
         crisisSignals,
         // ★★ E6a：模式变迁 / 阶层保留份额（可选；id 派生、分组 Σ=1000 与引用完整性由构造期守卫判）。
         modeTransitions,
-        classShares);
+        classShares,
+        // ★★ B2b：Z1 的周期规则/产出覆盖/效率表 / A1 的词表 / B2 的市场区 / 选项 A 的引用表 /
+        //   商品基础运费 / R1 的政府授权 / W1 的市场轮统计 —— 创世载荷都不声明它们（空表 = 该维"还没有"），
+        //   构造期各自归一到中性/派生形态（与改动前逐值相同）。
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   /**
@@ -655,30 +703,9 @@ final class EconomyPayloads {
 
   // ── P1：E1/E2 完整经济地基的可选载荷（缺键 ⇒ 空表；词表/范围守卫复用领域构造期）────────────
 
-  /**
-   * ★★ <b>顶层可选 {@code modes} 数组</b>（缺键 ⇒ 空表）。每项： {@code
-   * {"id","name","version","classStructureId"}}。非法值由 {@link ProductionMode} 构造期守卫判， 同一份载荷里 id 重复 ⇒
-   * 抛。
-   */
-  private static Map<ProductionModeId, ProductionMode> parseModes(JsonNode payload) {
-    Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>();
-    for (JsonNode node : optionalArray(payload, "modes")) {
-      if (!node.isObject()) {
-        throw new IllegalArgumentException("modes 的每项必须是对象: " + node);
-      }
-      ProductionModeId id = ProductionModeId.parse(requireText(node, "id"));
-      ProductionMode mode =
-          new ProductionMode(
-              id,
-              requireText(node, "name"),
-              requireInt(node, "version"),
-              ClassStructureId.parse(requireText(node, "classStructureId")));
-      if (modes.putIfAbsent(id, mode) != null) {
-        throw new IllegalArgumentException("同一份载荷里 mode id 重复: " + id);
-      }
-    }
-    return modes;
-  }
+  // ★★★ B5（§13.15.2 裁定十八）：原 `parseModes(JsonNode)`（顶层可选 `modes` 数组 → economy 的
+  //   生产方式定义副本）**整方法删除** —— 定义权威唯一在 production（`production.Seed` 的 `modes[]`
+  //   经 `ProductionSeedHandler` 落 `ProductionData.modes`），economy 侧不再解析它。
 
   /**
    * ★★ <b>顶层可选 {@code classStructures} 数组</b>（缺键 ⇒ 空表）。每项： {@code
@@ -965,7 +992,7 @@ final class EconomyPayloads {
    */
   private static ProductionRules relation(
       JsonNode relationNode,
-      Industry industry,
+      IndustryDefinitionView industry,
       ProductionUnitId activity,
       ActorRef operator,
       Set<ResidenceKind> residences) {
@@ -1233,6 +1260,7 @@ final class EconomyPayloads {
    * 与产业的对应关系由 {@code EconomyData} 的构造期守卫判死（不在这里重复实现）。
    */
   private static HouseholdLaborCommitment allocation(JsonNode node) {
+    // （household 缺键的具名拒见下方 requireTextOrRejectAllocationHousehold）
     JsonNode actor = optionalObject(node, "actor");
     if (actor == null) {
       throw new IllegalArgumentException("劳动分配的字段 actor 必须是对象: " + node);
@@ -1241,15 +1269,26 @@ final class EconomyPayloads {
     return new HouseholdLaborCommitment(
         id,
         PeopleLotId.parse(requireText(node, "group")),
-        // ★ S1：新载荷可以显式给 household；旧载荷没有该键 ⇒ pending 占位，由 EconomyData 构造期的
-        //   LegacyHouseholdMigration 按"产业格 + 居住类型"的行人口拆到真实家户（与旧档同一条规则）。
-        node.hasNonNull("household")
-            ? HouseholdId.parse(requireText(node, "household"))
-            : HouseholdIds.pendingLegacy(id.value()),
+        // ★ S1：载荷必须显式给 household。★★ B2c（§13.12.5）：迁移期 pending 占位已整套删除 ⇒ 缺键**当场
+        //   具名拒**（不再有自动补齐 —— 旧档迁移器 B2b 已删，没人会把它换成真实家户）。
+        HouseholdId.parse(requireTextOrRejectAllocationHousehold(node, id)),
         actorRef(actor),
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
         requireLong(node, "period"));
+  }
+
+  /**
+   * ★ <b>B2c（§13.12.5）：劳动配额的 {@code household} 键必填</b> —— 缺键 ⇒ 具名拒（不再造 {@code legacy-pending-}
+   * 占位：旧档迁移器 B2b 已整段删除，占位没有消费者）。
+   */
+  private static String requireTextOrRejectAllocationHousehold(
+      JsonNode node, LaborAllocationId id) {
+    if (!node.hasNonNull("household")) {
+      throw new IllegalArgumentException(
+          "劳动配额缺少必填字段 household（B2c 起不再有旧档 pending 占位补齐）: " + id.value());
+    }
+    return requireText(node, "household");
   }
 
   // ── 实物资产份额（R3B.1）────────────────────────────────────────────────────────────
@@ -1302,9 +1341,9 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("资产份额的 asset 不是生产资料种类: " + node, e);
     }
     long quantity = requireLong(node, "quantity");
-    OwnershipStake.RightKind kind;
+    AssetRightKind kind;
     try {
-      kind = OwnershipStake.RightKind.valueOf(requireText(node, "kind"));
+      kind = AssetRightKind.valueOf(requireText(node, "kind"));
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("资产份额的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
     }
@@ -1337,6 +1376,16 @@ final class EconomyPayloads {
    * <p>★ <b>id 不带格键也拒</b>：那种 id 无法与任何 entry 对账（{@link IndustryHexKeys#hexKeyOf} 返回空），
    * 放行等于把这条守卫留成"只要不写 {@code @} 就能绕过"。★ 旧档（非播种载荷）不受影响：它们由 {@code EconomyCodec} 读入，不经本方法。
    */
+  /** 该格 `plans[]` 里指名某产业 id 的方案节点（没有 ⇒ null）；它承载 unit 的 `relation` 声明。 */
+  private static JsonNode planNodeOf(List<JsonNode> planNodes, IndustryId id) {
+    for (JsonNode node : planNodes) {
+      if (id.value().equals(node.path("id").asText())) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   private static void requireIndustryHexMatchesEntry(HexCoord entryHex, IndustryId id) {
     String entryKey = IndustryHexKeys.hexKey(entryHex.q(), entryHex.r());
     Optional<String> industryKey = IndustryHexKeys.hexKeyOf(id);
@@ -1363,18 +1412,39 @@ final class EconomyPayloads {
   }
 
   /**
-   * ★★ <b>R3B.2 的 Industry 载荷 = 纯技术模板</b>：只读 {@code id/name/regime/cycleDays/capacityPerUnit/
+   * ★★ <b>R3B.2 的 IndustryDefinitionView 载荷 = 纯技术模板</b>：只读 {@code
+   * id/name/regime/cycleDays/capacityPerUnit/
    * dailyInputPerUnit/dailyLaborPerUnit/laborPerUnit/outputPerUnit/cycleInputPerUnit/allocation/slots}。
    *
-   * <p>★ 旧载荷的实例字段（{@code
-   * operator/capacity/progressDays/cycleLaborMilli/cycleInputUsedMilli}）**不在这里读**： 它们由 {@link
-   * #industrySpec} 另存，用于合成默认 unit + 整额 OWNED 份额（见类注）。
+   * <p>★★ <b>B5（§13.15.3 裁定十九）</b>：旧载荷的实例字段（{@code
+   * operator/capacity/progressDays/cycleLaborMilli/cycleInputUsedMilli}）**不再被解析** —— `IndustrySpec`
+   * 与旧形状合成路径已删（economy 载荷不再自带产业定义）。本方法只服务 codec 的旧档 reshape（保留， Alpha：旧档 fail-closed）。
    */
-  private static Industry industry(JsonNode node) {
+  private static IndustryDefinitionView industry(JsonNode node) {
     IndustryId id = IndustryId.parse(requireText(node, "id"));
     String name = requireText(node, "name");
     RegimeId regime = RegimeId.parse(requireText(node, "regime"));
     long cycleDays = requireLong(node, "cycleDays");
+    // ★★ B2c（裁定八）：方案定义新增的两组件（buildDays / acceptedRightKinds）—— 与 production 的
+    //   `ProductionDefinitionPayloads.industry` 逐键同形、缺省同值（缺键 ⇒ 0 / 空集），免得同一份载荷节点
+    //   在两侧读成两个形状（economy 侧这份只是阶段 2 的临时兼容组件，见 EconomyData 类注）。
+    long buildDays = optionalLong(node, "buildDays", 0L);
+    if (buildDays < 0L) {
+      throw new IllegalArgumentException("字段 buildDays 不得为负: " + buildDays);
+    }
+    Set<AssetRightKind> acceptedRightKinds = new LinkedHashSet<>();
+    JsonNode rightKindsNode = node.get("acceptedRightKinds");
+    if (rightKindsNode != null && !rightKindsNode.isNull()) {
+      if (!rightKindsNode.isArray()) {
+        throw new IllegalArgumentException("字段 acceptedRightKinds 必须是数组: " + rightKindsNode);
+      }
+      for (JsonNode element : rightKindsNode) {
+        if (!element.isTextual() || element.asText().isBlank()) {
+          throw new IllegalArgumentException("字段 acceptedRightKinds 的元素必须是文本: " + element);
+        }
+        acceptedRightKinds.add(AssetRightKind.parse(element.asText()));
+      }
+    }
     // ★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"。
     Map<AssetKind, Long> capacityPerUnit =
         assetMap(optionalObject(node, "capacityPerUnit"), "capacityPerUnit");
@@ -1411,11 +1481,13 @@ final class EconomyPayloads {
     if (!(rule instanceof AllocationRule.Split)) {
       throw new IllegalArgumentException("v1 的周期分配只支持 AllocationRule.Split（v2 spec §八.4）：" + rule);
     }
-    return new Industry(
+    return new IndustryDefinitionView(
         id,
         name,
         regime,
+        Optional.empty(),
         cycleDays,
+        buildDays,
         capacityPerUnit,
         dailyInput,
         dailyLabor,
@@ -1424,103 +1496,43 @@ final class EconomyPayloads {
         cycleInput,
         slots,
         rule,
-        null,
-        0L,
-        Map.of(),
-        0L,
-        Map.of(),
-        new MoneyOutput(moneyOutput));
+        new MoneyOutput(moneyOutput),
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        List.of(),
+        acceptedRightKinds);
   }
 
   /**
    * ★★ <b>Z1a：{@code economy.UpsertIndustry} 的产业节点解析唯一入口</b> —— 与 {@code economy.Seed} 的 {@code
    * industries[]} 节点<b>同一份字段解析</b>（委托 {@link #industry(JsonNode)}）。命令 handler 不另写第二套字段读取；
-   * 构造期守卫（capacityPerUnit 非空且为正 / cycleDays / slots / 逐值非负 / allocation）仍由 {@link Industry} 与 上面的
-   * {@link #industry(JsonNode)} 判。
+   * 构造期守卫（capacityPerUnit 非空且为正 / cycleDays / slots / 逐值非负 / allocation）仍由 {@link
+   * IndustryDefinitionView} 与 上面的 {@link #industry(JsonNode)} 判。
    */
-  static Industry parseIndustryNode(JsonNode node) {
+  static IndustryDefinitionView parseIndustryNode(JsonNode node) {
     return industry(node);
   }
 
-  /**
-   * ★★ 旧载荷的 Industry 节点：模板 + 旧实例字段快照（合成默认 unit/份额用；新载荷 legacy=false）。
-   *
-   * <p>★★ <b>W5-fix2（2026-10-11）：{@code legacyOperator} 改为<b>惰性</b>（不再在解析期就按 regime 推默认经营主体）</b> ——
-   * 它只在 {@link #legacy} 为真时才有消费者（合成旧形状 unit，见 {@code parse(JsonNode)} 的 {@code spec.legacy()} 分支）。
-   * 解析期就推它的后果（实测的 W5 第三个 P0）：{@code economy.Seed} 的<b>新形状</b>产业节点（{@code units[]} 里自带 {@code
-   * operator}，产业节点上没有 operator/capacity/… 这些旧键）也会被推一次 —— 于是 {@code government_mint} （{@link
-   * RegimeOperators#GOVERNMENT_MINT} 刻意<b>不</b>登记在 {@code RegimeOperators.BY_REGIME}：铸币的经营者是政府
-   * 家户的稳定身份，推不出来）在播种时当场抛 {@code IllegalArgumentException}，被 {@code SmallWorld.applyCommand} 折成
-   * {@code IllegalStateException}「小世界创世命令被拒」⇒ 46 条 app 测试全红在创世。
-   */
-  private record IndustrySpec(
-      Industry template,
-      JsonNode node,
-      boolean legacy,
-      JsonNode legacyOperatorNode,
-      long progressDays,
-      long cycleLaborMilli,
-      Map<CommodityId, Long> cycleInputUsedMilli,
-      Map<AssetKind, Long> capacity) {
-
-    /**
-     * 旧载荷合成 unit 用的经营主体：节点显式给了 ⇒ 用它；没给 ⇒ 按产业 regime 推默认 （{@link RegimeOperators#defaultOperator}，裁定
-     * R1 的 fail-closed 原样保留）。
-     *
-     * <p>★ 未登记的制度在这里仍然<b>具名抛</b>（同 R1：不许静默落到某个主体）；★ 新形状载荷走不到本方法 （{@link #legacy} 为假 ⇒ 调用方不读这个值）。
-     */
-    ActorRef legacyOperator() {
-      if (legacyOperatorNode != null) {
-        return actorRef(legacyOperatorNode);
-      }
-      return RegimeOperators.defaultOperator(template.regime(), template.id());
-    }
-  }
-
-  /** 读一个 industry 节点：模板走 {@link #industry}，旧实例字段另存；判据 = 四个旧键任一出现。 */
-  private static IndustrySpec industrySpec(JsonNode node) {
-    Industry template = industry(node);
-    boolean legacy =
-        node.has("operator")
-            || node.has("capacity")
-            || node.has("progressDays")
-            || node.has("cycleLaborMilli")
-            || node.has("cycleInputUsedMilli");
-    // ★★ W5-fix2：这里**不再**推默认经营主体（见 IndustrySpec 的类注）—— 只把节点原样留给 legacyOperator()。
-    JsonNode legacyOperatorNode = optionalObject(node, "operator");
-    long progressDays = optionalLong(node, "progressDays", 0L);
-    long cycleLabor = optionalLong(node, "cycleLaborMilli", 0L);
-    Map<CommodityId, Long> cycleInputUsed =
-        commodityMap(optionalObject(node, "cycleInputUsedMilli"), "cycleInputUsedMilli");
-    Map<AssetKind, Long> capacity = assetMap(optionalObject(node, "capacity"), "capacity");
-    return new IndustrySpec(
-        template,
-        node,
-        legacy,
-        legacyOperatorNode,
-        progressDays,
-        cycleLabor,
-        cycleInputUsed,
-        capacity);
-  }
-
-  /** 同一 entry 内按产业 id 找 spec（新载荷 unit 引用产业模板）。 */
-  private static IndustrySpec specOf(List<IndustrySpec> specs, IndustryId id) {
-    for (IndustrySpec spec : specs) {
-      if (spec.template().id().equals(id)) {
-        return spec;
-      }
-    }
-    return null;
-  }
-
+  // ★★★ B5（§13.15.3 裁定十九）：原 `IndustrySpec` record / `industrySpec(JsonNode)` / `specOf(...)`
+  //   三个成员**整段删除** —— 它们只服务"旧形状 industry 节点 ⇒ 合成 unit + 整额 OWNED 份额"那条已退役
+  //   的路径（economy 载荷不再自带产业定义，旧档 fail-closed 是 Alpha 允许的）。
   /**
    * ★★ <b>R3B.2：一个 unit 载荷节点 → {@link ProductionProcess}</b>：{@code {id?, industry, operator?,
-   * modeKey?, progressDays?, cycleLaborMilli?, cycleInputUsedMilli?}}。 {@code id} 缺省 = {@link
+   * modeKey?, progressDays?, cycleInputUsedMilli?}}。 {@code id} 缺省 = {@link
    * ProductionUnitId#idOf}；{@code operator} 缺省 = 该产业 regime 的默认经营者； {@code modeKey} 缺省 = {@code
    * industry.id().value()}（旧档口径）。
+   *
+   * <p>★★ <b>机械修正（D-032 A 批续做）</b>：{@link ProductionProcess} 的"本周期劳动"已从<b>标量</b> {@code
+   * cycleLaborMilli} 改成<b>逐家户台账</b> {@code Map<HouseholdId, CycleContribution>}（复核裁决 §5：
+   * 整周期逐家户贡献及其当时生效效率必须可重建，标量表达不出来）。载荷里那份旧的 {@code cycleLaborMilli} 标量<b>无处安放</b>（它没有家户归属，编不出合法的
+   * {@link io.mosire.simos.production.contract.CycleContribution}）。
+   *
+   * <p>★ 播种侧的实际写法：{@code EconomySeeder} 播的 {@code progressDays=0 / cycleLaborMilli=0}（周期刚起、 尚无出工）⇒
+   * 逐家户台账恒为<b>空表</b>，"丢掉那个恒 0 的标量"与"读成空台账"逐值等价。 ★ 载荷键 {@code cycleLaborMilli}
+   * 仍在（旧载荷/夹具写它不会炸），只是不再进状态；B 批把载荷面一并收口。 ★ 旧档兼容整体作废（Alpha 不兼容旧档）⇒ 不写"标量 →
+   * 台账"的反解（那需要凭配额猜家户归属，是伪造进度）。
    */
-  private static ProductionProcess unit(JsonNode node, Industry industry, ActorRef operator) {
+  private static ProductionProcess unit(
+      JsonNode node, IndustryDefinitionView industry, ActorRef operator) {
     String idText = optionalText(node, "id").orElse(null);
     ProductionUnitId id =
         idText == null
@@ -1528,46 +1540,32 @@ final class EconomyPayloads {
             : ProductionUnitId.parse(idText);
     String modeKey = optionalText(node, "modeKey").orElse(industry.id().value());
     long progressDays = optionalLong(node, "progressDays", 0L);
-    long cycleLaborMilli = optionalLong(node, "cycleLaborMilli", 0L);
     Map<CommodityId, Long> cycleInputUsed =
         commodityMap(optionalObject(node, "cycleInputUsedMilli"), "cycleInputUsedMilli");
     return new ProductionProcess(
-        id, industry.id(), operator, modeKey, progressDays, cycleLaborMilli, cycleInputUsed);
+        id,
+        industry.id(),
+        // ★★★ D-032 B3（§13.8 裁定二第 1/3/4 条）：载荷解析是**语义边界** ⇒ 解不出地点即具名拒绝
+        //   （`location-unknown`），不再落到 UNSPECIFIED 占位（旧 `ofPlanOrUnspecified` 已删除）。
+        //   ★ 经济载荷的 unit 节点按格登记（industry id 自带格段），且下面还要与 production 的权威实例逐值核对。
+        io.mosire.simos.production.contract.ProductionLocation.ofPlan(industry.id())
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "location-unknown: economy 载荷的 unit 指名的产业 id 不带格段，实例地点无从落定"
+                            + "（不写 UNSPECIFIED 占位）: unit="
+                            + id.value()
+                            + " industry="
+                            + industry.id().value())),
+        operator,
+        modeKey,
+        progressDays,
+        Map.of(),
+        cycleInputUsed);
   }
 
-  /** 某个产业在 {@code assetShares} 表里是否已有份额行（值内 industry 命中）。 */
-  private static boolean hasShareForIndustry(
-      Map<AssetShareId, OwnershipStake> assetShares, IndustryId industry) {
-    for (OwnershipStake share : assetShares.values()) {
-      if (share.industry().equals(industry)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** 旧载荷的 capacity 表 ⇒ 逐项整额 OWNED 份额（含 0 值；capacity 空则退回 capacityPerUnit 的键、数量 0）。 */
-  private static void synthesizeOwnedShares(
-      Map<AssetShareId, OwnershipStake> out,
-      Map<String, Long> sequences,
-      IndustryId industry,
-      ActorRef operator,
-      Map<AssetKind, Long> capacity) {
-    // ★ capacity 空（老载荷 capacity 键缺失）⇒ 不登记任何份额 ⇒ 调用方不造 unit；规模恒 0 与旧档逐值等价。
-    for (Map.Entry<AssetKind, Long> entry : capacity.entrySet()) {
-      ObjectNode share = MAPPER.createObjectNode();
-      share.put("industry", industry.value());
-      ObjectNode operatorNode = MAPPER.createObjectNode();
-      operatorNode.put("kind", operator.kind().name());
-      operatorNode.put("id", operator.id());
-      share.set("owner", operatorNode);
-      share.set("operator", operatorNode.deepCopy());
-      share.put("asset", entry.getKey().name());
-      share.put("quantity", entry.getValue());
-      share.put("kind", OwnershipStake.RightKind.OWNED.name());
-      addOwnershipStake(out, sequences, share, false);
-    }
-  }
+  // ★★★ B5（§13.15.3 裁定十九）：原 `hasShareForIndustry(...)` / `synthesizeOwnedShares(...)` 两个助手
+  //   **整段删除** —— 它们只服务已退役的旧形状合成路径（economy 载荷不再自带产业定义；旧档 fail-closed）。
 
   /**
    * ★★ <b>一条家户行</b>（H0：键 = 该 entry 的格 + 行上显式声明的 {@code residence} + {@code slot}）： {@code
@@ -1579,8 +1577,8 @@ final class EconomyPayloads {
    * <ul>
    *   <li>{@code residence} <b>必填</b>（{@link ResidenceKind#parse}，词表外即抛）：居住维是家户身份的一维，而"行属于哪个产业"
    *       那层隐含（{@code farm}/{@code weave} = 农村）H0 之后没有了 ⇒ 按产业种类猜出来的第二份约定会与配额表漂开（见类注 ①）；
-   *   <li>{@code meansOfProduction} <b>给了即抛</b>（K3）：产能搬到 {@code Industry.capacity} —— 静默忽略它 =
-   *       "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）；
+   *   <li>{@code meansOfProduction} <b>给了即抛</b>（K3）：产能搬到 {@code IndustryDefinitionView.capacity} ——
+   *       静默忽略它 = "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）；
    *   <li>★★ {@code goods} <b>给了即抛</b>（H1；裁定 D3-C/K1）：家户的商品库存住在 actor 切片的 {@code
    *       HouseholdInventory}（键 {@code (HouseholdActors.of(cohort), cohort.hex())}），economy
    *       侧只在**会话工作副本**里读它 （{@code 旧日推进器（R3a 已删除）} 的入参）。★ 播种那一份要**搬**过去（app 的 {@code
@@ -1598,7 +1596,7 @@ final class EconomyPayloads {
     int participation = requireInt(node, "participationPerMille");
     if (node.hasNonNull("meansOfProduction")) {
       throw new IllegalArgumentException(
-          "家户行不再有 meansOfProduction 键（K3：产能已搬到产业的 capacity 键，见 Industry.capacity）："
+          "家户行不再有 meansOfProduction 键（K3：产能已搬到产业的 capacity 键，见 IndustryDefinitionView.capacity）："
               + node.get("meansOfProduction"));
     }
     if (node.hasNonNull("goods")) {
@@ -1666,8 +1664,8 @@ final class EconomyPayloads {
   /**
    * 键是 {@link AssetKind} 名、**值本身又是商品表的表**（R3 换型的那两张投入表）：{@code {"LAND":{"grain":8000}}}。
    *
-   * <p>★ 三条拒因各自给出可读的中文原因：键不认识生产资料种类、值不是对象、内层值不是整数 —— 都由本层判， 数值语义（≥ 0）交给 {@code Industry}
-   * 的构造期守卫（一处真相）。
+   * <p>★ 三条拒因各自给出可读的中文原因：键不认识生产资料种类、值不是对象、内层值不是整数 —— 都由本层判， 数值语义（≥ 0）交给 {@code
+   * IndustryDefinitionView} 的构造期守卫（一处真相）。
    */
   private static Map<AssetKind, Map<CommodityId, Long>> assetCommodityMap(
       JsonNode object, String field) {

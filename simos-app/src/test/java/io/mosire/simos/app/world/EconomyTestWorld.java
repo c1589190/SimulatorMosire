@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -21,17 +22,18 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -169,6 +171,7 @@ public final class EconomyTestWorld {
     Map<String, Snapshot> modules = new LinkedHashMap<>();
     EconomyData data = data(new LinkedHashMap<>(), new LinkedHashMap<>(), withMarketTables);
     modules.put("economy", new EconomySnapshot(ref, at, data));
+    modules.put("production", new ProductionSnapshot(ref, at, definitions()));
     modules.put("actor", new ActorSnapshot(ref, at, books()));
     return new SimulationState(new StateMeta(ref, at), modules, InMemoryInfoSystem.empty());
   }
@@ -263,43 +266,10 @@ public final class EconomyTestWorld {
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
       boolean withMarketTables) {
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     Map<LaborAllocationId, HouseholdLaborCommitment> allocations = new LinkedHashMap<>();
-    // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
-    farm(industries, classes, allocations, 0, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.NORMAL, stocks);
-    farm(industries, classes, allocations, 1, 0, 500L, HILLS_LAND_MILLI_MU, Stock.NORMAL, stocks);
-    farm(industries, classes, allocations, 2, 0, 0L, PLAINS_LAND_MILLI_MU, Stock.NORMAL, stocks);
-    craft(industries, classes, allocations, 2, 0, 300L, stocks);
-    // (3,0) 有粮可借 / (4,0) 无粮可借。
-    farm(
-        industries,
-        classes,
-        allocations,
-        3,
-        0,
-        LENDER_HEX_POPULATION,
-        PLAINS_LAND_MILLI_MU,
-        Stock.LANDLORD_ZERO_RICH_SURPLUS,
-        stocks);
-    farm(
-        industries,
-        classes,
-        allocations,
-        4,
-        0,
-        1000L,
-        PLAINS_LAND_MILLI_MU,
-        Stock.LANDLORD_ZERO_OTHERS_EXACT,
-        stocks);
-    // ★★ **R3：非土地生产**（有农村人口的格各一座家庭纺织）—— 它让"份外之地"这件事在夹具里就成立：
-    //   织机不占地、纤维与织机都不来自土地那一路，规模由**最紧约束**（劳动 vs 织机 vs 纤维）决定。
-    //   ★ 劳动那一条在 {@link #farm} 里与农业一起发（同一批农村人的 900‰/100‰）—— 一格的农村劳动只在一处决定。
-    //   ★ (2,0) 农业人口为 0 ⇒ **没有纺织**（配额为 0 ⇒ 纺织行没有活干 ⇒ 连产业都不建）。
-    weaving(industries, classes, 0, 0, 1000L, stocks);
-    weaving(industries, classes, 1, 0, 500L, stocks);
-    weaving(industries, classes, 3, 0, LENDER_HEX_POPULATION, stocks);
-    weaving(industries, classes, 4, 0, 1000L, stocks);
+    populateIndustries(industries, classes, allocations, stocks);
     // ★★ H0.2：**每格两组四行**（与真播种器同形）—— 上面的构造只为"有城市人口的格"建了城镇四行，
     //   这里把缺的那一组补成**空账**（人口/劳动/需求全 0）。★ 用 {@code putIfAbsent} ⇒ 已建的那一组
     //   （(2,0) 的城镇四行）**一个数都不动**；★ 两条判据靠它才成立：① 行集逐格同形（H1 的家户 actor 按
@@ -342,7 +312,6 @@ public final class EconomyTestWorld {
     EconomyData current =
         EconomyData.empty()
             .withMeta(Optional.of(legacyMeta))
-            .withIndustries(industries)
             .withHouseholdEconomies(classes)
             // ★★ T4/T5：第 8 个组件（生产关系表）**非空** —— harvest 已经真的读它了。
             //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
@@ -380,18 +349,72 @@ public final class EconomyTestWorld {
    * ResidenceKind#ofLot}，唯一拼写点）—— 真档由 {@code EconomyPayloads} 在载荷边缘算， 本夹具按同一个判据从**合成的批次 id**
    * 取（{@link #syntheticLot}）。
    */
+  /** 产业定义的唯一构造点（{@link #data} 与 {@link #definitions} 共用，避免两处漂开）。 */
+  private static void populateIndustries(
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<HouseholdId, HouseholdEconomy> classes,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks) {
+    // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
+    farm(industries, classes, allocations, 0, 0, 1000L, PLAINS_LAND_MILLI_MU, Stock.NORMAL, stocks);
+    farm(industries, classes, allocations, 1, 0, 500L, HILLS_LAND_MILLI_MU, Stock.NORMAL, stocks);
+    farm(industries, classes, allocations, 2, 0, 0L, PLAINS_LAND_MILLI_MU, Stock.NORMAL, stocks);
+    craft(industries, classes, allocations, 2, 0, 300L, stocks);
+    // (3,0) 有粮可借 / (4,0) 无粮可借。
+    farm(
+        industries,
+        classes,
+        allocations,
+        3,
+        0,
+        LENDER_HEX_POPULATION,
+        PLAINS_LAND_MILLI_MU,
+        Stock.LANDLORD_ZERO_RICH_SURPLUS,
+        stocks);
+    farm(
+        industries,
+        classes,
+        allocations,
+        4,
+        0,
+        1000L,
+        PLAINS_LAND_MILLI_MU,
+        Stock.LANDLORD_ZERO_OTHERS_EXACT,
+        stocks);
+    // ★★ **R3：非土地生产**（有农村人口的格各一座家庭纺织）—— 它让"份外之地"这件事在夹具里就成立：
+    //   织机不占地、纤维与织机都不来自土地那一路，规模由**最紧约束**（劳动 vs 织机 vs 纤维）决定。
+    //   ★ 劳动那一条在 {@link #farm} 里与农业一起发（同一批农村人的 900‰/100‰）—— 一格的农村劳动只在一处决定。
+    //   ★ (2,0) 农业人口为 0 ⇒ **没有纺织**（配额为 0 ⇒ 纺织行没有活干 ⇒ 连产业都不建）。
+    weaving(industries, classes, 0, 0, 1000L, stocks);
+    weaving(industries, classes, 1, 0, 500L, stocks);
+    weaving(industries, classes, 3, 0, LENDER_HEX_POPULATION, stocks);
+    weaving(industries, classes, 4, 0, 1000L, stocks);
+  }
+
+  /** production 定义权威（genesis 的 production 切片；定义唯一拼写点 = {@link #populateIndustries}）。 */
+  public static ProductionData definitions() {
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
+    Map<LaborAllocationId, HouseholdLaborCommitment> allocations = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> stocks = new LinkedHashMap<>();
+    populateIndustries(industries, classes, allocations, stocks);
+    return ProductionData.empty().withIndustries(industries);
+  }
+
   private static Map<ProductionUnitId, ProductionRules> relations(
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
-    for (Industry industry : industries.values()) {
-      ProductionUnitId unit = ProductionUnitId.idOf(industry.id(), industry.operator());
+    for (IndustryDefinitionView industry : industries.values()) {
+      io.mosire.simos.actor.api.actor.ActorRef operator =
+          RegimeOperators.defaultOperator(industry.regime(), industry.id());
+      ProductionUnitId unit = ProductionUnitId.idOf(industry.id(), operator);
       relations.put(
           unit,
           RegimeRelations.defaultRelation(
               industry.regime(),
               unit,
               industry.id(),
-              industry.operator(),
+              operator,
               Set.of(ResidenceKind.ofLot(syntheticLot(industry.id())))));
     }
     return relations;
@@ -407,7 +430,7 @@ public final class EconomyTestWorld {
   }
 
   private static void farm(
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<HouseholdId, HouseholdEconomy> classes,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       int q,
@@ -428,7 +451,8 @@ public final class EconomyTestWorld {
             // ★ R3（V7）：规模单位 = 亩；每亩 143 千分劳动；**田里同时出粮与纤维**（纤维是副产物 ⇒ 多商品产出的判据所在）。
             Map.of(AssetKind.LAND, 1_000L),
             // ★★ H0.3（K3）：**产能 = 本格可耕地**（千分亩）—— 旧版按人口切在四行里、靠 Σ 还原总量；
-            //   现在总量只有一处真相（{@code Industry.capacity}），行的 {@code meansOfProduction} 整个消失。
+            //   现在总量只有一处真相（{@code IndustryDefinitionView.capacity}），行的 {@code meansOfProduction}
+            // 整个消失。
             Map.of(AssetKind.LAND, landMilliMu),
             EconomySettlement.LABOR_MILLI_PER_MU,
             Map.of(
@@ -499,7 +523,7 @@ public final class EconomyTestWorld {
    * 原料 = 该行作坊数**一个周期**的用量）⇒ 夹具与真档同一套口径，不是另一组拍出来的数。
    */
   private static void craft(
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<HouseholdId, HouseholdEconomy> classes,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       int q,
@@ -563,7 +587,7 @@ public final class EconomyTestWorld {
    * 用量）。★ 把农田的纤维**实物搬**到织机行是 V8 的活（brief 明说不建议本轮做跨行实物转移）⇒ 本夹具与真档都吃这份明标来源的库存。
    */
   private static void weaving(
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<HouseholdId, HouseholdEconomy> classes,
       int q,
       int r,
@@ -638,18 +662,35 @@ public final class EconomyTestWorld {
 
   private static HouseholdLaborCommitment allocation(
       IndustryId industry, ActorKind kind, String activity, PeopleLotId lot, long laborMilli) {
-    // ★ S1 旧档迁移路径：household 先用 pending 占位（构造器允许），构造期迁移按人口权重替换成真实家户；
-    //   actor/activity 保持旧产业口径，迁移器会一起对齐到 unit.operator / unit id。
-    HouseholdId pendingHousehold =
-        HouseholdId.parse(HouseholdIds.PENDING_LEGACY_PREFIX + industry.value());
+    // ★★ D-032 T1：原"household 先用 pending 占位、构造期迁移按人口权重换成真实家户"这条路径**已随
+    //   Alpha（"旧档一律作废、不写迁移"）整体退役**：`HouseholdIds.PENDING_LEGACY_PREFIX` 这个常量已不存在，
+    //   构造期也没有"按人口权重替换"的迁移器（`EconomyData` 现在只存字面值）。
+    //   ⇒ 直接给一条**真实存在于本夹具**的家户 id（口径照真播种器的"批次整份归自己的家户"）：
+    //   取该产业同一格、同一居住类型、第一个阶层槽位的家户（本夹具的四个阶层行都由 `ofLegacy` 建，键在
+    //   `classes` 里确实存在）。★ 这不是放宽断言：原判据（"该产业/批次的配额指向一条真实家户"）一条没动，
+    //   只是把"先占位再迁移"换成"直接写真实身份"（迁移能力本身已按 Alpha 退役）。
+    HouseholdId household = allocationHousehold(industry);
     return new HouseholdLaborCommitment(
         allocationId(industry),
         lot,
-        pendingHousehold,
+        household,
         new ActorRef(kind, industry.value()),
         activity,
         laborMilli,
         EconomySeeder.FIRST_PERIOD);
+  }
+
+  /** 配额落点家户：该产业同格、同居住类型、第一个阶层槽位（与 {@link #syntheticLot} 的居住类型判据同源）。 */
+  private static HouseholdId allocationHousehold(IndustryId industry) {
+    String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
+    boolean rural =
+        industry.value().startsWith(EconomySeeder.FARM)
+            || industry.value().startsWith(EconomySeeder.WEAVE);
+    return HouseholdIds.ofLegacy(
+        new CohortKey(
+            HexCoord.parse(hex),
+            rural ? ResidenceKind.RURAL : ResidenceKind.URBAN,
+            new SocialClassId(EconomySeeder.CLASS_IDS[0])));
   }
 
   /** 合成批次 id：与真档的命名约定同形（{@code rural:<q>_<r>:MALE:1} / {@code urban:c-<q>_<r>:FEMALE:1}）。 */
@@ -668,7 +709,7 @@ public final class EconomyTestWorld {
 
   /**
    * 一个**家户行**（H0.2：键 = {@code (格, 居住类型, 阶层)}；**没有 {@code meansOfProduction}** —— 产能已在 {@code
-   * Industry.capacity} 上）。
+   * IndustryDefinitionView.capacity} 上）。
    *
    * <p>★ 人口/劳动/需求全按真档口径折算：需求 = **第 1 天**的口粮（逐日差分，不是"每人每日的量 × 人口"）， 初始粮 = {@link
    * EconomySeeder#rationMilli}；{@code extraGoods} = 该家户的其它商品（纤维 / 铁）。
@@ -732,7 +773,7 @@ public final class EconomyTestWorld {
   /**
    * 一个产业（**R3 起带 V7 的四个配方分量**）：每个产业自己锚定"单位规模"（农业 = 亩、织机/作坊 = 台/座）， 产出是**逐商品**的表 ⇒ "每单位什么"在夹具里也是数据。
    */
-  private static Industry industry(
+  private static IndustryDefinitionView industry(
       IndustryId id,
       String name,
       String regime,
@@ -752,11 +793,13 @@ public final class EconomyTestWorld {
     }
     // ★ 旧 17 参形状：operator/capacity 是兼容位，构造期归一化据此合成 unit + OwnershipStake
     //   （夹具因此与真档同一套换算；新的 12 参模板会把这两个事实留在外面）。
-    return new Industry(
+    return new IndustryDefinitionView(
         id,
         name,
         new RegimeId(regime),
+        java.util.Optional.empty(),
         CYCLE_DAYS,
+        0L /* ★ D-032 T1：buildDays 新增组件（中性 0，与 testing.IndustryViews 同款）*/,
         capacityPerUnit,
         Map.of(),
         0L,
@@ -765,10 +808,9 @@ public final class EconomyTestWorld {
         cycleInputPerUnit,
         slots,
         rule,
-        RegimeOperators.defaultOperator(new RegimeId(regime), id),
-        0L,
-        capacity,
-        0L,
-        Map.of());
+        io.mosire.simos.production.contract.MoneyOutput.NONE,
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        java.util.List.of(),
+        java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED));
   }
 }

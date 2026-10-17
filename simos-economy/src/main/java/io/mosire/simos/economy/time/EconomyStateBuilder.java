@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
@@ -31,7 +32,6 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -39,9 +39,10 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -70,16 +71,41 @@ import java.util.Optional;
         "本类是日结算的可变工作表（协调器单线程独占，见类注）：各 accessor 返回惰性拷贝的工作副本本身即设计语义（结算写回 base 的唯一通道），防御性拷贝会破坏工作表语义")
 public final class EconomyStateBuilder {
 
-  private final EconomyData base;
+  /** ★ <b>B1 批：建档类写入推回 production 时的日志门面</b>（I15：每模块一个 {@code XxxLog} 唯一拼写点； 跨域不一致 = ERROR 不降级）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
-  private LinkedHashMap<IndustryId, Industry> industries;
+  private final EconomyData base;
+  private final io.mosire.simos.production.contract.ProductionDefinitionLookup definitions;
+
+  /**
+   * ★★ <b>D-032 U2：生产运行时的只读投影</b>（本会话的当刻生产候选态来源）。
+   *
+   * <p>★★ <b>为什么工作表要持有它</b>：D-032 起<b>生产实例（进度 / 周期累计劳动 / 周期累计投入）的唯一权威在 production</b>（{@link
+   * ProductionProcess} 的类注 / I1）⇒ economy 侧对实例的读必须落在<b>同一份候选态</b>上， 而那份候选态由本会话的 {@link
+   * ProductionRuntime} 提供（I13：不得跨 revision 陈旧，故本字段是<b>会话级</b>的 runtime 投影、不是基态快照）。
+   *
+   * <p>★ <b>可以为 null</b>：只做家户/债务等非生产组件的旧调用点（如 {@code LotMigrationBook}）可以不接生产运行时； 那种会话一旦读 {@link
+   * #units()} 就<b>当场抛</b>（不是"读到空表"—— 见 {@link #units()} 的 fail-closed 口径）。
+   */
+  private final ProductionRuntime runtime;
+
+  /**
+   * ★★ <b>本会话的产业定义工作副本</b>（瞬态、不落盘）：常态下为空（直接读注入的 production 定义）；仅当日结算的 **按需创建**（如跑商为某格即时生成 {@code
+   * trade} 模板）物化它。★ 它不是第二份持久权威——{@link #build()} 不把它写进 {@code EconomyData}；定义权威仍在 production。
+   */
+  private LinkedHashMap<IndustryId, IndustryDefinitionView> industriesOverlay;
+
   private LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies;
   private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
   private LinkedHashMap<PledgeId, Pledge> pledges;
   private LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
   private LinkedHashMap<AssetShareId, OwnershipStake> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
-  private LinkedHashMap<ProductionUnitId, ProductionProcess> units;
+
+  // ★★ B2b（§13.11.4 第 4 条）：`unitsWorkCopy` / `unitsWorkCopyBaselineKeys` / `flushUnitWorkCopy()`
+  //   三件套已**整体退役** —— 建档类写者（进入执行 / 自动组织 / 模式变迁 / 迁移搬迁）改直调 production 契约口
+  //   （`createInstance` / `removeInstance` / `reoperateInstance`），economy 侧不再有任何实例写回路径。
+
   private LinkedHashMap<ProductionUnitId, ProductionRules> relations;
   private LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> productionOrganizations;
   private LinkedHashMap<MarketZoneId, MarketTable> marketTables;
@@ -100,11 +126,8 @@ public final class EconomyStateBuilder {
   /** ★★ E6a：阶层保留份额表工作副本（日结算 apply 时按变迁/家户写出）。 */
   private LinkedHashMap<ClassShareId, ClassShare> classShares;
 
-  /**
-   * ★★ <b>Z1：生产效率累计与余数表工作副本（第 33 个组件）</b> —— Z2 的结算按 tick 累加 {@code
-   * cycleModifierSumPerMille}、周期末写回四个余数并清零；未物化时 {@link #build} 原样复用 base 的不可变表（空表基线零拷贝）。
-   */
-  private LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency;
+  // ★★ B2b：Z1 的 `productionEfficiency` 工作副本已删（效率累计与余数的唯一权威在 production，
+  //   经 `ProductionRuntime#efficiencyOf(unit)` 只读）。
 
   /**
    * ★★ <b>R1（第 39 个组件）：政府市场授权表工作副本</b> —— 日结算把当日**成交**累加进 {@code filledMilli}、并清除耗尽/到期的行； 未物化时
@@ -114,28 +137,94 @@ public final class EconomyStateBuilder {
 
   private Optional<EconomyMeta> meta;
 
-  public EconomyStateBuilder(EconomyData base) {
+  /**
+   * ★★★ <b>D-032 U2 的装配口</b>：把本会话的生产运行时只读投影一起注入。
+   *
+   * <p>★★ <b>B3（§13.13.7 第 8 条 / §13.3 第 2 条）：{@code runtime} 必须非 null</b> —— 旧的两参构造器 （{@code
+   * runtime = null}，"本会话不读/不写生产实例"）已**删除**：生产实例的唯一权威在 production（I1）， 任何支持生产的有效入口都必须显式获得合法
+   * runtime；"没有运行时"不再是一条合法装配形态（它只会让读到实例的路径 逐个 fail-closed，= "能编译、实际不能履约"的入口）。需要"零实例"的世界请传一个空候选态的
+   * runtime。
+   */
+  public EconomyStateBuilder(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ProductionRuntime runtime) {
     this.base = Objects.requireNonNull(base, "base");
+    this.definitions = Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）");
+    this.runtime =
+        Objects.requireNonNull(runtime, "runtime（D-032：生产实例的唯一权威在 production，必须显式注入合法运行时）");
   }
 
   public EconomyData base() {
     return base;
   }
 
-  /** 产业表工作副本（首次访问时从 base 惰性拷贝）。 */
-  public LinkedHashMap<IndustryId, Industry> industries() {
-    if (industries == null) {
-      industries = new LinkedHashMap<>(base.industries());
+  /**
+   * ★★ <b>当刻产业定义的工作副本</b>（首次访问时从注入的 production 定义惰性拷贝）—— 只服务日结算的按需创建； 常态读者请走 {@link
+   * #definitions()}（零拷贝、直接读 production 权威）。
+   */
+  public LinkedHashMap<IndustryId, IndustryDefinitionView> industries() {
+    if (industriesOverlay == null) {
+      industriesOverlay = new LinkedHashMap<>(definitions.industries());
     }
-    return industries;
+    return industriesOverlay;
   }
 
   /**
-   * ★★ <b>B2：产业表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— 当日视图（{@code WorkingDayView}）走这里，
-   * 因此"读一次当刻值"<b>不会</b>顺带整表拷一份（零拷贝读口）。
+   * ★★ <b>当刻生产定义的只读来源</b>（production 契约；当刻视图与 revision 边界共用同一份注入）。
+   *
+   * <p>★ 若本会话发生了按需创建（{@link #industries()} 被物化），返回一份把该覆盖层叠在注入定义之上的只读视图 —— 于是当刻读者与新定义一致；覆盖层<b>不进</b>
+   * {@link #build()} 的 {@code EconomyData}（持久权威仍在 production）。
    */
-  public Map<IndustryId, Industry> industriesOrBase() {
-    return industries == null ? base.industries() : industries;
+  public io.mosire.simos.production.contract.ProductionDefinitionLookup definitions() {
+    if (industriesOverlay == null) {
+      return definitions;
+    }
+    return new io.mosire.simos.production.contract.ProductionDefinitionLookup() {
+      @Override
+      public java.util.Optional<IndustryDefinitionView> industry(IndustryId id) {
+        IndustryDefinitionView overlay = industriesOverlay.get(id);
+        return overlay != null ? java.util.Optional.of(overlay) : definitions.industry(id);
+      }
+
+      @Override
+      public java.util.Optional<io.mosire.simos.production.contract.ProductionModeDefinitionView>
+          mode(io.mosire.simos.economy.api.id.ProductionModeId id) {
+        return definitions.mode(id);
+      }
+
+      @Override
+      public Map<IndustryId, IndustryDefinitionView> industries() {
+        return java.util.Collections.unmodifiableMap(industriesOverlay);
+      }
+
+      @Override
+      public Map<
+              io.mosire.simos.economy.api.id.ProductionModeId,
+              io.mosire.simos.production.contract.ProductionModeDefinitionView>
+          modes() {
+        return definitions.modes();
+      }
+    };
+  }
+
+  /**
+   * ★★ <b>本会话按需创建、尚未登记的产业定义</b>（瞬态候选态）：overlay 里那些注入定义中不存在的 id。
+   *
+   * <p>★ app 组合根在 Advance 收尾时把这些候选态投影成 production 的 ChangeSet，与经济实例变更集在同一次 Advance 原子提交 （D-031
+   * §9.1）；不进 {@code EconomyData}，不是第二份持久权威。
+   */
+  public Map<IndustryId, IndustryDefinitionView> createdIndustryDefinitions() {
+    if (industriesOverlay == null) {
+      return Map.of();
+    }
+    Map<IndustryId, IndustryDefinitionView> created = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, IndustryDefinitionView> entry : industriesOverlay.entrySet()) {
+      if (definitions.industry(entry.getKey()).isEmpty()) {
+        created.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return java.util.Collections.unmodifiableMap(created);
   }
 
   /** 家户行工作副本（键 = 稳定身份）。 */
@@ -191,21 +280,53 @@ public final class EconomyStateBuilder {
     return operatorConditions;
   }
 
-  /** ★★ R3B.2 生产单元表工作副本（第 14 个组件；日结算推进进度/劳动/投入的唯一写点）。 */
-  public LinkedHashMap<ProductionUnitId, ProductionProcess> units() {
-    if (units == null) {
-      units = new LinkedHashMap<>(base.units());
-    }
-    return units;
+  /**
+   * ★★★ <b>当刻生产实例表（D-032：权威在 production；本方法返回<b>真只读</b>投影）</b>。
+   *
+   * <p>★★ <b>语义（B2b 收口后）</b>：内容的来源是 {@link ProductionRuntime#units()} 交出的<b>当刻候选态</b> （I13：同次
+   * Advance 的后续阶段必须看到本次最新候选态），<b>零拷贝、不缓存</b>——economy 侧的 {@code EconomyData.units} 组件与 {@code
+   * unitsWorkCopy} 写回桥都已删除（B2b），economy 不再持有任何一份 实例表。
+   *
+   * <p>★★ <b>为什么不能返回"可写副本"</b>：副本会在两次读写之间产生窗口——一次 {@code ProductionRuntime#executeDay}
+   * 推进过的进度，副本看不见；于是"同一实例同一 tick 被推两次" 这类契约故障会从检测网里漏过去。⇒ 读侧一律直读权威表；需要改实例的<b>建档类</b>写者一律直调契约口 {@code
+   * createInstance} / {@code removeInstance} / {@code reoperateInstance}（不再经任何工作副本）。
+   *
+   * <p>★★ <b>fail-closed（不是"读到空表"）</b>：本会话若没有注入生产运行时（{@link #runtime} 为 null）， 调用本方法<b>当场抛</b>
+   * {@link IllegalStateException} —— 把"没有运行时"静默当成"世界上没有生产实例" 正是本仓最反对的形态（{@code EconomyData} 的 H1/K1
+   * 守卫同一条口径：没有账 ≠ 账是空的）。
+   */
+  public Map<ProductionUnitId, ProductionProcess> units() {
+    return unitsReadOnly();
   }
 
   /**
-   * ★ <b>生产单元表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— {@code EconomyDayStepper} 的修正注入 只需判"unit
-   * 是否存在"，不必为了查一次就整表拷一份。
+   * ★★ <b>当刻生产实例的<b>真只读</b>投影（D-032 U2 的目标形态；新代码请用它）</b>。
+   *
+   * <p>★ 与 {@link #units()} 逐字同义（两者都只读；B2b 起 {@link #units()} 就是本方法）。任何 {@code put/remove} 当场
+   * {@code UnsupportedOperationException}（production 的候选态是冻结表）。
+   */
+  public Map<ProductionUnitId, ProductionProcess> unitsReadOnly() {
+    // ★★ B3：runtime 由构造器保证非 null（见那里的注释）—— 这里不再有"没有运行时"这一档。
+    return runtime.units();
+  }
+
+  /**
+   * ★ <b>生产实例表的"工作副本选择"</b>：D-032 起两侧同源（内容都来自 production 的当刻候选态） —— 保留本方法名只为不改动日结算里既有的读取点。
+   *
+   * <p>★ 已物化过 {@link #units()}（本会话有写者）⇒ 交给同一份工作副本（否则写者的结果会被读点看不见）； 否则交给 {@link #unitsReadOnly()}
+   * 的原表（零拷贝）。
    */
   public Map<ProductionUnitId, ProductionProcess> unitsOrBase() {
-    return units == null ? base.units() : units;
+    return unitsReadOnly();
   }
+
+  // ★★ B2b：`unitsWorkCopy()` 与 `flushUnitWorkCopy()` 已整体删除（见上面字段处的说明）。
+  //   ★ 曾经的 4 个写者现在的落点：
+  //     · 进入执行 `EconomyEntrySettlement` → `runtime.registerPlan` + `runtime.createInstance`（B2 已改）；
+  //     · 自动组织 `EconomyEnterpriseSettlement` → `runtime.createInstance`（B2b 改）；
+  //     · 模式变迁 `EconomyModeTransitionSettlement` → `runtime.createInstance`（B2b 改）；
+  //     · 迁移搬迁 `ModeMigrationSettlement` → `runtime.createInstance` / `runtime.removeInstance`（B2b
+  // 改）。
 
   /**
    * ★★ <b>R4-E2b：生产关系表工作副本</b>（第 8 个组件）—— E2b 的进入执行会为新建 unit 插入一条 relation； 未物化时由 {@link
@@ -241,16 +362,7 @@ public final class EconomyStateBuilder {
         : productionOrganizations;
   }
 
-  /**
-   * ★★ <b>Z1：生产效率累计与余数表工作副本</b>（键 = unit id）。Z2 的逐 tick 汇总与周期末公式在此就地表增/改； 未物化时 {@link #build} 直接复用
-   * base 的不可变表。
-   */
-  public LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency() {
-    if (productionEfficiency == null) {
-      productionEfficiency = new LinkedHashMap<>(base.productionEfficiency());
-    }
-    return productionEfficiency;
-  }
+  // ★★ B2b：`productionEfficiency()` 工作副本访问器已删（唯一权威在 production）。
 
   /** 市场表工作副本。 */
   public LinkedHashMap<MarketZoneId, MarketTable> marketTables() {
@@ -418,7 +530,10 @@ public final class EconomyStateBuilder {
     Objects.requireNonNull(flows, "flows");
     return new EconomyData(
         meta(),
-        industries == null ? base.industries() : industries,
+        // ★★★ D-032 B4（§13.14.2 裁定十五）：A 批续做的"占位带过 base.industries()"一行**已删** ——
+        //   `EconomyData` 不再有 industries 组件（定义权威唯一归 production）。本工作表仍只经
+        //   {@link #definitions()} 读当刻定义，{@link #industries()} 的按需覆盖层照旧**不进**状态
+        //   （瞬态候选态，由组合根在 Advance 收尾时投影成 production 的 ChangeSet）。
         householdEconomies == null ? base.classes() : householdEconomies,
         debtContracts == null ? base.debtContracts() : debtContracts,
         flows,
@@ -429,13 +544,15 @@ public final class EconomyStateBuilder {
         shipments == null ? base.shipments() : shipments,
         assetShares == null ? base.assetShares() : assetShares,
         operatorConditions == null ? base.operatorConditions() : operatorConditions,
-        units == null ? base.units() : units,
-        // ★★ R4-E2：需求/候选不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
+        // ★★ B2b：生产实例表已从 {@link EconomyData} 删除（唯一权威在 production 的当刻候选态；
+        //   读它一律走 {@link #units()} = {@link ProductionRuntime#units()} 的只读投影）。
+        // ★★ R4-E2：需求不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
+        //   ★★ B2c：候选预设表已从 EconomyData 删除（裁定八）⇒ 本处不再有它的带过腿。
         base.demands(),
-        base.candidates(),
-        // ★★ E1：生产方式/阶层结构/阶层位置不参与旧日结算写回 —— 原样带过 base 的表；
-        //   E2+ 若要让结算改写它们，应像上面各组件一样增加显式工作副本，而不是在这里另造语义。
-        base.modes(),
+        // ★★★ B5（§13.15.2 裁定十八）：第 17 个组件 `modes` 已从 EconomyData 删除 ⇒ 本处不再有带过腿；
+        //   生产方式定义的唯一权威在 production（读它一律走 {@link #definitions()} / {@code EconomyDayView#modes()}）。
+        // ★★ E1：阶层结构与阶层位置不参与旧日结算写回 —— 原样带过 base 的表；
+        //   ★★ P1：生产方式定义已迁出 economy（权威在 production），不再随本状态构造。
         base.classStructures(),
         base.classPositions(),
         // ★★ E5b：家户阶层归属是结算工作副本（债务压力计数器/阶层下滑写它；未物化 ⇒ 原样复用 base）。
@@ -454,10 +571,9 @@ public final class EconomyStateBuilder {
         // ★★ P4a：规则表不参与旧日结算写回，原样带过 base 的表 —— 漏了它 = 任意一次 advance
         //   都会把已注册的周期规则静默抹掉（账面上看不出是谁弄丢的）。
         base.periodicAdjustments(),
-        // ★★ Z1：产品产出数量覆盖表不参与日结算写回（写入口只有 GM 命令）⇒ 原样带过 base 的表；
-        //   生产效率表是结算工作副本（逐 tick 汇总、周期末写回余数）⇒ 未物化时原样复用 base。
-        base.outputQuantityOverrides(),
-        productionEfficiency == null ? base.productionEfficiency() : productionEfficiency,
+        // ★★ B2b：Z1 的产品产出数量覆盖表与生产效率表已从 {@link EconomyData} 删除 ——
+        //   两维的唯一权威在 production（`ProductionRuntime#outputQuantityOverrides()` / `#efficiencyOf`），
+        //   它们的差异由 production 的 ChangeSet 在同一条 Revision 里提交。
         // ★★ A1：货币词表不参与日结算写回（写入口只有创世/命令）⇒ 原样带过 base 的两张表；
         //   漏了它 = 任意一次 advance 都会把世界词表打回出厂值（账面上看不出是谁弄丢的）。
         base.currencies(),

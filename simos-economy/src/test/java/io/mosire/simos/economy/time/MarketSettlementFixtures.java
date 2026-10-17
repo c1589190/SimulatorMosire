@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -9,6 +10,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -21,20 +23,21 @@ import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.TransportTariff;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -179,7 +182,7 @@ final class MarketSettlementFixtures {
     private final Map<HouseholdId, Map<CurrencyId, Long>> frozenMoney = new LinkedHashMap<>();
     private final Map<HouseholdId, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
     private final Map<ActorRef, HouseholdId> householdOfActor = new LinkedHashMap<>();
-    private final Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    private final Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     private final Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     private final Map<AssetShareId, io.mosire.simos.economy.model.OwnershipStake> assetShares =
         new LinkedHashMap<>();
@@ -297,14 +300,18 @@ final class MarketSettlementFixtures {
      * ★★ <b>T-H4 夹具：给一个家户挂一条"声明了周期投入 + 持有生产资料"的产业 unit</b>。
      *
      * <p>它服务"预留自动成立"的判据（I-H6）：产业声明的 {@code cycleInputPerUnit} 经标准循环 （{@code necessaryInputsOf} 读
-     * {@code Industry.inputPerUnit()} × 计划规模）变成该户卖单上的保留量 —— 于是"自家卖单
+     * {@code IndustryDefinitionView.inputPerUnit()} × 计划规模）变成该户卖单上的保留量 —— 于是"自家卖单
      * 会不会把跑商要用的工具冻住"可以在**公开读数**（{@code sellerOutcomes().offeredQty()}）上逐值核对。
      *
      * <p>★ 计划规模由 {@code OwnershipStake} 派生（{@code capacityPerUnit} 那一路）：本夹具给 {@code 份额 = meansQty}
      * 单位的 {@code means}，于是 {@code scale = meansQty ÷ capacityPerUnit[means]}。
      */
     Builder industryUnit(
-        HouseholdId id, HexCoord hex, Industry industry, AssetKind means, long meansQty) {
+        HouseholdId id,
+        HexCoord hex,
+        IndustryDefinitionView industry,
+        AssetKind means,
+        long meansQty) {
       if (!rows.containsKey(id)) {
         dormant(id, hex);
       }
@@ -316,22 +323,17 @@ final class MarketSettlementFixtures {
           new ProductionProcess(
               unitId,
               industry.id(),
+              ProductionLocation.ofPlan(industry.id()).orElseThrow(),
               actor,
               "mode:fixture-" + industry.id().value(),
               0L,
-              0L,
+              Map.of(), // ★ D-032：cycleContributions（逐家户出工贡献表；旧第 7 参 long 已替换）
               Map.of()));
       AssetShareId shareId = new AssetShareId("share:" + id.value() + ":" + industry.id().value());
       assetShares.put(
           shareId,
           new io.mosire.simos.economy.model.OwnershipStake(
-              shareId,
-              industry.id(),
-              means,
-              actor,
-              actor,
-              meansQty,
-              io.mosire.simos.economy.model.OwnershipStake.RightKind.OWNED));
+              shareId, industry.id(), means, actor, actor, meansQty, AssetRightKind.OWNED));
       return this;
     }
 
@@ -439,7 +441,7 @@ final class MarketSettlementFixtures {
       IndustryId industryId = IndustryHexKeys.id("grainfarm", hex.q(), hex.r());
       industries.put(
           industryId,
-          new Industry(
+          IndustryViews.industry(
               industryId,
               "known-cost-grain-farm",
               new RegimeId("family_farm"),
@@ -454,7 +456,15 @@ final class MarketSettlementFixtures {
               new AllocationRule.Split(1_000, 0)));
       ProductionUnitId unitId = ProductionUnitId.idOf(industryId, actor);
       ProductionProcess unit =
-          new ProductionProcess(unitId, industryId, actor, "mode:known-cost", 0L, 0L, Map.of());
+          new ProductionProcess(
+              unitId,
+              industryId,
+              ProductionLocation.ofPlan(industryId).orElseThrow(),
+              actor,
+              "mode:known-cost",
+              0L,
+              Map.of(), // ★ D-032：cycleContributions（逐家户出工贡献表）
+              Map.of());
       units.put(unitId, unit);
       relations.put(
           unitId,
@@ -629,7 +639,7 @@ final class MarketSettlementFixtures {
       Map<HouseholdId, Map<CurrencyId, Long>> frozenMoney,
       Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
       Map<ActorRef, HouseholdId> householdOfActor,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, io.mosire.simos.economy.model.OwnershipStake> assetShares,
       Map<ProductionUnitId, ProductionRules> relations,

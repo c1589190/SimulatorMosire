@@ -142,11 +142,13 @@ public record MarketReadout(
   /** ★★ <b>全部区的读数</b>（逐区逐商品；代价与区的数量成正比，供全量报表用）。单格读口请用 {@link #deriveFor}。 */
   public static MarketReadout derive(
       EconomyData data,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       MarketTopology topology,
       long tick,
       MarketReadoutAccounts accounts,
       Optional<MarketReport> report) {
-    return deriveInternal(null, data, topology, tick, accounts, report);
+    return deriveInternal(null, data, production, definitions, topology, tick, accounts, report);
   }
 
   /**
@@ -157,6 +159,8 @@ public record MarketReadout(
   public static Optional<MarketReadout> deriveFor(
       HexCoord focus,
       EconomyData data,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       MarketTopology topology,
       long tick,
       MarketReadoutAccounts accounts,
@@ -172,17 +176,23 @@ public record MarketReadout(
     if (focusRegion == null) {
       return Optional.empty();
     }
-    return Optional.of(deriveInternal(focusRegion, data, topology, tick, accounts, report));
+    return Optional.of(
+        deriveInternal(
+            focusRegion, data, production, definitions, topology, tick, accounts, report));
   }
 
   private static MarketReadout deriveInternal(
       MarketRegion focus,
       EconomyData data,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       MarketTopology topology,
       long tick,
       MarketReadoutAccounts accounts,
       Optional<MarketReport> report) {
     Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(production, "production（实例权威的只读投影，B2b 起必填）");
+    Objects.requireNonNull(definitions, "definitions");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(report, "report");
@@ -191,8 +201,8 @@ public record MarketReadout(
     //   （O(unit + 配额 + 份额) 构建，避免逐格全表扫描）。
     SettlementIndex index =
         SettlementIndex.build(
-            data.units(),
-            data.industries(),
+            production.instances(),
+            definitions.industries(),
             data.assetShares(),
             data.allocations(),
             data.classes(),
@@ -212,8 +222,8 @@ public record MarketReadout(
                 accounts.householdFrozenMoney(),
                 Map.of(),
                 Map.of(),
-                data.industries(),
-                data.units(),
+                definitions.industries(),
+                production.instances(),
                 data.assetShares(),
                 data.relations(),
                 data.allocations(),

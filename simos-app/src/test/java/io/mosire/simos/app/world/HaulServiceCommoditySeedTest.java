@@ -4,15 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
-import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.change.ProductionChangeSet;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.spi.ProductionSeedHandler;
 import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.ResolvedNation;
 import io.mosire.simos.social.gen.SettlementGenerator;
@@ -97,17 +98,17 @@ class HaulServiceCommoditySeedTest {
   /** ③ 配方：真播种出来的每一个 {@code trade@hex} 产业都必须产出运输服务、有劳动约束、且工具消耗只有本产业周期投入一套。 */
   @Test
   void everySeededTradeIndustryProducesHaulWithASingleToolConsumption() {
-    EconomyData economy = seededEconomy();
+    ProductionData definitions = seededDefinitions();
 
-    List<Industry> tradeIndustries = new ArrayList<>();
-    for (Industry industry : economy.industries().values()) {
+    List<IndustryDefinitionView> tradeIndustries = new ArrayList<>();
+    for (IndustryDefinitionView industry : definitions.industries().values()) {
       if (industry.id().value().startsWith(EconomySeeder.TRADE + "@")) {
         tradeIndustries.add(industry);
       }
     }
     assertThat(tradeIndustries).as("★ 先证明「播种真的产出了 trade 产业」（否则下面的逐条断言会恒真）").isNotEmpty();
 
-    for (Industry trade : tradeIndustries) {
+    for (IndustryDefinitionView trade : tradeIndustries) {
       // ── 产出：运输服务（A1 之前是空表 ⇒ 收获当场 return，跑商与标准管线结构性隔离）────────────
       assertThat(trade.outputPerUnit())
           .as("★ outputPerUnit 非空且产 haul（%s）", trade.id().value())
@@ -162,7 +163,7 @@ class HaulServiceCommoditySeedTest {
   }
 
   /** 真播种（紧凑三国的一国）：载荷 → 真 {@code EconomySeedHandler} → {@link EconomyData}。 */
-  private static EconomyData seededEconomy() {
+  private static ProductionData seededDefinitions() {
     GameMap map = CompactThreeNationsWorld.map();
     Region region = map.regions().get(CompactThreeNationsWorld.GRANARY);
     NationSetup setup =
@@ -184,13 +185,14 @@ class HaulServiceCommoditySeedTest {
     SimulationState empty =
         new SimulationState(
             new StateMeta(REF, T0),
-            Map.of("economy", new EconomySnapshot(REF, T0, EconomyData.empty())),
+            Map.of("production", new ProductionSnapshot(REF, T0, ProductionData.empty())),
             InMemoryInfoSystem.empty());
-    HandlerOutcome outcome = new EconomySeedHandler().handle(empty, seed.economyPayload());
+    HandlerOutcome outcome = new ProductionSeedHandler().handle(empty, seed.productionPayload());
     assertThat(outcome)
         .as("真播种器产出的载荷必须被真 handler 接受：%s", outcome)
         .isInstanceOf(HandlerOutcome.Applied.class);
-    return EconomyChangeSet.apply(
-        (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
+    return ProductionChangeSet.apply(
+        (ProductionChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(),
+        ProductionData.empty());
   }
 }

@@ -72,7 +72,15 @@ public final class MarketReadoutAssembly {
     MarketTopology topology = MarketTopologyBook.from(state);
     MarketReadoutAccounts accounts = accountsOf(economy, actor);
     Optional<MarketReadout> readout =
-        MarketReadout.deriveFor(focus, economy, topology, tick, accounts, report);
+        MarketReadout.deriveFor(
+            focus,
+            economy,
+            io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state),
+            io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+            topology,
+            tick,
+            accounts,
+            report);
     if (readout.isEmpty()) {
       return new MarketReadoutContext(
           Optional.empty(), report, tick, "该格不在任何市场区（没有市场表条目 = 这一格没有市场，合法状态）⇒ 没有区级市场读数");

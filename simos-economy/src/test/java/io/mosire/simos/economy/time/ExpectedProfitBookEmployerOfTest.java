@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -13,6 +15,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -24,17 +27,19 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,7 +56,7 @@ import org.junit.jupiter.api.Test;
  *   <li>{@code base.productionOrganizations()} 为空 + 当天 units 有 farm 主 unit ⇒ wage prospect 可行，规模 =
  *       {@link
  *       io.mosire.simos.economy.time.ProductionProcessBook#capacityScaleOf(ProductionProcess,
- *       Industry, Map)}；
+ *       IndustryDefinitionView, Map)}；
  *   <li>本户自己的 unit 被排除（只有自有 unit ⇒ NO_EMPLOYER）；
  *   <li>错格 / 错产业 unit 被排除；
  *   <li>同秩同规模取 unitId 升序第一个（用两条不同的 FIXED_MONEY_WAGE 关系从收入反证选中哪条）；
@@ -77,8 +82,8 @@ class ExpectedProfitBookEmployerOfTest {
   private static final IndustryId CRAFT = IndustryHexKeys.id("craft", H.q(), H.r());
 
   /** WAGE_FARM 的默认 regime = feudal（秩 1 的判据）；laborPerUnit=1,000、cycleDays=10、LAND 1/规模。 */
-  private static Industry farm(IndustryId id) {
-    return new Industry(
+  private static IndustryDefinitionView farm(IndustryId id) {
+    return IndustryViews.industry(
         id,
         "farm-employer-test",
         new RegimeId("feudal"),
@@ -93,8 +98,8 @@ class ExpectedProfitBookEmployerOfTest {
         new AllocationRule.Split(500, 500));
   }
 
-  private static Industry craft() {
-    return new Industry(
+  private static IndustryDefinitionView craft() {
+    return IndustryViews.industry(
         CRAFT,
         "craft-employer-test",
         new RegimeId("handicraft"),
@@ -123,16 +128,21 @@ class ExpectedProfitBookEmployerOfTest {
       long quantity,
       long sequence) {
     AssetShareId id =
-        OwnershipStake.idOf(
-            industry, asset, owner, operator, OwnershipStake.RightKind.OWNED, sequence);
-    return new OwnershipStake(
-        id, industry, asset, owner, operator, quantity, OwnershipStake.RightKind.OWNED);
+        OwnershipStake.idOf(industry, asset, owner, operator, AssetRightKind.OWNED, sequence);
+    return new OwnershipStake(id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED);
   }
 
   private static ProductionProcess unit(
       String id, IndustryId industry, ActorRef operator, String modeKey) {
     return new ProductionProcess(
-        ProductionUnitId.parse(id), industry, operator, modeKey, 0L, 0L, Map.of());
+        ProductionUnitId.parse(id),
+        industry,
+        ProductionLocation.ofPlan(industry).orElseThrow(),
+        operator,
+        modeKey,
+        0L,
+        Map.of(),
+        Map.of());
   }
 
   /** 一条按 labor 给本户发固定货币工资的关系：prospect 收入 = amount ⇒ 可反证选中的雇主 unit。 */
@@ -153,8 +163,8 @@ class ExpectedProfitBookEmployerOfTest {
         unitId, operator, new Payee.ToActor(operator), List.of(rule), operator, LaborSource.WAGE);
   }
 
-  private static EconomyData base(
-      Industry industry,
+  private static EconomyDayView base(
+      IndustryDefinitionView industry,
       Map<AssetShareId, OwnershipStake> shares,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations) {
@@ -175,31 +185,34 @@ class ExpectedProfitBookEmployerOfTest {
             .orElseThrow();
     // 夹具把三个产业都登记进 base.industries，便于“错格/错产业”用例的份额通过 EconomyData 的跨表引用守卫；
     // 具体对哪个 (industry, hex) 求 prospect 仍由调用方显式传入。
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     industries.put(FARM, farm(FARM));
     industries.put(FARM2, farm(FARM2));
     industries.put(CRAFT, craft());
     industries.put(industry.id(), industry);
-    return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
-        .withClassStructures(DefaultProductionModes.classStructures())
-        .withProductionRoles(DefaultProductionModes.classPositions())
-        .withHouseholdEconomies(Map.of(WORKER, row))
-        .withClassMemberships(
-            Map.of(
-                WORKER,
-                new HouseholdClassMembership(
-                    WORKER, wagePosition, wagePosition, Map.of(), 0L, 0L, "test-employer")))
-        .withIndustries(industries)
-        .withProcesses(units)
-        .withRelations(relations)
-        .withOwnershipStakes(shares)
-        .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
+    EconomyData data =
+        EconomyData.empty()
+            .withClassStructures(DefaultProductionModes.classStructures())
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(Map.of(WORKER, row))
+            .withClassMemberships(
+                Map.of(
+                    WORKER,
+                    new HouseholdClassMembership(
+                        WORKER, wagePosition, wagePosition, Map.of(), 0L, 0L, "test-employer")))
+            .withRelations(relations)
+            .withOwnershipStakes(shares)
+            .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
+    return EconomyFixtures.dayView(
+        data,
+        ProductionData.empty()
+            .withModes(DefaultProductionModes.modes())
+            .withIndustries(industries));
   }
 
   private static ExpectedProfitBook.Prospect prospect(
-      EconomyData base,
-      Industry industry,
+      EconomyDayView base,
+      IndustryDefinitionView industry,
       Map<AssetShareId, OwnershipStake> shares,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations) {
@@ -217,19 +230,21 @@ class ExpectedProfitBookEmployerOfTest {
         units,
         relations,
         MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of()),
-        0L);
+        0L,
+        // ★ T9（R1 签名）：本用例走 wageProspect（雇主工资位置），不读物理产量；runtime 按契约必须非 null。
+        EconomyFixtures.runtimeOf(ProductionData.empty()));
   }
 
   @Test
   void findsWageEmployerFromUnitsWhenProductionOrganizationsEmpty() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     ProductionProcess estateUnit = unit("unit-estate-a", FARM, ESTATE_A, FARM.value());
     OwnershipStake land = share(FARM, AssetKind.LAND, ESTATE_A, ESTATE_A, 5L, 0L);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(land.id(), land);
     Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     units.put(estateUnit.id(), estateUnit);
-    EconomyData base = base(industry, shares, units, Map.of());
+    EconomyDayView base = base(industry, shares, units, Map.of());
 
     assertThat(base.productionOrganizations())
         .as("夹具：没有任何既有 ProductionEnterprise（旧 employerOf 的过期读数来源为空）")
@@ -249,7 +264,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void ownUnitIsNeverOwnEmployer() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     // 本户自有大农场（LAND 100）+ 别人小农场（LAND 4）⇒ 只能用别人的 4。
     ProductionProcess selfUnit = unit("unit-self", FARM, SELF, FARM.value());
     ProductionProcess otherUnit = unit("unit-other", FARM, ESTATE_A, FARM.value());
@@ -285,7 +300,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void wrongHexOrWrongIndustryUnitsAreExcluded() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     // 错格：同产业种类但产业 id 在 H2（产业 id 自带格键 ⇒ 不同 hex 必然不同 industry id）。
     ProductionProcess otherHex = unit("unit-other-hex", FARM2, ESTATE_A, FARM2.value());
     OwnershipStake otherHexLand = share(FARM2, AssetKind.LAND, ESTATE_A, ESTATE_A, 100L, 0L);
@@ -310,7 +325,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void equalScaleCandidatesPickSmallerUnitId() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     ProductionProcess unitA = unit("unit-a", FARM, ESTATE_A, FARM.value());
     ProductionProcess unitB = unit("unit-b", FARM, ESTATE_B, FARM.value());
     OwnershipStake landA = share(FARM, AssetKind.LAND, ESTATE_A, ESTATE_A, 5L, 0L);
@@ -337,7 +352,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void modeKeyDirectHitWinsOverLargerRegimeMatchedUnit() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     String directModeKey =
         EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.WAGE_FARM.value();
     // 秩 2：modeKey 直接命中，但规模只有 2。
@@ -370,7 +385,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void onlyZeroCapacityUnitYieldsNoEmployer() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     ProductionProcess emptyUnit = unit("unit-empty", FARM, ESTATE_A, FARM.value());
     OwnershipStake zeroLand = share(FARM, AssetKind.LAND, ESTATE_A, ESTATE_A, 0L, 0L);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
@@ -388,7 +403,7 @@ class ExpectedProfitBookEmployerOfTest {
 
   @Test
   void zeroCapacityHigherRankUnitDoesNotShadowLowerRankEmployer() {
-    Industry industry = farm(FARM);
+    IndustryDefinitionView industry = farm(FARM);
     String directModeKey =
         EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.WAGE_FARM.value();
     // 秩 2 但零产能：必须被跳过，不能挡住下面秩 1 的可用雇主。

@@ -70,6 +70,8 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -410,6 +412,7 @@ class GovPayToolD5Test {
                 "army", new ArmySnapshot(ref(1L), T7, slices.army()),
                 "ga", new GaSnapshot(ref(1L), T7, slices.ga()),
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
+                "production", new ProductionSnapshot(ref(1L), T7, ProductionData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(storeDir).write(ref(1L), CheckpointEncoder.encode(genesis, GENESIS_CODECS));
@@ -424,6 +427,7 @@ class GovPayToolD5Test {
           new ArmyCodec(),
           new GaCodec(),
           new EconomyCodec(),
+          new io.mosire.simos.production.codec.ProductionCodec(),
           new ActorCodec());
 
   private static UnitState units() {

@@ -6,12 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -20,15 +22,17 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.population.LotChange;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.lang.reflect.InvocationTargetException;
@@ -98,7 +102,7 @@ class GovServiceCommitmentC7Test {
   void laborQueueSkipsGovServiceActivityAndKeepsTheRowWhole() {
     HouseholdLaborCommitment govService = commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L);
     EconomyData base = world(10_000L, Map.of(GOV, govService));
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     LaborQueueReport report =
         LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of());
@@ -121,7 +125,7 @@ class GovServiceCommitmentC7Test {
     HouseholdLaborCommitment production =
         commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 4_000L);
     EconomyData base = world(10_000L, Map.of(PRODUCTION_1, production));
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     LaborQueueReport report =
         LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of());
@@ -144,7 +148,7 @@ class GovServiceCommitmentC7Test {
         new HouseholdLaborCommitment(
             collided, LOT, H, OP, "free-work", 4_000L, 1L, LaborCommitmentKind.GOV_SERVICE);
     EconomyData base = world(10_000L, Map.of(collided, govService));
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     assertThatThrownBy(
             () -> LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of()))
@@ -167,7 +171,8 @@ class GovServiceCommitmentC7Test {
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 3_000L));
     commitments.put(PRODUCTION_2, commitment(PRODUCTION_2, LaborCommitmentKind.PRODUCTION, 3_000L));
-    EconomySession session = new EconomySession(world(10_000L, commitments));
+    EconomySession session =
+        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()));
 
     EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 8_000L));
 
@@ -190,7 +195,8 @@ class GovServiceCommitmentC7Test {
     Map<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
-    EconomySession session = new EconomySession(world(10_000L, commitments));
+    EconomySession session =
+        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()));
 
     EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 3_000L));
 
@@ -214,7 +220,7 @@ class GovServiceCommitmentC7Test {
     EconomyData base = world(20_000L, commitments);
 
     EconomyData after =
-        EconomySettlement.applyPopulationChange(base, List.of(new LotChange(LOT, HEX, 0L, 1L)));
+        applyPopulationChange(base, defs(), List.of(new LotChange(LOT, HEX, 0L, 1L)));
 
     assertThat(after.classes().get(H).population()).isEqualTo(99L);
     assertThat(after.classes().get(H).laborMilli()).isEqualTo(19_800L);
@@ -234,7 +240,8 @@ class GovServiceCommitmentC7Test {
   void applyPopulationChangeAllowsGovServiceOverShrunkBudgetWithoutProduction() {
     Map<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
-    EconomySession session = new EconomySession(world(20_000L, commitments));
+    EconomySession session =
+        new EconomySession(world(20_000L, commitments), defs(), runtimeOf(defs()));
 
     EconomySettlement.applyPopulationChangeInto(session, List.of(new LotChange(LOT, HEX, 0L, 90L)));
 
@@ -267,7 +274,7 @@ class GovServiceCommitmentC7Test {
   @Test
   void legacyReallocateLaborPassTwoKeepsGovWholeAndTrimsProductionToRoom() {
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
-    Map<IndustryId, Industry> industries = industries(); // need = 1 规模 × 1000 = 1000
+    Map<IndustryId, IndustryDefinitionView> industries = industries(); // need = 1 规模 × 1000 = 1000
     LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(10_000L);
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
@@ -288,7 +295,7 @@ class GovServiceCommitmentC7Test {
   @Test
   void legacyReallocateLaborPassThreeKeepsGovWholeAndScalesOnlyProduction() {
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
-    Map<IndustryId, Industry> industries = industries(); // need = 100,000 ⇒ pass② 不修剪
+    Map<IndustryId, IndustryDefinitionView> industries = industries(); // need = 100,000 ⇒ pass② 不修剪
     LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(10_000L);
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
@@ -314,7 +321,7 @@ class GovServiceCommitmentC7Test {
   @Test
   void legacyReallocateLaborAllowsGovServiceOverBudgetAndDropsProduction() {
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
-    Map<IndustryId, Industry> industries = industries();
+    Map<IndustryId, IndustryDefinitionView> industries = industries();
     LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(10_000L);
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 12_000L));
@@ -349,8 +356,8 @@ class GovServiceCommitmentC7Test {
         0L);
   }
 
-  private static Industry industry() {
-    return new Industry(
+  private static IndustryDefinitionView industry() {
+    return IndustryViews.industry(
         FARM,
         "farm",
         new RegimeId("tenant"),
@@ -366,23 +373,36 @@ class GovServiceCommitmentC7Test {
   }
 
   private static ProductionProcess process() {
-    return new ProductionProcess(UNIT, FARM, OP, FARM.value(), 0L, 0L, Map.of());
+    return new ProductionProcess(
+        UNIT,
+        FARM,
+        ProductionLocation.ofPlan(FARM).orElseThrow(),
+        OP,
+        FARM.value(),
+        0L,
+        Map.of(),
+        Map.of());
   }
 
   private static OwnershipStake share(long quantity) {
-    AssetShareId id =
-        OwnershipStake.idOf(FARM, AssetKind.LAND, OP, OP, OwnershipStake.RightKind.OWNED, 0L);
-    return new OwnershipStake(
-        id, FARM, AssetKind.LAND, OP, OP, quantity, OwnershipStake.RightKind.OWNED);
+    AssetShareId id = OwnershipStake.idOf(FARM, AssetKind.LAND, OP, OP, AssetRightKind.OWNED, 0L);
+    return new OwnershipStake(id, FARM, AssetKind.LAND, OP, OP, quantity, AssetRightKind.OWNED);
+  }
+
+  /** production 定义权威夹具（FARM 定义由 production 持久，不再住 EconomyData）。 */
+  private static ProductionData defs() {
+    // ★★ D-032 T5（a 桶夹具欠账）：实例的唯一权威在 production（I1）⇒ UNIT 必须落进权威实例表。
+    //   旧稿只 withIndustry(...)：`indexOf(...)` 把 defs().instances()（空）交给 SettlementIndex，队列/人口
+    //   批次两条路径都看不到该 unit ⇒ 5 条红（planOf(H) 空、撞车不触发、"该格没有 unit ⇒ continue"）。
+    //   process() 的 id/operator/location 与本文件配额 commitment(...) 的 activity=UNIT.value() 同一个。
+    return ProductionData.empty().withIndustry(industry()).withInstance(process());
   }
 
   private static EconomyData world(
       long householdLaborMilli, Map<LaborAllocationId, HouseholdLaborCommitment> commitments) {
     OwnershipStake land = share(1L);
     return EconomyData.empty()
-        .withIndustries(Map.of(FARM, industry()))
         .withHouseholdEconomies(Map.of(H, household(householdLaborMilli)))
-        .withProcesses(Map.of(UNIT, process()))
         .withOwnershipStakes(Map.of(land.id(), land))
         .withMarketTables(
             EconomyFixtures.hexMarkets(
@@ -390,10 +410,23 @@ class GovServiceCommitmentC7Test {
         .withLaborCommitments(commitments);
   }
 
+  /**
+   * ★★★ D-032 T1：静态入口 `EconomySettlement.applyPopulationChange(EconomyData, definitions, changes)`
+   * 已按 B3 裁定删除 ⇒ 判据**换源**到会话形（本文件其余用例用的就是 `EconomySession` + `applyPopulationChangeInto`）。 ★
+   * 断言一字未改。
+   */
+  private static EconomyData applyPopulationChange(
+      EconomyData base, ProductionData definitions, List<LotChange> changes) {
+    EconomySession session = new EconomySession(base, definitions, runtimeOf(definitions));
+    EconomySettlement.applyPopulationChangeInto(session, changes);
+    return session.build();
+  }
+
   private static SettlementIndex indexOf(EconomyData data) {
     return SettlementIndex.build(
-        data.units(),
-        data.industries(),
+        // ★★ D-032 T1：实例读数改读 production 切片（`EconomyData.units()` 已删）。
+        defs().instances(),
+        defs().industries(),
         data.assetShares(),
         data.allocations(),
         data.classes(),
@@ -411,7 +444,7 @@ class GovServiceCommitmentC7Test {
     return units;
   }
 
-  private static Map<IndustryId, Industry> industries() {
+  private static Map<IndustryId, IndustryDefinitionView> industries() {
     return Map.of(FARM, industry());
   }
 
@@ -423,7 +456,7 @@ class GovServiceCommitmentC7Test {
 
   private static SettlementIndex indexOfMaps(
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments,
       LinkedHashMap<HouseholdId, HouseholdEconomy> households,
       long capacityScale) {
@@ -436,7 +469,7 @@ class GovServiceCommitmentC7Test {
 
   private static void invokeReallocateLabor(
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       LinkedHashMap<HouseholdId, HouseholdEconomy> households,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments,
       SettlementIndex index) {
@@ -480,5 +513,11 @@ class GovServiceCommitmentC7Test {
     } catch (ReflectiveOperationException e) {
       throw new IllegalStateException("反射调用失败: " + method, e);
     }
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

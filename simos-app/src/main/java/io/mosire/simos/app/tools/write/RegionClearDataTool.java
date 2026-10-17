@@ -296,10 +296,18 @@ public final class RegionClearDataTool implements SimosTool {
       RevisionId expectedRevision) {
     List<CommandEnvelope> batch = new ArrayList<>(plan.commands().size());
     for (String type : plan.commands()) {
-      String payload =
-          RegionClearPlan.PUT_INFO_TYPE.equals(type)
-              ? infoPayload(plan, reason)
-              : ToolSupport.json(Map.of("regionId", plan.region().id().value()));
+      String payload;
+      if (RegionClearPlan.PUT_INFO_TYPE.equals(type)) {
+        payload = infoPayload(plan, reason);
+      } else if (RegionClearPlan.PRODUCTION_CLEAR_TYPE.equals(type)) {
+        List<String> hexes = new ArrayList<>();
+        for (io.mosire.simos.map.hex.HexCoord hex : plan.region().hexes()) {
+          hexes.add(io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(hex.q(), hex.r()));
+        }
+        payload = ToolSupport.json(Map.of("hexes", hexes));
+      } else {
+        payload = ToolSupport.json(Map.of("regionId", plan.region().id().value()));
+      }
       batch.add(envelope(batchId, branch, expectedRevision, type, payload));
     }
     return List.copyOf(batch);

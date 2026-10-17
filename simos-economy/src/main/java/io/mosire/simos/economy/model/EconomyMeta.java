@@ -1,6 +1,9 @@
 package io.mosire.simos.economy.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.relation.LaborSource;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,7 +40,24 @@ public record EconomyMeta(
     //   ★ 缺键 = 该键的具名缺省（= 改造前的常量值）⇒ 空表的世界逐值等于改动前（缺省中性，I-P8 同款）。
     //   ★ 宿主选这里（而不是新开第 42 个组件）的理由见实现账本：本组件是世界级单值组件，ChangeSet 走"单键表"投影、
     //     Codec 走既有 Jackson record 绑定 ⇒ 加一个字段不动任何既有 with*/构造点，也不引入"新组件忘了接三件套"的风险。
-    Map<EconomyPolicyKey, Long> economyPolicies) {
+    Map<EconomyPolicyKey, Long> economyPolicies,
+    // ── ★★ D-032 B2c 第 7 个组件：**按方案声明的"闲置份额来源主体"** ──────────────────────────────
+    //   键 = 方案稳定 id（不绑地点的 IndustryId），值 = 该方案可取用其**空闲**份额的主体。
+    //   ★ 归属（裁定八）：候选的 assetSource 字段**留 economy** —— "谁提供闲置份额"是经济关系，不是方案配方；
+    //     它进 economy 的资产分配（进入算法拆分份额时的来源选择）。
+    //   ★ 缺键 = 只认自有份额（= 旧候选缺省 assetSource 的逐值行为）⇒ 空表的世界逐值不变。
+    //   ★ 宿主选这里（而不是新开第 41 个 EconomyData 组件）与 W10 的政策表同一条理由：本组件是世界级单值
+    //     组件，ChangeSet 走"单键表"投影、Codec 走既有 Jackson record 绑定 ⇒ 不动 35 个 with*/构造点，
+    //     也不引入"新组件忘了接三件套"的风险。
+    Map<IndustryId, ActorRef> planAssetSources,
+    // ── ★★ D-032 B3 第 8 个组件（裁定十二）：**按方案声明的"劳动来源"** ─────────────────────────────
+    //   键 = 方案稳定 id（不绑地点的 IndustryId），值 = 该方案被采用时写进 relation 的劳动来源。
+    //   ★ 为什么必须有它（而不是"读制度派生"）：B2c 曾把进入路径改成 `RegimeRelations.laborSourceFor(regime)`
+    //     —— 那是**行为变更**（非 SELF 制度下与旧候选缺省不同），裁定十二定为"逐值不变 + 该派生另立项"。
+    //     旧口径的声明面是候选的 `laborSource` 字段（GM 经 `upsertCandidate` 声明，缺省 SELF）；候选面退役后
+    //     声明必须留在 economy（"谁出劳动"是经济关系），否则一项 GM 能力会随旧写面静默消失（与裁定十一同理）。
+    //   ★ 缺键 = SELF（= 旧候选缺省）⇒ 空表的世界逐值不变（I14）。
+    Map<IndustryId, LaborSource> planLaborSources) {
 
   /** ★ S1 迁移后的规则版本标签（计划 S1.5）：迁移器把旧档升到本版本；再次加载不得二次迁移。 */
   public static final String RULES_VERSION_PRE_MODERN_V1 = "pre-modern-v1";
@@ -103,11 +123,40 @@ public record EconomyMeta(
                 + "]）");
       }
     }
+    // ★★ B2c：缺键（旧档 / 未设）⇒ 空表（= 只认自有份额）；null 与空表同义，不写第二个真相。
+    //   保序不可变：LinkedHashMap + Collections.unmodifiableMap（禁用 Map.copyOf —— 迭代序不是内容的纯函数）。
+    Map<IndustryId, ActorRef> sources = new LinkedHashMap<>();
+    if (planAssetSources != null) {
+      for (Map.Entry<IndustryId, ActorRef> entry : planAssetSources.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "EconomyMeta.planAssetSources 的键与值都不得为 null: " + entry.getKey());
+        }
+        sources.put(entry.getKey(), entry.getValue());
+      }
+    }
+    planAssetSources = Collections.unmodifiableMap(sources);
+    // ★★ B3（裁定十二）：缺键（旧档 / 未声明）⇒ 空表（= 全部 SELF）；null 与空表同义，不写第二个真相。
+    //   ★ 值不得为 null；键不得为 null（越域/坏数据在构造期 fail-closed，不留给读取点猜）。
+    Map<IndustryId, LaborSource> laborSources = new LinkedHashMap<>();
+    if (planLaborSources != null) {
+      for (Map.Entry<IndustryId, LaborSource> entry : planLaborSources.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "EconomyMeta.planLaborSources 的键与值都不得为 null: " + entry.getKey());
+        }
+        laborSources.put(entry.getKey(), entry.getValue());
+      }
+    }
+    planLaborSources = Collections.unmodifiableMap(laborSources);
   }
 
   /**
    * ★★ <b>W10：旧组件面的便捷构造器</b>（5 参 = 政策表为空）—— 历史调用点（含创世载荷与迁移器）不必为新增组件逐个改动； 语义 = "这个档没有配过任何政策" ⇒ 全部走
    * {@link EconomyPolicyKey#defaultValue()}（缺省中性）。
+   *
+   * <p>★ B3：两个声明表（{@code planAssetSources} / {@code planLaborSources}）同样取空 ⇒ 逐值等于"没有任何方案声明" （只认自有份额
+   * + SELF）。
    */
   public EconomyMeta(
       String mapId,
@@ -115,7 +164,15 @@ public record EconomyMeta(
       OptionalLong lastClosedCycle,
       String rulesVersion,
       Optional<String> migrationSource) {
-    this(mapId, activatedDay, lastClosedCycle, rulesVersion, migrationSource, Map.of());
+    this(
+        mapId,
+        activatedDay,
+        lastClosedCycle,
+        rulesVersion,
+        migrationSource,
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   /**
@@ -154,7 +211,85 @@ public record EconomyMeta(
       next.put(key, value);
     }
     return new EconomyMeta(
-        mapId, activatedDay, lastClosedCycle, rulesVersion, migrationSource, next);
+        mapId,
+        activatedDay,
+        lastClosedCycle,
+        rulesVersion,
+        migrationSource,
+        next,
+        planAssetSources,
+        planLaborSources);
+  }
+
+  /**
+   * ★★ <b>B3（裁定十一）：写/清某方案的"闲置份额来源主体"</b>（返回新实例）—— 声明命令 {@code economy.SetPlanSources} 的唯一写口。
+   *
+   * <p>★ <b>空 ⇒ 删掉这一行</b>（与 {@link #withPolicy} 同制）：缺键就是"只认自有份额"这条缺省，不留冗余行。 ★ 读口是 {@link
+   * #planAssetSources()} 本身（进入算法按方案 id 取，缺键 ⇒ 只认自有份额）。
+   */
+  public EconomyMeta withPlanAssetSource(IndustryId plan, Optional<ActorRef> source) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(source, "source（没有给 Optional.empty()）");
+    LinkedHashMap<IndustryId, ActorRef> next = new LinkedHashMap<>(planAssetSources);
+    if (source.isPresent()) {
+      next.put(plan, source.get());
+    } else {
+      next.remove(plan);
+    }
+    return new EconomyMeta(
+        mapId,
+        activatedDay,
+        lastClosedCycle,
+        rulesVersion,
+        migrationSource,
+        economyPolicies,
+        next,
+        planLaborSources);
+  }
+
+  /**
+   * ★★ <b>B3（裁定十二）：写/清某方案的"劳动来源"</b>（返回新实例）。
+   *
+   * <p>★ <b>写成 {@link LaborSource#SELF}（或缺省）⇒ 删掉这一行</b>：SELF 就是缺省，不留"等于缺省的冗余行" （与政策表的 {@code value
+   * == defaultValue ⇒ remove} 同制）。
+   */
+  public EconomyMeta withPlanLaborSource(IndustryId plan, Optional<LaborSource> source) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(source, "source（没有给 Optional.empty()）");
+    LinkedHashMap<IndustryId, LaborSource> next = new LinkedHashMap<>(planLaborSources);
+    LaborSource value = source.orElse(LaborSource.SELF);
+    if (value == LaborSource.SELF) {
+      next.remove(plan);
+    } else {
+      next.put(plan, value);
+    }
+    return new EconomyMeta(
+        mapId,
+        activatedDay,
+        lastClosedCycle,
+        rulesVersion,
+        migrationSource,
+        economyPolicies,
+        planAssetSources,
+        next);
+  }
+
+  /**
+   * ★★ <b>B3：某方案声明的劳动来源（读口的唯一拼写点）</b> —— 缺键 ⇒ {@link LaborSource#SELF}（= 旧候选缺省， I14 逐值不变）。
+   *
+   * <p>★ 各消费点（进入生产写 relation）不得自己 {@code planLaborSources().get(...)} 再兜底一遍。
+   */
+  public LaborSource laborSourceOf(IndustryId plan) {
+    return laborSourceOf(planLaborSources, plan);
+  }
+
+  /** 上一条的表形态（会话只拿到那张表时用同一份缺省口径；**不得**在别处再写一遍 {@code SELF} 兜底）。 */
+  public static LaborSource laborSourceOf(
+      Map<IndustryId, LaborSource> declarations, IndustryId plan) {
+    Objects.requireNonNull(declarations, "declarations（缺省给空表 = 全部 SELF）");
+    Objects.requireNonNull(plan, "plan");
+    LaborSource declared = declarations.get(plan);
+    return declared == null ? LaborSource.SELF : declared;
   }
 
   /**

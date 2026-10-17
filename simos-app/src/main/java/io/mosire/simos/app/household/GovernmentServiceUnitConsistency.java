@@ -6,8 +6,8 @@ import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
@@ -20,6 +20,7 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -92,9 +93,15 @@ public final class GovernmentServiceUnitConsistency {
    * @param economy 经济切片（非 null）
    * @param units unit 切片；{@code null} 表示该 state 没有 unit 切片（装配缺席 ⇒ 有 gov service unit 即不一致）
    */
-  public static List<Mismatch> mismatches(EconomyData economy, UnitState units) {
+  public static List<Mismatch> mismatches(
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      UnitState units) {
     Objects.requireNonNull(economy, "economy");
-    List<ProductionProcess> ordered = new ArrayList<>(economy.units().values());
+    List<ProductionProcess> ordered = new ArrayList<>(productionUnits.values());
     ordered.sort(Comparator.comparing(process -> process.id().value()));
     List<Mismatch> out = new ArrayList<>();
     for (ProductionProcess process : ordered) {
@@ -192,8 +199,14 @@ public final class GovernmentServiceUnitConsistency {
   }
 
   /** 校核 + 具名 fail-closed（不一致 ⇒ 先 ERROR 一行、再 {@link IllegalStateException}，消息最多列 5 条）。 */
-  public static void requireConsistent(EconomyData economy, UnitState units) {
-    List<Mismatch> mismatches = mismatches(economy, units);
+  public static void requireConsistent(
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      UnitState units) {
+    List<Mismatch> mismatches = mismatches(economy, productionUnits, units);
     if (!mismatches.isEmpty()) {
       // ★ AGENTS §一.9（2026-10-23）：契约/跨切片一致性故障 = ERROR 不降级；先落证据再 fail-closed。
       CONSISTENCY.error(

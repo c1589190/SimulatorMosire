@@ -5,16 +5,13 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
@@ -23,21 +20,14 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.economy.time.DebtContractBook;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,19 +45,21 @@ import java.util.Set;
  * EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
  * BAD_REQUEST} /预览视图）。
  *
- * <p>★★ <b>十二条源状态白名单</b>（{@link #ADJUSTMENTS}）：
+ * <p>★★ <b>十条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
  *   <li><b>旧表（两）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} + {@link
  *       EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
  *       EconomyData#withLiquidationPolicies}）；
- *   <li><b>P7 生产方式编辑（八）</b>：{@link #UPSERT_PRODUCTION_MODE}/{@link
- *       #DEACTIVATE_PRODUCTION_MODE}/{@link #UPSERT_CLASS_STRUCTURE}/{@link
- *       #UPSERT_CLASS_POSITION}/ {@link #UPSERT_PRODUCTION_RELATION}/{@link
- *       #UPSERT_ASSET_RULE}/{@link #UPSERT_PRODUCTION_ORGANIZATION}/{@link #UPSERT_CANDIDATE} ——
- *       只编辑 {@code
- *       modes/classStructures/classPositions/relations/assetRules/productionOrganizations/candidates}
- *       七张 源状态表（class 两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。
+ *   <li><b>P7 阶层/关系/规则/组织编辑（七）</b>：{@link #UPSERT_CLASS_STRUCTURE}/{@link #UPSERT_CLASS_POSITION}/
+ *       {@link #UPSERT_PRODUCTION_RELATION}/{@link #UPSERT_ASSET_RULE}/{@link
+ *       #UPSERT_PRODUCTION_ORGANIZATION}（{@link #UPSERT_CANDIDATE} 已退役）—— 只编辑 {@code
+ *       classStructures/classPositions/relations/assetRules/productionOrganizations} 五张 源状态表（class
+ *       两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。 ★★ <b>B5（§13.15.2
+ *       裁定十八）：{@link #UPSERT_PRODUCTION_MODE} / {@link #DEACTIVATE_PRODUCTION_MODE} 两个 kind 已删除</b>
+ *       —— {@code EconomyData.modes} 组件已删， 生产方式定义的唯一写面在 production（{@code
+ *       production.UpsertProductionMode} / {@code production.DeactivateProductionMode}）；命中这两个 kind
+ *       ⇒ 具名拒 （{@link #PRODUCTION_MODE_MOVED_REASON}）。
  *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@link #SET_OUTPUT_QUANTITY} / {@link #CLEAR_OUTPUT_QUANTITY} —— 只编辑
  *       {@code outputQuantityOverrides}（键 = industryId，内层键 = commodityId，值 = 商品数量/单位规模）； 本批保持 仅
  *       GM（不打 {@code DmUsableCommand}），不加 {@code CommandTargets}、不进决策令桶（§4）。
@@ -94,10 +86,19 @@ public final class EconomyGmAdjustments {
   /** {@code adjustment} 白名单项：按 {@code assetRuleId} upsert 旧表清算政策。 */
   public static final String SET_LIQUIDATION_POLICY = "setLiquidationPolicy";
 
-  /** {@code adjustment} 白名单项：按 id upsert 生产方式（version 必须严格递增；classStructureId 引用完整性见 project）。 */
+  /**
+   * ★★★ <b>B5（§13.15.2 裁定十八）：{@code upsertProductionMode} 已从本命令删除</b> —— 与 {@link
+   * #SET_OUTPUT_QUANTITY} 同一形态（具名拒，不是"白名单外"那句与事实不符的通用拒绝）。
+   *
+   * <p>★ <b>能力的真实落点（不是退役）</b>：{@code production.UpsertProductionMode}（"生产方式定义"的唯一语义落点 {@code
+   * ProductionModeUpserts}，装配点 {@code Shell.java:925}）；economy 侧不再有 {@code modes} 组件可写。
+   */
   public static final String UPSERT_PRODUCTION_MODE = "upsertProductionMode";
 
-  /** {@code adjustment} 白名单项：停用一个没有被组织/候选/变迁/资产规则/质押/结构/位置引用的生产方式。 */
+  /**
+   * 见 {@link #UPSERT_PRODUCTION_MODE}；落点是 {@code production.DeactivateProductionMode}（装配点 {@code
+   * Shell.java:926}）。
+   */
   public static final String DEACTIVATE_PRODUCTION_MODE = "deactivateProductionMode";
 
   /** {@code adjustment} 白名单项：按 id upsert 阶层结构与其内嵌位置（与全局 classPositions 逐值一致）。 */
@@ -115,38 +116,97 @@ public final class EconomyGmAdjustments {
   /** {@code adjustment} 白名单项：按 id upsert 一条生产组织（引用与状态四档由构造期守卫判死）。 */
   public static final String UPSERT_PRODUCTION_ORGANIZATION = "upsertProductionOrganization";
 
-  /** {@code adjustment} 白名单项：按 id upsert 一条候选生产方式（修订必须推进 version）。 */
-  public static final String UPSERT_CANDIDATE = "upsertCandidate";
-
-  /** ★★ Z1：{@code adjustment} 白名单项：upsert 一条产品产出数量覆盖（键 = industryId + "/" + commodityId）。 */
+  /**
+   * ★★ Z1 的产出数量覆盖两 kind —— <b>B2b 起不再是白名单项</b>（{@code outputQuantityOverrides} 组件已从 economy
+   * 删除，唯一权威在 production）。
+   *
+   * <p>★ 常量保留的唯一用途：把"这个 kind 已迁出"做成**具名拒绝**（{@link #OUTPUT_QUANTITY_MOVED_REASON}），
+   * 而不是让它掉进"白名单外"这句与事实不符的通用拒绝里。
+   */
   public static final String SET_OUTPUT_QUANTITY = "setOutputQuantity";
 
-  /** ★★ Z1：{@code adjustment} 白名单项：删除一条产品产出数量覆盖（回落到配方默认）。 */
+  /** 见 {@link #SET_OUTPUT_QUANTITY}。 */
   public static final String CLEAR_OUTPUT_QUANTITY = "clearOutputQuantity";
+
+  /**
+   * ★★ <b>B2c（裁定八）：{@code upsertCandidate} kind 已随候选面整体退役</b> —— 与 {@link #SET_OUTPUT_QUANTITY}
+   * 同一形态：它<b>不再改任何 economy 状态</b>，命中时给<b>具名拒绝</b> （{@link
+   * #PLAN_DEFINITION_MOVED_REASON}），而不是掉进"白名单外"那句与事实不符的通用拒绝里。
+   *
+   * <p>★ 能力的真实落点：方案定义的写面是 production 的 {@code production.UpsertIndustry} （GM 工具 {@code
+   * simos.economy.upsertIndustry}），"按需登记"走 {@code ProductionRuntime#registerPlan}；economy 侧的 {@code
+   * assetSource} 声明落点是 {@code EconomyMeta.planAssetSources}（写面属 U10，见账本 B2c 节）。
+   */
+  public static final String UPSERT_CANDIDATE = "upsertCandidate";
+
+  /**
+   * ★★ B2b：产出数量覆盖迁出的稳定拒绝理由（同 B2 的铸币键口径：**具名拒**，不是"保留键、无人读"）。
+   *
+   * <p>★ 能力的真实落点：{@code production.UpsertIndustry} 的 {@code outputPerUnit} （被引用的产业须发新版本
+   * id）。"运行中产业原地改产出数量"的便捷入口属 **U10 后续未做**—— 本批**不**声称已交付（见账本 B2b 节）。
+   */
+  public static final String OUTPUT_QUANTITY_MOVED_REASON =
+      "output-quantity-moved-to-production-definition";
+
+  /**
+   * ★★ <b>B2c（裁定八）：{@code upsertCandidate} 迁出的稳定拒绝理由</b>（与上一条同制）。
+   *
+   * <p>★ 逐字段落点：{@code outputPerUnit}/{@code cycleDays}/{@code regime} 等本来就在方案定义里； {@code buildDays}
+   * 与 {@code acceptedRightKinds} 已搬进 {@code IndustryDefinitionView}（B2c 新增组件）； {@code assetSource}
+   * 留 economy（{@code EconomyMeta.planAssetSources}）；{@code version} 与"主产出"概念删除。
+   */
+  public static final String PLAN_DEFINITION_MOVED_REASON =
+      "plan-definition-moved-to-production-definition";
+
+  /**
+   * ★★★ <b>B5（§13.15.2 裁定十八）：两个生产方式定义 kind 迁出的稳定拒绝理由</b>（与上两条同制：<b>具名拒</b>， 不是"保留键、无人读"）。
+   *
+   * <p>★ 去核结论（B5 账本 §B5-§2）：economy 侧写腿**只有** `economy.GmAdjust` 的这两个 kind， 而它们在 main/test/工具
+   * schema/catalog 里**全是 0 个调用点**；世界播种走的是 `production.Seed` 的 `modes[]`（`ProductionSeedHandler`）。⇒
+   * 按裁定十八第 ② 条：**连命令 kind 一起删**， 能力（改生产方式定义）由 production 既有命令面承接，economy 侧不再有该写口。
+   */
+  public static final String PRODUCTION_MODE_MOVED_REASON =
+      "production-mode-definition-moved-to-production";
 
   /** 白名单外调整的统一拒绝短语（handler 折 {@code Rejected}、工具折 {@code BAD_REQUEST} 都用它）。 */
   public static final String DERIVED_REJECTION = "派生读数不可由 GM 调整工具直写";
 
   private static final String COMMAND = EconomyGmAdjustHandler.TYPE;
 
-  /** ★★ Z1：{@code outputQuantityOverrides} 的组件名（投影 Change.component 的固定拼写，§4）。 */
-  static final String OUTPUT_QUANTITY_OVERRIDES_COMPONENT = "outputQuantityOverrides";
-
-  /** 十二条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
+  /**
+   * ★★ <b>七条源状态白名单</b>（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。
+   *
+   * <p>★ B2b/B2c：{@code upsertCandidate} / {@code setOutputQuantity} / {@code clearOutputQuantity}
+   * 三项已**退出白名单**（前者随候选面退役、后两者随 {@code outputQuantityOverrides} 组件迁出 economy）—— 它们不再改任何 economy
+   * 状态，命中时给具名拒绝（见 {@link #OUTPUT_QUANTITY_MOVED_REASON} / {@link #PLAN_DEFINITION_MOVED_REASON}）。
+   *
+   * <p>★★ <b>B5（§13.15.2 裁定十八）：总数 12 → 9 → 7 的第二次收缩</b>：原 P7 八 kind 里的 {@code
+   * upsertProductionMode}/{@code deactivateProductionMode} 已随 {@code EconomyData.modes} 组件删除而退出
+   * 白名单（见 {@link #PRODUCTION_MODE_MOVED_REASON}）⇒ 现存 <b>七</b> 项（{@link #ADJUSTMENTS} 逐项即真值）。
+   */
   static final List<String> ADJUSTMENTS =
       List.of(
           FORGIVE_DEBT,
           SET_LIQUIDATION_POLICY,
-          UPSERT_PRODUCTION_MODE,
-          DEACTIVATE_PRODUCTION_MODE,
           UPSERT_CLASS_STRUCTURE,
           UPSERT_CLASS_POSITION,
           UPSERT_PRODUCTION_RELATION,
           UPSERT_ASSET_RULE,
-          UPSERT_PRODUCTION_ORGANIZATION,
-          UPSERT_CANDIDATE,
+          UPSERT_PRODUCTION_ORGANIZATION);
+
+  /**
+   * ★ B2b/B2c：已迁出、但仍给**具名拒**的 kind（不进 {@link #ADJUSTMENTS}）。
+   *
+   * <p>★ 五个 kind 各有一个**具名**理由（{@link #OUTPUT_QUANTITY_MOVED_REASON} ×2、 {@link
+   * #PLAN_DEFINITION_MOVED_REASON}、{@link #PRODUCTION_MODE_MOVED_REASON} ×2），不是"白名单外"的通用拒绝。
+   */
+  static final List<String> MOVED_ADJUSTMENTS =
+      List.of(
           SET_OUTPUT_QUANTITY,
-          CLEAR_OUTPUT_QUANTITY);
+          CLEAR_OUTPUT_QUANTITY,
+          UPSERT_CANDIDATE,
+          UPSERT_PRODUCTION_MODE,
+          DEACTIVATE_PRODUCTION_MODE);
 
   private EconomyGmAdjustments() {}
 
@@ -154,8 +214,11 @@ public final class EconomyGmAdjustments {
    * 计算一次 GM 调整的项目（<b>纯函数，不写任何状态</b>）。
    *
    * @param base 当前 {@link EconomyData}（只读；不得为 null）
+   * @param definitions production 当刻定义只读来源（★★ B5 / §13.15.2 裁定十八：{@code EconomyData.modes} 副本已删 ⇒
+   *     "某阶层结构指名的生产方式是否存在"这类判据必须读 production 当刻权威；不得为 null）
+   * @param units 生产实例的只读投影（{@code ProductionStateLookup#instances()}）
    * @param adjustment 调整名；白名单外一律 {@link IllegalArgumentException}（具名 {@link #DERIVED_REJECTION}）
-   * @param parameters 调整参数对象（形状见十二条白名单常量）
+   * @param parameters 调整参数对象（形状见七条白名单常量）
    * @param reason 调整原因；必填非空白
    * @param day 世界当前日（只进审计摘要；不改状态）
    * @return 投影后的 {@link EconomyData}、{@link EconomyChangeSet} 与前后差异清单
@@ -163,8 +226,16 @@ public final class EconomyGmAdjustments {
    *     BAD_REQUEST}）
    */
   public static Projection project(
-      EconomyData base, String adjustment, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionProcess> units,
+      String adjustment,
+      JsonNode parameters,
+      String reason,
+      long day) {
     Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(definitions, "definitions（B5：生产方式定义的唯一权威在 production，必须显式注入）");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(parameters, "parameters");
     if (adjustment == null || adjustment.isBlank()) {
       throw new IllegalArgumentException(COMMAND + " 缺少非空文本字段: adjustment");
@@ -181,17 +252,49 @@ public final class EconomyGmAdjustments {
     return switch (adjustment) {
       case FORGIVE_DEBT -> forgive(base, parameters, reason, day);
       case SET_LIQUIDATION_POLICY -> setLiquidationPolicy(base, parameters, reason, day);
-      case UPSERT_PRODUCTION_MODE -> upsertProductionMode(base, parameters, reason, day);
-      case DEACTIVATE_PRODUCTION_MODE -> deactivateProductionMode(base, parameters, reason, day);
-      case UPSERT_CLASS_STRUCTURE -> upsertClassStructure(base, parameters, reason, day);
-      case UPSERT_CLASS_POSITION -> upsertClassPosition(base, parameters, reason, day);
-      case UPSERT_PRODUCTION_RELATION -> upsertProductionRelation(base, parameters, reason, day);
-      case UPSERT_ASSET_RULE -> upsertAssetRule(base, parameters, reason, day);
+      // ★★★ B5（§13.15.2 裁定十八）：两个生产方式定义 kind 已删除（组件 `modes` 已删）—— 给**具名拒**，
+      //   能力的真实落点是 production 既有命令面。
+      case UPSERT_PRODUCTION_MODE, DEACTIVATE_PRODUCTION_MODE ->
+          throw new IllegalArgumentException(
+              COMMAND
+                  + "."
+                  + adjustment
+                  + " "
+                  + PRODUCTION_MODE_MOVED_REASON
+                  + ": 生产方式定义（id/name/version/classStructureId）的唯一权威与唯一写面在 production —— 请用"
+                  + " production.UpsertProductionMode / production.DeactivateProductionMode"
+                  + "（定义唯一语义落点 ProductionModeUpserts）；economy 侧不再持有生产方式定义，"
+                  + "也没有它的写口");
+      case UPSERT_CLASS_STRUCTURE ->
+          upsertClassStructure(base, definitions, parameters, reason, day);
+      case UPSERT_CLASS_POSITION -> upsertClassPosition(base, definitions, parameters, reason, day);
+      case UPSERT_PRODUCTION_RELATION ->
+          upsertProductionRelation(base, units, parameters, reason, day);
+      case UPSERT_ASSET_RULE -> upsertAssetRule(base, definitions, parameters, reason, day);
       case UPSERT_PRODUCTION_ORGANIZATION ->
-          upsertProductionOrganization(base, parameters, reason, day);
-      case UPSERT_CANDIDATE -> upsertCandidate(base, parameters, reason, day);
-      case SET_OUTPUT_QUANTITY -> setOutputQuantity(base, parameters, reason, day);
-      case CLEAR_OUTPUT_QUANTITY -> clearOutputQuantity(base, parameters, reason, day);
+          upsertProductionOrganization(base, definitions, units, parameters, reason, day);
+      // ★★ B2c（裁定八）：候选 kind 与两个产出覆盖 kind 一样给**具名拒**（不是"白名单外"那句与事实不符的
+      //   通用拒绝）；方案定义的写面在 production（见 UPSERT_CANDIDATE 的类注）。
+      case UPSERT_CANDIDATE ->
+          throw new IllegalArgumentException(
+              COMMAND
+                  + "."
+                  + adjustment
+                  + " "
+                  + PLAN_DEFINITION_MOVED_REASON
+                  + ": 方案定义（含 buildDays / acceptedRightKinds）的唯一权威在 production —— 请用"
+                  + " production.UpsertIndustry（GM 工具 simos.economy.upsertIndustry）；economy 侧的"
+                  + " assetSource 声明落点见 EconomyMeta.planAssetSources（写面属 U10 未做）");
+      // ★★ B2b：两个已迁出的 kind 给**具名拒**（不是"白名单外"那句与事实不符的通用拒绝）。
+      case SET_OUTPUT_QUANTITY, CLEAR_OUTPUT_QUANTITY ->
+          throw new IllegalArgumentException(
+              COMMAND
+                  + "."
+                  + adjustment
+                  + " "
+                  + OUTPUT_QUANTITY_MOVED_REASON
+                  + ": GM 产出数量覆盖的唯一权威在 production —— 请用 production.UpsertIndustry 的"
+                  + " outputPerUnit（被引用的产业发新版本 id）；运行中产业原地改产出数量的便捷入口属 U10 未做");
       default -> throw derivedRejection(adjustment);
     };
   }
@@ -303,179 +406,26 @@ public final class EconomyGmAdjustments {
     return new Projection(SET_LIQUIDATION_POLICY, reason, day, projected, changeSet, changes);
   }
 
-  // ── P7：生产方式 / 阶层结构 / 关系 / 资产规则 / 组织 / 候选的 GM 编辑 ────────────────────────────────
+  // ── P7：阶层结构 / 关系 / 资产规则 / 组织 的 GM 编辑（生产方式定义两个 kind 见下面的 B5 说明）──────────
   //
   // ★★ 全部只改源状态、只走既有 with* 写口（class 结构+位置两表需要同批落值时走
   //   EconomyData.withClassStructuresAndPositions 这个成对写口），最终都过 EconomyChangeSet.between；
   //   派生读数（flows/crisisSignals/classStandings.* 等）仍没有写口，白名单外一律 DERIVED_REJECTION。
+  //   ★★★ B5（§13.15.2 裁定十八）：本段四个 kind 的"modeId 必须已存在"判据**读 production 当刻定义权威**
+  //     （{@code definitions.mode(modeId)}），不再读已删的 economy `modes` 副本。
 
-  /** 缺省 version 的哨兵：合法 version ≥ 1，-1 只用于"键缺省 / JSON null"。 */
-  private static final int VERSION_ABSENT = -1;
-
-  /**
-   * {@code upsertProductionMode}：{@code {id,name,version?,classStructureId}}。
-   *
-   * <p>version 规则：新 id 缺省 = 1；既有 id 缺省 = 沿用现有 version（仅当其余字段逐值相同 ⇒ 幂等 no-op，否则要求显式推进）； 显式给时必须 ≥ 现有
-   * version+1（同 version 的逐值重放仍幂等 no-op，同 version 的改值 ⇒ 具名拒绝）。 {@code classStructureId} 必须已存在（请先用
-   * {@code upsertClassStructure} 创建）。
-   */
-  private static Projection upsertProductionMode(
-      EconomyData base, JsonNode parameters, String reason, long day) {
-    String label = COMMAND + "." + UPSERT_PRODUCTION_MODE;
-    ProductionModeId id =
-        productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
-    String name = EconomyCommandPayloads.requireText(label, parameters, "name");
-    ClassStructureId classStructureId =
-        classStructureId(
-            label, EconomyCommandPayloads.requireText(label, parameters, "classStructureId"));
-    ProductionMode before = base.modes().get(id);
-    if (!base.classStructures().containsKey(classStructureId)) {
-      throw new IllegalArgumentException(
-          label
-              + " 的 classStructureId 必须已存在: "
-              + classStructureId.value()
-              + "（请先用 "
-              + UPSERT_CLASS_STRUCTURE
-              + " 创建它）");
-    }
-    int version =
-        hasValue(parameters, "version")
-            ? optionalVersion(label, parameters)
-            : (before == null ? 1 : before.version());
-    if (version < 1) {
-      throw new IllegalArgumentException(label + " 的 version 必须 ≥ 1: " + version);
-    }
-    ProductionMode after = new ProductionMode(id, name, version, classStructureId);
-    if (after.equals(before)) {
-      return noOp(UPSERT_PRODUCTION_MODE, reason, day, base);
-    }
-    if (before != null) {
-      if (version < before.version()) {
-        throw new IllegalArgumentException(
-            label + " 的 version 不得倒退：当前 " + before.version() + "，收到 " + version);
-      }
-      if (!hasValue(parameters, "version")) {
-        throw new IllegalArgumentException(
-            label
-                + " 修改既有 mode 必须显式给 version ≥ 现有 version+1（当前 "
-                + before.version()
-                + "，未给 version）；逐值相同的重放可省略 version");
-      }
-      if (version == before.version()) {
-        throw new IllegalArgumentException(
-            label
-                + " 修订必须推进 version：当前 "
-                + before.version()
-                + "，收到同值 "
-                + version
-                + "（同 version 只允许逐值相同的幂等重放）");
-      }
-    }
-    Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>(base.modes());
-    modes.put(id, after);
-    EconomyData projected = base.withModes(modes);
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
-    return new Projection(
-        UPSERT_PRODUCTION_MODE,
-        reason,
-        day,
-        projected,
-        changeSet,
-        List.of(new Change("modes", id.value(), before, after)));
-  }
-
-  /**
-   * {@code deactivateProductionMode}：{@code {id}}。被任一跨表引用 ⇒ 具名拒绝并列出引用者： {@code
-   * classStructures}/{@code classPositions}（modeId）、{@code productionOrganizations}（modeId）、 {@code
-   * assetRules}（modeId）、{@code modeTransitions}（from/to）、{@code pledges}（modeId）。
-   *
-   * <p>★ {@code ProductionCandidate} 现有字段里<b>没有</b> modeId（见 {@link
-   * ProductionCandidate}），候选与本表没有持久引用， 故删除守卫不检查它；候选的"模式关联"是 {@code regime}（由 {@code
-   * upsertCandidate} 按 {@code RegimeOperators.registered()} 判）。
-   */
-  private static Projection deactivateProductionMode(
-      EconomyData base, JsonNode parameters, String reason, long day) {
-    String label = COMMAND + "." + DEACTIVATE_PRODUCTION_MODE;
-    ProductionModeId id =
-        productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
-    ProductionMode before = base.modes().get(id);
-    if (before == null) {
-      throw new IllegalArgumentException(label + " 的生产方式不存在: " + id.value());
-    }
-    List<String> structures = new ArrayList<>();
-    for (ClassStructure structure : base.classStructures().values()) {
-      if (structure.modeId().equals(id)) {
-        structures.add(structure.id().value());
-      }
-    }
-    List<String> positions = new ArrayList<>();
-    for (ProductionRole position : base.classPositions().values()) {
-      if (position.modeId().equals(id)) {
-        positions.add(position.id().value());
-      }
-    }
-    List<String> enterprises = new ArrayList<>();
-    for (ProductionEnterprise enterprise : base.productionOrganizations().values()) {
-      if (enterprise.modeId().equals(id)) {
-        enterprises.add(enterprise.id().value());
-      }
-    }
-    List<String> assetRules = new ArrayList<>();
-    for (AssetRule rule : base.assetRules().values()) {
-      if (rule.modeId().equals(id)) {
-        assetRules.add(rule.id().value());
-      }
-    }
-    List<String> transitions = new ArrayList<>();
-    for (ModeTransition transition : base.modeTransitions().values()) {
-      if (transition.fromModeId().equals(id)) {
-        transitions.add(transition.id().value() + "(from)");
-      }
-      if (transition.toModeId().equals(id)) {
-        transitions.add(transition.id().value() + "(to)");
-      }
-    }
-    List<String> pledges = new ArrayList<>();
-    for (Pledge pledge : base.pledges().values()) {
-      if (pledge.modeId().equals(id)) {
-        pledges.add(pledge.id().value());
-      }
-    }
-    List<String> references = new ArrayList<>();
-    if (!structures.isEmpty()) {
-      references.add("classStructures=" + structures);
-    }
-    if (!positions.isEmpty()) {
-      references.add("classPositions=" + positions);
-    }
-    if (!enterprises.isEmpty()) {
-      references.add("productionOrganizations=" + enterprises);
-    }
-    if (!assetRules.isEmpty()) {
-      references.add("assetRules=" + assetRules);
-    }
-    if (!transitions.isEmpty()) {
-      references.add("modeTransitions=" + transitions);
-    }
-    if (!pledges.isEmpty()) {
-      references.add("pledges=" + pledges);
-    }
-    if (!references.isEmpty()) {
-      throw new IllegalArgumentException(
-          label + " 的生产方式仍被引用，不能停用: " + id.value() + "；" + String.join("，", references));
-    }
-    Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>(base.modes());
-    modes.remove(id);
-    EconomyData projected = base.withModes(modes);
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
-    return new Projection(
-        DEACTIVATE_PRODUCTION_MODE,
-        reason,
-        day,
-        projected,
-        changeSet,
-        List.of(new Change("modes", id.value(), before, null)));
-  }
+  // ★★★ B5（§13.15.2 裁定十八）：原 `upsertProductionMode(...)` 与 `deactivateProductionMode(...)`
+  //   两个语义落点**整段删除**（连同它们读的 `EconomyData.modes` 副本、`copyModeReferences` 六类引用者
+  //   遍历、以及 `VERSION_ABSENT` / 全部 mode 版本推进判据）。
+  //   ★ B12（DEF-T6-4 #2）：`VERSION_ABSENT` 唯一的残留读者 `optionalVersion(...)` 也零调用点，
+  //     同批删除 ⇒ 上面这句"连同 VERSION_ABSENT"在本批之后逐字成立（本批删的就是最后两个残留）。
+  //   ★ 去核结论（账本 §B5-§2）：economy 的 mode 写腿**只有** `economy.GmAdjust` 这两个 kind，
+  //     两者在 main/test/工具 schema/catalog **全是 0 调用点**；世界播种走 `production.Seed` 的
+  //     `modes[]`。⇒ 按裁定十八第 ② 条连命令 kind 一起删；能力由 production 既有命令面承接
+  //     （`production.UpsertProductionMode` / `production.DeactivateProductionMode`，
+  //     唯一语义落点 `ProductionModeUpserts`，装配点 `Shell.java:925/:926`）。
+  //   ★ 六类引用者清单没有丢：它是 production 停用命令的判据（`ProductionConsumerPort.modeReferences`
+  //     → `AppProductionConsumerPort:123`，B4 已逐类平移）。
 
   /**
    * {@code upsertClassStructure}：{@code {id,modeId,positions?,defaultSharesPerMille?}}（至少给一项）。
@@ -485,20 +435,23 @@ public final class EconomyGmAdjustments {
    * {@code {}} 可清空），未给保持原值。modeId 必须存在；既有结构的 modeId 不可改（换绑要删除重建）。新结构必须至少给一个 position。
    */
   private static Projection upsertClassStructure(
-      EconomyData base, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      JsonNode parameters,
+      String reason,
+      long day) {
     String label = COMMAND + "." + UPSERT_CLASS_STRUCTURE;
     ClassStructureId id =
         classStructureId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
     ProductionModeId modeId =
         productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "modeId"));
-    if (!base.modes().containsKey(modeId)) {
+    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
+    if (definitions.mode(modeId).isEmpty()) {
       throw new IllegalArgumentException(
           label
-              + " 的 modeId 必须已存在: "
+              + " 的 modeId 必须已存在（production 当刻定义权威）: "
               + modeId.value()
-              + "；请先 "
-              + UPSERT_PRODUCTION_MODE
-              + "（其 classStructureId 必须已存在）");
+              + "；请先 production.UpsertProductionMode（其 classStructureId 必须已存在）");
     }
     ClassStructure before = base.classStructures().get(id);
     if (before != null && !before.modeId().equals(modeId)) {
@@ -648,14 +601,20 @@ public final class EconomyGmAdjustments {
    * 以挂进该结构。modeId 必须存在，既有位置的 modeId 不可改。 未给的字段沿用既有值（新建时三个结构维与 name 必填，ruleExtensions 缺省空表）。
    */
   private static Projection upsertClassPosition(
-      EconomyData base, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      JsonNode parameters,
+      String reason,
+      long day) {
     String label = COMMAND + "." + UPSERT_CLASS_POSITION;
     ClassPositionId id =
         classPositionId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
     ProductionModeId modeId =
         productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "modeId"));
-    if (!base.modes().containsKey(modeId)) {
-      throw new IllegalArgumentException(label + " 的 modeId 必须已存在: " + modeId.value());
+    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
+    if (definitions.mode(modeId).isEmpty()) {
+      throw new IllegalArgumentException(
+          label + " 的 modeId 必须已存在（production 当刻定义权威）: " + modeId.value());
     }
     ProductionRole before = base.classPositions().get(id);
     if (before != null && !before.modeId().equals(modeId)) {
@@ -785,12 +744,16 @@ public final class EconomyGmAdjustments {
    * 那个值由守卫判死，是唯一合法值）。未给的可选字段沿用既有 relation。
    */
   private static Projection upsertProductionRelation(
-      EconomyData base, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      Map<ProductionUnitId, ProductionProcess> units,
+      JsonNode parameters,
+      String reason,
+      long day) {
     String label = COMMAND + "." + UPSERT_PRODUCTION_RELATION;
     ProductionUnitId activity =
         productionProcessId(
             label, EconomyCommandPayloads.requireText(label, parameters, "activity"));
-    ProductionProcess unit = base.units().get(activity);
+    ProductionProcess unit = units.get(activity);
     if (unit == null) {
       throw new IllegalArgumentException(label + " 的 activity 必须对应已存在的 unit: " + activity.value());
     }
@@ -880,12 +843,18 @@ public final class EconomyGmAdjustments {
    * liquidationPriority/transferRule）必填，rentRule 缺省空；既有则未给字段沿用原值（rentRule 显式 null 清空）。
    */
   private static Projection upsertAssetRule(
-      EconomyData base, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      JsonNode parameters,
+      String reason,
+      long day) {
     String label = COMMAND + "." + UPSERT_ASSET_RULE;
     ProductionModeId modeId =
         productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "modeId"));
-    if (!base.modes().containsKey(modeId)) {
-      throw new IllegalArgumentException(label + " 的 modeId 必须已存在: " + modeId.value());
+    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
+    if (definitions.mode(modeId).isEmpty()) {
+      throw new IllegalArgumentException(
+          label + " 的 modeId 必须已存在（production 当刻定义权威）: " + modeId.value());
     }
     io.mosire.simos.actor.api.asset.AssetKind assetKind =
         enumValue(
@@ -984,12 +953,19 @@ public final class EconomyGmAdjustments {
    * fail-closed；ACTIVE/EXITING 必须有 unitId，SHORTAGE 必须具名 reason。
    */
   private static Projection upsertProductionOrganization(
-      EconomyData base, JsonNode parameters, String reason, long day) {
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionProcess> units,
+      JsonNode parameters,
+      String reason,
+      long day) {
     String label = COMMAND + "." + UPSERT_PRODUCTION_ORGANIZATION;
     ProductionModeId modeId =
         productionModeId(label, EconomyCommandPayloads.requireText(label, parameters, "modeId"));
-    if (!base.modes().containsKey(modeId)) {
-      throw new IllegalArgumentException(label + " 的 modeId 必须已存在: " + modeId.value());
+    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
+    if (definitions.mode(modeId).isEmpty()) {
+      throw new IllegalArgumentException(
+          label + " 的 modeId 必须已存在（production 当刻定义权威）: " + modeId.value());
     }
     ClassPositionId classPositionId =
         classPositionId(
@@ -1034,7 +1010,7 @@ public final class EconomyGmAdjustments {
         throw new IllegalArgumentException(
             label + " 的 id 缺省派生要求给 unitId（格键从 unit 的 industry id 解出），请显式给 id");
       }
-      ProductionProcess unitForHex = base.units().get(unitId.get());
+      ProductionProcess unitForHex = units.get(unitId.get());
       if (unitForHex == null) {
         throw new IllegalArgumentException(label + " 的 unitId 必须已存在: " + unitId.get().value());
       }
@@ -1055,7 +1031,7 @@ public final class EconomyGmAdjustments {
       unitId = before.unitId();
     }
     if (unitId.isPresent()) {
-      ProductionProcess unit = base.units().get(unitId.get());
+      ProductionProcess unit = units.get(unitId.get());
       if (unit == null) {
         throw new IllegalArgumentException(label + " 的 unitId 必须已存在: " + unitId.get().value());
       }
@@ -1162,345 +1138,15 @@ public final class EconomyGmAdjustments {
         List.of(new Change("productionOrganizations", id.value(), before, after)));
   }
 
-  /**
-   * {@code upsertCandidate}：按 {@link ProductionCandidate} 现有字段 upsert（{@code id,version?,output?,
-   * outputPerUnit?,inputPerUnit?,requiredAssets?,laborPerUnit?,buildDays?,cycleDays?,regime?,
-   * laborSource?,acceptedRightKinds?,assetSource?,name?}）；未给字段沿用既有值，新建时 output/outputPerUnit/
-   * cycleDays/regime 必填。
-   *
-   * <p>★★ <b>与任务书的一处如实偏离</b>：{@link ProductionCandidate} 的现有字段里<b>没有</b> modeId，候选与本表的 {@code
-   * modes} 没有持久引用；它真正关联的已登记制度是 {@code regime}（{@code EconomyData} 守卫按 {@code
-   * RegimeOperators.registered()} 判）。故这里按模型实现并拒绝显式 {@code modeId}（避免"看起来记了"）， 详见交付报告。
-   */
-  private static Projection upsertCandidate(
-      EconomyData base, JsonNode parameters, String reason, long day) {
-    String label = COMMAND + "." + UPSERT_CANDIDATE;
-    CandidateId id =
-        candidateId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
-    if (parameters.has("modeId")) {
-      throw new IllegalArgumentException(
-          label
-              + " 不接受 modeId：ProductionCandidate 的现有字段不含 modeId，候选与 modes 表没有持久引用；"
-              + "请改给 regime（必须是 RegimeOperators 已登记的制度）");
-    }
-    ProductionCandidate before = base.candidates().get(id);
-    boolean versionGiven = hasValue(parameters, "version");
-    int version =
-        versionGiven ? optionalVersion(label, parameters) : (before == null ? 1 : before.version());
-    if (version < 1) {
-      throw new IllegalArgumentException(label + " 的 version 必须 ≥ 1: " + version);
-    }
-    CommodityId output =
-        hasValue(parameters, "output")
-            ? CommodityId.parse(EconomyCommandPayloads.requireText(label, parameters, "output"))
-            : requireExistingField(label, "output", before == null ? null : before.output());
-    Map<CommodityId, Long> outputPerUnit;
-    if (parameters.has("outputPerUnit")) {
-      outputPerUnit =
-          EconomyCommandPayloads.optionalCommodityMap(label, parameters, "outputPerUnit", true);
-    } else {
-      outputPerUnit = before == null ? Map.of() : before.outputPerUnit();
-    }
-    if (outputPerUnit.isEmpty()) {
-      throw new IllegalArgumentException(label + " 的 outputPerUnit 不得为空");
-    }
-    if (!outputPerUnit.containsKey(output)) {
-      throw new IllegalArgumentException(
-          label + " 的 output 必须出现在 outputPerUnit 的键里: " + output.value() + "（主产出不许另写一份）");
-    }
-    Map<CommodityId, Long> inputPerUnit =
-        parameters.has("inputPerUnit")
-            ? EconomyCommandPayloads.optionalCommodityMap(label, parameters, "inputPerUnit", false)
-            : (before == null ? Map.of() : before.inputPerUnit());
-    Map<io.mosire.simos.actor.api.asset.AssetKind, Long> requiredAssets =
-        parameters.has("requiredAssets")
-            ? EconomyCommandPayloads.optionalAssetMap(label, parameters, "requiredAssets")
-            : (before == null ? Map.of() : before.requiredAssets());
-    long laborPerUnit =
-        EconomyCommandPayloads.optionalLong(
-            label, parameters, "laborPerUnit", before == null ? 0L : before.laborPerUnit());
-    if (laborPerUnit < 0L) {
-      throw new IllegalArgumentException(label + " 的 laborPerUnit 不得为负: " + laborPerUnit);
-    }
-    long buildDays =
-        EconomyCommandPayloads.optionalLong(
-            label, parameters, "buildDays", before == null ? 0L : before.buildDays());
-    if (buildDays < 0L) {
-      throw new IllegalArgumentException(label + " 的 buildDays 不得为负: " + buildDays);
-    }
-    if (before == null && !hasValue(parameters, "cycleDays")) {
-      throw new IllegalArgumentException(label + " 新建候选缺少必填字段: cycleDays");
-    }
-    long cycleDays =
-        EconomyCommandPayloads.optionalLong(
-            label, parameters, "cycleDays", before == null ? 1L : before.cycleDays());
-    if (cycleDays < 1L) {
-      throw new IllegalArgumentException(label + " 的 cycleDays 必须 ≥ 1: " + cycleDays);
-    }
-    RegimeId regime =
-        hasValue(parameters, "regime")
-            ? RegimeId.parse(EconomyCommandPayloads.requireText(label, parameters, "regime"))
-            : requireExistingField(label, "regime", before == null ? null : before.regime());
-    if (!RegimeOperators.registered().containsKey(regime.value())) {
-      throw new IllegalArgumentException(
-          label
-              + " 的 regime 未登记（候选进入采用算法时无法推导默认经营主体/关系）: "
-              + regime.value()
-              + "；已登记: "
-              + RegimeOperators.registered().keySet());
-    }
-    LaborSource laborSource =
-        EconomyCommandPayloads.optionalLaborSource(
-            label,
-            parameters,
-            "laborSource",
-            before == null ? LaborSource.SELF : before.laborSource());
-    Set<OwnershipStake.RightKind> acceptedRightKinds =
-        parameters.has("acceptedRightKinds")
-            ? EconomyCommandPayloads.optionalRightKinds(label, parameters, "acceptedRightKinds")
-            : (before == null ? Set.of() : before.acceptedRightKinds());
-    Optional<ActorRef> assetSource;
-    if (parameters.has("assetSource")) {
-      assetSource = EconomyCommandPayloads.optionalActor(label, parameters, "assetSource");
-    } else {
-      assetSource = before == null ? Optional.empty() : before.assetSource();
-    }
-    String name =
-        hasValue(parameters, "name")
-            ? EconomyCommandPayloads.requireText(label, parameters, "name")
-            : (before == null ? id.value() : before.name());
-    ProductionCandidate after =
-        new ProductionCandidate(
-            id,
-            version,
-            output,
-            outputPerUnit,
-            inputPerUnit,
-            requiredAssets,
-            laborPerUnit,
-            buildDays,
-            cycleDays,
-            regime,
-            laborSource,
-            acceptedRightKinds,
-            assetSource,
-            name);
-    if (after.equals(before)) {
-      return noOp(UPSERT_CANDIDATE, reason, day, base);
-    }
-    if (before != null) {
-      if (version < before.version()) {
-        throw new IllegalArgumentException(
-            label + " 的 version 不得倒退：当前 " + before.version() + "，收到 " + version);
-      }
-      if (!versionGiven) {
-        throw new IllegalArgumentException(
-            label
-                + " 修改既有候选必须显式给 version ≥ 现有 version+1（当前 "
-                + before.version()
-                + "，未给 version）；逐值相同的重放可省略 version");
-      }
-      if (version == before.version()) {
-        throw new IllegalArgumentException(
-            label
-                + " 修订必须推进 version：当前 "
-                + before.version()
-                + "，收到同值 "
-                + version
-                + "（同 version 只允许逐值相同的幂等重放）");
-      }
-    }
-    Map<CandidateId, ProductionCandidate> candidates = new LinkedHashMap<>(base.candidates());
-    candidates.put(id, after);
-    EconomyData projected = base.withCandidates(candidates);
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
-    return new Projection(
-        UPSERT_CANDIDATE,
-        reason,
-        day,
-        projected,
-        changeSet,
-        List.of(new Change("candidates", id.value(), before, after)));
-  }
+  // ★★ B2b：`setOutputQuantity` / `clearOutputQuantity` 两个投影方法已**整体删除** ——
+  //   它们写的 `outputQuantityOverrides` 组件已从 EconomyData 删除。命中这两个 kind 时 `project(...)`
+  //   在 switch 里直接给具名拒（见 OUTPUT_QUANTITY_MOVED_REASON）。
+  //   ★ B2c（裁定八）：`upsertCandidate` 投影方法**同批删除**（候选面退役）—— 命中该 kind 时 `project(...)`
+  //     在 switch 里直接给具名拒（见 PLAN_DEFINITION_MOVED_REASON）。
 
-  // ── Z1：产品产出数量覆盖（GM 唯一可改项；§3.1/§4）────────────────────────────────────────
-
-  /**
-   * ★★ {@code setOutputQuantity}：{@code {industryId,commodityId,quantity}} —— upsert 一条覆盖（值 =
-   * 商品数量/单位规模）。
-   *
-   * <p>具名拒绝：{@code INDUSTRY_NOT_FOUND} / {@code COMMODITY_NOT_IN_RECIPE} / {@code
-   * QUANTITY_OUT_OF_RANGE}（含缺失、非整数）。 投影组件固定 {@code outputQuantityOverrides}、{@code keyId =
-   * industryId + "/" + commodityId}（§4）。
-   */
-  private static Projection setOutputQuantity(
-      EconomyData base, JsonNode parameters, String reason, long day) {
-    String label = COMMAND + "." + SET_OUTPUT_QUANTITY;
-    IndustryId industryId = outputIndustryId(label, parameters);
-    Industry industry = requireOutputIndustry(base, label, industryId);
-    CommodityId commodityId = outputCommodityId(label, parameters, industry);
-    long quantity = outputQuantity(label, parameters);
-    Long before = overrideQuantity(base.outputQuantityOverrides(), industryId, commodityId);
-    Map<IndustryId, Map<CommodityId, Long>> overrides =
-        copyOutputQuantityOverrides(base.outputQuantityOverrides());
-    overrides
-        .computeIfAbsent(industryId, ignored -> new LinkedHashMap<>())
-        .put(commodityId, quantity);
-    EconomyData projected = base.withOutputQuantityOverrides(overrides);
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
-    return new Projection(
-        SET_OUTPUT_QUANTITY,
-        reason,
-        day,
-        projected,
-        changeSet,
-        List.of(
-            new Change(
-                OUTPUT_QUANTITY_OVERRIDES_COMPONENT,
-                outputQuantityKeyId(industryId, commodityId),
-                before,
-                quantity)));
-  }
-
-  /**
-   * ★★ {@code clearOutputQuantity}：{@code {industryId,commodityId}} —— 删除一条覆盖（回配方默认）。
-   *
-   * <p>具名拒绝：{@code INDUSTRY_NOT_FOUND} / {@code COMMODITY_NOT_IN_RECIPE} / {@code
-   * NO_OVERRIDE_TO_CLEAR}（不做静默幂等，防错字）。
-   */
-  private static Projection clearOutputQuantity(
-      EconomyData base, JsonNode parameters, String reason, long day) {
-    String label = COMMAND + "." + CLEAR_OUTPUT_QUANTITY;
-    IndustryId industryId = outputIndustryId(label, parameters);
-    Industry industry = requireOutputIndustry(base, label, industryId);
-    CommodityId commodityId = outputCommodityId(label, parameters, industry);
-    Long before = overrideQuantity(base.outputQuantityOverrides(), industryId, commodityId);
-    if (before == null) {
-      throw new IllegalArgumentException(
-          label
-              + " NO_OVERRIDE_TO_CLEAR: 该产业/商品没有既有覆盖: "
-              + industryId.value()
-              + "/"
-              + commodityId.value());
-    }
-    Map<IndustryId, Map<CommodityId, Long>> overrides =
-        copyOutputQuantityOverrides(base.outputQuantityOverrides());
-    Map<CommodityId, Long> line = overrides.get(industryId);
-    line.remove(commodityId);
-    if (line.isEmpty()) {
-      overrides.remove(industryId); // ★ 空内层不留残余：覆盖表"只在 GM 显式改过时存在"。
-    }
-    EconomyData projected = base.withOutputQuantityOverrides(overrides);
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
-    return new Projection(
-        CLEAR_OUTPUT_QUANTITY,
-        reason,
-        day,
-        projected,
-        changeSet,
-        List.of(
-            new Change(
-                OUTPUT_QUANTITY_OVERRIDES_COMPONENT,
-                outputQuantityKeyId(industryId, commodityId),
-                before,
-                null)));
-  }
-
-  /** {@code industryId} 必填非空文本 ⇒ 稳定 id（畸形 ⇒ 具名拒绝）。 */
-  private static IndustryId outputIndustryId(String label, JsonNode parameters) {
-    String text = EconomyCommandPayloads.requireText(label, parameters, "industryId");
-    try {
-      return IndustryId.parse(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(label + " 的 industryId 非法: " + e.getMessage());
-    }
-  }
-
-  /** {@code industryId} 必须存在于 {@code industries} ⇒ {@code INDUSTRY_NOT_FOUND}。 */
-  private static Industry requireOutputIndustry(
-      EconomyData base, String label, IndustryId industryId) {
-    Industry industry = base.industries().get(industryId);
-    if (industry == null) {
-      throw new IllegalArgumentException(
-          label + " INDUSTRY_NOT_FOUND: 产业不存在: " + industryId.value());
-    }
-    return industry;
-  }
-
-  /**
-   * {@code commodityId} 必须是该产业 {@code recipe().outputPerUnit()} 的键 ⇒ {@code
-   * COMMODITY_NOT_IN_RECIPE}。
-   */
-  private static CommodityId outputCommodityId(
-      String label, JsonNode parameters, Industry industry) {
-    String text = EconomyCommandPayloads.requireText(label, parameters, "commodityId");
-    CommodityId commodityId;
-    try {
-      commodityId = CommodityId.parse(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(label + " 的 commodityId 非法: " + e.getMessage());
-    }
-    if (!industry.recipe().outputPerUnit().containsKey(commodityId)) {
-      throw new IllegalArgumentException(
-          label
-              + " COMMODITY_NOT_IN_RECIPE: "
-              + commodityId.value()
-              + " 不在产业 "
-              + industry.id().value()
-              + " 的配方产出键里");
-    }
-    return commodityId;
-  }
-
-  /**
-   * {@code quantity} 缺失/非整数/&lt;0/&gt;{@code MAX_OUTPUT_QUANTITY} ⇒ 一律 {@code
-   * QUANTITY_OUT_OF_RANGE}（§4）。
-   */
-  private static long outputQuantity(String label, JsonNode parameters) {
-    JsonNode node = parameters.get("quantity");
-    if (node == null || !node.isIntegralNumber() || !node.canConvertToLong()) {
-      throw new IllegalArgumentException(
-          label
-              + " QUANTITY_OUT_OF_RANGE: quantity 必须是 [0, "
-              + EconomyData.MAX_OUTPUT_QUANTITY
-              + "] 的整数: "
-              + node);
-    }
-    long quantity = node.asLong();
-    if (quantity < 0L || quantity > EconomyData.MAX_OUTPUT_QUANTITY) {
-      throw new IllegalArgumentException(
-          label
-              + " QUANTITY_OUT_OF_RANGE: quantity 必须 ∈ [0, "
-              + EconomyData.MAX_OUTPUT_QUANTITY
-              + "]: "
-              + quantity);
-    }
-    return quantity;
-  }
-
-  /** 投影 Change 的固定 keyId 拼写点（§4：{@code industryId + "/" + commodityId}）。 */
-  private static String outputQuantityKeyId(IndustryId industryId, CommodityId commodityId) {
-    return industryId.value() + "/" + commodityId.value();
-  }
-
-  /** 读现有覆盖（缺产业/缺商品 ⇒ null）。 */
-  private static Long overrideQuantity(
-      Map<IndustryId, Map<CommodityId, Long>> overrides,
-      IndustryId industryId,
-      CommodityId commodityId) {
-    Map<CommodityId, Long> line = overrides.get(industryId);
-    return line == null ? null : line.get(commodityId);
-  }
-
-  /** 覆盖表的可变深拷贝（外层 + 内层都保序；构造器会再冻一次）。 */
-  private static Map<IndustryId, Map<CommodityId, Long>> copyOutputQuantityOverrides(
-      Map<IndustryId, Map<CommodityId, Long>> source) {
-    Map<IndustryId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : source.entrySet()) {
-      copy.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
-    }
-    return copy;
-  }
+  // ── Z1：产品产出数量覆盖 ─────────────────────────────────────────────────────────────
+  //   ★★ B2b：整段（setOutputQuantity / clearOutputQuantity 的投影 + 它们的解析/拷贝助手）已删除 ——
+  //   `outputQuantityOverrides` 组件已从 economy 移除，唯一权威在 production（见 OUTPUT_QUANTITY_MOVED_REASON）。
 
   // ── P7 形状/解析助手 ──────────────────────────────────────────────────────────────────────
 
@@ -1510,14 +1156,10 @@ public final class EconomyGmAdjustments {
         adjustment, reason, day, base, EconomyChangeSet.between(base, base), List.of());
   }
 
-  /** 必填 version（JSON 整数）；仅由调用方在 hasValue 后调用。 */
-  private static int optionalVersion(String label, JsonNode parameters) {
-    int value = EconomyCommandPayloads.optionalInt(label, parameters, "version", VERSION_ABSENT);
-    if (value == VERSION_ABSENT) {
-      throw new IllegalArgumentException(label + " 的 version 必须是整数: " + parameters);
-    }
-    return value;
-  }
+  // ★ B12 / DEF-T6-4 #2（UPM_UNCALLED_PRIVATE_METHOD）：`optionalVersion(...)` 已删 —— 全仓零调用点
+  //   （B5 删掉两个 mode 版本推进 kind 之后它就是纯死代码）；`VERSION_ABSENT` 哨兵随之删除，
+  //   下面的 B5 记录（"连同 `VERSION_ABSENT` / 全部 mode 版本推进判据"）至此逐字成立。
+  //   删除不改任何入参校验：它只是把 `EconomyCommandPayloads.optionalInt` 再包一层，没有调用方就没有语义。
 
   /** 缺失即具名拒绝的既有字段取值（更新分支的 fallback）。 */
   private static <T> T requireExistingField(String label, String field, T fallback) {
@@ -1551,6 +1193,70 @@ public final class EconomyGmAdjustments {
       throw new IllegalArgumentException(label + " 新建对象缺少必填字段: " + field);
     }
     return fallback;
+  }
+
+  private static boolean hasValue(JsonNode parameters, String field) {
+    JsonNode node = parameters.get(field);
+    return node != null && !node.isNull();
+  }
+
+  private static IllegalArgumentException derivedRejection(String adjustment) {
+    return new IllegalArgumentException(
+        DERIVED_REJECTION
+            + ": "
+            + adjustment
+            + "（"
+            + COMMAND
+            + " 只允许源状态调整："
+            + String.join(" | ", ADJUSTMENTS)
+            + "）");
+  }
+
+  private static DebtContractId parseDebtId(String label, String text) {
+    try {
+      return DebtContractId.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 debtContractId 非法: " + e.getMessage());
+    }
+  }
+
+  private static AssetRuleId parseAssetRuleId(String label, String text) {
+    try {
+      return AssetRuleId.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 assetRuleId 非法: " + e.getMessage());
+    }
+  }
+
+  private static int intInRange(String label, String field, long value, int min, int max) {
+    if (value < min || value > max) {
+      throw new IllegalArgumentException(
+          label + " 的 " + field + " 必须 ∈ [" + min + ", " + max + "]: " + value);
+    }
+    return (int) value;
+  }
+
+  private static long nonNegative(String label, String field, long value) {
+    if (value < 0L) {
+      throw new IllegalArgumentException(label + " 的 " + field + " 不得为负: " + value);
+    }
+    return value;
+  }
+
+  private static <E extends Enum<E>> E enumValue(
+      String label, String field, String text, Class<E> type) {
+    try {
+      return Enum.valueOf(type, text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          label
+              + " 的 "
+              + field
+              + " 未知: "
+              + text
+              + "；合法值: "
+              + Arrays.toString(type.getEnumConstants()));
+    }
   }
 
   /** 可选 int：给了 ⇒ 整数且 ∈ int；没给 ⇒ fallback（null 则具名拒绝）。 */
@@ -1708,78 +1414,6 @@ public final class EconomyGmAdjustments {
       return AssetShareId.parse(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(label + " 的 assetShareId 非法: " + e.getMessage());
-    }
-  }
-
-  private static CandidateId candidateId(String label, String text) {
-    try {
-      return CandidateId.parse(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(label + " 的 candidateId 非法: " + e.getMessage());
-    }
-  }
-
-  private static boolean hasValue(JsonNode parameters, String field) {
-    JsonNode node = parameters.get(field);
-    return node != null && !node.isNull();
-  }
-
-  private static IllegalArgumentException derivedRejection(String adjustment) {
-    return new IllegalArgumentException(
-        DERIVED_REJECTION
-            + ": "
-            + adjustment
-            + "（"
-            + COMMAND
-            + " 只允许源状态调整："
-            + String.join(" | ", ADJUSTMENTS)
-            + "）");
-  }
-
-  private static DebtContractId parseDebtId(String label, String text) {
-    try {
-      return DebtContractId.parse(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(label + " 的 debtContractId 非法: " + e.getMessage());
-    }
-  }
-
-  private static AssetRuleId parseAssetRuleId(String label, String text) {
-    try {
-      return AssetRuleId.parse(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(label + " 的 assetRuleId 非法: " + e.getMessage());
-    }
-  }
-
-  private static int intInRange(String label, String field, long value, int min, int max) {
-    if (value < min || value > max) {
-      throw new IllegalArgumentException(
-          label + " 的 " + field + " 必须 ∈ [" + min + ", " + max + "]: " + value);
-    }
-    return (int) value;
-  }
-
-  private static long nonNegative(String label, String field, long value) {
-    if (value < 0L) {
-      throw new IllegalArgumentException(label + " 的 " + field + " 不得为负: " + value);
-    }
-    return value;
-  }
-
-  private static <E extends Enum<E>> E enumValue(
-      String label, String field, String text, Class<E> type) {
-    try {
-      return Enum.valueOf(type, text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          label
-              + " 的 "
-              + field
-              + " 未知: "
-              + text
-              + "；合法值: "
-              + Arrays.toString(type.getEnumConstants()));
     }
   }
 

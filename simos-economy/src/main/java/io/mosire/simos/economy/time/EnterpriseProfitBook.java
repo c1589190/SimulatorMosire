@@ -5,6 +5,7 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -12,12 +13,11 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -434,7 +434,7 @@ public final class EnterpriseProfitBook {
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       MarketIndex markets,
       AccountSession accounts) {
     Objects.requireNonNull(cycle, "cycle");

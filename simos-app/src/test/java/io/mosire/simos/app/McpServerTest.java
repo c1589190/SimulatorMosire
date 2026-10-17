@@ -185,6 +185,10 @@ class McpServerTest {
           "simos.economy.setMarketZoneLoanRateAlpha",
           // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 窄写工具
           "simos.economy.setEconomyPolicy",
+          // ★★★ D-032 T6（2026-10-17）：B3（裁定十一/十二）补回的**方案经济关系声明**写口
+          //   （继承 AbstractNarrowWriteTool ⇒ 窄写；工具面 178 → **181**，本轮真跑红在
+          //   「Expected size: 178 but was: 181」）。★ 181 与 ShellAssemblySmokeTest.GM_BUCKET_SIZE 同源。
+          "simos.economy.setPlanSources",
           "simos.gm.govMarketMandate",
           "simos.economy.hex",
           "simos.economy.ownership",
@@ -376,7 +380,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 178 条（★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 181 条（★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」，与 ShellAssemblySmokeTest.GM_BUCKET_SIZE 同一次读数）。原文沿革：★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

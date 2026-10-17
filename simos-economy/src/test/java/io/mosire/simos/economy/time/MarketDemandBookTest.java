@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -19,15 +21,16 @@ import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.market.TradeRoute;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -72,8 +75,8 @@ class MarketDemandBookTest {
         0L);
   }
 
-  private static Industry craftWithFiberInput() {
-    return new Industry(
+  private static IndustryDefinitionView craftWithFiberInput() {
+    return IndustryViews.industry(
         CRAFT,
         "craft-demand",
         new io.mosire.simos.economy.api.id.RegimeId("handicraft"),
@@ -178,16 +181,23 @@ class MarketDemandBookTest {
     Map<HouseholdId, HouseholdEconomy> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
 
     // 该 unit 的引致需求：FIBER 500 毫/规模 × 1 规模 × ceil(10/10)=1 = 500。
-    Industry craft = craftWithFiberInput();
+    IndustryDefinitionView craft = craftWithFiberInput();
     ProductionUnitId unitId = ProductionUnitId.idOf(CRAFT, ACTOR);
     ProductionProcess unit =
-        new ProductionProcess(unitId, CRAFT, ACTOR, "mode:test", 0L, 0L, Map.of());
+        new ProductionProcess(
+            unitId,
+            CRAFT,
+            ProductionLocation.ofPlan(CRAFT).orElseThrow(),
+            ACTOR,
+            "mode:test",
+            0L,
+            Map.of(),
+            Map.of());
     AssetShareId shareId =
-        OwnershipStake.idOf(
-            CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, OwnershipStake.RightKind.OWNED, 0L);
+        OwnershipStake.idOf(CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetRightKind.OWNED, 0L);
     OwnershipStake share =
         new OwnershipStake(
-            shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, OwnershipStake.RightKind.OWNED);
+            shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, AssetRightKind.OWNED);
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(GRAIN, 300L), Map.of(), Map.of(), Map.of());

@@ -14,6 +14,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.spi.CandidateStateValidator;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -89,6 +90,9 @@ public final class CommandBus {
    * payloadJson} 转发。
    */
   private final List<MutationGuard> guards;
+
+  /** ★★ D-031 P1 §9.3：候选态落库前校验（迭代序即调用序；空表 = 既有行为不变）。 */
+  private final List<CandidateStateValidator> validators;
 
   /**
    * 批提交落的 revision 行的**命令类型**：Core 自有的第 3 个行标签（与 {@code core.Bootstrap} / {@code core.ForkBranch}
@@ -191,11 +195,28 @@ public final class CommandBus {
       StateLoader stateLoader,
       List<MutationGuard> guards,
       Collection<ModuleCodec> codecs) {
+    this(timeline, registry, advanceRoute, stateLoader, guards, codecs, List.of());
+  }
+
+  /**
+   * ★★ D-031 P1 spec §9.3：带候选态落库前校验器的构造。
+   *
+   * @param validators 落库前跨切片候选态校验；**迭代序即调用序**；空表 = 既有调用点行为不变
+   */
+  public CommandBus(
+      Timeline timeline,
+      CommandRegistry registry,
+      AdvanceRoute advanceRoute,
+      StateLoader stateLoader,
+      List<MutationGuard> guards,
+      Collection<ModuleCodec> codecs,
+      List<CandidateStateValidator> validators) {
     this.timeline = Objects.requireNonNull(timeline, "timeline");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.advanceRoute = Objects.requireNonNull(advanceRoute, "advanceRoute");
     this.stateLoader = Objects.requireNonNull(stateLoader, "stateLoader");
     this.guards = List.copyOf(Objects.requireNonNull(guards, "guards"));
+    this.validators = List.copyOf(Objects.requireNonNull(validators, "validators"));
     Objects.requireNonNull(codecs, "codecs");
     // ★ 绝不用 Map.copyOf：它的迭代序是散列槽位序、不是内容的纯函数（M2 Task 5 实测 30 次）
     Map<String, ModuleCodec> codecTable = new LinkedHashMap<>();
@@ -359,6 +380,19 @@ public final class CommandBus {
       if (changeSet.modules().isEmpty()) {
         return new CommandResult.Rejected("恢复变更集为空：撤销必须至少改一个命名空间");
       }
+      // ★★ D-031 P1 §9.3：restore 也在落库前校验最终候选态（无 validator ⇒ 不额外装状态，行为/成本不变）。
+      if (!validators.isEmpty()) {
+        SimulationState baseState = stateLoader.load(base);
+        SimulationState candidate = baseState;
+        for (Map.Entry<String, ChangeSet> module : changeSet.modules().entrySet()) {
+          candidate =
+              applyToCandidate(candidate, module.getKey(), module.getValue(), baseState.meta());
+        }
+        Optional<String> rejection = validateCandidate(baseState, candidate);
+        if (rejection.isPresent()) {
+          return new CommandResult.Rejected(rejection.get());
+        }
+      }
       String id = UUID.randomUUID().toString();
       RevisionRow row = revisionRow(base, id, id, initiator, RESTORE_COMMAND_TYPE, changeSet);
       timeline.appendRevision(row);
@@ -434,6 +468,25 @@ public final class CommandBus {
       return new BatchResult.Rejected(rolledBack(pending));
     }
 
+    // ★★ D-031 P1 §9.3：整批最终候选态在落库前统一校验（批内中间态允许前向引用）。
+    Optional<String> batchRejection = validateCandidate(baseState, candidate);
+    if (batchRejection.isPresent()) {
+      COMMAND.info(
+          LogEvent.of(
+              "COMMAND_BATCH_REJECTED",
+              CoreLogSource.BATCH_EXECUTION,
+              "day",
+              baseState.meta().timestamp().tick(),
+              "commands",
+              pending.size(),
+              "caller",
+              pending.get(0).command().initiator(),
+              "reason",
+              batchRejection.get()));
+      // ★ 整批被批次级 validator 拒绝：每条都带**真正的 validator 拒因**（不是"同批有命令被拒"的通用话），
+      //   与入参逐位对应；此时 pending 全部 applied=true（handler 全过），故不能用 rolledBack。
+      return new BatchResult.Rejected(rejectAll(batch, batchRejection.get()));
+    }
     // ★ 全部通过：**逐命名空间从两整份状态派生**变更集（铁律 5），不叠加各命令的变更集
     LinkedHashMap<String, ChangeSet> modules = new LinkedHashMap<>();
     for (String namespace : affected) {
@@ -646,6 +699,21 @@ public final class CommandBus {
   }
 
   /**
+   * ★★ D-031 P1 §9.3：按注册序跑候选态校验；返回第一个具名拒绝（空 = 通过）。
+   *
+   * <p>★ 只读：不修改 {@code base}/{@code candidate}；无注册者 ⇒ 恒空（既有行为不变）。
+   */
+  private Optional<String> validateCandidate(SimulationState base, SimulationState candidate) {
+    for (CandidateStateValidator validator : validators) {
+      Optional<String> rejection = validator.rejection(base, candidate);
+      if (rejection.isPresent()) {
+        return rejection;
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
    * 信封支的实际路由（spec §4.2 的第三支）：**唯一按 type 找 handler 的地方**。
    *
    * <p>次序是有意的：**先查 type 在不在册**（纯内存、不碰库），再查 head，再装配状态，最后才跑 handler。 handler 排最后是因为它最贵（C17 第 ②
@@ -686,7 +754,19 @@ public final class CommandBus {
 
     return switch (handler.get().handle(state, envelope.payloadJson())) {
       case HandlerOutcome.Rejected rejected -> reject(envelope, trace, rejected.reason());
-      case HandlerOutcome.Applied applied -> commitUnderLock(envelope, trace, applied.changeSet());
+      case HandlerOutcome.Applied applied -> {
+        if (!validators.isEmpty()) {
+          // ★★ D-031 P1 §9.3：单条命令也在落库前校验**完整候选态**（base + 本命令 changeSet）。
+          String namespace = namespaceOf(envelope.type());
+          SimulationState candidate =
+              applyToCandidate(state, namespace, applied.changeSet(), state.meta());
+          Optional<String> rejection = validateCandidate(state, candidate);
+          if (rejection.isPresent()) {
+            yield reject(envelope, trace, rejection.get());
+          }
+        }
+        yield commitUnderLock(envelope, trace, applied.changeSet());
+      }
     };
   }
 

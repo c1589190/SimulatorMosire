@@ -161,6 +161,9 @@ public final class WorldgenInitializeTool implements SimosTool {
    */
   public static final String SEED_ECONOMY_TYPE = "economy.Seed";
 
+  /** ★★ D-031 P1：生产定义批量播种命令类型（industries + modes；与 {@code economy.Seed} 同一批原子提交）。 */
+  public static final String SEED_PRODUCTION_TYPE = "production.Seed";
+
   /**
    * ★★ <b>H1：家户 actor 的播种命令</b>（{@code actor.Seed}）—— 与人口/经济**同批**（同一 branch + 同一 expectedRevision
    * ⇒ 一条 revision），载荷由 {@link HouseholdSeeder} 从 {@link EconomySeeder#plan} 交回的 **同一份**家户开缸库存算出。
@@ -706,6 +709,7 @@ public final class WorldgenInitializeTool implements SimosTool {
             expectedRevision,
             SEED_GROUPS_TYPE,
             PopulationSeeder.payload(population)));
+    // ★★ D-031 P1：定义先落 production（economy.Seed 据此校验 unit→industry 等跨域引用）。
     // ★★ H1：**经济与家户 actor 同源**（裁定 D3-C/K1）—— 一条 {@link EconomySeeder#plan} 同时交出
     //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
@@ -713,6 +717,16 @@ public final class WorldgenInitializeTool implements SimosTool {
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(
             mapId, population, map, genesisMoneyMilliPerCapita, economyProfile, conditions);
+    // ★★ D-031 P1：生产定义（industries + modes）走 production.Seed —— 与 economy.Seed 同一 submitBatch，
+    //   同一 revision 原子落账；定义权威唯一归 production（economy.Seed 不再持久化定义）。
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            SEED_PRODUCTION_TYPE,
+            seeding.productionPayload()));
     batch.add(
         envelope(
             batchId,

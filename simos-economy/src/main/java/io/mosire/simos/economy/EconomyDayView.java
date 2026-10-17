@@ -22,13 +22,14 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 
@@ -72,12 +73,26 @@ public interface EconomyDayView {
   /**
    * ★★ <b>W10：该政策键是否被 GM 显式配置过</b>（缺键 ⇒ false）。
    *
-   * <p>★ 只给"缺省值不在政策表里、而在别处"的那一类读取点用（铸币产出率的缺省住在产业载荷 {@code Industry.moneyOutputPerUnit}
-   * 里）：这类点必须在**未配置时逐值等于改动前**。其余键一律用 {@link #economyPolicyOf}（缺省 = 该键的 {@code defaultValue()}）。
+   * <p>★ 只给"缺省值不在政策表里、而在别处"的那一类读取点用（铸币产出率的缺省住在产业载荷 {@code
+   * IndustryDefinitionView.moneyOutputPerUnit} 里）：这类点必须在**未配置时逐值等于改动前**。其余键一律用 {@link
+   * #economyPolicyOf}（缺省 = 该键的 {@code defaultValue()}）。
    */
   boolean economyPolicyConfigured(EconomyPolicyKey key);
 
-  Map<IndustryId, Industry> industries();
+  default Map<IndustryId, IndustryDefinitionView> industries() {
+    return definitions().industries();
+  }
+
+  /**
+   * ★★ <b>当刻生产定义的只读来源</b>（production 契约；P1 起定义权威在 production）。
+   *
+   * <p>★ {@link EconomyData} <b>不持有</b>定义，故它继承本方法的缺省实现（抛出）；真实执行视图（{@code WorkingDayView} / revision
+   * 边界的装配视图）覆盖它并返回当刻 production 定义。这是"缺定义不能当空表降级"的机读形态：误用当场 fail-closed。
+   */
+  default ProductionDefinitionLookup definitions() {
+    throw new IllegalStateException(
+        "该 EconomyDayView 不持有生产定义：请经装配好的执行视图（definitions()）取 production.contract 定义");
+  }
 
   /**
    * 家户行表（人口/劳动/居住格/参与度）。★ <b>工作副本优先</b>：段内每天的生死、迁移、劳动重算、模式切换都在改它 —— 这就是"当刻人口与当刻位置"的唯一来源（不得与 {@link
@@ -119,7 +134,9 @@ public interface EconomyDayView {
   Map<ClassStructureId, ClassStructure> classStructures();
 
   /** 生产方式模板（静态）⇒ 段内不变；空表 = 未接线 E1–E6（旧世界形态）。 */
-  Map<ProductionModeId, ProductionMode> modes();
+  default Map<ProductionModeId, ProductionModeDefinitionView> modes() {
+    return definitions().modes();
+  }
 
   /** 家户需求表（静态）⇒ 段内不变。 */
   Map<DemandId, HouseholdDemand> demands();

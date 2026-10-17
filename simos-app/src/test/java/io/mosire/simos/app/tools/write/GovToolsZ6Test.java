@@ -75,6 +75,7 @@ import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
 import io.mosire.simos.gov.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -527,7 +528,8 @@ class GovToolsZ6Test {
       assertThat(commitment.laborMilli()).as("承诺 = 工具显式给的 100 毫小时（不静默按 Social 全额）").isEqualTo(100L);
       assertThat(commitment.activity())
           .as("activity 缺省解析到 GOV 唯一 office unit")
-          .isEqualTo(serviceUnitOf(economyAfter, CENTRAL).value());
+          // ★★ D-032 T1：unit 的真值在 production 切片（实例权威已迁出 economy）⇒ 读数换片，判据不变。
+          .isEqualTo(serviceUnitOf(productionInstances(after), CENTRAL).value());
 
       assertThat(unitHouseholds(after))
           .as("外部户保留原单位归属：Unit.households 全表逐值不变")
@@ -540,7 +542,8 @@ class GovToolsZ6Test {
       assertThat(afterFormation.staff()).as("stored staff 逐值不变（投影不写 staff）").isEqualTo(beforeStaff);
 
       GovernmentServiceLaborBridge.Supply supply =
-          GovernmentServiceLaborBridge.supply(economyAfter, CENTRAL, afterFormation, 0L);
+          GovernmentServiceLaborBridge.supply(
+              economyAfter, productionUnitsOf(after), CENTRAL, afterFormation, 0L);
       assertThat(supply.securityLaborMilli())
           .as("tier-2 公文档：既有官方 tier-3 治安腿 = 32000×500/1000 = 16000")
           .isEqualTo(16_000L);
@@ -1316,19 +1319,28 @@ class GovToolsZ6Test {
     SimulationState state = GovZ6WorldFixture.smallWorldState("Map1");
     EconomyData economy = GovZ6WorldFixture.economySlice(state);
     UnitState units = GovZ6WorldFixture.unitSlice(state);
+    // ★★ D-032 T1：`GovernmentServiceUnitConsistency.{mismatches,requireConsistent}` 新增
+    // `productionUnits`
+    //   形参（B2b 裁定六：实例权威迁 production）。★ **必须传真创世的实例投影，不能填 `Map.of()`** ——
+    //   该判据就是"逐条扫 production 实例的 operator 与 unit 切片对账"，空表会让整条断言变成空转
+    //   （`mismatches` 的 `ordered` 为空 ⇒ 恒返回空表，"缺 GOV"这条永远发现不了）。
+    Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> productionUnits =
+        productionInstances(state);
 
-    GovernmentServiceUnitConsistency.requireConsistent(economy, units); // 真创世必须自洽
+    GovernmentServiceUnitConsistency.requireConsistent(economy, productionUnits, units); // 真创世必须自洽
 
     UnitState withoutCentral = new UnitState(Map.of(PROVINCE, units.units().get(PROVINCE)));
     List<GovernmentServiceUnitConsistency.Mismatch> missingUnit =
-        GovernmentServiceUnitConsistency.mismatches(economy, withoutCentral);
+        GovernmentServiceUnitConsistency.mismatches(economy, productionUnits, withoutCentral);
     assertThat(missingUnit).as("经济 unit operator=hh-gov-gov-central 但 unit 切片缺该 GOV").hasSize(1);
     assertThat(missingUnit.get(0).kind()).isEqualTo("GOV_SERVICE_GOV_UNIT_MISSING");
     assertThat(missingUnit.get(0).detail()).contains("gov-central");
 
     try (AppLogCapture log = AppLogCapture.appTime()) {
       assertThatThrownBy(
-              () -> GovernmentServiceUnitConsistency.requireConsistent(economy, withoutCentral))
+              () ->
+                  GovernmentServiceUnitConsistency.requireConsistent(
+                      economy, productionUnits, withoutCentral))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("GOV_SERVICE_GOV_UNIT_MISSING");
       assertThat(
@@ -1364,13 +1376,15 @@ class GovToolsZ6Test {
             List.of()));
     UnitState noFormation = new UnitState(replaced);
     List<GovernmentServiceUnitConsistency.Mismatch> missingFormation =
-        GovernmentServiceUnitConsistency.mismatches(economy, noFormation);
+        GovernmentServiceUnitConsistency.mismatches(economy, productionUnits, noFormation);
     assertThat(missingFormation).hasSize(1);
     assertThat(missingFormation.get(0).kind()).isEqualTo("GOV_SERVICE_GOV_FORMATION_MISSING");
 
     try (AppLogCapture log = AppLogCapture.appTime()) {
       assertThatThrownBy(
-              () -> GovernmentServiceUnitConsistency.requireConsistent(economy, noFormation))
+              () ->
+                  GovernmentServiceUnitConsistency.requireConsistent(
+                      economy, productionUnits, noFormation))
           .isInstanceOf(IllegalStateException.class)
           .hasMessageContaining("GOV_SERVICE_GOV_FORMATION_MISSING");
       assertThat(
@@ -1481,6 +1495,7 @@ class GovToolsZ6Test {
       GovernmentServiceLaborBridge.Supply beforeSupply =
           GovernmentServiceLaborBridge.supply(
               GovZ6WorldFixture.economySlice(world.state()),
+              productionUnitsOf(world.state()),
               CENTRAL,
               formation(world.state(), CENTRAL),
               1L);
@@ -1488,6 +1503,7 @@ class GovToolsZ6Test {
           GovSalaryRuleBridge.deriveReport(
               GovZ6WorldFixture.unitSlice(world.state()),
               GovZ6WorldFixture.economySlice(world.state()),
+              productionUnitsOf(world.state()),
               1L);
       assertThat(beforeReport.rules()).as("正向对照：既有官方承诺产生工资规则，桥不是恒空").isNotEmpty();
 
@@ -1520,14 +1536,18 @@ class GovToolsZ6Test {
 
       EconomyData economyAfter = GovZ6WorldFixture.economySlice(after);
       GovernmentServiceLaborBridge.Supply afterSupply =
-          GovernmentServiceLaborBridge.supply(economyAfter, CENTRAL, afterFormation, 1L);
+          GovernmentServiceLaborBridge.supply(
+              economyAfter, productionUnitsOf(after), CENTRAL, afterFormation, 1L);
       assertThat(afterSupply).as("该户无承诺 ⇒ 供给桥不因外岗多出任何供给（bridge 读数逐值不变）").isEqualTo(beforeSupply);
-      assertThat(GovernmentServiceLaborBridge.committedLaborByHousehold(economyAfter, CENTRAL, 1L))
+      assertThat(
+              GovernmentServiceLaborBridge.committedLaborByHousehold(
+                  economyAfter, productionUnitsOf(after), CENTRAL, 1L))
           .as("裸挂外岗不写承诺")
           .doesNotContainKey(ghost);
 
       GovSalaryRuleBridge.Report afterReport =
-          GovSalaryRuleBridge.deriveReport(GovZ6WorldFixture.unitSlice(after), economyAfter, 1L);
+          GovSalaryRuleBridge.deriveReport(
+              GovZ6WorldFixture.unitSlice(after), economyAfter, productionUnitsOf(after), 1L);
       assertThat(afterReport.rules())
           .as("无承诺 ⇒ 不伪造工资规则")
           .noneMatch(
@@ -1789,14 +1809,33 @@ class GovToolsZ6Test {
         .orElseThrow();
   }
 
-  /** 该 GOV 行政服务 unit（operator = hh-gov-&lt;govId&gt; 的唯一 office unit；Z5 创世事实）。 */
-  private static ProductionUnitId serviceUnitOf(EconomyData economy, UnitId govId) {
+  /**
+   * 该 GOV 行政服务 unit（operator = hh-gov-&lt;govId&gt; 的唯一 office unit；Z5 创世事实）。
+   *
+   * <p>★★ D-032 T1：实例的唯一权威已按 B2b（裁定六）迁到 production ⇒ 本助手的第一参从 {@code EconomyData} 换成 **production
+   * 实例投影**（{@code ProductionStateLookup#instances()}，即 {@code ProductionData.instances()}）。
+   * 判据一字未改：仍按 operator 找唯一那条 office unit。
+   */
+  private static ProductionUnitId serviceUnitOf(
+      Map<ProductionUnitId, ProductionProcess> productionUnits, UnitId govId) {
     ActorRef operator = HouseholdActors.of(GovernmentHouseholds.of(govId.value()));
-    return economy.units().values().stream()
+    return productionUnits.values().stream()
         .filter(process -> process.operator().equals(operator))
         .findFirst()
         .orElseThrow()
         .id();
+  }
+
+  /**
+   * ★★ D-032 T1：**生产实例**的当刻真值（跨模块测试只能经 production 切片读 —— 实例权威在 production）。形态同 {@code
+   * GovZ6WorldFixture} 的 {@code economySlice/unitSlice}，只是 production 侧没有共享助手。
+   */
+  private static Map<ProductionUnitId, ProductionProcess> productionInstances(
+      SimulationState state) {
+    return ((io.mosire.simos.production.ProductionSnapshot)
+            state.module("production").orElseThrow())
+        .state()
+        .instances();
   }
 
   private static Map<String, Object> openPostsArgs(
@@ -1912,5 +1951,22 @@ class GovToolsZ6Test {
         + ",\"silverMilliPerCommittedHour\":"
         + salarySilver
         + "}}";
+  }
+
+  /**
+   * ★★ D-032 T6（a 桶夹具欠账）：本用例 state 的 production 实例投影 = 组合根各桥的 {@code productionUnits} 入参。
+   *
+   * <p>空表（旧稿的 {@code Map.of()}）⇒ {@code serviceUnitIdsOf} 找不到该 GOV 的 office unit ⇒ 承诺/供给两口径 恒 0
+   * ⇒「治安腿 = 32000×500/1000 = 16000」与「工资规则非空」两条正对照当场红。本方法把入参换成**当刻权威实例表** （与 {@code
+   * AppGovToolViews:30-44} 同一读法），断言一字未改。
+   */
+  private static Map<
+          io.mosire.simos.economy.api.id.ProductionUnitId,
+          io.mosire.simos.production.contract.ProductionProcess>
+      productionUnitsOf(SimulationState state) {
+    return ((io.mosire.simos.production.ProductionSnapshot)
+            state.module("production").orElseThrow())
+        .state()
+        .instances();
   }
 }

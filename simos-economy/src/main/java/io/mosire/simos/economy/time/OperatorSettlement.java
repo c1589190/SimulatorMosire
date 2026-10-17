@@ -7,19 +7,19 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -103,7 +103,7 @@ final class OperatorSettlement {
   static void accumulateMarketEvidence(
       LinkedHashMap<ProductionUnitId, OperatorCondition> conditions,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       MarketReport report,
       MarketSettlement.HaulServiceRound haulService) {
     if (report == null) {
@@ -127,7 +127,7 @@ final class OperatorSettlement {
       }
       for (ProductionUnitId id : candidates) {
         ProductionProcess unit = units.get(id);
-        Industry industry = unit == null ? null : industries.get(unit.industry());
+        IndustryDefinitionView industry = unit == null ? null : industries.get(unit.industry());
         if (unit == null || industry == null || !belongsTo(outcome, unit, industry)) {
           continue;
         }
@@ -149,7 +149,7 @@ final class OperatorSettlement {
       }
       for (ProductionUnitId id : candidates) {
         ProductionProcess unit = units.get(id);
-        Industry industry = unit == null ? null : industries.get(unit.industry());
+        IndustryDefinitionView industry = unit == null ? null : industries.get(unit.industry());
         if (unit == null
             || industry == null
             || !industry.outputPerUnit().containsKey(fill.commodity())) {
@@ -177,7 +177,7 @@ final class OperatorSettlement {
       if (unit == null) {
         continue;
       }
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       if (industry == null) {
         continue;
       }
@@ -239,7 +239,7 @@ final class OperatorSettlement {
   private static void accumulateHaulServiceRevenue(
       Map<ActorRef, List<ProductionUnitId>> unitsByOperator,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<ProductionUnitId, EvidenceAccumulator> byUnit,
       Map<HouseholdId, Map<CurrencyId, Long>> revenueByHousehold) {
     for (Map.Entry<HouseholdId, Map<CurrencyId, Long>> entry : revenueByHousehold.entrySet()) {
@@ -251,7 +251,7 @@ final class OperatorSettlement {
       List<ProductionUnitId> haulUnits = new ArrayList<>();
       for (ProductionUnitId id : candidates) {
         ProductionProcess unit = units.get(id);
-        Industry industry = unit == null ? null : industries.get(unit.industry());
+        IndustryDefinitionView industry = unit == null ? null : industries.get(unit.industry());
         if (unit != null
             && industry != null
             && industry.outputPerUnit().containsKey(HaulService.HAUL_COMMODITY)) {
@@ -307,8 +307,8 @@ final class OperatorSettlement {
    */
   static List<Exit> advance(
       LinkedHashMap<ProductionUnitId, OperatorCondition> conditions,
-      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<ProductionUnitId, ProductionRules> relations,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       SettlementIndex index,
@@ -326,7 +326,7 @@ final class OperatorSettlement {
       if (unit == null) {
         continue;
       }
-      Industry industry = industries.get(unit.industry());
+      IndustryDefinitionView industry = industries.get(unit.industry());
       if (industry == null) {
         throw new IllegalStateException("生产单元指名的产业模板不存在（状态已被改坏）: " + unit);
       }
@@ -662,7 +662,7 @@ final class OperatorSettlement {
    * 本模板产出商品}（与 R3 首版口径兼容）。
    */
   private static boolean belongsTo(
-      MarketReport.SellerOutcome outcome, ProductionProcess unit, Industry industry) {
+      MarketReport.SellerOutcome outcome, ProductionProcess unit, IndustryDefinitionView industry) {
     if (!outcome.actor().equals(unit.operator())) {
       return false;
     }
@@ -879,7 +879,7 @@ final class OperatorSettlement {
   static boolean canSelfProvision(
       ProductionProcess unit,
       HouseholdId household,
-      Industry industry,
+      IndustryDefinitionView industry,
       SettlementIndex index,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
@@ -907,7 +907,7 @@ final class OperatorSettlement {
   private static boolean coversNextCycleInputs(
       ProductionProcess unit,
       HouseholdId household,
-      Industry industry,
+      IndustryDefinitionView industry,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);
@@ -932,7 +932,7 @@ final class OperatorSettlement {
   private static long selfUsableOf(
       HouseholdId household,
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);

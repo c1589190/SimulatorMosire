@@ -6,11 +6,9 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketZone;
@@ -23,13 +21,12 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
@@ -72,8 +69,8 @@ final class WorkingDayView implements EconomyDayView {
   }
 
   @Override
-  public Map<IndustryId, Industry> industries() {
-    return sheet.industriesOrBase();
+  public ProductionDefinitionLookup definitions() {
+    return sheet.definitions();
   }
 
   @Override
@@ -127,11 +124,6 @@ final class WorkingDayView implements EconomyDayView {
   @Override
   public Map<ClassStructureId, ClassStructure> classStructures() {
     return sheet.base().classStructures();
-  }
-
-  @Override
-  public Map<ProductionModeId, ProductionMode> modes() {
-    return sheet.base().modes();
   }
 
   @Override

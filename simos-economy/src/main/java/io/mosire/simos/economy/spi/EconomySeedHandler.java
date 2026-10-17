@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
@@ -73,9 +73,20 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     EconomyData seeded;
     try {
       payload = EconomyPayloads.parse(payloadJson);
-      seeded = EconomyPayloads.toData(payload, state.meta().timestamp());
+      io.mosire.simos.production.contract.ProductionStateLookup production =
+          // ★★ B2b：实例权威在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
+          EconomyProductionDefinitions.stateOf(state);
+      seeded =
+          EconomyPayloads.toData(
+              payload,
+              state.meta().timestamp(),
+              // ★★★ B5（§13.15.3 裁定十九）：载荷 `industries[]` 键已退役 ⇒ 产业定义（模板 + regime）从
+              //   **production 当刻定义权威**取（同一 state 的两份只读口：定义来源 + 实例投影）。
+              EconomyProductionDefinitions.of(state),
+              // ★★ B2b：实例权威也在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
+              production.instances());
     } catch (IllegalArgumentException | IllegalStateException e) {
-      // ★ 旧形状载荷（缺 household）会在 EconomyData 构造期的 LegacyHouseholdMigration 里
+      // ★ B2b：旧形状载荷（缺 household）不再有构造期自动迁移（迁移器已删）—— 它在 EconomyData 的
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
       //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
       // ★ 2026-10-23 用户裁定：被拒绝一律 INFO（reason 过脱敏，载荷明文不进日志）。
@@ -109,8 +120,6 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
                   "first",
                   "hexes",
                   EconomyPayloads.entryHexKeys(payload).size(),
-                  "industries",
-                  seeded.industries().size(),
                   "households",
                   seeded.classes().size(),
                   "markets",
@@ -149,15 +158,15 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
                   payloadHexes,
                   "occupiedHexes",
                   occupied.size(),
-                  "industriesBefore",
-                  base.industries().size(),
                   "householdsBefore",
                   base.classes().size()));
     }
     EconomyData merged =
         new EconomyData(
             base.meta(), // ★ 不覆盖：保留首次的 activatedDay / rulesVersion
-            merge(base.industries(), seeded.industries()),
+            // ★★★ D-032 B4（§13.14.2 裁定十五）：A 批续做的"占位带过 base.industries()"一行**已删** ——
+            //   组件本身已从 EconomyData 删除（定义权威唯一归 production）。追加播种不再需要"把定义带过"，
+            //   因为状态里根本没有这一维；定义经 production.Seed 落账，跨表守卫读的是那份权威。
             merge(base.classes(), seeded.classes()),
             merge(base.debtContracts(), seeded.debtContracts()),
             base.flows(),
@@ -176,16 +185,15 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.assetShares(), seeded.assetShares()),
             // ★ S3 预留的第 13 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.operatorConditions(), seeded.operatorConditions()),
-            // ★★ R3B.2 第 14 个组件（生产单元）：同一套口径追加 —— 漏了它 = 新播的 unit 静默消失，
-            //   而关系/条件指着这些 unit ⇒ 构造期守卫当场把整批种子拒掉（宁可当场拒，不静默半播）。
-            merge(base.units(), seeded.units()),
-            // ★★ R4-E2 第 15/16 个组件：播种载荷不含需求/候选预设 ⇒ 原样带过已有状态（漏了它 = 再播一国时
-            //   把 GM 注入的需求/预设静默抹掉）。
+            // ★★ B2b：第 14 个组件（生产单元）已从 EconomyData 删除（唯一权威在 production）——
+            //   本处不再有该组件的合并腿；创世/追加播种的生产实例由 production.Seed 的实例段承接。
+            // ★★ R4-E2 第 15 个组件：播种载荷不含需求 ⇒ 原样带过已有状态（漏了它 = 再播一国时
+            //   把 GM 注入的需求静默抹掉）。★★ B2c：第 16 个组件（候选预设表）已删除 ⇒ 无带过腿。
             base.demands(),
-            base.candidates(),
-            // ★★ E1 第 17–20 个组件：播种载荷暂不声明新地基 ⇒ 逐值带过已有状态（漏了它 = 后续命令写入的
-            //   mode/作业/归属静默消失；E1 不接线结算，但新状态必须能被后续阶段安全地跨命令保留）。
-            merge(base.modes(), seeded.modes()),
+            // ★★★ B5（§13.15.2 裁定十八）：第 17 个组件 `modes` 已从 EconomyData 删除 ⇒ 本处不再有带过腿
+            //   （生产方式定义的唯一权威在 production；economy 侧没有可被"再播一国"抹掉的定义副本）。
+            // ★★ E1 第 18–20 个组件：播种载荷暂不声明新地基 ⇒ 逐值带过已有状态（漏了它 = 后续命令写入的
+            //   作业/归属静默消失；E1 不接线结算，但新状态必须能被后续阶段安全地跨命令保留）。
             merge(base.classStructures(), seeded.classStructures()),
             merge(base.classPositions(), seeded.classPositions()),
             merge(base.classStandings(), seeded.classStandings()),
@@ -214,10 +222,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ P4a：seed 载荷不声明周期规则 ⇒ 原样带过已有规则（漏了它 = 后续按格补种
             //   会让所有已注册规则静默消失）。
             base.periodicAdjustments(),
-            // ★★ Z1：seed 载荷不声明产品产出数量覆盖表 / 生产效率表 ⇒ 原样带过已有状态（同 periodicAdjustments 口径；
-            //   first-seed 路径的 seeded 两表为空 ⇒ 首次播种后保持空表）。
-            base.outputQuantityOverrides(),
-            base.productionEfficiency(),
+            // ★★ B2b：Z1 的产品产出数量覆盖表与生产效率表已从 EconomyData 删除（唯一权威在 production）。
             // ★★ A1：seed 载荷不声明货币词表（币种由创世/命令 economy.DefineCurrency 决定）⇒ 按 append 口径
             //   合并已有状态：漏了它 = 后续按格补种会把这个世界已经定义过的币种/工具静默抹回出厂值。
             //   ★ first-seed 路径的 seeded 两表 = 旧世界默认（silver/silver-specie），与 base 的同一份 ⇒ 逐值不变。
@@ -247,14 +252,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
                 "append",
                 "hexes",
                 payloadHexes,
-                "industriesAdded",
-                merged.industries().size() - base.industries().size(),
                 "householdsAdded",
                 merged.classes().size() - base.classes().size(),
                 "marketsAdded",
                 merged.marketTables().size() - base.marketTables().size(),
-                "industries",
-                merged.industries().size(),
                 "households",
                 merged.classes().size(),
                 "markets",
@@ -263,21 +264,13 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
   }
 
   /**
-   * 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与**家户行的格**里认（{@link IndustryHexKeys} 是唯一拼写点）。
+   * 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从**家户行的格**里认。
    *
-   * <p>★ Z1a：{@code economy.UpsertIndustry} 的"格必须有已激活经济状态"守卫复用本方法（同一判据，不在别处另写一份）。
+   * <p>★ 判据的唯一拼写点已上移到 {@link EconomyData#occupiedHexKeys()}（D-032 B4：组合根的 {@code
+   * ProductionConsumerPort} 也要用它 —— 见那个方法的类注）；本方法只是包内转调，行为逐字不变。
    */
   static Set<String> occupiedHexKeys(EconomyData base) {
-    Set<String> hexes = new LinkedHashSet<>();
-    for (IndustryId id : base.industries().keySet()) {
-      IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
-    }
-    for (var householdEconomy : base.classes().values()) {
-      hexes.add(
-          IndustryHexKeys.hexKey(
-              householdEconomy.view().hex().q(), householdEconomy.view().hex().r()));
-    }
-    return hexes;
+    return base.occupiedHexKeys();
   }
 
   /**

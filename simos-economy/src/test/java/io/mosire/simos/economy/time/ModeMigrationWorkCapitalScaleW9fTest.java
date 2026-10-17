@@ -3,15 +3,16 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,17 +22,19 @@ import org.junit.jupiter.api.Test;
  * ★★★ <b>W9f 测试批（2026-10-11）：W9-fix2 的两个<b>唯一拼写点</b>的逐值判据 + 两道闸的边界</b>。
  *
  * <p>★★ <b>为什么单开一类（它补的是 W9-fix2 的判据缺口，不是重复既有覆盖）</b>：W9-fix2 把"这一笔需要多少作业资本"收成一个拼写点 {@link
- * ModeMigrationPolicy#requiredWorkCapitalScale(Industry, long)}，计划期<b>预留</b>与执行期<b>索取</b>共用它，
- * 并把"本笔随迁人口带来的劳动"收成第二个拼写点 {@link ModeMigrationPolicy#laborCarriedByMoveUpperBound(long, long,
- * long)}。W9-fix2 批<b>一条测试都没跑</b>（派单明令）， 而本批实跑全仓 3,464 条 0 红 ⇒ 反过来说明：<b>这两个拼写点在既有测试里根本没有入口</b>（全仓只有
- * {@code ModeMigrationPolicyD024Test} 一处调 {@code ModeMigrationPolicy.plan(...)}，而它的目标格走的是"既有产业"支、
- * 不进按需 trade 支）。所以这一类的存在理由是"把 W9-fix2 修掉的那条具名不一致钉成可执行判据"。
+ * ModeMigrationPolicy#requiredWorkCapitalScale(IndustryDefinitionView,
+ * long)}，计划期<b>预留</b>与执行期<b>索取</b>共用它， 并把"本笔随迁人口带来的劳动"收成第二个拼写点 {@link
+ * ModeMigrationPolicy#laborCarriedByMoveUpperBound(long, long, long)}。W9-fix2
+ * 批<b>一条测试都没跑</b>（派单明令）， 而本批实跑全仓 3,464 条 0 红 ⇒ 反过来说明：<b>这两个拼写点在既有测试里根本没有入口</b>（全仓只有 {@code
+ * ModeMigrationPolicyD024Test} 一处调 {@code ModeMigrationPolicy.plan(...)}，而它的目标格走的是"既有产业"支、 不进按需
+ * trade 支）。所以这一类的存在理由是"把 W9-fix2 修掉的那条具名不一致钉成可执行判据"。
  *
  * <p>★★★ <b>判据出处（逐条）</b>：
  *
  * <ol>
- *   <li><b>W9-fix2 账本 §3.2</b>（本仓工作树）：唯一拼写点 = {@code requiredWorkCapitalScale(Industry, long)}，算式逐字
- *       = {@code laborPerUnit <= 0 ? 1 : max(1, laborMilli / laborPerUnit)}；
+ *   <li><b>W9-fix2 账本 §3.2</b>（本仓工作树）：唯一拼写点 = {@code
+ *       requiredWorkCapitalScale(IndustryDefinitionView, long)}，算式逐字 = {@code laborPerUnit <= 0 ? 1
+ *       : max(1, laborMilli / laborPerUnit)}；
  *   <li><b>W9-fix2 账本 §3.3</b>（两种落点的尺度算式表）：并入既有户 ⇒ 两侧都不索取/不预留（都 = 0）；新建户 ⇒ 计划期预留 {@code
  *       requiredWorkCapitalScale(模板, laborCarriedByMoveUpperBound(源户))}、执行期索取 {@code
  *       requiredWorkCapitalScale(模板, 本笔迁入劳动)} ⇒ <b>同式、同量</b>；
@@ -74,7 +77,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
    */
   @Test
   void requiredWorkCapitalScaleIsTheFloorOfLaborOverPerUnitWithAFloorOfOne() {
-    Industry trade = MerchantTradeTemplate.industry(H2);
+    IndustryDefinitionView trade = MerchantTradeTemplate.industry(H2);
     long laborPerUnit = trade.recipe().laborPerUnit();
     long toolPerUnit = trade.recipe().capacityPerUnit().get(AssetKind.TOOL);
 
@@ -122,17 +125,20 @@ class ModeMigrationWorkCapitalScaleW9fTest {
    */
   @Test
   void requiredWorkCapitalScaleTreatsNonPositiveLaborPerUnitAsASingleUnit() {
-    // ★★ 实跑更正（本批，第一轮红点）：{@code laborPerUnit < 0} **根本构造不出来** —— {@code Industry} 的规范构造器
-    //   自己 fail-closed（`Industry.laborPerUnit 不得为负: -1`，Industry.java:280）⇒ 拼写点里 {@code ≤ 0} 那一支的
+    // ★★ 实跑更正（本批，第一轮红点）：{@code laborPerUnit < 0} **根本构造不出来** —— {@code IndustryDefinitionView}
+    // 的规范构造器
+    //   自己 fail-closed（`IndustryDefinitionView.laborPerUnit 不得为负:
+    // -1`，IndustryDefinitionView.java:280）⇒ 拼写点里 {@code ≤ 0} 那一支的
     //   "负"半边是**结构性不可达**的防御分支，唯一可达的入口 = {@code laborPerUnit == 0}（旧档/未裁决模板）。
     //   这里把这个事实**钉成断言**（而不是把负数从表里悄悄删掉）：① 0 那一支逐值；② 负数当场被构造器拒。
     org.assertj.core.api.Assertions.assertThatThrownBy(() -> industry(-1L))
-        .as("★ Industry 自己就拒绝负 laborPerUnit ⇒ requiredWorkCapitalScale 的 '≤ 0' 里只有 '== 0' 可达")
+        .as(
+            "★ IndustryDefinitionView 自己就拒绝负 laborPerUnit ⇒ requiredWorkCapitalScale 的 '≤ 0' 里只有 '== 0' 可达")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("laborPerUnit");
 
     for (long laborPerUnit : new long[] {0L}) {
-      Industry noLaborUnit = industry(laborPerUnit);
+      IndustryDefinitionView noLaborUnit = industry(laborPerUnit);
       for (long labor : new long[] {0L, 1L, 999L, 1_000_000L, Long.MAX_VALUE}) {
         assertThat(ModeMigrationPolicy.requiredWorkCapitalScale(noLaborUnit, labor))
             .as("laborPerUnit=%d（≤ 0）⇒ scale 恒 1，对 labor=%d 也一样（不除零、不回绕）", laborPerUnit, labor)
@@ -140,7 +146,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
       }
     }
     // ★ 反面对照：laborPerUnit = 1 ⇒ scale 随 labor 增长（证明上面那组不是"恒 1"的假绿）。
-    Industry perUnitOne = industry(1L);
+    IndustryDefinitionView perUnitOne = industry(1L);
     assertThat(ModeMigrationPolicy.requiredWorkCapitalScale(perUnitOne, 5L))
         .as("laborPerUnit=1、labor=5 ⇒ ⌊5 ÷ 1⌋ = 5")
         .isEqualTo(5L);
@@ -316,7 +322,7 @@ class ModeMigrationWorkCapitalScaleW9fTest {
    */
   @Test
   void aHouseholdBelowOneLabourUnitLandsTheBottomTierButStillReservesOneWorkCapitalUnit() {
-    Industry trade = MerchantTradeTemplate.industry(H2);
+    IndustryDefinitionView trade = MerchantTradeTemplate.industry(H2);
     long laborPerUnit = trade.recipe().laborPerUnit();
     long belowOneUnit = laborPerUnit - 1L;
 
@@ -351,8 +357,8 @@ class ModeMigrationWorkCapitalScaleW9fTest {
    * 一个"每 1 单位规模需要 1 毫工具"的极小产业：只用来验 {@code laborPerUnit ≤ 0} 那一支与下限（★ 它的 {@code capacityPerUnit} 是 1
    * 而不是 trade 的 120，免得把两个数读混）。
    */
-  private static Industry industry(long laborPerUnit) {
-    return new Industry(
+  private static IndustryDefinitionView industry(long laborPerUnit) {
+    return IndustryViews.industry(
         CUSTOM,
         "custom-labor-per-unit",
         new RegimeId("household"),

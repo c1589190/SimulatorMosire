@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.util.log.EventLog;
@@ -81,7 +82,12 @@ public final class EconomyUpsertGovUnitHandler implements CommandHandler {
     }
     try {
       EconomyGovUnitUpserts.Projection projection =
-          EconomyGovUnitUpserts.project(base, social, payloadJson);
+          EconomyGovUnitUpserts.project(
+              EconomyProductionDefinitions.stateOf(state).instances(),
+              base,
+              social,
+              EconomyProductionDefinitions.of(state),
+              payloadJson);
       logApplied(projection);
       return new HandlerOutcome.Applied(projection.changeSet());
     } catch (IllegalStateException e) {

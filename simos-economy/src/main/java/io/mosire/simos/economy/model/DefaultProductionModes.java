@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.model.ProductionRole.LaborRole;
 import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -160,7 +161,8 @@ public final class DefaultProductionModes {
   private static final List<ModeSpec> MODE_SPECS = buildModeSpecs();
 
   /** ★ mode 表（键 = 值内 id；保序不可变）。 */
-  private static final Map<ProductionModeId, ProductionMode> MODES = indexModes(MODE_SPECS);
+  private static final Map<ProductionModeId, ProductionModeDefinitionView> MODES =
+      indexModes(MODE_SPECS);
 
   /** ★ 阶层结构表（键 = 值内 id；保序不可变）。 */
   private static final Map<ClassStructureId, ClassStructure> CLASS_STRUCTURES =
@@ -177,12 +179,12 @@ public final class DefaultProductionModes {
   private DefaultProductionModes() {}
 
   /**
-   * ★ 默认生产方式目录（键 = {@link ProductionMode#id()}；保序）。
+   * ★ 默认生产方式目录（键 = {@link ProductionModeDefinitionView#id()}；保序）。
    *
    * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（佃农制三形态 → 雇农制 → 手工业 → 桥接 {@code family_farm} → P6
    * {@code merchant} → P10.1 {@code displaced}）。
    */
-  public static Map<ProductionModeId, ProductionMode> modes() {
+  public static Map<ProductionModeId, ProductionModeDefinitionView> modes() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(MODES));
   }
 
@@ -197,7 +199,7 @@ public final class DefaultProductionModes {
   }
 
   /** ★ 按 id 查默认 mode；不在目录里 ⇒ 空（不抛：这是一个“是不是我的 mode”的判断）。 */
-  public static Optional<ProductionMode> mode(ProductionModeId modeId) {
+  public static Optional<ProductionModeDefinitionView> mode(ProductionModeId modeId) {
     Objects.requireNonNull(modeId, "modeId");
     return Optional.ofNullable(MODES.get(modeId));
   }
@@ -417,7 +419,8 @@ public final class DefaultProductionModes {
       defaultShares.put(positionId, 0L);
     }
     ClassStructure structure = new ClassStructure(structureId, modeId, positions, defaultShares);
-    ProductionMode mode = new ProductionMode(modeId, name, 1, structureId);
+    ProductionModeDefinitionView mode =
+        new ProductionModeDefinitionView(modeId, name, 1, structureId);
     return new ModeSpec(
         mode,
         structure,
@@ -441,8 +444,9 @@ public final class DefaultProductionModes {
   }
 
   /** 稳定索引 mode 表；id 重复 ⇒ fail-closed（常量表写坏不许静默覆盖）。 */
-  private static Map<ProductionModeId, ProductionMode> indexModes(List<ModeSpec> specs) {
-    Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>();
+  private static Map<ProductionModeId, ProductionModeDefinitionView> indexModes(
+      List<ModeSpec> specs) {
+    Map<ProductionModeId, ProductionModeDefinitionView> modes = new LinkedHashMap<>();
     for (ModeSpec spec : specs) {
       if (modes.putIfAbsent(spec.mode().id(), spec.mode()) != null) {
         throw new IllegalStateException("默认生产方式目录内 mode id 重复: " + spec.mode().id());
@@ -497,7 +501,7 @@ public final class DefaultProductionModes {
 
   /** 一个 mode 的完整出厂规格；mode/结构已由本类构建，外部只读取。 */
   private record ModeSpec(
-      ProductionMode mode,
+      ProductionModeDefinitionView mode,
       ClassStructure structure,
       List<ProductionRole> orderedPositions,
       Map<String, ProductionRole> positionsByRole) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -131,7 +132,7 @@ public final class EconomySwitchModeHandler implements CommandHandler, CommandTa
         return new HandlerOutcome.Rejected("生产组织不存在: " + organizationId.value());
       }
       ProductionModeId fromModeId = enterprise.modeId();
-      if (!base.modes().containsKey(toModeId)) {
+      if (EconomyProductionDefinitions.of(state).mode(toModeId).isEmpty()) {
         EventLog.channel(LOG)
             .info(
                 LogEvent.of(

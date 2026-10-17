@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -21,26 +22,26 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -374,7 +375,8 @@ public final class ModeMigrationPolicy {
       EnterpriseProfitBook.Book book,
       long day,
       MarketTopology topology,
-      List<MarketReport> marketReports) {
+      List<MarketReport> marketReports,
+      ProductionRuntime productionRuntime) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
@@ -389,6 +391,8 @@ public final class ModeMigrationPolicy {
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(marketReports, "marketReports（没有报告给空表）");
+    Objects.requireNonNull(
+        productionRuntime, "productionRuntime（§15.12 B：候选/当前户的物理量必须取自 production 的试算）");
     // ★★ P10.6：计划期共享的"闲置资产预留账本"。同一 plan() 的所有源户、所有目标新建户、allocate 的两遍
     //    都读写同一份账本 ⇒ 后一个新建户看到的是前面计划已消费后的剩余闲置资产，与执行期逐笔拆份额一致。
     Map<IndustryId, Map<AssetKind, Long>> reservedIdle = new LinkedHashMap<>();
@@ -481,7 +485,7 @@ public final class ModeMigrationPolicy {
     }
 
     List<HexCoord> hexes = globalHexes(householdEconomies, units, markets, base.marketZones());
-    List<ProductionMode> modes = sortedModes(base);
+    List<ProductionModeDefinitionView> modes = sortedModes(base);
     Map<ProductionModeId, List<ProductionRole>> producingPositions =
         producingPositionsByMode(base, modes);
 
@@ -522,7 +526,8 @@ public final class ModeMigrationPolicy {
               demandBook,
               topology,
               day,
-              tally);
+              tally,
+              productionRuntime);
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
@@ -592,7 +597,7 @@ public final class ModeMigrationPolicy {
       HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
       List<HexCoord> hexes,
-      List<ProductionMode> modes,
+      List<ProductionModeDefinitionView> modes,
       Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
@@ -607,9 +612,11 @@ public final class ModeMigrationPolicy {
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
       long day,
-      CandidateTally tally) {
+      CandidateTally tally,
+      ProductionRuntime productionRuntime) {
     // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
-    Industry currentIndustry = currentIndustryOf(base, source, current, units, enterprises);
+    IndustryDefinitionView currentIndustry =
+        currentIndustryOf(base, source, current, units, enterprises);
     ExpectedProfitBook.Prospect currentProspect =
         ExpectedProfitBook.prospect(
             base,
@@ -625,7 +632,10 @@ public final class ModeMigrationPolicy {
             units,
             relations,
             topology,
-            day);
+            day,
+            // ★★ §15.12 B（R1）：当前户的物理量（产出/所需劳动/所需投入）也走同一份试算 ——
+            //   A 规则与"能否维持生产"从此看见熟练度/GM 覆盖/解锁条件。
+            productionRuntime);
     long currentPerLabor = currentProspect.netPerLaborScaled();
     // ★★★ W9-fix（控制方裁定 v3.32 §7 第 1 条）：速度算式的**正参考基准**（分母下限）之一 ——
     //   **当前生产方式的"收益规模基准"**（1 单位规模劳动的毛收入 / 口粮成本，见 {@link #profitScaleBasisScaled}）。
@@ -656,7 +666,8 @@ public final class ModeMigrationPolicy {
             demandBook,
             topology,
             day,
-            tally);
+            tally,
+            productionRuntime);
     // ★★ M-D（设计书 §13 I-A/I-B）：**生产方式排序表** —— 当前项（主业）+ 全部成立候选，
     //   排序输入 = 市场议价权（本格运力占比‰，G-1 同一拼写点）+ 库存（货币余额 + 商品库存折价 + 生产资料份额）；
     //   破平 = 位置 id 升序（I-3）。★ 纯读数：本表不写任何状态，落点仍走既有模式变迁路径。
@@ -913,7 +924,7 @@ public final class ModeMigrationPolicy {
       long currentProfitBasisScaled,
       List<PrimaryModeRanking.Excluded> excluded,
       List<HexCoord> hexes,
-      List<ProductionMode> modes,
+      List<ProductionModeDefinitionView> modes,
       Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -926,14 +937,15 @@ public final class ModeMigrationPolicy {
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
       long day,
-      CandidateTally tally) {
+      CandidateTally tally,
+      ProductionRuntime productionRuntime) {
     List<Target> targets = new ArrayList<>();
     for (HexCoord hex : hexes) {
       int distance = sourceHouseholdEconomy.view().hex().distanceTo(hex);
       if (distance > 1) {
         continue;
       }
-      for (ProductionMode mode : modes) {
+      for (ProductionModeDefinitionView mode : modes) {
         if (DefaultProductionModes.DISPLACED.equals(mode.id())) {
           continue; // displaced 只在 A 规则"无路可走"支里出现
         }
@@ -972,7 +984,8 @@ public final class ModeMigrationPolicy {
         //   ① 档位按**整户**能带走的作业资本算（carriedCapitalByKind：自有 + 可移动 + 未被占用 + 工具商品库存）；
         //   ② 目标产业模板 = 该 (mode, hex) 解析出来的那一个（农场/作坊/商号各自的 slots() 与 capacityPerUnit）；
         //   ③ 只有**新建**目标才落档位（并入既有户时，目标户的档位是它自己的 —— 不是这笔能决定的）。
-        Industry tierIndustry = industryForTier(base, hex, mode.id(), merchantCandidate);
+        IndustryDefinitionView tierIndustry =
+            industryForTier(base, hex, mode.id(), merchantCandidate);
         int tierIndex =
             tierIndustry == null
                 ? 0
@@ -1005,7 +1018,9 @@ public final class ModeMigrationPolicy {
                 relations,
                 topology,
                 day,
-                tierPositionId);
+                tierPositionId,
+                // ★★ §15.12 B（R1）：候选的物理量同样取自 production 的试算（熟练度/GM 覆盖/解锁条件进选择链）。
+                productionRuntime);
         // ★★★ W9（用户裁定 v3.30 §7 第 1 条「没有库存就要么去当前生产方式的最低档…为啥要拦着？」）：
         //   **降档重试** —— 默认位置因为"这户拿不出作业资本/劳动"而不可行时，再按**最低档的位置**试一次
         //   （只有"新建目标"才试；并入既有户不生成新关系、也不新建 unit，位置不是这笔能决定的）。
@@ -1034,7 +1049,8 @@ public final class ModeMigrationPolicy {
                     relations,
                     topology,
                     day,
-                    lowestPosition);
+                    lowestPosition,
+                    productionRuntime);
             if (lowerProspect.feasible() && lowerProspect.feasibleScale() > 0L) {
               prospect = lowerProspect;
               tierPositionId = lowestPosition;
@@ -1171,10 +1187,10 @@ public final class ModeMigrationPolicy {
    * MerchantTradeTemplate#industry(HexCoord)} （与决策层预估、执行期真的写进工作副本的那一份**同一个拼写点**）。都没有 ⇒ {@code
    * null}（调用方按最低档兜底）。
    */
-  private static Industry industryForTier(
+  private static IndustryDefinitionView industryForTier(
       EconomyDayView base, HexCoord hex, ProductionModeId modeId, boolean merchant) {
     for (IndustryId industryId : industriesForMode(base, hex, modeId)) {
-      Industry industry = base.industries().get(industryId);
+      IndustryDefinitionView industry = base.industries().get(industryId);
       if (industry != null) {
         return industry;
       }
@@ -1217,7 +1233,7 @@ public final class ModeMigrationPolicy {
    * @return 档位下标（0 = 贫农/兜底档；恒 ≥ 0 且 &lt; slots().size()）
    */
   static int supportedTierIndex(
-      Industry industry, long laborMilliPlan, Map<AssetKind, Long> carriedByKind) {
+      IndustryDefinitionView industry, long laborMilliPlan, Map<AssetKind, Long> carriedByKind) {
     Objects.requireNonNull(industry, "industry");
     Objects.requireNonNull(carriedByKind, "carriedByKind");
     List<ClassSlot> slots = industry.slots();
@@ -1364,9 +1380,9 @@ public final class ModeMigrationPolicy {
       Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology) {
     IndustryId industryId = null;
-    Industry industry = null;
+    IndustryDefinitionView industry = null;
     for (IndustryId candidate : industriesForMode(base, hex, mode)) {
-      Industry resolved = base.industries().get(candidate);
+      IndustryDefinitionView resolved = base.industries().get(candidate);
       if (resolved != null) {
         industryId = candidate;
         industry = resolved;
@@ -1402,7 +1418,7 @@ public final class ModeMigrationPolicy {
    */
   static String inKindLegUnavailableReasonOf(
       IndustryId industryId,
-      Industry industry,
+      IndustryDefinitionView industry,
       List<CommodityId> inKindCommodities,
       Map<CommodityId, Long> householdStock,
       MarketTable market,
@@ -1442,11 +1458,11 @@ public final class ModeMigrationPolicy {
       HouseholdId source,
       HouseholdMode current,
       List<HexCoord> hexes,
-      List<ProductionMode> modes,
+      List<ProductionModeDefinitionView> modes,
       Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
-    ProductionMode displaced =
+    ProductionModeDefinitionView displaced =
         modes.stream()
             .filter(mode -> DefaultProductionModes.DISPLACED.equals(mode.id()))
             .findFirst()
@@ -1697,7 +1713,7 @@ public final class ModeMigrationPolicy {
     //     没有作业资本（工具）的户 ⇒ 这里算不出可用量 ⇒ 返回 0 ⇒ 不就这一格建目标
     //     （"新建户凑不齐作业资本就建不出商号"仍是诚实的约束，且与执行期 {@code planAssetMoves} 同一口径）。
     if (templates.isEmpty() && DefaultProductionModes.MERCHANT.equals(mode)) {
-      Industry onDemand = MerchantTradeTemplate.industry(hex);
+      IndustryDefinitionView onDemand = MerchantTradeTemplate.industry(hex);
       Map<AssetKind, Long> carried =
           carriedCarrierAssetsForMove(sourceHouseholdEconomy, take, assetShares);
       // ★★★ W9-fix2（2026-10-11，本批修掉的具名不一致）：规模口径**必须与执行期同一份算式** ——
@@ -1731,7 +1747,7 @@ public final class ModeMigrationPolicy {
           : 0L;
     }
     for (IndustryId industryId : templates) {
-      Industry industry = base.industries().get(industryId);
+      IndustryDefinitionView industry = base.industries().get(industryId);
       if (industry != null
           && reserveIdleAssetsFor(
               industry,
@@ -1841,7 +1857,7 @@ public final class ModeMigrationPolicy {
    * @param industry 目标产业模板（{@code laborPerUnit} 的唯一来源）
    * @param laborMilli 执行期会读到的那一行劳动（毫劳动；新建户 = 本笔迁入劳动，不是落盘行的 0）
    */
-  static long requiredWorkCapitalScale(Industry industry, long laborMilli) {
+  static long requiredWorkCapitalScale(IndustryDefinitionView industry, long laborMilli) {
     Objects.requireNonNull(industry, "industry");
     long laborPerUnit = industry.recipe().laborPerUnit();
     return laborPerUnit <= 0L ? 1L : Math.max(1L, laborMilli / laborPerUnit);
@@ -1874,7 +1890,7 @@ public final class ModeMigrationPolicy {
   }
 
   private static boolean reserveIdleAssetsFor(
-      Industry industry,
+      IndustryDefinitionView industry,
       long laborMilli,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
@@ -1925,7 +1941,7 @@ public final class ModeMigrationPolicy {
   private static HouseholdId bestExistingTarget(
       HouseholdId source,
       HexCoord hex,
-      ProductionMode mode,
+      ProductionModeDefinitionView mode,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       List<ProductionRole> producingPositions,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -1987,7 +2003,7 @@ public final class ModeMigrationPolicy {
    * 当前户实际在产的产业模板（组织/unit 优先；找不到 ⇒ null，让 {@link ExpectedProfitBook} 按 mode 默认 regime 挑）。
    * 这样"当前户读数"用真实在产的配方，而不是"该格第一个模板"。
    */
-  private static Industry currentIndustryOf(
+  private static IndustryDefinitionView currentIndustryOf(
       EconomyDayView base,
       HouseholdId household,
       HouseholdMode current,
@@ -2004,7 +2020,7 @@ public final class ModeMigrationPolicy {
       }
       ProductionProcess unit = units.get(enterprise.unitId().get());
       if (unit != null) {
-        Industry industry = base.industries().get(unit.industry());
+        IndustryDefinitionView industry = base.industries().get(unit.industry());
         if (industry != null) {
           return industry;
         }
@@ -2020,7 +2036,7 @@ public final class ModeMigrationPolicy {
       }
       HexCoord unitHex = unitHexOrNull(unit);
       if (unitHex != null && unitHex.equals(current.hex)) {
-        Industry industry = base.industries().get(unit.industry());
+        IndustryDefinitionView industry = base.industries().get(unit.industry());
         if (industry != null) {
           return industry;
         }
@@ -2212,7 +2228,7 @@ public final class ModeMigrationPolicy {
       EconomyDayView base, Map<ProductionUnitId, ProductionProcess> units) {
     long horizon = 0L;
     for (ProductionProcess unit : units.values()) {
-      Industry industry = base.industries().get(unit.industry());
+      IndustryDefinitionView industry = base.industries().get(unit.industry());
       if (industry != null) {
         horizon = Math.max(horizon, industry.cycleDays());
       }
@@ -2220,7 +2236,7 @@ public final class ModeMigrationPolicy {
     if (horizon > 0L) {
       return horizon;
     }
-    for (Industry industry : base.industries().values()) {
+    for (IndustryDefinitionView industry : base.industries().values()) {
       if (industry != null) {
         horizon = Math.max(horizon, industry.cycleDays());
       }
@@ -2250,7 +2266,7 @@ public final class ModeMigrationPolicy {
    * 判据本体只有这一处拼写。
    */
   static List<IndustryId> industriesForMode(
-      Map<IndustryId, Industry> industries, HexCoord hex, ProductionModeId modeId) {
+      Map<IndustryId, IndustryDefinitionView> industries, HexCoord hex, ProductionModeId modeId) {
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(modeId, "modeId");
@@ -2262,7 +2278,7 @@ public final class ModeMigrationPolicy {
     }
     List<IndustryId> matching = new ArrayList<>();
     for (IndustryId industryId : candidates) {
-      Industry industry = industries.get(industryId);
+      IndustryDefinitionView industry = industries.get(industryId);
       if (industry != null && wanted.get().equals(industry.regime().value())) {
         matching.add(industryId);
       }
@@ -2426,9 +2442,9 @@ public final class ModeMigrationPolicy {
   }
 
   private static Map<ProductionModeId, List<ProductionRole>> producingPositionsByMode(
-      EconomyDayView base, List<ProductionMode> modes) {
+      EconomyDayView base, List<ProductionModeDefinitionView> modes) {
     Map<ProductionModeId, List<ProductionRole>> result = new LinkedHashMap<>();
-    for (ProductionMode mode : modes) {
+    for (ProductionModeDefinitionView mode : modes) {
       ClassStructure structure = base.classStructures().get(mode.classStructureId());
       if (structure == null) {
         result.put(mode.id(), List.of());
@@ -2546,8 +2562,8 @@ public final class ModeMigrationPolicy {
         && share.operator().equals(unit.operator());
   }
 
-  private static List<ProductionMode> sortedModes(EconomyDayView base) {
-    List<ProductionMode> modes = new ArrayList<>(base.modes().values());
+  private static List<ProductionModeDefinitionView> sortedModes(EconomyDayView base) {
+    List<ProductionModeDefinitionView> modes = new ArrayList<>(base.modes().values());
     modes.sort(Comparator.comparing(mode -> mode.id().value()));
     return modes;
   }

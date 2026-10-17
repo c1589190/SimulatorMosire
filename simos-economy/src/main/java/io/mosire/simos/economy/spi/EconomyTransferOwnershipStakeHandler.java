@@ -8,6 +8,8 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -141,7 +143,7 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       }
       ActorRef toOwner = optionalActor(payload, "toOwner", share.owner());
       ActorRef toOperator = optionalActor(payload, "toOperator", share.operator());
-      OwnershipStake.RightKind kind = optionalKind(payload, "kind", share.kind());
+      AssetRightKind kind = optionalKind(payload, "kind", share.kind());
       if (toOwner.equals(share.owner())
           && toOperator.equals(share.operator())
           && kind == share.kind()) {
@@ -184,7 +186,7 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       try {
         OwnershipStakeBook.transfer(
             updated,
-            base.industries(),
+            EconomyProductionDefinitions.of(state).industries(),
             updatedPledges,
             shareId,
             quantity,
@@ -261,8 +263,8 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
   }
 
   /** 可选的 {@code kind}：缺键 / JSON null ⇒ 原值；给了但不在词表 ⇒ 抛（列出合法值）。 */
-  private static OwnershipStake.RightKind optionalKind(
-      JsonNode payload, String field, OwnershipStake.RightKind fallback) {
+  private static AssetRightKind optionalKind(
+      JsonNode payload, String field, AssetRightKind fallback) {
     JsonNode node = payload.get(field);
     if (node == null || node.isNull()) {
       return fallback;
@@ -271,13 +273,13 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       throw new IllegalArgumentException("字段 " + field + " 必须是非空字符串: " + node);
     }
     try {
-      return OwnershipStake.RightKind.valueOf(node.asText());
+      return AssetRightKind.valueOf(node.asText());
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           "未知 RightKind: "
               + node.asText()
               + "；合法值: "
-              + java.util.Arrays.toString(OwnershipStake.RightKind.values()));
+              + java.util.Arrays.toString(AssetRightKind.values()));
     }
   }
 

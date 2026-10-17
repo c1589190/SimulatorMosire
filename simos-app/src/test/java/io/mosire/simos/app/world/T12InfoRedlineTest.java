@@ -6,12 +6,14 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.culture.codec.CultureCodec;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.production.codec.ProductionCodec;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -61,6 +63,10 @@ class T12InfoRedlineTest {
       core.register(new GovCodec());
       // ★ D1（2026-10-02）：RichWorld.state() 带 army 切片 ⇒ codec 表必须随之长。
       core.register(new ArmyCodec());
+      // ★★ D-031 Z6（2026-10-16）：RichWorld.state() 带 production/culture 切片 ⇒ codec 表必须随之长
+      //   （否则 CheckpointEncoder「信封要写的模块没有装配 codec」当场抛）。
+      core.register(new ProductionCodec());
+      core.register(new CultureCodec());
 
       SimulationState genesis = RichWorld.state("Map1");
       core.bootstrapGenesis(genesis);
@@ -73,7 +79,16 @@ class T12InfoRedlineTest {
       // 装置自证：先证明这个状态**真的装着世界**，否则"info 为空"可能只是"没读到任何东西"。
       assertThat(replayed.modules().keySet())
           .containsExactlyInAnyOrder(
-              "map", "social", "unit", "ga", "economy", "actor", "gov", "army");
+              "map",
+              "social",
+              "unit",
+              "ga",
+              "economy",
+              "actor",
+              "gov",
+              "army",
+              "production",
+              "culture");
 
       InfoSystem info = replayed.info();
       assertThat(info).as("C26：全局 Info 段（InfoSystem）一条都没有").isEqualTo(InMemoryInfoSystem.empty());

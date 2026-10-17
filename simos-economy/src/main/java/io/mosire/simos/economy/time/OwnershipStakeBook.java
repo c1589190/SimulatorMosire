@@ -2,14 +2,15 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -47,8 +48,8 @@ import java.util.Set;
  * 的引用；若源份额被本批移空，<b>保留一条 {@code quantity = 0} 的零行</b>，让"质押 → 份额"的引用继续成立。 零行不占任何额度，也不参与实物总量。
  *
  * <p>★★ <b>新份额 id 确定性</b>：新 id 走 {@link OwnershipStake#idOf(IndustryId, AssetKind, ActorRef,
- * ActorRef, OwnershipStake.RightKind, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。★ 旧档 opaque id
- * 不解析、不改写，只按「同 tuple 已有行」直接合并。
+ * ActorRef, AssetRightKind, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。★ 旧档 opaque id 不解析、不改写，只按「同
+ * tuple 已有行」直接合并。
  *
  * <p>★★ <b>新质押 id 确定性</b>：跟随产生的质押走 {@link #nextPledgeId}，形如 {@code pledge-follow-N}（N 从 0 起找
  * 第一个未占用序号）。它只表达"由跟随产生的新质押行"，与旧 {@code PledgeId} 不解析、不拼接（旧 id 可能带 {@code "."}， 拼进新 id
@@ -79,7 +80,7 @@ public final class OwnershipStakeBook {
       long quantity,
       ActorRef toOwner,
       ActorRef toOperator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
 
     public Move {
       Objects.requireNonNull(source, "OwnershipStakeBook.Move.source 不得为 null");
@@ -100,13 +101,13 @@ public final class OwnershipStakeBook {
    */
   public static AssetShareId transfer(
       Map<AssetShareId, OwnershipStake> shares,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<PledgeId, Pledge> pledges,
       AssetShareId source,
       long quantity,
       ActorRef toOwner,
       ActorRef toOperator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
     List<AssetShareId> created =
         apply(
             shares,
@@ -122,13 +123,13 @@ public final class OwnershipStakeBook {
    */
   public static AssetShareId split(
       Map<AssetShareId, OwnershipStake> shares,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<PledgeId, Pledge> pledges,
       AssetShareId sourceId,
       long quantity,
       ActorRef toOwner,
       ActorRef toOperator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
     Objects.requireNonNull(shares, "shares 不得为 null");
     Objects.requireNonNull(sourceId, "sourceId 不得为 null");
     OwnershipStake source = shares.get(sourceId);
@@ -158,7 +159,7 @@ public final class OwnershipStakeBook {
    */
   public static List<AssetShareId> apply(
       Map<AssetShareId, OwnershipStake> shares,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<PledgeId, Pledge> pledges,
       List<Move> moves) {
     Objects.requireNonNull(moves, "OwnershipStakeBook.apply 的 moves 不得为 null");
@@ -191,7 +192,7 @@ public final class OwnershipStakeBook {
       IndustryId toIndustry,
       ActorRef toOwner,
       ActorRef toOperator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
 
     public RebuildMove {
       Objects.requireNonNull(source, "OwnershipStakeBook.RebuildMove.source 不得为 null");
@@ -212,7 +213,7 @@ public final class OwnershipStakeBook {
    */
   public static List<AssetShareId> rebuild(
       Map<AssetShareId, OwnershipStake> shares,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<PledgeId, Pledge> pledges,
       List<RebuildMove> moves) {
     Objects.requireNonNull(moves, "OwnershipStakeBook.rebuild 的 moves 不得为 null");
@@ -240,7 +241,7 @@ public final class OwnershipStakeBook {
       IndustryId toIndustry,
       ActorRef toOwner,
       ActorRef toOperator,
-      OwnershipStake.RightKind kind) {}
+      AssetRightKind kind) {}
 
   /** 目标份额的合并键（同 tuple = 同一行，数量与质押都比例累加）。 */
   private record ShareTuple(
@@ -248,7 +249,7 @@ public final class OwnershipStakeBook {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      OwnershipStake.RightKind kind) {}
+      AssetRightKind kind) {}
 
   /** 跟随质押的合并键：同一目标份额上「同债务合同 + 同 mode + 同优先级」的 ACTIVE 质押累加。 */
   private record PledgeMergeKey(
@@ -261,7 +262,7 @@ public final class OwnershipStakeBook {
 
   private static List<AssetShareId> execute(
       Map<AssetShareId, OwnershipStake> shares,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<PledgeId, Pledge> pledges,
       List<PlannedMove> moves,
       boolean rebuildMode) {
@@ -270,7 +271,8 @@ public final class OwnershipStakeBook {
     if (moves.isEmpty()) {
       return List.of(); // ★ 无操作 ⇒ 不动表
     }
-    Map<IndustryId, Industry> knownIndustries = industries == null ? Map.of() : industries;
+    Map<IndustryId, IndustryDefinitionView> knownIndustries =
+        industries == null ? Map.of() : industries;
     Map<PledgeId, Pledge> knownPledges = pledges == null ? Map.of() : pledges;
 
     // ── 1) 逐 Move 校验 + 守恒归组 + 源剩余覆盖层 ─────────────────────────────────────────
@@ -297,7 +299,7 @@ public final class OwnershipStakeBook {
                 + source.industry());
       }
       IndustryId toIndustry = rebuildMode ? move.toIndustry() : source.industry();
-      Industry targetIndustry = knownIndustries.get(toIndustry);
+      IndustryDefinitionView targetIndustry = knownIndustries.get(toIndustry);
       if (targetIndustry == null) {
         // ★ 旧口径保留：industries 为空 = 对侧尚未提供 ⇒ apply 不判产业存在；rebuild 仍必须给出可承载模板。
         if (rebuildMode || !knownIndustries.isEmpty()) {
@@ -826,7 +828,7 @@ public final class OwnershipStakeBook {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
     for (long sequence = 0L; sequence >= 0L; sequence++) {
       AssetShareId candidate =
           OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);

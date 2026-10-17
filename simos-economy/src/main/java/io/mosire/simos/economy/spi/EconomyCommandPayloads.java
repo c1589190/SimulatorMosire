@@ -6,12 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
@@ -364,9 +364,8 @@ final class EconomyCommandPayloads {
     return values;
   }
 
-  /** 权利性质集合（缺键 / JSON null ⇒ 空集；数组元素走 {@link OwnershipStake.RightKind#valueOf}）。 */
-  static Set<OwnershipStake.RightKind> optionalRightKinds(
-      String command, JsonNode payload, String field) {
+  /** 权利性质集合（缺键 / JSON null ⇒ 空集；数组元素走 {@link AssetRightKind#valueOf}）。 */
+  static Set<AssetRightKind> optionalRightKinds(String command, JsonNode payload, String field) {
     JsonNode node = payload.get(field);
     if (node == null || node.isNull()) {
       return Set.of();
@@ -374,7 +373,7 @@ final class EconomyCommandPayloads {
     if (!node.isArray()) {
       throw new IllegalArgumentException(command + " 的字段 " + field + " 必须是数组: " + node);
     }
-    Set<OwnershipStake.RightKind> values = new LinkedHashSet<>();
+    Set<AssetRightKind> values = new LinkedHashSet<>();
     for (JsonNode element : node) {
       if (!element.isTextual() || element.asText().isBlank()) {
         throw new IllegalArgumentException(command + " 的字段 " + field + " 的元素必须是文本: " + element);
@@ -410,10 +409,9 @@ final class EconomyCommandPayloads {
     }
   }
 
-  private static OwnershipStake.RightKind parseRightKind(
-      String command, String field, String text) {
+  private static AssetRightKind parseRightKind(String command, String field, String text) {
     try {
-      return OwnershipStake.RightKind.valueOf(text);
+      return AssetRightKind.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           command
@@ -422,7 +420,7 @@ final class EconomyCommandPayloads {
               + " 含未知权利性质: "
               + text
               + "；合法值: "
-              + java.util.Arrays.toString(OwnershipStake.RightKind.values()));
+              + java.util.Arrays.toString(AssetRightKind.values()));
     }
   }
 }

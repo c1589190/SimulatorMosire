@@ -2,9 +2,9 @@ package io.mosire.simos.app.household;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -101,7 +101,11 @@ public final class HouseholdPositionResolver {
    * 任何格都算已登记；否则该格必须恰有一个产业 id 的格键逐字相等。
    */
   public static Alignment alignHouseholdEconomyViews(
-      EconomyData economy, SocialData social, UnitState units, SimosTimestamp at) {
+      EconomyData economy,
+      SocialData social,
+      UnitState units,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      SimosTimestamp at) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
@@ -123,7 +127,7 @@ public final class HouseholdPositionResolver {
         continue;
       }
       if (economy.flows().containsKey(household.id())
-          && !hexHasRegisteredIndustry(economy, atHex.get())) {
+          && !hexHasRegisteredIndustry(definitions, atHex.get())) {
         continue; // 该家户有流水行 ⇒ EconomyData 构造期要求其视图落点有产业登记；移不动则留在原格（具名缺口）。
       }
       if (nextHouseholdEconomies == null) {
@@ -145,9 +149,10 @@ public final class HouseholdPositionResolver {
   }
 
   /** 目标格是否有产业登记（判据与 {@code EconomyData} 构造期同源；见 {@link #alignHouseholdEconomyViews}）。 */
-  private static boolean hexHasRegisteredIndustry(EconomyData economy, HexCoord hex) {
+  private static boolean hexHasRegisteredIndustry(
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions, HexCoord hex) {
     String target = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (IndustryId id : economy.industries().keySet()) {
+    for (IndustryId id : definitions.industries().keySet()) {
       Optional<String> key = IndustryHexKeys.hexKeyOf(id);
       if (key.isEmpty() || key.get().equals(target)) {
         return true;

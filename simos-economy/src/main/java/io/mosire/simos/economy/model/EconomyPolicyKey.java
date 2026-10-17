@@ -48,8 +48,13 @@ public enum EconomyPolicyKey {
   SLIDE_ROUND_DAYS("阶层滑落的市场轮天数（天）", 5L, 1L, 1_000L),
 
   /**
-   * 铸币产出率（毫/规模·周期）—— ★ 覆盖 {@code Industry.moneyOutputPerUnit} 的量价（见 {@code MintSettlement}）。现值 =
-   * 500。
+   * 铸币产出率（毫/规模·周期）—— ★★ <b>B2 批（I12 / §13.10.2 更正一）起本键<b>不再是读取点</b></b>： 铸币产出率的唯一权威在 production
+   * 的产业定义（{@code IndustryDefinitionView.moneyOutputPerUnit}）， {@code MintSettlement} 已删掉对它的 覆盖分支。⇒
+   * {@code economy.SetEconomyPolicy} 对该键<b>具名拒</b> {@code
+   * mint-rate-moved-to-production-definition}（写进去也无人读 = 静默失效，本仓禁止），并指路 production 的定义写面 {@code
+   * production.UpsertIndustry} / 工具 {@code simos.economy.upsertIndustry} 的 {@code
+   * moneyOutputPerUnit}。 ★ 常量保留只为两个用途：① 旧档/旧 revision 里已写入的行仍能解析；② 拒绝理由要指得出是哪个键。 现值 = 500（=
+   * 创世播种时写进产业定义的那个值）。
    */
   MINT_MILLI_PER_FURNACE_CYCLE("铸币产出率（毫/规模·周期）", 500L, 0L, Long.MAX_VALUE / 1_000L),
 

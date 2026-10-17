@@ -50,6 +50,7 @@ class GmPermissionGroupTest {
           "unit",
           "ga",
           "economy",
+          "production",
           "actor",
           "army",
           // ★★ 2026-10-14：AgentLib Docs/Workspace 三个命名空间

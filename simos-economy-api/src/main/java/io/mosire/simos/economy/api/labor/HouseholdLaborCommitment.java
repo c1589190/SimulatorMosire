@@ -41,7 +41,8 @@ import io.mosire.simos.social.api.id.PeopleLotId;
  * @param actor 收劳动的经济主体（本轮 = 产业 {@code farm@q_r} / {@code craft@q_r}，或家户）
  * @param activity ★★ <b>R3B.2 起 = 生产单元 id（{@code ProductionUnitId.value()}）</b>：结算按它把劳动归集到 unit
  *     （{@code 旧结算引擎（R3a 已删除）.laborByUnit}），"这份劳动喂哪条生产活动"的唯一答案。★ 旧档的旧活动标签 / 旧 actor id 由 {@code
- *     LegacyHouseholdMigration} 在构造期对齐到 unit；对不上任何 unit 的配额**合法**（自由家户劳动，只进守恒与读口， 不喂任何生产）。
+ *     旧档迁移器} 在构造期对齐到 unit；对不上任何 unit 的配额**合法**（自由家户劳动，只进守恒与读口， 不喂任何生产）。 ★
+ *     B2b：迁移器已整段删除（Alpha：旧档作废），activity↔实例一致性改由候选提交前的跨片校验判。
  * @param laborMilli 承诺投入的劳动（千分劳动·日）；不得为负
  * @param period 发放周期（世界周期序号）；不得为负
  * @param kind ★★ <b>承诺种类</b>（Z1b，设计书 §4.2 / C7）：{@link LaborCommitmentKind#PRODUCTION} = 普通生产承诺
@@ -86,7 +87,7 @@ public record HouseholdLaborCommitment(
     }
     if (household == null) {
       // ★ 旧档缺 household 的兜底**不在这里**：由 EconomyCodec 的旧档反序列化器造 pending 占位、
-      //   再由 LegacyHouseholdMigration 换成真实家户（见 HouseholdIds.PENDING_LEGACY_PREFIX）。
+      //   ★ B2b：迁移器已删（旧档作废）—— pending 前缀只作为"旧档判据"留在 HouseholdIds 里。
       throw new IllegalArgumentException("LaborAllocation.household 不得为 null");
     }
     if (actor == null) {

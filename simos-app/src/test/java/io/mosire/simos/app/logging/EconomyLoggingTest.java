@@ -9,7 +9,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
-import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -185,8 +185,13 @@ class EconomyLoggingTest {
   }
 
   /**
-   * §4.4：TICK 类事件必带 {@code day}。用「已激活的空经济」公开入口 {@link EconomySettlement#settle(EconomyData, long,
-   * long)} 推一天——它内部逐日走 DAY_START/DAY_END，成本极低（不需要 EconomyDayStepper 的账户会话夹具）。
+   * §4.4：TICK 类事件必带 {@code day}。用「已激活的空经济」+ **唯一合法装配形** {@link EconomyDayStepper}（显式 definitions +
+   * runtime + 账户会话 + 拓扑）推一天——它内部逐日走 DAY_START/DAY_END，成本极低。
+   *
+   * <p>★★ D-032 T1：原用的静态便捷口 {@code EconomySettlement.settle(EconomyData, ProductionData, long,
+   * long)} 已按 B3（§13.13.7 第 8 条：runtime=null 构造器与无实际职责的旧重载一并删除）删除 ⇒ 夹具改成与本文件 {@code
+   * namedFailClosedRejectionsStayAtErrorAndAreNotDowngraded} 同款的 stepper 装配（空 definitions + 空候选态
+   * runtime + 空账户会话）。判据一字未改：仍是"DAY_START/DAY_END 带 day 与 tick origin"。
    *
    * <p>判别力：把 DAY_START 的 {@code day} 字段删掉、或把 {@code EconomyLogSource.ECONOMY_SETTLEMENT} 换成非 TICK
    * 项，这里红。
@@ -196,7 +201,13 @@ class EconomyLoggingTest {
     setEconomyLevel(Level.INFO);
     appender.clear();
 
-    EconomySettlement.settle(activatedEmptyEconomy(), 0L, 1L);
+    new EconomyDayStepper(
+            activatedEmptyEconomy(),
+            ProductionData.empty(),
+            new io.mosire.simos.production.ProductionRuntimeEngine(ProductionData.empty()),
+            AccountSession.empty(),
+            io.mosire.simos.economy.time.MarketTopology.singleHex(Map.of(), Map.of()))
+        .step(1L);
 
     assertLevelEvent(
         appender.messages(),
@@ -234,7 +245,15 @@ class EconomyLoggingTest {
   @Test
   void namedFailClosedRejectionsStayAtErrorAndAreNotDowngraded() {
     setEconomyLevel(Level.INFO);
-    EconomyDayStepper stepper = new EconomyDayStepper(EconomyData.empty(), AccountSession.empty());
+    EconomyDayStepper stepper =
+        // ★★ D-032 T1：`EconomyDayStepper` 起必须显式注入 definitions + runtime + topology
+        //   （旧 3 参"runtime=null"形态已删除）。
+        new EconomyDayStepper(
+            EconomyData.empty(),
+            ProductionData.empty(),
+            new io.mosire.simos.production.ProductionRuntimeEngine(ProductionData.empty()),
+            AccountSession.empty(),
+            io.mosire.simos.economy.time.MarketTopology.singleHex(Map.of(), Map.of()));
 
     appender.clear();
     assertThatThrownBy(() -> stepper.applyHouseholdPopulationDeltas(Map.of(MISSING_HOUSEHOLD, 1L)))

@@ -38,6 +38,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -46,15 +47,10 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
@@ -71,6 +67,12 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -803,26 +805,12 @@ class GuiApiTest {
    *
    * <p>★★ **S1/R3B.2 的新形状**：{@code classes} 的键是家户稳定身份 {@link HouseholdId}（本夹具 = H11/H12 的农村贫农； H12
    * 那行人口为 0，只为让 H12 的配额有真实家户可指）；经营主体与周期进度住在 {@link ProductionProcess}，本格产能总量住在 {@link
-   * OwnershipStake}，{@link Industry} 只留 12 参技术模板（不再携带 {@code operator/capacity/progress} 兼容位）。
+   * OwnershipStake}，{@link IndustryDefinitionView} 只留 12 参技术模板（不再携带 {@code
+   * operator/capacity/progress} 兼容位）。
    */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId(FARM_1_1);
     IndustryId workshop = new IndustryId(WORKSHOP_1_1);
-    Industry industry =
-        new Industry(
-            farm,
-            "农业",
-            new RegimeId("feudal"),
-            120L,
-            // ★ R3（V7）：产能锚与劳动那一路（读口要发它们 ⇒ 夹具必须给非平凡的值）。
-            Map.of(AssetKind.LAND, 1_000L),
-            Map.of(), // ★ dailyInputPerUnit：同本夹具的字面量（不配每日原料）
-            0L,
-            143L,
-            Map.of(new CommodityId("grain"), 7L, new CommodityId("fiber"), 3L),
-            Map.of(), // ★ 同本夹具的字面量：不配投入
-            List.of(new ClassSlot(PEASANT, "贫农", 950)),
-            new AllocationRule.Split(700, 300));
     CohortKey peasantView = new CohortKey(H11, ResidenceKind.RURAL, PEASANT);
     // ★★ H1：行里**没有商品**（{@code HouseholdEconomy} 无 goods，裁定 D3-C/K1）—— 那 498,000 毫粮住在 actor 侧的
     //   {@code HouseholdInventory} 上（见 {@link #actorData()}）；读口的 {@code goods} 就是从它读的。
@@ -856,40 +844,17 @@ class GuiApiTest {
     // ★★ R3B.2：operator/progress/实扣投入的真值在 ProductionProcess；产能总量在 OwnershipStake。
     ActorRef farmOperator = new ActorRef(ActorKind.ORGANIZATION, FARM_1_1);
     ActorRef workshopOperator = new ActorRef(ActorKind.ORGANIZATION, WORKSHOP_1_1);
-    ActorRef workshopHouseholdOperator = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
-    ProductionUnitId farmUnit = ProductionUnitId.idOf(farm, farmOperator);
-    ProductionUnitId workshopUnit = ProductionUnitId.idOf(workshop, workshopOperator);
-    ProductionUnitId householdWorkshopUnit =
-        ProductionUnitId.idOf(workshop, workshopHouseholdOperator);
-    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
-    units.put(
-        farmUnit,
-        new ProductionProcess(
-            farmUnit,
-            farm,
-            farmOperator,
-            farm.value(),
-            33L,
-            0L,
-            Map.of(new CommodityId("grain"), 40L)));
-    // 第二条 unit 的 operator 刻意非派生（见 workshopIndustry）；第一条让 WORKSHOP 配额有 unit 可挂。
-    units.put(
-        workshopUnit,
-        new ProductionProcess(
-            workshopUnit, workshop, workshopOperator, workshop.value(), 0L, 0L, Map.of()));
-    units.put(
-        householdWorkshopUnit,
-        new ProductionProcess(
-            householdWorkshopUnit,
-            workshop,
-            workshopHouseholdOperator,
-            workshop.value(),
-            0L,
-            0L,
-            Map.of()));
+    // ★★ D-032 T1：三个生产实例已按 B2b（裁定六）迁出 economy ⇒ 它们的真值现在住在 **production 切片**
+    //   （`definitions()` 里 `.withInstances(productionInstances())`），本处的 `withProcesses(units)` 已删除
+    //   （该方法**类型已删**）。operator/progress/实扣投入的读数点不变，只是换了一片。
     AssetShareId farmLandShareId =
         OwnershipStake.idOf(
-            farm, AssetKind.LAND, farmOperator, farmOperator, OwnershipStake.RightKind.OWNED, 0L);
+            farm,
+            AssetKind.LAND,
+            farmOperator,
+            farmOperator,
+            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
+            0L);
     OwnershipStake farmLandShare =
         new OwnershipStake(
             farmLandShareId,
@@ -898,7 +863,7 @@ class GuiApiTest {
             farmOperator,
             farmOperator,
             1_000_000L,
-            OwnershipStake.RightKind.OWNED);
+            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED);
     // ★ P2-A：memberships 已迁 Social（EconomyData 不再持有）⇒ 夹具直接以 classes + allocations 自洽；
     //   LaborSupply 也已删除，配额上限由 HouseholdEconomy.laborMilli 承担（本夹具 H11 行 = 915,000 / H12 行 =
     // 91,500）。
@@ -911,7 +876,6 @@ class GuiApiTest {
                     java.util.OptionalLong.empty(),
                     EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2,
                     Optional.empty())))
-        .withIndustries(Map.of(farm, industry, workshop, workshopIndustry(workshop)))
         .withHouseholdEconomies(Map.of(H11_HOUSEHOLD, row, H12_HOUSEHOLD, otherRow))
         // ★★ H4：第 9 个组件（市场价表）—— 本夹具那一格给一个市场（计价货币与出厂价表都取真装载器的
         //   {@link EconomySeeder#MARKET_PRICES_FACTORY}/{@code MARKET_NUMERAIRE}，**本夹具不另拍价**）。
@@ -922,7 +886,6 @@ class GuiApiTest {
                 new MarketZoneId("hex:" + IndustryHexKeys.hexKey(H11.q(), H11.r())),
                 MarketTable.singleHex(
                     EconomySeeder.MARKET_NUMERAIRE, H11, EconomySeeder.MARKET_PRICES_FACTORY)))
-        .withProcesses(units)
         .withOwnershipStakes(Map.of(farmLandShareId, farmLandShare))
         .withLaborCommitments(laborAllocations())
         .withMeta(
@@ -957,13 +920,100 @@ class GuiApiTest {
                 EconomySeeder.genesisMoney(100L)));
   }
 
+  /**
+   * production 定义权威：economyData() 里那两个产业（agriculture + workshop）。
+   *
+   * <p>★★ D-032 T1：本夹具原本把三个生产实例挂在那份 economy 上（{@code economyData().withProcesses(units)}，该方法类型已按
+   * B2b 删除）—— 实例的唯一权威在 production ⇒ 现在挂在这里，{@code economyData()} 不再持有实例。逐值不变：实例本体、 operator、进度
+   * 33/0/0、实扣投入 40 谷都取自同一份字面量。
+   */
+  private static io.mosire.simos.production.ProductionData definitions() {
+    return io.mosire.simos.production.ProductionData.empty()
+        .withIndustry(agriculture(new IndustryId(FARM_1_1)))
+        .withIndustry(workshopIndustry(new IndustryId(WORKSHOP_1_1)))
+        .withInstances(productionInstances());
+  }
+
+  /** 本夹具的三个生产实例（真值落点从 economy 迁到 production 后的唯一拼写点）。 */
+  private static Map<ProductionUnitId, ProductionProcess> productionInstances() {
+    IndustryId farm = new IndustryId(FARM_1_1);
+    IndustryId workshop = new IndustryId(WORKSHOP_1_1);
+    ActorRef farmOperator = new ActorRef(ActorKind.ORGANIZATION, FARM_1_1);
+    ActorRef workshopOperator = new ActorRef(ActorKind.ORGANIZATION, WORKSHOP_1_1);
+    ActorRef workshopHouseholdOperator = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+    ProductionUnitId farmUnit = ProductionUnitId.idOf(farm, farmOperator);
+    ProductionUnitId workshopUnit = ProductionUnitId.idOf(workshop, workshopOperator);
+    ProductionUnitId householdWorkshopUnit =
+        ProductionUnitId.idOf(workshop, workshopHouseholdOperator);
+    Map<ProductionUnitId, ProductionProcess> instances = new LinkedHashMap<>();
+    instances.put(
+        farmUnit,
+        new ProductionProcess(
+            farmUnit,
+            farm,
+            io.mosire.simos.production.contract.ProductionLocation.ofPlan(farm).orElseThrow(),
+            farmOperator,
+            farm.value(),
+            33L,
+            Map.of() /* cycleContributions：旧 long 周期劳动已替换；字面 0 ⇒ 空表逐值等价 */,
+            Map.of(new CommodityId("grain"), 40L)));
+    // 第二条 unit 的 operator 刻意非派生（见 workshopIndustry）；第一条让 WORKSHOP 配额有 unit 可挂。
+    instances.put(
+        workshopUnit,
+        new ProductionProcess(
+            workshopUnit,
+            workshop,
+            io.mosire.simos.production.contract.ProductionLocation.ofPlan(workshop).orElseThrow(),
+            workshopOperator,
+            workshop.value(),
+            0L,
+            Map.of() /* cycleContributions：同上 */,
+            Map.of()));
+    instances.put(
+        householdWorkshopUnit,
+        new ProductionProcess(
+            householdWorkshopUnit,
+            workshop,
+            io.mosire.simos.production.contract.ProductionLocation.ofPlan(workshop).orElseThrow(),
+            workshopHouseholdOperator,
+            workshop.value(),
+            0L,
+            Map.of() /* cycleContributions：同上 */,
+            Map.of()));
+    return instances;
+  }
+
+  private static IndustryDefinitionView agriculture(IndustryId farm) {
+    return new IndustryDefinitionView(
+        farm,
+        "农业",
+        new RegimeId("feudal"),
+        Optional.empty(),
+        120L,
+        0L /* ★ D-032 T1：buildDays 新增组件（中性 0，与 testing.IndustryViews 同款）*/,
+        Map.of(AssetKind.LAND, 1_000L),
+        Map.of(),
+        0L,
+        143L,
+        Map.of(new CommodityId("grain"), 7L, new CommodityId("fiber"), 3L),
+        Map.of(),
+        List.of(new ClassSlot(PEASANT, "贫农", 950)),
+        new AllocationRule.Split(700, 300),
+        MoneyOutput.NONE,
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        java.util.List.of(),
+        java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED));
+  }
+
   /** 第二个产业（手工业 = 作坊）：12 参技术模板；operator 的真值在 ProductionProcess（见 economyData）。 */
-  private static Industry workshopIndustry(IndustryId id) {
-    return new Industry(
+  private static IndustryDefinitionView workshopIndustry(IndustryId id) {
+    return new IndustryDefinitionView(
         id,
         "手工业",
         new RegimeId("handicraft"),
+        Optional.empty(),
         120L,
+        0L /* ★ D-032 T1：buildDays 新增组件（中性 0，与 testing.IndustryViews 同款）*/,
         Map.of(AssetKind.WORKSHOP, 1L),
         Map.of(), // ★ dailyInputPerUnit：同本夹具的字面量（不配每日原料）
         0L,
@@ -971,7 +1021,11 @@ class GuiApiTest {
         Map.of(),
         Map.of(),
         List.of(new ClassSlot(PEASANT, "贫农", 950)),
-        new AllocationRule.Split(400, 600));
+        new AllocationRule.Split(400, 600),
+        MoneyOutput.NONE,
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        java.util.List.of(),
+        java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED));
   }
 
   /** ★ R2a 的 G1 读口：{@code GET /api/economy/hex} 逐值给读数，与 MCP 的 {@code simos.economy.hex} 共用一份视图。 */
@@ -1336,6 +1390,7 @@ class GuiApiTest {
                 "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
                 // ★ R2a：经济切片带一份可断言的读数（一格一产业一阶层行）。
                 "economy", new EconomySnapshot(ref("main", 1), T7, economyData()),
+                "production", new ProductionSnapshot(ref("main", 1), T7, definitions()),
                 // ★★ H1：actor 切片（家户 actor + 账本）—— /api/economy/hex 的 goods 与
                 //   /api/economy/ownership 都从它读（商品库存的唯一真源）。
                 "actor", new ActorSnapshot(ref("main", 1), T7, actorData())),
@@ -1351,6 +1406,7 @@ class GuiApiTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     // ★ H1：actor 切片在场 ⇒ 编码器表必须跟着长（否则 CheckpointEncoder 当场抛）。
                     new ActorCodec())));
   }

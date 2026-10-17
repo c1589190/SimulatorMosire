@@ -5,11 +5,11 @@ import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.ClassStructure;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRole.LaborRole;
 import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,11 +19,11 @@ import java.util.Optional;
 /**
  * ★★ <b>旧档默认阶层结构（E1b）—— "旧档默认 mode / 阶层结构 / 阶层位置"的唯一来源。</b>
  *
- * <p>★★ <b>它解决什么问题</b>：E1a 已把 {@code ProductionMode} / {@code ClassStructure} / {@code
- * ProductionRole} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
+ * <p>★★ <b>它解决什么问题</b>：E1a 已把 {@code ProductionModeDefinitionView} / {@code ClassStructure} /
+ * {@code ProductionRole} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
  * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
- * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionMode}、一个默认 {@link ClassStructure}、7 个
- * {@link ProductionRole}。迁移器（{@code
+ * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionModeDefinitionView}、一个默认 {@link
+ * ClassStructure}、7 个 {@link ProductionRole}。迁移器（{@code
  * ProductionRoleResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点 —— 其它任何地方不得再写第二套默认映射。
  *
  * <p>★★ <b>ID 三条硬约束</b>（E1b 判据）：
@@ -112,8 +112,8 @@ public final class LegacyClassStructure {
   public static final String SEED_REASON = "legacyDefault:seedClassStanding";
 
   /** ★ 默认生产方式本体：version = 1，绑定 {@link #DEFAULT_CLASS_STRUCTURE_ID}。 */
-  private static final ProductionMode DEFAULT_MODE =
-      new ProductionMode(DEFAULT_MODE_ID, "旧档默认生产方式", 1, DEFAULT_CLASS_STRUCTURE_ID);
+  private static final ProductionModeDefinitionView DEFAULT_MODE =
+      new ProductionModeDefinitionView(DEFAULT_MODE_ID, "旧档默认生产方式", 1, DEFAULT_CLASS_STRUCTURE_ID);
 
   /** ★ 7 个默认位置（键 = 值内 id；保序不可变）。由 {@link #buildDefaultPositions()} 一次生成。 */
   private static final Map<ClassPositionId, ProductionRole> DEFAULT_POSITIONS =
@@ -140,7 +140,7 @@ public final class LegacyClassStructure {
   }
 
   /** ★ 默认生产方式本体（只读查询；record 不可变，可直接共享）。 */
-  public static ProductionMode defaultMode() {
+  public static ProductionModeDefinitionView defaultMode() {
     return DEFAULT_MODE;
   }
 

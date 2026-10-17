@@ -6,6 +6,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -15,14 +16,14 @@ import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -347,8 +348,8 @@ class HaulServiceCommodityAcceptanceTest {
     // ★ 产业 id 必须带 hex 键（参与者的 unit 按"所在格"归集，见 MarketSettlement.participantsFor）⇒ 用既有
     //   唯一拼写点 IndustryHexKeys.id(...)，不手写第二套 id 形状。
     IndustryId industryId = IndustryHexKeys.id("fixture-haul-trade", H1.q(), H1.r());
-    Industry trade =
-        new Industry(
+    IndustryDefinitionView trade =
+        IndustryViews.industry(
             industryId,
             "夹具跑商产业",
             new RegimeId("fixture"),
@@ -478,8 +479,8 @@ class HaulServiceCommodityAcceptanceTest {
   }
 
   /** 跑商产业模板（夹具）：每 1 单位规模要 1 头 CATTLE、产 1 商品单位 haul、无周期投入、无劳动约束。 */
-  private static Industry merchantIndustry() {
-    return new Industry(
+  private static IndustryDefinitionView merchantIndustry() {
+    return IndustryViews.industry(
         IndustryHexKeys.id("fixture-merchant-haul", H1.q(), H1.r()),
         "夹具跑商产业",
         new RegimeId("fixture"),

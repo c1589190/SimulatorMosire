@@ -9,6 +9,7 @@ import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.store.Envelope;
+import io.mosire.simos.culture.codec.CultureCodec;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -19,6 +20,7 @@ import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.production.codec.ProductionCodec;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -127,10 +129,14 @@ public final class RichWorld {
         "ga",
         ignored ->
             new GaSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), GaState.empty()));
+    // ★★ D-031 Z4：production / culture 两个新切片（v17levant 资源早于它们）——同 economy/actor/gov/army/ga 的
+    //   "资源缺哪片补哪片"形制；用资源自身 meta，不覆盖资源已含条目。缺片时两 namespace 的命令在 CommandBus 找不到切片。
+    GenesisModuleSlices.ensureEmptyProductionAndCulture(
+        modules, decoded.meta().ref(), decoded.meta().timestamp());
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
-  /** 八个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
+  /** 十个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
   private static Map<String, ModuleCodec> codecTable() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
@@ -148,7 +154,11 @@ public final class RichWorld {
             new ArmyCodec(),
             // ★★ 2026-10-12 批次 3a：第九个切片（ga）codec 与 Shell 同源；上面 computeIfAbsent("ga")
             //   保证旧档/创世也有空 ga 片（命令总线与 app 读面都要求切片在场）。
-            new GaCodec())) {
+            new GaCodec(),
+            // ★★ D-031 Z4：production / culture codec 与 Shell 同源；上面的 GenesisModuleSlices 保证
+            //   资源缺片时也补空片（命令总线要求切片在场）。
+            new ProductionCodec(),
+            new CultureCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

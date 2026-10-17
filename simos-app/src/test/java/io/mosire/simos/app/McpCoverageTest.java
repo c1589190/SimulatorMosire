@@ -24,6 +24,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.culture.CultureData;
+import io.mosire.simos.culture.CultureSnapshot;
+import io.mosire.simos.culture.codec.CultureCodec;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -31,6 +34,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -38,7 +42,6 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 // ★★ W10（2026-10-11）：政策预设写口的键（见 COVERAGE_POLICY_KEY）
 import io.mosire.simos.economy.model.EconomyPolicyKey;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
@@ -63,6 +66,9 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.codec.ProductionCodec;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -163,6 +169,10 @@ class McpCoverageTest {
           // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（本批唯一新增命令类型）
           "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
+          // ★★ D-031 Z6（2026-10-16）：culture 命令（按字典序插在 army.* 与 economy.* 之间）。
+          //   ★★★ D-032 T6（2026-10-17，用户原话「D2直接删」）：`culture.UpsertAptitudeRule` /
+          //   `culture.RemoveAptitudeRule` 随"文化 → 生产效率倍率"链（D2）整条退役 ⇒ 从本表移除。
+          "culture.SetHouseholdCulture",
           "economy.AddDemand",
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelDemand",
@@ -175,7 +185,6 @@ class McpCoverageTest {
           "economy.MigrateHousehold",
           "economy.ReassignZoneHexes",
           "economy.RecordMoneyIssuance",
-          "economy.RegisterCandidate",
           "economy.RegisterGovernment",
           "economy.RegisterHousehold",
           "economy.RemoveHouseholdPeriodicAdjustment",
@@ -185,6 +194,8 @@ class McpCoverageTest {
           "economy.SetEconomyPolicy",
           "economy.SetGovServiceCommitment",
           "economy.SetGovernmentMintScale",
+          // ★★ D-032 B3（裁定十一/十二）：方案经济关系声明写口（候选面退役时被删掉的那条写面补回）。
+          "economy.SetPlanSources",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
@@ -201,7 +212,11 @@ class McpCoverageTest {
           "economy.UpdateDemand",
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
-          "economy.UpsertIndustry",
+          "production.UpsertIndustry",
+          "production.UpsertProductionMode",
+          "production.DeactivateProductionMode",
+          "production.Seed",
+          "production.ClearRegionDefinitions",
           "ga.CancelEffect",
           "ga.CreateDecisionMaker",
           "ga.DecideDecisionPacket",
@@ -239,6 +254,11 @@ class McpCoverageTest {
           "map.SetTerrain",
           "map.SplitRegion",
           "map.UpdateRegion",
+          // ★★ D-031 Z6（2026-10-16）：production 命令（按字典序插在 map.* 与 social.* 之间）。
+          //   ★★★ D-032 T6（2026-10-17，用户原话「D1直接删」）：`production.RegisterTechnology` /
+          //   `production.SetMastery` 随科技点抽象面（D1）整条退役 ⇒ 从本表移除。
+          //   ★ B2c（裁定十）：`production.CreateInstance` 是**新增**命令（实例写面）⇒ 进本表。
+          "production.CreateInstance",
           "social.AddHouseholdMembers",
           "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
@@ -378,8 +398,19 @@ class McpCoverageTest {
           "social.TransferHouseholdMembers",
           "economy.SetGovServiceCommitment",
           "economy.UpsertGovUnit",
-          "economy.UpsertIndustry",
+          "production.UpsertIndustry",
+          "production.UpsertProductionMode",
+          "production.DeactivateProductionMode",
           "economy.SetGovernmentPolicy",
+          // ★★★ D-032 T6（2026-10-17）：B3 补回的方案经济关系声明写口。本夹具的**声明宿主**要
+          //   "不绑地点的方案 id"（带格段的 id 会具名拒 `plan-not-a-plan`），而本夹具的
+          //   `economy.Seed` 只播了格级物化定义 —— 不给"两条声明"这条腿 ⇒ 走**具名拒**
+          //   `no-declaration`（载荷形状合法、零 revision）。★ 为什么不让它走正常覆盖：真声明
+          //   要有"进入算法方案池的非格方案 + 后续读点"，那是 `D031P1*` 那批判据的面；
+          //   本用例的义务只是"每条 catalog type 都能经 MCP 到达且要么生效要么具名拒"。
+          "economy.SetPlanSources",
+          // ★★★ D-032 T6：B2c 裁定十的实例写面；本夹具的定义权威是空的（`production.Seed` 空载荷）⇒ 具名拒。
+          "production.CreateInstance",
           "unit.AssignExternalGovPost",
           "unit.AssignGovPost",
           "unit.SetUnitHouseholds",
@@ -464,6 +495,13 @@ class McpCoverageTest {
               "actor.RemitGovTreasury",
               "{\"household\":\"hh-missing\",\"fromHousehold\":\"hh-missing\",\"toHousehold\":\"hh-missing2\",\"grain\":1}"),
           Map.entry("unit.SetFormationOffset", "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}"),
+          // ★★★ D-032 T6：两条声明都不给 ⇒ handler 的 `no-declaration` 具名拒（形状合法、零 revision）。
+          Map.entry("economy.SetPlanSources", "{\"plan\":\"farm\"}"),
+          // ★★★ D-032 T6：plan 指一个 production 定义权威里不存在的方案（本夹具 industries=[]）⇒ 域层具名拒、零 revision。
+          Map.entry(
+              "production.CreateInstance",
+              "{\"plan\":\"no-such-plan\",\"unit\":\"unit-no-such-plan-HOUSEHOLD-h-1\","
+                  + "\"operator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"h-1\"},\"modeKey\":\"no-such-plan\"}"),
           Map.entry("ga.DeleteDecisionMaker", "{\"decisionMakerId\":\"dm-ghost\"}"),
           Map.entry(
               "actor.DeductHouseholdStock",
@@ -549,7 +587,12 @@ class McpCoverageTest {
           Map.entry("unit.SetVisionRadius", "{\"id\": \"u-missing\", \"visionRadius\": 2}"),
           // ★ Z1a/Z1c/Z2/Z3a/Z3d 新命令：本夹具是旧 12 hex 世界（没有 GOV 编制/office 产业登记/官吏户），
           //   形状合法的载荷在这里都必然具名拒（缺前置），零 revision；成功路径由 Z6 各责任区新用例覆盖。
-          Map.entry("economy.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
+          Map.entry("production.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
+          Map.entry(
+              "production.UpsertProductionMode",
+              "{\"id\": \"mode_missing@0_0\", \"name\": \"missing\", "
+                  + "\"classStructureId\": \"cs-missing\"}"),
+          Map.entry("production.DeactivateProductionMode", "{\"id\": \"mode_missing@0_0\"}"),
           Map.entry("economy.UpsertGovUnit", "{\"govUnitId\": \"g-missing\"}"),
           Map.entry("economy.SetGovServiceCommitment", "{\"govUnitId\": \"g-missing\"}"),
           // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：三类政策（口岸/预算/编制）合成**一条**通用写口
@@ -583,7 +626,7 @@ class McpCoverageTest {
           AssetKind.LAND,
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
-          OwnershipStake.RightKind.OWNED,
+          io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
           0L);
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
@@ -639,6 +682,9 @@ class McpCoverageTest {
   }
 
   static {
+    // ★ P1：production.Seed / ClearRegionDefinitions 空载荷是合法 no-op（可提交）⇒ 走 MINIMAL_PAYLOADS。
+    MINIMAL_PAYLOADS.put("production.Seed", "{\"industries\": [], \"modes\": []}");
+    MINIMAL_PAYLOADS.put("production.ClearRegionDefinitions", "{\"hexes\": []}");
     MINIMAL_PAYLOADS.put(
         "unit.CreateUnit",
         "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},"
@@ -782,13 +828,17 @@ class McpCoverageTest {
     //   ★ R3（V7）：配方多了两个分量（`capacityPerUnit` = "单位规模"的锚、`laborPerUnit` = 劳动那一路），
     //     且投入表的值侧带商品维度（`{"LAND":{"grain":8000}}`）—— 缺 `capacityPerUnit` 会被构造期守卫拒 ⇒ 命令 Rejected。
     //   ★★ H0（2026-09-27，K2/K3）：`classes` 从**产业节点内**搬到**格 entry 级**，行里带 `residence`
-    //     （`rural`/`urban`，居住类型是家户身份的一维）、**删掉** `meansOfProduction`（那一项已搬到 `Industry.capacity`）；
+    //     （`rural`/`urban`，居住类型是家户身份的一维）、**删掉** `meansOfProduction`（那一项已搬到
+    // `IndustryDefinitionView.capacity`）；
     //     产业的 `capacity` = **本格该产业的产能总量**（LAND 千分亩，键必须是 `capacityPerUnit` 键的子集）。
     //     ★ 本载荷保持"必产非空变更集"的用意：一行仍落在 (1,1) 格的农村贫农上。
     MINIMAL_PAYLOADS.put(
         "economy.Seed",
+        //   ★★★ D-032 T6（2026-10-17，B5 裁定十九）：entry 的产业声明键由 `industries` 改名 `plans`
+        //   （旧键自带一整套产业定义，而定义权威早已在 production）⇒ 夹具同步换键；否则 `economy.Seed`
+        //   当场具名拒「字段 plans 必须是数组」（本轮真跑实测）。
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":1,\"r\":1,"
-            + "\"industries\":[{\"id\":\"farm@1_1\",\"name\":\"农业\",\"regime\":\"feudal\","
+            + "\"plans\":[{\"id\":\"farm@1_1\",\"name\":\"农业\",\"regime\":\"feudal\","
             + "\"cycleDays\":120,\"capacity\":{\"LAND\":1000000},"
             + "\"capacityPerUnit\":{\"LAND\":1000},\"laborPerUnit\":143,"
             + "\"outputPerUnit\":{\"grain\":7,\"fiber\":2},"
@@ -797,6 +847,15 @@ class McpCoverageTest {
             + "\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
             + "\"laborParticipationPerMille\":950}]}],"
+            //   ★★★ D-032 T6（2026-10-17，B5 裁定十九）：`plans[].capacity` ⇒ 整额 OWNED 份额的**合成路径已删**
+            //   ⇒ 本格那份 LAND 作业资本改由 entry 级 `assetShares[]` **显式声明**（与
+            //   `EconomySeedHandlerTest.seedsEveryFieldValueForValue` 同一处置）。份额 id 由
+            //   `OwnershipStake.idOf(industry, asset, owner, operator, kind, 序号)` 确定性派生 ⇒
+            //   `SEEDED_LAND_SHARE` 指的就是这一行（下面的 `economy.TransferAssetShare` 要转移它）。
+            + "\"assetShares\":[{\"industry\":\"farm@1_1\","
+            + "\"owner\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
+            + "\"operator\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
+            + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\"}],"
             + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":1000,"
             + "\"laborMilli\":580000,\"participationPerMille\":950}]}],"
             // ★★ W1g：**市场播种**（W1 起价表按市场一张，且 `economy.SetMarketPrice` 只改**已存在**的市场）。
@@ -868,13 +927,11 @@ class McpCoverageTest {
             + "\"commodity\":\"grain\",\"kind\":\"RECURRING\",\"unit\":\"TOTAL\","
             + "\"quantityPerCycle\":1}");
     MINIMAL_PAYLOADS.put("economy.CancelDemand", "{\"demand\":\"demand-coverage\"}");
-    MINIMAL_PAYLOADS.put(
-        "economy.RegisterCandidate",
-        "{\"id\":\"candidate-coverage\",\"version\":1,\"output\":\"grain\","
-            + "\"outputPerUnit\":{\"grain\":1},\"inputPerUnit\":{},"
-            + "\"requiredAssets\":{\"LAND\":1},\"laborPerUnit\":1,\"buildDays\":0,"
-            + "\"cycleDays\":120,\"regime\":\"feudal\",\"laborSource\":\"SELF\","
-            + "\"acceptedRightKinds\":[\"OWNED\"],\"name\":\"覆盖候选\"}");
+    // ★★★ D-032 T6（2026-10-17）：旧的 `economy.RegisterCandidate` 载荷随**候选面整体退役**（B2c 裁定八，
+    //   用户授权「P1成功是个几把，需要删直接删」）⇒ 从本表删除（命令与 handler 都已不在，留着它是死载荷）。
+    //   ★ 替代者 `production.CreateInstance`（B2c 裁定十的**实例写面**）在本夹具**必然具名拒**（定义权威
+    //     由 `production.Seed` 空载荷播下 ⇒ 没有可指名的既有方案）⇒ 它进 `PRECONDITION_REJECT_TYPES`
+    //     （见那一组的载荷），不走这里。
     MINIMAL_PAYLOADS.put(
         "economy.TransferAssetShare",
         "{\"share\":\""
@@ -1017,6 +1074,17 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "economy.SetEconomyPolicy",
         "{\"key\":\"SLIDE_ROUND_DAYS\",\"valueMilli\":" + COVERAGE_POLICY_VALUE + "}");
+
+    // ── D-031 Z6（2026-10-16）的 production/culture 命令：追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
+    //   ★★★ D-032 T6（2026-10-17，用户原话「D1直接删」「D2直接删」）：其中**四条整条退役** ——
+    //   `production.RegisterTechnology` / `production.SetMastery`（科技点抽象面 D1）、
+    //   `culture.UpsertAptitudeRule` / `culture.RemoveAptitudeRule`（"文化 → 生产效率倍率"链 D2）
+    //   ⇒ 命令、handler、catalog 条目三处都不在，载荷随之删除（留着就是死载荷）。
+    //   本段只剩 `culture.SetHouseholdCulture`（D2 保留的标签面）。
+    MINIMAL_PAYLOADS.put(
+        "culture.SetHouseholdCulture",
+        "{\"householdId\":\"hh-cov\",\"cultureId\":\"latium\",\"religionId\":\"roman\","
+            + "\"customs\":[\"patrilineal\"]}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -1069,7 +1137,11 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 143 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**）")
+            "catalog 列出的 type 与 Shell 注册的 **149** 个 handler 同源（★★★ D-032 T6（2026-10-17）：D1/D2 把"
+                + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
+                + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
+                + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148 → **149**；"
+                + "本表与 SimosToolsTest.EXPECTED_COMMAND_TYPES 两处计数必须逐字相同。原文：R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**；★★ D-031 Z6（2026-10-16）新增 production/culture 五条 ⇒ **148**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
@@ -1307,6 +1379,48 @@ class McpCoverageTest {
     return slice.data();
   }
 
+  /**
+   * ★ P1：`economy.Seed` 的 `farm@1_1` 单元需要 production 片里有同名定义（定义权威在 production）。 这里把载荷里那份产业定义落到
+   * production 片，使 standalone `economy.Seed` 通过落库前引用校验（与世界创世同口径）。
+   */
+  private static ProductionData coverageProduction() {
+    Map<io.mosire.simos.actor.api.asset.AssetKind, Long> capacity =
+        Map.of(io.mosire.simos.actor.api.asset.AssetKind.LAND, 1_000L);
+    Map<io.mosire.simos.economy.api.id.CommodityId, Long> output = new LinkedHashMap<>();
+    output.put(new io.mosire.simos.economy.api.id.CommodityId("grain"), 7L);
+    output.put(new io.mosire.simos.economy.api.id.CommodityId("fiber"), 2L);
+    Map<
+            io.mosire.simos.actor.api.asset.AssetKind,
+            Map<io.mosire.simos.economy.api.id.CommodityId, Long>>
+        cycleInput =
+            Map.of(
+                io.mosire.simos.actor.api.asset.AssetKind.LAND,
+                Map.of(new io.mosire.simos.economy.api.id.CommodityId("grain"), 8_000L));
+    io.mosire.simos.production.contract.IndustryDefinitionView farm =
+        new io.mosire.simos.production.contract.IndustryDefinitionView(
+            new io.mosire.simos.economy.api.id.IndustryId("farm@1_1"),
+            "农业",
+            new io.mosire.simos.economy.api.id.RegimeId("feudal"),
+            java.util.Optional.empty(),
+            120L,
+            0L /* ★ D-032 T1：buildDays 新增组件 */,
+            capacity,
+            Map.of(),
+            0L,
+            143L,
+            output,
+            cycleInput,
+            List.of(
+                new io.mosire.simos.production.contract.ClassSlot(
+                    new io.mosire.simos.economy.api.id.SocialClassId("poor_peasant"), "贫农", 950)),
+            new io.mosire.simos.production.contract.AllocationRule.Split(700, 300),
+            io.mosire.simos.production.contract.MoneyOutput.NONE,
+            io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+            java.util.List.of(),
+            java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED));
+    return ProductionData.empty().withIndustry(farm);
+  }
+
   private void seedGenesis() {
     try (SqliteStore seedStore = SqliteStore.open(dbFile())) {
       new Timeline(seedStore, CHECKPOINT_INTERVAL)
@@ -1367,7 +1481,11 @@ class McpCoverageTest {
                                         new NationId("n-seed"),
                                         "种子国二号",
                                         new RegionId("r-nation"),
-                                        0))))),
+                                        0)))),
+                // ★★ D-031 Z6（2026-10-16）：production/culture 两个新切片在场 —— 没有它们，
+                //   production.*/culture.* 五条命令在 CommandBus 找不到命名空间（装配故障，不是具名拒）。
+                "production", new ProductionSnapshot(ref("main", 1), T7, coverageProduction()),
+                "culture", new CultureSnapshot(ref("main", 1), T7, CultureData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -1382,7 +1500,10 @@ class McpCoverageTest {
                     new EconomyCodec(),
                     new ActorCodec(),
                     new GovCodec(),
-                    new ArmyCodec())));
+                    new ArmyCodec(),
+                    // ★★ D-031 Z6（2026-10-16）：新切片在场 ⇒ 信封的 codec 表也必须同源（否则 CheckpointEncoder 抛）。
+                    new ProductionCodec(),
+                    new CultureCodec())));
   }
 
   private static Unit unit() {

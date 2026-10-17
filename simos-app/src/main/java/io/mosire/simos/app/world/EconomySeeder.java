@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
@@ -19,6 +20,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -43,14 +45,12 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryClassSlots;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -59,6 +59,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -196,11 +197,11 @@ public final class EconomySeeder {
    * ★★ <b>A1（2026-10-10）：每 1 单位贸易规模每周期产出的**运输服务**（商品单位 / 规模·周期）：{@code 1}</b> —— {@code trade@hex}
    * 的 {@code outputPerUnit = {haul: 本值}}（设计书 §3.2）。
    *
-   * <p>★★ <b>量纲（★ 改数之前先读这一行）</b>：{@code Industry.outputPerUnit} 的值侧恒是**商品单位** （{@code
+   * <p>★★ <b>量纲（★ 改数之前先读这一行）</b>：{@code IndustryDefinitionView.outputPerUnit} 的值侧恒是**商品单位** （{@code
    * EconomySettlement.harvest}：{@code 规模 × 值 × MILLI_PER_COMMODITY_UNIT} = 毫单位），<b>不是</b>毫单位 —— 与
-   * {@code cycleInputPerUnit}（毫单位/规模）**刻意不同**（见 {@code Industry} 类注的"量纲陷阱"）。 ⇒ 本常量 1 = <b>1,000
-   * 毫运输服务 = 1,000 毫商品·程</b>；"毫商品·程"是 {@code CapacityDemand}/{@code MerchantCapacity} 的既有**运力**口径 ⇒
-   * **不新造量纲**（用户 2026-10-10 口径「运力就是每一笔长途商品需要额外支付的……」，设计书 §3.3）。
+   * {@code cycleInputPerUnit}（毫单位/规模）**刻意不同**（见 {@code IndustryDefinitionView} 类注的"量纲陷阱"）。 ⇒ 本常量 1
+   * = <b>1,000 毫运输服务 = 1,000 毫商品·程</b>；"毫商品·程"是 {@code CapacityDemand}/{@code MerchantCapacity}
+   * 的既有**运力**口径 ⇒ **不新造量纲**（用户 2026-10-10 口径「运力就是每一笔长途商品需要额外支付的……」，设计书 §3.3）。
    *
    * <p>★★ <b>取值理由（两条独立口径给出同一个数；★ W7-fix 起两处量级已随"作业资本 = 工具"重算，见下）</b>：
    *
@@ -240,8 +241,8 @@ public final class EconomySeeder {
    * cycleInputPerUnit = {tool:{tool:100}}}（= 每 1 规模单位·周期 100 毫工具， 见 {@link
    * #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}；★ W7-fix 前该分路键是 CATTLE）；② 市场轮里"每趟跑商烧 1,000 毫工具" （旧 {@code
    * MerchantHaul.TOOL_MILLI_PER_HAUL}）。两套同时扣工具就是**双扣**（设计书 v1.1 的批次边界因此把 "单套化"归 A3）。A3 按设计书 §3.2
-   * 取<b>产业投入</b>那一套：它走**标准生产管线**（ {@code Industry.cycleInputPerUnit} → {@code
-   * Industry.inputPerUnit()} → 现扣 + 挂单保留 + 补货需求， 与农业留种、作坊吃工具**同一条路**）⇒
+   * 取<b>产业投入</b>那一套：它走**标准生产管线**（ {@code IndustryDefinitionView.cycleInputPerUnit} → {@code
+   * IndustryDefinitionView.inputPerUnit()} → 现扣 + 挂单保留 + 补货需求， 与农业留种、作坊吃工具**同一条路**）⇒
    * 工具不再是跑商私有的市场轮门槛，而是普通的生产资料（I-H6）。
    *
    * <p>★★ <b>本值不是新拍的数（与旧趟耗逐值可对上）</b>：
@@ -266,7 +267,7 @@ public final class EconomySeeder {
    * <pre>
    * 为什么工具需求必须走这一条**周期投入**：
    *   家户的购买需求只有两条来源 —— ① Social 的自然需求（{@code naturalNeeds}，只含口粮一类生活消费品）
-   *   ② **生产投入**（{@code Industry.cycleInputPerUnit}）。{@code trade} 改前两者都没有 ⇒ 跑商家户**不会自发买工具**
+   *   ② **生产投入**（{@code IndustryDefinitionView.cycleInputPerUnit}）。{@code trade} 改前两者都没有 ⇒ 跑商家户**不会自发买工具**
    *   ⇒ 创世那 12 趟烧完即停。★ 本常量让工具需求走**既有生产投入需求路径**（{@code MarketDemandBook} 汇总 →
    *   家户挂买单 → 成交补货），**不改 Social 的自然需求权威（I-C6）、不给家户造第二本需求**。
    *
@@ -313,10 +314,10 @@ public final class EconomySeeder {
    *
    * <p>★★ <b>如实记的口径边界</b>：{@code AllocationRule.Split} 在本仓是**旧口径**（见 {@code EconomySettlement} 类注
    * "旧口径的 {@code AllocationRule.Split}"）—— 当前生产结算走 relation（{@code ProductionRules}），不读这两个权重 ⇒
-   * <b>本改动不改任何数值</b>，它是"产业模板与它声明的制度自相一致"的形状修正。★ 跑商劳动的**真实约束**在 {@code Industry.laborPerUnit}（=
-   * {@link #LABOR_MILLI_PER_TRADE_UNIT} = 1,000 千分劳动/规模，**改前就已 &gt; 0**， 由 {@code
-   * LaborQueueBook.offer} 读）—— 设计书 §3.2 把"laborWeightPerMille = 0"读成"不施加劳动约束"是把上述两个字段混了， 已具名记进账本（§4
-   * D-A1-2），本批不因此改 {@code laborPerUnit}（它本来就非 0）。
+   * <b>本改动不改任何数值</b>，它是"产业模板与它声明的制度自相一致"的形状修正。★ 跑商劳动的**真实约束**在 {@code
+   * IndustryDefinitionView.laborPerUnit}（= {@link #LABOR_MILLI_PER_TRADE_UNIT} = 1,000
+   * 千分劳动/规模，**改前就已 &gt; 0**， 由 {@code LaborQueueBook.offer} 读）—— 设计书 §3.2 把"laborWeightPerMille =
+   * 0"读成"不施加劳动约束"是把上述两个字段混了， 已具名记进账本（§4 D-A1-2），本批不因此改 {@code laborPerUnit}（它本来就非 0）。
    */
   /// ★★ W7：值改由 {@link MerchantTradeTemplate#SPLIT_MEANS_PER_MILLE} 提供（唯一拼写点；值 = 700，一字未改）。
   public static final int TRADE_SPLIT_MEANS_PER_MILLE = MerchantTradeTemplate.SPLIT_MEANS_PER_MILLE;
@@ -396,7 +397,7 @@ public final class EconomySeeder {
    * 2026-10-23 对半砍产量后该比值已低于 1:6 下界——这是刻意的（要造清偿压力），留种率校准点见 {@code 2026-10-02-open-bugs}。
    *
    * <p>★★ **口径（别混量纲）**：这是**毫粮/亩**（与 {@code outputPerUnit} 的「粮/亩」、结算里按**亩**算的口径同侧）； {@code
-   * Industry.capacity} 的 {@code LAND} 是**千分亩**——播种步先 {@code / 1000} 换成亩再乘（差 1000 倍）。
+   * IndustryDefinitionView.capacity} 的 {@code LAND} 是**千分亩**——播种步先 {@code / 1000} 换成亩再乘（差 1000 倍）。
    *
    * <p>★ 它让真档**第一次真的读到第三路瓶颈**（v2 spec §三 的 `seedCapMu`）：此前 {@code cycleInputPerUnit} 是空 map ⇒
    * 播种步一字不扣 ⇒ 真档行为与 V2 逐值一致，但三路瓶颈在 799 格真实世界里**看不见**。
@@ -1049,7 +1050,7 @@ public final class EconomySeeder {
    * <p>★★ <b>它取代了两个旧常量</b>（{@code GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} = 2,000 与 {@code
    * GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI} = 5,000，双轨）：按 §一.11，旧的两个字段与两个常量<b>直接删</b>。
    * 语义也换了：改前那是"周期开始<b>直接加进国库</b>的钱"（旁路），现在是"本周期铸币的<b>产出上限</b>"—— 钱必须由铸币产业<b>生产出来</b>（{@code
-   * Industry.moneyOutputPerUnit}）并受 {@code Government.mintScalePerCycle} 上限约束（★
+   * IndustryDefinitionView.moneyOutputPerUnit}）并受 {@code Government.mintScalePerCycle} 上限约束（★
    * W5-fix5：上限就是这个旋钮本身）。
    *
    * <p>★ 取 {@code 2_000} 是与旧铸币量同量级（毫计价货币：2 银/周期）的<b>保号标定</b>，不是重新标定； 真正的产出还取决于铸币 unit
@@ -1108,8 +1109,8 @@ public final class EconomySeeder {
       TestConditions.Report conditionReport) {
 
     /**
-     * ★★ <b>四张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
-     * EI_EXPOSE_REP} <b>不做跨过程分析</b>，看不出"构造器收了可变对象"之后有没有被改，
+     * ★★ <b>四张表在赋值处冻结</b>（照 {@code IndustryDefinitionView.outputPerUnit} / {@code Facts} 的先例）：
+     * SpotBugs 的 {@code EI_EXPOSE_REP} <b>不做跨过程分析</b>，看不出"构造器收了可变对象"之后有没有被改，
      * 故防御性拷贝与包装必须写在<b>它看得见的地方</b>（这里），而不是抽成一个助手再调。
      *
      * <p>★ <b>为什么必须冻</b>：本记录是"每格两组四行的开缸余额"与"创世货币禀赋"的<b>唯一拼写点</b>（economy 载荷与
@@ -1214,6 +1215,79 @@ public final class EconomySeeder {
           pledges,
           extraMoneyIssuances,
           conditionReport);
+    }
+
+    /**
+     * ★★ <b>{@code production.Seed} 的载荷文本</b>（D-031 P1：定义先落 production，economy.Seed 据此校验
+     * unit→industry 等跨域引用）。
+     *
+     * <p>★★ <b>机械修正（D-032 A 批续做）</b>：三个调用点（{@code WorldgenInitializeTool} / {@code SmallWorld} /
+     * {@code ThreePowersWorld}）都已在同一 {@code submitBatch} 里发 {@code production.Seed}，而本方法在中断前
+     * <b>没有落地</b>（全仓 0 个定义）⇒ 应用层编译不过。这里按 {@link
+     * io.mosire.simos.production.spi.ProductionSeedHandler} 真正读的两段补齐：
+     *
+     * <pre>
+     * industries[] —— 逐格产业定义：本 Seed 的 entries 本来就是 production 的产业节点形状
+     *                 （id/name/regime/cycleDays/capacityPerUnit/laborPerUnit/dailyInputPerUnit/
+     *                  dailyLaborPerUnit/outputPerUnit/cycleInputPerUnit/allocation/slots ——
+     *                  parse 口径见 ProductionDefinitionPayloads.industry），故**同一份节点原样复用**
+     *                 （不在这里造第二套字段拼写点）。
+     * modes[]      —— 默认生产方式目录（{@link #productionModeNodes()}；与 economyPayload 的 modes 同源同形）。
+     * </pre>
+     *
+     * <p>★ <b>为什么 industries 直接复用 entries</b>：{@code ProductionSeedHandler} 只从节点里取上列字段 （多余键它不读），而
+     * entries 里那几个多出来的键（{@code operator}/{@code capacity} 等实例事实）已在 R3B.2 从模板里摘净 ⇒
+     * 逐个重建节点只会把同一份事实写两遍（本仓明令禁止的第二拼写点）。
+     */
+    public String productionPayload() {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      // ★★★ B5（§13.15.3 裁定十九）：`entries` 里那一格原来就叫 `industries`（= 本命令要的定义节点），
+      //   B5 把它改名成 `plans`（那是 economy 载荷的键）⇒ 本处改为**从 plans 节点逐格收集**，
+      //   定义内容一字不改（仍是 `ProductionDefinitionPayloads.industry` 读的那套字段）。
+      List<Map<String, Object>> industryNodes = new ArrayList<>();
+      for (Map<String, Object> entry : entries) {
+        Object raw = entry.get("plans");
+        if (!(raw instanceof List<?> planList)) {
+          continue;
+        }
+        for (Object element : planList) {
+          if (element instanceof Map<?, ?> planNode) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> node = (Map<String, Object>) planNode;
+            industryNodes.add(node);
+          }
+        }
+      }
+      payload.put("industries", industryNodes);
+      payload.put("modes", productionModeNodes());
+      // ★★★ B2b（§13.11.4 第 5 条）：**实例段** —— `EconomyData.units` 已删（生产实例的唯一权威在
+      //   production）⇒ 逐格 `units[]` 不再进 economy 状态，改由 `production.Seed` 的 `instances[]` 承接。
+      //   ★ 同一份 unit 节点**仍然**留在 economy payload 里，但它的用途只剩"逐 unit 的 relation 声明 +
+      //     配额归一"（relations 是 economy 的表）；`EconomyPayloads` 现在会拿 production 的实例投影**逐个核对**
+      //     它（缺一个就具名拒），故不存在"economy 单方面声明一个实例"的第二权威。
+      //   ★ 节点字段映射：economy 侧叫 `industry`，production 侧叫 `plan`（同一个方案稳定 id）。
+      List<Map<String, Object>> instances = new ArrayList<>();
+      for (Map<String, Object> entry : entries) {
+        Object raw = entry.get("units");
+        if (!(raw instanceof List<?> unitList)) {
+          continue;
+        }
+        for (Object element : unitList) {
+          if (!(element instanceof Map<?, ?> unit)) {
+            continue;
+          }
+          Map<String, Object> instance = new LinkedHashMap<>();
+          instance.put("id", unit.get("id"));
+          instance.put("plan", unit.get("industry"));
+          instance.put("operator", unit.get("operator"));
+          instance.put("modeKey", unit.get("modeKey"));
+          instance.put(
+              "progressDays", unit.get("progressDays") == null ? 0 : unit.get("progressDays"));
+          instances.add(instance);
+        }
+      }
+      payload.put("instances", instances);
+      return ToolSupport.json(payload);
     }
   }
 
@@ -1515,7 +1589,7 @@ public final class EconomySeeder {
    */
   private static List<Map<String, Object>> productionModeNodes() {
     List<Map<String, Object>> nodes = new ArrayList<>();
-    for (ProductionMode mode : DefaultProductionModes.modes().values()) {
+    for (ProductionModeDefinitionView mode : DefaultProductionModes.modes().values()) {
       Map<String, Object> node = new LinkedHashMap<>();
       node.put("id", mode.id().value());
       node.put("name", mode.name());
@@ -2105,8 +2179,8 @@ public final class EconomySeeder {
    *
    * ★★ **这条算式不是新口径，是"改口径前的结算**逐字**复刻**：R2 之前 {@code 旧结算引擎（R3a 已删除）} 每天的 {@code laborToday} 就是
    * {@code Σ(行 laborMilli × participationPerMille ÷ 1000)}，而两个乘数都由本类写进载荷 ⇒
-   * 本方法算出的数**恰好**等于改口径前每一天累加进 {@code Industry.cycleLaborMilli()} 的那个数。R2 把它改从"劳动配额表"取 （见 {@code
-   * 旧结算引擎（R3a 已删除）.laborByActor}），故**配额之和必须逐值等于这个数** —— 这就是真档数字一个都不变的原因。
+   * 本方法算出的数**恰好**等于改口径前每一天累加进 {@code IndustryDefinitionView.cycleLaborMilli()} 的那个数。R2 把它改从"劳动配额表"取
+   * （见 {@code 旧结算引擎（R3a 已删除）.laborByActor}），故**配额之和必须逐值等于这个数** —— 这就是真档数字一个都不变的原因。
    *
    * <p>★ 为什么**在这里**（生成器）算而不是在结算里算：结算看不见人口（economy 不认识 social 的 {@code PopulationGroup}），
    * 而"人有多少劳动"这件事只能从人口推；创世一次算好、落成配额，正是 R1 那条"app 一次算出、同一份喂两条命令"的接缝的延续。
@@ -2503,7 +2577,7 @@ public final class EconomySeeder {
       String asset,
       ActorRef owner,
       ActorRef operator,
-      OwnershipStake.RightKind kind,
+      AssetRightKind kind,
       long quantity) {
     Map<String, Object> share = new LinkedHashMap<>();
     share.put("industry", industry);
@@ -2545,9 +2619,10 @@ public final class EconomySeeder {
 
   /**
    * ★★ **一个家户行**（H0.2 起与 §3.2 {@code HouseholdEconomy} 逐字段对应，**除 {@code meansOfProduction} 外** ——
-   * 那一项已按 K3 搬到 {@code Industry.capacity}）：身份 = {@code (residence, slot)}（格由它所在的 entry 给出）； 有效劳动 =
-   * 本行人口 × **该池的人均劳动**（= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷ 池人口，见 {@link #laborMilli(List)}）、 自然需求 = **第
-   * 1 天**的口粮（{@link #firstDayRationMilli}；结算每天会覆写它，§八.8）、 货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
+   * 那一项已按 K3 搬到 {@code IndustryDefinitionView.capacity}）：身份 = {@code (residence, slot)}（格由它所在的
+   * entry 给出）； 有效劳动 = 本行人口 × **该池的人均劳动**（= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷ 池人口，见 {@link
+   * #laborMilli(List)}）、 自然需求 = **第 1 天**的口粮（{@link #firstDayRationMilli}；结算每天会覆写它，§八.8）、 货币
+   * 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
    *
    * <p>★★ **H1：本行没有 {@code goods}** —— 开缸库存（口粮按阶层天数 + R3 的纤维/铁）由 {@link #openingStock} 算好后 落进 actor
    * 切片该家户的账本（{@link Seed#householdStocks()} ⇒ {@link HouseholdSeeder}）。
@@ -2992,7 +3067,7 @@ public final class EconomySeeder {
       requireSeededHousehold(
           split.targetHousehold(), householdStocks, householdMoney, where + ".targetHousehold");
       ShareHandle source = resolveSourceShare(split, shares, where);
-      if (source.kind() != OwnershipStake.RightKind.OWNED) {
+      if (source.kind() != AssetRightKind.OWNED) {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 的源份额必须是 OWNED（拆分只拆自有份额）: id 对应 " + source.kind());
       }
@@ -3012,24 +3087,19 @@ public final class EconomySeeder {
               + "|"
               + target
               + "|"
-              + OwnershipStake.RightKind.OWNED;
+              + AssetRightKind.OWNED;
       long sequence = sequences.getOrDefault(sequenceKey, 0L);
       sequences.put(sequenceKey, sequence + 1L);
       AssetShareId newId =
           OwnershipStake.idOf(
-              source.industry(),
-              source.asset(),
-              target,
-              target,
-              OwnershipStake.RightKind.OWNED,
-              sequence);
+              source.industry(), source.asset(), target, target, AssetRightKind.OWNED, sequence);
       Map<String, Object> newNode =
           ownershipStakeNode(
               source.industry().value(),
               source.asset().name(),
               target,
               target,
-              OwnershipStake.RightKind.OWNED,
+              AssetRightKind.OWNED,
               split.quantity());
       ownershipStakesList(entries.get(source.entryIndex()), source.entryIndex()).add(newNode);
       if (shares.putIfAbsent(
@@ -3041,7 +3111,7 @@ public final class EconomySeeder {
                   source.asset(),
                   target,
                   target,
-                  OwnershipStake.RightKind.OWNED))
+                  AssetRightKind.OWNED))
           != null) {
         throw new IllegalStateException("拆分新建份额 id 冲突（plan 内部构造错误）: " + newId);
       }
@@ -3080,7 +3150,7 @@ public final class EconomySeeder {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 指名的资产份额不在本次 seed 的份额表里: " + pledge.assetShareId());
       }
-      if (share.kind() != OwnershipStake.RightKind.OWNED) {
+      if (share.kind() != AssetRightKind.OWNED) {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 的质押份额必须是真实 OWNED 份额（当前 " + share.kind() + "）");
       }
@@ -3351,7 +3421,7 @@ public final class EconomySeeder {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      OwnershipStake.RightKind kind) {
+      AssetRightKind kind) {
 
     long quantity() {
       return ((Number) node.get("quantity")).longValue();
@@ -3414,7 +3484,7 @@ public final class EconomySeeder {
         AssetKind.valueOf(asset),
         parseActorNode(owner),
         parseActorNode(operator),
-        OwnershipStake.RightKind.valueOf(kind));
+        AssetRightKind.valueOf(kind));
   }
 
   private static ActorRef parseActorNode(Map<?, ?> node) {
@@ -3443,7 +3513,7 @@ public final class EconomySeeder {
     ActorRef sourceOwner = split.sourceOwner().orElseThrow();
     List<ShareHandle> matches = new ArrayList<>();
     for (ShareHandle handle : shares.values()) {
-      if (handle.kind() == OwnershipStake.RightKind.OWNED
+      if (handle.kind() == AssetRightKind.OWNED
           && handle.industry().equals(industry)
           && handle.asset() == asset
           && handle.owner().equals(sourceOwner)) {
@@ -3787,7 +3857,10 @@ public final class EconomySeeder {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
-      entry.put("industries", industries);
+      // ★★★ B5（§13.15.3 裁定十九）：本键原名 `industries`（economy 载荷自带一整套产业定义 + 旧形状实例字段）
+      //   —— 那些定义从未进过 economy 状态（唯一权威在 production），旧形状合成路径已删 ⇒ 键名改为 `plans`：
+      //   它现在只声明"这一格有哪些方案节点"（每个节点仍是 unit 节点的宿主 + trade 的显式 relation 来源）。
+      entry.put("plans", industries);
       entry.put("classes", classes);
       entry.put("allocations", allocations);
       // ★★ S1/R3B.2：本格各产业的资产份额由 plan 显式发出（容量整额 OWNED 给 unit.operator）。
@@ -3815,7 +3888,7 @@ public final class EconomySeeder {
           householdLocations,
           householdStocks,
           householdMoney);
-      // ★★★ W5（2026-10-11）：给政府家户播一个**铸币生产方式**（{@link Industry#moneyOutputPerUnit()} 的
+      // ★★★ W5（2026-10-11）：给政府家户播一个**铸币生产方式**（{@link IndustryDefinitionView#moneyOutputPerUnit()} 的
       //   {@code moneyOutputPerUnit}）+ 它的 unit，并把铸币要吃的投入（工具）记进政府家户库存。
       //   ★ 为什么必须由创世给出、而不是结算里凭空造：铸币是"生产出来的"（用户原话），生产必须有组织者、
       //     有产能锚（"单位规模"的定义）、有要被**真实消耗**的投入 —— 三者都只能在播种/命令面出现
@@ -3964,7 +4037,7 @@ public final class EconomySeeder {
    */
   public static final String MINT = "mint";
 
-  /** 铸币产业的制度名（本批不新增 {@code ProductionMode}/阶层结构：它<b>不建户、不参与阶层流动</b>）。 */
+  /** 铸币产业的制度名（本批不新增 {@code ProductionModeDefinitionView}/阶层结构：它<b>不建户、不参与阶层流动</b>）。 */
   public static final String REGIME_MINT = "government_mint";
 
   /**
@@ -3978,8 +4051,8 @@ public final class EconomySeeder {
   /**
    * ★★ <b>每 1 座铸炉每周期的劳动需求</b>（千分劳动；{@code 8_000} = 8 人·周期）—— 铸币<b>吃劳动</b>那一半。
    *
-   * <p>★ 量纲与 {@code Industry.laborPerUnit} 同侧（千分劳动/规模），与既有的 {@code LABOR_MILLI_PER_LOOM}/{@code
-   * LABOR_MILLI_PER_WORKSHOP} 同制。
+   * <p>★ 量纲与 {@code IndustryDefinitionView.laborPerUnit} 同侧（千分劳动/规模），与既有的 {@code
+   * LABOR_MILLI_PER_LOOM}/{@code LABOR_MILLI_PER_WORKSHOP} 同制。
    *
    * <p>★★ <b>W5-fix3 量纲澄清（只改注释，不改值）</b>：它在规模公式里比较的对象是**周期平均日劳动** {@code avgLaborMilli = 本周期累计劳动 ÷
    * cycleDays}（{@code ProductionEfficiencyBook.evaluateHarvest} 的 ② 劳动链）⇒ 运算上读作
@@ -4002,7 +4075,7 @@ public final class EconomySeeder {
   public static final long MINT_TOOL_MILLI_PER_FURNACE = 2_000L;
 
   /**
-   * ★★ <b>每 1 座铸炉每周期的产出率（毫货币 / 规模）</b> —— {@code Industry.moneyOutputPerUnit} 的出厂值。
+   * ★★ <b>每 1 座铸炉每周期的产出率（毫货币 / 规模）</b> —— {@code IndustryDefinitionView.moneyOutputPerUnit} 的出厂值。
    *
    * <p>★ 取 {@code 500} 毫/座·周期：在"首都 1 座铸炉"的最小世界里，产出上限 = 500 毫，而政策旋钮 {@link
    * #GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI} = 2,000 毫 ⇒ 实测能看出"产出的实际约束来自规模与投入，不是旋钮"。 ★ 它是**标定项**（列
@@ -4090,7 +4163,7 @@ public final class EconomySeeder {
             AssetKind.WORKSHOP.name(),
             operator,
             operator,
-            OwnershipStake.RightKind.OWNED,
+            AssetRightKind.OWNED,
             furnaces);
     // ② 把产业 + unit + 份额挂进政府家户落点那一格的 entry（entry 一定存在：seedGovernmentHousehold 刚写过）
     boolean attached = false;
@@ -4101,12 +4174,12 @@ public final class EconomySeeder {
         continue;
       }
       @SuppressWarnings("unchecked")
-      List<Map<String, Object>> industries = (List<Map<String, Object>>) entry.get("industries");
+      List<Map<String, Object>> plans = (List<Map<String, Object>>) entry.get("plans");
       @SuppressWarnings("unchecked")
       List<Map<String, Object>> units = (List<Map<String, Object>>) entry.get("units");
       @SuppressWarnings("unchecked")
       List<Map<String, Object>> shares = (List<Map<String, Object>>) entry.get("assetShares");
-      industries.add(payload);
+      plans.add(payload);
       units.add(unit);
       shares.add(share);
       attached = true;
@@ -4117,7 +4190,7 @@ public final class EconomySeeder {
           "铸币产业找不到落点 entry（seed 内部不一致）：hex=" + hex + " entries=" + entries.size());
     }
     // ②-b ★★★ 劳动从哪来（W5 的关键一步，别跳过这一节）：铸币**必须有劳动**才能产出 ——
-    //   `Industry.laborPerUnit` 参与规模公式（`evaluateHarvest` 的 ② 劳动链），
+    //   `IndustryDefinitionView.laborPerUnit` 参与规模公式（`evaluateHarvest` 的 ② 劳动链），
     //   而劳动的唯一来源是**劳动配额表**（`laborByUnit`）⇒ 没有配额的 unit 规模恒 0
     //   ⇒ 印不出钱（判据 ② 会以"0 毫"的形式静默通过，但那不是"政策关掉了铸币"，
     //   是"这个产业根本没干活"。）
@@ -4308,7 +4381,7 @@ public final class EconomySeeder {
    */
   static List<Map<String, Object>> productionRuntimeAssetRuleNodes() {
     List<Map<String, Object>> nodes = new ArrayList<>();
-    for (ProductionMode mode : DefaultProductionModes.modes().values()) {
+    for (ProductionModeDefinitionView mode : DefaultProductionModes.modes().values()) {
       for (AssetKind assetKind : PRODUCTION_RUNTIME_ASSET_KINDS) {
         AssetRuleId ruleId = AssetRuleId.idOf(mode.id(), assetKind);
         Map<String, Object> node = new LinkedHashMap<>();
@@ -4360,7 +4433,7 @@ public final class EconomySeeder {
    */
   static List<Map<String, Object>> productionRuntimeLiquidationPolicyNodes() {
     List<Map<String, Object>> nodes = new ArrayList<>();
-    for (ProductionMode mode : DefaultProductionModes.modes().values()) {
+    for (ProductionModeDefinitionView mode : DefaultProductionModes.modes().values()) {
       for (AssetKind assetKind : PRODUCTION_RUNTIME_ASSET_KINDS) {
         AssetRuleId ruleId = AssetRuleId.idOf(mode.id(), assetKind);
         Map<String, Object> node = new LinkedHashMap<>();
@@ -4612,9 +4685,10 @@ public final class EconomySeeder {
    * .superpowers/sdd/2026-10-10-key-order-determinism/fix-ledger.md}）：{@code Map.of} 的 <b>≥2
    * 键</b>形态是 {@code ImmutableCollections.MapN}，槽位 = {@code floorMod(键.hashCode() ^ SALT, 表长)}，而
    * {@code SALT} 取自 <b>JVM 启动时的 nanoTime</b> ⇒ <b>同一份内容在不同 JVM 上迭代序可以不同</b>（1 键形态是 {@code
-   * Map1}，恒稳定，故 上面那些单键 {@code Map.of} 无此问题）。这些表经 {@code economy.Seed} 载荷进 {@code Industry}，而 {@code
-   * Industry} 的冻结口径是"<b>按入参迭代序</b>拷进 {@code LinkedHashMap}" ⇒ 迭代序原样进状态树 ⇒ 快照字节不是内容的纯函数 （实测：同一棵树 6 个
-   * JVM 得 <b>4 个不同 digest</b>，而键集与值逐项相同、顺序无关 digest 唯一）。
+   * Map1}，恒稳定，故 上面那些单键 {@code Map.of} 无此问题）。这些表经 {@code economy.Seed} 载荷进 {@code
+   * IndustryDefinitionView}，而 {@code IndustryDefinitionView} 的冻结口径是"<b>按入参迭代序</b>拷进 {@code
+   * LinkedHashMap}" ⇒ 迭代序原样进状态树 ⇒ 快照字节不是内容的纯函数 （实测：同一棵树 6 个 JVM 得 <b>4 个不同
+   * digest</b>，而键集与值逐项相同、顺序无关 digest 唯一）。
    *
    * <p>★ 与 {@link #factoryPrices()} 是<b>同一条纪律</b>（那里早已写着"为什么不直接 {@code Map.of}"），本方法是它在<b>配方表</b>上的
    * 拼写点。★ 只吃两个键：本目录里三个真的会抖的表恰好都是两键；多于两键的表请照 {@link #factoryPrices()} 逐条 {@code put}。
@@ -4820,7 +4894,8 @@ public final class EconomySeeder {
             //   具名常量与"为什么是 100"见 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}（由
             //   {@link #HAUL_TOOL_PER_MILLE_OF_SERVICE} 派生，与旧趟耗逐值可对上）。
             //   ★★ W7-fix：分路键随作业资本一起从 CATTLE 改成 tool（与手工业
-            //   {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形；{@code Industry.inputPerUnit()} =
+            //   {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形；{@code
+            // IndustryDefinitionView.inputPerUnit()} =
             // 各层之和，
             //   全仓没有按资产分支读它的现扣/收获路径 ⇒ 挂哪一层的值侧都逐值进同一个读口）。
             //   ★ 值侧口径 = "毫工具 / 规模单位·周期"（与手工业同口径）；表只有一项 ⇒ 用单键 {@code Map.of}
@@ -4864,7 +4939,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一个产业对象（与 §3.1 {@code Industry} 逐字段对应；**R3 起含 V7 的四个配方分量**；**H0.3 起含产能总量**）。
+   * 一个产业对象（与 §3.1 {@code IndustryDefinitionView} 逐字段对应；**R3 起含 V7 的四个配方分量**；**H0.3 起含产能总量**）。
    *
    * <p>{@code dailyInputPerUnit}/{@code dailyLaborPerUnit} 置 0：§十 没给这两项的依据（那是 R3a 的事），**不臆造**；
    * {@code cycleDays} = {@link #CYCLE_DAYS}。★★ R3B.2 起返回 {@link IndustryPlan}：模板载荷 + 经营者 + 产能， unit
@@ -5215,7 +5290,7 @@ public final class EconomySeeder {
               entry.getKey(),
               plan.operator(),
               plan.operator(),
-              OwnershipStake.RightKind.OWNED,
+              AssetRightKind.OWNED,
               entry.getValue()));
     }
     return shares;
@@ -5373,7 +5448,7 @@ public final class EconomySeeder {
               household,
               operator,
               operator,
-              OwnershipStake.RightKind.OWNED,
+              AssetRightKind.OWNED,
               quantities,
               new ProductionRules(
                   ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
@@ -5387,7 +5462,7 @@ public final class EconomySeeder {
               household,
               operator,
               plan.operator(),
-              OwnershipStake.RightKind.TENANCY,
+              AssetRightKind.TENANCY,
               quantities,
               new ProductionRules(
                   ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
@@ -5433,7 +5508,7 @@ public final class EconomySeeder {
             operator,
             LaborSource.TENANT);
     return new HouseholdUnit(
-        household, operator, owner, OwnershipStake.RightKind.TENANCY, quantities, relation);
+        household, operator, owner, AssetRightKind.TENANCY, quantities, relation);
   }
 
   /** 一条 {@code OUTPUT_SHARE × GROSS_OUTPUT} 实物分成规则（佃租/匠户分成共用这一处拼写）。 */
@@ -5462,7 +5537,7 @@ public final class EconomySeeder {
       HouseholdId household,
       ActorRef operator,
       ActorRef owner,
-      OwnershipStake.RightKind kind,
+      AssetRightKind kind,
       Map<String, Long> quantities,
       ProductionRules relation) {}
 

@@ -167,7 +167,7 @@ final class DemandTargets {
       }
       if (!byHousehold.isEmpty()) {
         totals.put(
-            io.mosire.simos.economy.model.IndustryHexKeys.hexKey(
+            io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(
                 entry.getKey().q(), entry.getKey().r()),
             byHousehold);
       }

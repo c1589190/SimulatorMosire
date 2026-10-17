@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -22,19 +23,24 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.ExternalAttributeFacts;
+import io.mosire.simos.production.contract.HouseholdProductionConditions;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionEfficiencyState;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionProbeRequest;
+import io.mosire.simos.production.contract.ProductionProbeResult;
+import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.math.BigInteger;
@@ -58,12 +64,13 @@ import java.util.Set;
  * <p>★★ <b>量纲（一次写清，实现里不再猜）</b>：
  *
  * <ul>
- *   <li>{@code plannedOutput/selfConsumed/sellable/inputNeed} 一律<b>毫商品</b>；{@code outputPerUnit}
- *       是"商品单位/规模"⇒ × scale × {@link EconomyVocabulary#MILLI_PER_COMMODITY_UNIT}；{@code
- *       inputPerUnit} 已经是"毫商品/规模/周期"；
+ *   <li>{@code plannedOutput/selfConsumed/sellable/inputNeed} 一律<b>毫商品</b>；★ §15.12 B 起经营位置的 {@code
+ *       plannedOutput} 直接是 {@code probe.expectedOutput}（毫商品/周期，含 GM 覆盖与熟练度倍率 E）， {@code inputNeed}
+ *       是 {@code probe.inputRequired}（毫商品/周期）—— economy 不再自算 {@code outputPerUnit × scale ×
+ *       1000}（那是第二份物理算术）；
  *   <li>{@code MarketTable.priceOf} 是"毫计价货币 / 1 商品单位"⇒ 数量（毫商品） × 价格 ÷ 1000 = 毫钱；
- *   <li>{@code laborPerUnit} 是"千分劳动 / 日 / 规模"⇒ <b>周期劳动</b>必须 × {@code horizonDays}（ {@link
- *       Industry#cycleDays()}）；{@code laborPerUnit × scale} 是每日劳动，不是周期劳动；
+ *   <li>{@code laborPerUnit} 是"千分劳动 / 日 / 规模"；★ §15.12 B 起周期劳动 = {@code probe.laborRequiredMilli ×
+ *       horizonDays}（probe 的 laborRequired 是"每日"口径，见 {@code ProductionProbeResult} 的类注）；
  *   <li>劳动成本折算：{@code laborNeed（千分劳动·日） × subsistence（毫粮/1000 千分劳动） ÷ 1000 = 毫粮}， 再 × 粮价（毫钱/商品单位） ÷
  *       1000 = 毫钱（两步合一：÷ 1_000_000，内部用 {@link BigInteger} 防截断/溢出）；
  *   <li>{@code netPerLaborScaled = floor(net × 1_000_000 / max(1, laborNeed))}（负数也向下取整；同 {@link
@@ -72,10 +79,11 @@ import java.util.Set;
  *
  * <p>★★ <b>与设计文档 §3.2.1 的一处量纲更正（如实记）</b>：文档写 {@code laborScale =
  * row.participationAdjustedLaborMilli() / (laborPerUnit × horizonDays)}。核对量纲：行劳动是"千分劳动/日"、 {@code
- * laborPerUnit} 是"千分劳动/日/规模" ⇒ 分子必须先 × {@code horizonDays} 才是视界内的劳动，两边同除 horizonDays 后为 {@code row
- * / laborPerUnit}。按文档字面（分子不乘）会把日劳动当周期劳动，正是文档 §3.2.3 明令禁止的混用，且真档 {@code
- * laborPerUnit=143/1000}、{@code horizonDays=120} 时 scale 恒 0（候选永远不可行）。故实现取等价、量纲正确的 {@code
- * row.participationAdjustedLaborMilli() / laborPerUnit}。
+ * laborPerUnit} 是"千分劳动/日/规模" ⇒ 分子必须先 × {@code horizonDays} 才是视界（本周期）内的劳动。★ D-032 §15.12 B 起 这段算术由
+ * {@code ProductionRuntime.probe} 承担：本类传 {@code participationAdjustedLaborMilli × horizonDays} 作
+ * {@code laborMilli}（周期累计口径），probe 内部 {@code ÷cycleDays} 折回日均、再 {@code ÷laborPerUnit} 得劳动通道规模。
+ * 按文档字面（分子不乘）会把日劳动当周期劳动，正是文档 §3.2.3 明令禁止的混用，且真档 {@code laborPerUnit=143/1000}、{@code
+ * horizonDays=120} 时规模恒 0（候选永远不可行）。
  *
  * <p>★★ <b>失败语义</b>：没有产业/资产/雇主/运力 ⇒ {@code feasible=false} 且理由具名（{@code NO_*}）；没有市场/没有价格/没有需求 ⇒
  * {@code feasible=true} 但 {@code sellable=0}、{@code reason} 具名（不抛、不静默当高利润）。数据坏（缺 row/结构/位置）仍
@@ -185,18 +193,19 @@ public final class ExpectedProfitBook {
    *     enterprises}/{@code units}/{@code assetShares} 算出</b> （{@link
    *     ModeMigrationPolicy#claimedOwnershipStakes(Map, Map, Map)}），本类不从 {@code base} 重算（过期快照会让已
    *     使用份额被误判成闲置）；闲置判据只经 {@link ModeMigrationPolicy#isIdleShare(OwnershipStake, Set)}
-   * @param accounts 账户会话（只读；本类当前不读它，保留入参以承接后续流动性/工资口径）
+   * @param accounts 账户会话（只读；★ §15.12 B 起读该户商品余额作为 probe 的"可投入原料"，缺账户/缺键 ⇒ 0）
    * @param units 生产单元表（找现有雇主/现有规模）
    * @param relations 生产关系表（显式关系优先；缺则制度默认）
    * @param topology merchant lane 查询；可为 null（退化单格世界）
    * @param day 当前世界日（merchant 分支的读数；不参与产出/成本公式）
+   * @param runtime ★ §15.12 B：本会话的生产运行时（物理量——产出/所需劳动/所需投入——的唯一来源；不得为 null）
    */
   public static Prospect prospect(
       EconomyDayView base,
       HouseholdId household,
       ProductionModeId modeId,
       HexCoord hex,
-      Industry industryOrNull,
+      IndustryDefinitionView industryOrNull,
       MarketTable marketOrNull,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
@@ -205,7 +214,8 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
-      long day) {
+      long day,
+      ProductionRuntime runtime) {
     return prospect(
         base,
         household,
@@ -221,7 +231,8 @@ public final class ExpectedProfitBook {
         relations,
         topology,
         day,
-        null);
+        null,
+        runtime);
   }
 
   /**
@@ -236,13 +247,16 @@ public final class ExpectedProfitBook {
    *
    * <p>★ <b>fail-closed</b>：指定的位置不在该 mode 的<b>可生产位置</b>集合里（或为 null）⇒ 退回 {@link #choosePosition}
    * 的既有口径（不抛、不静默换 mode）。
+   *
+   * <p>★★ <b>D-032 §15.12 B（R1）</b>：{@code runtime} 是经营位置物理量（预计产出/规模/所需投入/所需劳动）的唯一来源 —— 见 {@link
+   * #productionProspect}。
    */
   public static Prospect prospect(
       EconomyDayView base,
       HouseholdId household,
       ProductionModeId modeId,
       HexCoord hex,
-      Industry industryOrNull,
+      IndustryDefinitionView industryOrNull,
       MarketTable marketOrNull,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
@@ -252,7 +266,8 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
       long day,
-      ClassPositionId positionOrNull) {
+      ClassPositionId positionOrNull,
+      ProductionRuntime runtime) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(modeId, "modeId");
@@ -264,10 +279,11 @@ public final class ExpectedProfitBook {
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(relations, "relations");
+    Objects.requireNonNull(runtime, "runtime（§15.12 B：物理量必须取自 production 的试算）");
     if (day < 0L) {
       throw new IllegalArgumentException("ExpectedProfitBook.prospect 的 day 不得为负: " + day);
     }
-    ProductionMode mode = base.modes().get(modeId);
+    ProductionModeDefinitionView mode = base.modes().get(modeId);
     if (mode == null) {
       return infeasible(household, modeId, null, hex, null, "NO_MODE");
     }
@@ -297,7 +313,7 @@ public final class ExpectedProfitBook {
       // ★★ D-023 #6：流民没有工作、不得从 DISPLACED 池主动招募 —— 预期收益里也不得假装它有一份雇主工资。
       return infeasible(household, modeId, position.id(), hex, null, "DISPLACED_NO_WORK");
     }
-    Industry industry =
+    IndustryDefinitionView industry =
         industryOrNull != null ? industryOrNull : resolveIndustry(base, hex, modeId);
     if (DefaultProductionModes.MERCHANT.equals(modeId)) {
       return merchantProspect(
@@ -345,43 +361,84 @@ public final class ExpectedProfitBook {
         demand,
         shares,
         claimedByEnterprises,
+        accounts,
         units,
-        relations);
+        relations,
+        runtime);
   }
 
   // ── 生产位置（OWNER / SURPLUS_RECEIVER / TENANCY）─────────────────────────────────────────
 
+  /**
+   * ★★★ <b>D-032 §15.12 B（R1）：经营位置的预期读数 —— 物理量一律取自 {@link ProductionRuntime#probe}</b>。
+   *
+   * <p>★★ <b>为什么要换读源</b>：改前这里自算 {@code scale = min(资产规模, 劳动规模)}、{@code plannedOutput =
+   * outputPerUnit × scale × 1000} —— 不读熟练度/经验、不读 GM 产出覆盖、不读解锁/可用性条件。于是"预计 100、实际 200" （熟练度 2
+   * 倍）这类脱节在选择链上全程看不见（R1）。改后：probe 是<b>唯一的</b>物理产出/需求来源，本方法只保留估价 （价 × 量、自给、需求上限、关系分账）与排序读数。
+   *
+   * <p>★★ <b>probe 入参（§15.12 B 逐条）</b>：
+   *
+   * <pre>
+   * 劳动       = 家户 participationAdjustedLaborMilli × horizonDays      （本周期累计；probe 内部 ÷cycleDays）
+   * 占用       = 既有 unit 的 usableAssets（★ R2/E2 替换点：统一分配后必须换成分配结果）
+   *              候选：与 assetScaleOf **同一判据**的可用资产表（自有自营 + 同格可租闲置、claimed 排除）
+   * 投入       = 本户账户里方案投入键上的库存（缺账户/缺键 ⇒ 0）
+   * 熟练度/经验 = 本 tick 冻结条件优先（R5），否则运行时读口（ProductionProbeInputs 的唯一拼写点）
+   * carry      = runtime.efficiencyOf(unitId)（候选 ⇒ 空：没有实例就没有余数行）
+   * attributes = EMPTY（正式日循环的属性通路本就未接；声明了外部属性条件的方案因此具名拒，见 §4.5）
+   * </pre>
+   *
+   * <p>★★ <b>结果消费</b>：{@code plannedOutput = probe.expectedOutput}（毫商品/周期，含 GM 覆盖与 E）· {@code scale
+   * = probe.scale()}（产出规模）· {@code inputCost} 用 {@code probe.inputRequired}（键集同配方）· {@code
+   * laborNeed = probe.laborRequiredMilli × horizonDays}（每日 →
+   * 周期）。自给/可售/需求上限/收入/分账（obligations）/净额的算式形状不变。
+   *
+   * <p>★ <b>不可行理由映射</b>：{@code asset-short → NO_ASSET:<industry>}、{@code labor-short →
+   * NO_LABOR:<household>}、 {@code plan-unknown → NO_INDUSTRY}、其余（含 {@code locked}/{@code
+   * condition-unsatisfied:*}）⇒ {@code PROBE:<reason>}； feasible 但规模 0 ⇒ {@code SCALE_ZERO}（旧词表保留）。★
+   * 资产那道闸仍在 probe 之前用同一判据判（旧口径的 {@code NO_ASSET} 逐值不变；占用为空时 probe 会给"可行、规模 0"，不提前判会把旧理由漂成 {@code
+   * SCALE_ZERO}）。
+   */
   private static Prospect productionProspect(
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
       ProductionRole position,
       HexCoord hex,
-      Industry industry,
+      IndustryDefinitionView industry,
       MarketTable market,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
       Set<AssetShareId> claimedByEnterprises,
+      AccountSession accounts,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<ProductionUnitId, ProductionRules> relations) {
+      Map<ProductionUnitId, ProductionRules> relations,
+      ProductionRuntime runtime) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
     ActorRef operator = HouseholdActors.of(household);
     ProductionUnitId unitId = existingUnitId(industry, operator, units);
     ProductionProcess existingUnit = units.get(unitId);
-    long assetScale;
+    Map<AssetKind, Long> occupancy;
+    Optional<ProductionEfficiencyState> carry;
     if (existingUnit != null) {
       // 当前在产：用这个 unit 的真实可用资产（含租佃而来的 operator==组织者份额）——与旧 A 规则同一口径。
-      assetScale = ProductionProcessBook.capacityScaleOf(existingUnit, industry, shares);
+      // ★★ R2/E2 替换点：这里的"占用"是**份额快照**（同 industry + operator 的份额合计）；R2 的统一分配落地后，
+      //   必须换成"统一分配结果"（一份占用同时供 labor offer 的产能上限与 executeDay 使用），不得再读份额快照。
+      occupancy =
+          ProductionProbeInputs.positiveAssets(
+              ProductionProcessBook.usableAssets(existingUnit, shares));
+      carry = runtime.efficiencyOf(unitId);
     } else {
       // 候选：自有自营 + 同格可租闲置（闲置判据的唯一拼写点在 ModeMigrationPolicy）。
       // ★★ D-024 修复 1：claimed 由调用方从当天工作副本 enterprises 算出并传入，本类不再从 base 重算。
-      assetScale = assetScaleOf(industry, household, shares, claimedByEnterprises);
+      occupancy =
+          ProductionProbeInputs.positiveAssets(
+              candidateUsableAssets(industry, household, shares, claimedByEnterprises));
+      carry = Optional.empty(); // 候选：没有实例 ⇒ 没有精度余数行
     }
-    long laborScale =
-        laborPerUnit <= 0L
-            ? Long.MAX_VALUE
-            : householdEconomy.participationAdjustedLaborMilli() / laborPerUnit;
+    // ★ 资产那道闸（与改前同一判据：min_k ⌊可用_k ÷ capacityPerUnit_k⌋ < 1 ⇒ NO_ASSET:<industry>）。
+    long assetScale = assetScaleOf(industry, occupancy);
     if (assetScale < 1L) {
       return infeasible(
           household,
@@ -391,26 +448,37 @@ public final class ExpectedProfitBook {
           industry.id(),
           "NO_ASSET:" + industry.id().value());
     }
-    if (laborScale < 1L) {
+
+    // ★★ §15.12 B：本周期累计劳动（probe 内部 ÷cycleDays 折回日均）。
+    long laborPeriodMilli =
+        Math.multiplyExact(householdEconomy.participationAdjustedLaborMilli(), horizonDays);
+    HouseholdProductionConditions conditions =
+        new HouseholdProductionConditions(
+            household,
+            laborPeriodMilli,
+            occupancy,
+            ProductionProbeInputs.inputsOf(accounts.householdGoods().get(household), industry),
+            ProductionProbeInputs.masteryOf(runtime, household, industry),
+            ProductionProbeInputs.experienceOf(runtime, household, industry));
+    ProductionProbeResult probe =
+        runtime.probe(
+            new ProductionProbeRequest(
+                industry.id(), conditions, occupancy, carry, ExternalAttributeFacts.EMPTY));
+    if (!probe.feasible()) {
       return infeasible(
-          household, modeId, position.id(), hex, industry.id(), "NO_LABOR:" + household.value());
+          household,
+          modeId,
+          position.id(),
+          hex,
+          industry.id(),
+          probeRejectionReason(probe.reason(), industry, household));
     }
-    long scale = Math.min(assetScale, laborScale);
+    long scale = probe.scale();
     if (scale < 1L) {
       return infeasible(household, modeId, position.id(), hex, industry.id(), "SCALE_ZERO");
     }
 
-    LinkedHashMap<CommodityId, Long> plannedOutput = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> output : industry.recipe().outputPerUnit().entrySet()) {
-      if (output.getValue() <= 0L) {
-        continue;
-      }
-      long plannedMilli =
-          Math.multiplyExact(
-              Math.multiplyExact(output.getValue(), scale),
-              EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
-      plannedOutput.put(output.getKey(), plannedMilli);
-    }
+    LinkedHashMap<CommodityId, Long> plannedOutput = new LinkedHashMap<>(probe.expectedOutput());
     LinkedHashMap<CommodityId, Long> selfConsumed = new LinkedHashMap<>();
     LinkedHashMap<CommodityId, Long> sellable = new LinkedHashMap<>();
     boolean priceMissing = false;
@@ -464,11 +532,13 @@ public final class ExpectedProfitBook {
     long inputCost = 0L;
     boolean inputPriceMissing = false;
     Map<CommodityId, Long> inputCostByCommodity = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
-      if (input.getValue() <= 0L) {
+    // ★★ §15.12 B：投入量取 probe 的 inputRequired（基准规模 × 每单位需求；键集 = 配方投入表），
+    //   不再自算 inputPerUnit × scale —— 那是第二份物理算术。
+    for (Map.Entry<CommodityId, Long> input : probe.inputRequired().entrySet()) {
+      long need = input.getValue();
+      if (need <= 0L) {
         continue;
       }
-      long need = Math.multiplyExact(input.getValue(), scale);
       if (market == null || !market.hasPrice(input.getKey())) {
         inputPriceMissing = true;
         continue; // 从未定价的投入 ⇒ 不硬折
@@ -482,10 +552,9 @@ public final class ExpectedProfitBook {
       inputCostByCommodity.merge(input.getKey(), money, Math::addExact);
     }
 
+    // ★★ §15.12 B：laborRequiredMilli 是"每日"口径（基准规模 × 每单位劳动）⇒ × horizonDays 折成本周期劳动。
     long laborNeed =
-        laborPerUnit <= 0L
-            ? 0L
-            : Math.multiplyExact(Math.multiplyExact(laborPerUnit, scale), horizonDays);
+        laborPerUnit <= 0L ? 0L : Math.multiplyExact(probe.laborRequiredMilli(), horizonDays);
     long grainPrice = market == null ? 0L : market.priceOf(EconomySettlement.GRAIN);
     boolean grainPriceMissing =
         laborNeed > 0L && (market == null || !market.hasPrice(EconomySettlement.GRAIN));
@@ -553,7 +622,7 @@ public final class ExpectedProfitBook {
       ProductionModeId modeId,
       ProductionRole position,
       HexCoord hex,
-      Industry industry,
+      IndustryDefinitionView industry,
       MarketTable market,
       Map<AssetShareId, OwnershipStake> shares,
       Map<ProductionUnitId, ProductionProcess> units,
@@ -718,7 +787,7 @@ public final class ExpectedProfitBook {
       ProductionModeId modeId,
       ProductionRole position,
       HexCoord hex,
-      Industry industryOrNull,
+      IndustryDefinitionView industryOrNull,
       MarketTable market,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
@@ -728,7 +797,7 @@ public final class ExpectedProfitBook {
       MarketTopology topology,
       long day,
       AccountSession accounts) {
-    Industry trade =
+    IndustryDefinitionView trade =
         industryOrNull != null && isMerchantRegime(industryOrNull)
             ? industryOrNull
             : resolveIndustry(base, hex, modeId);
@@ -877,11 +946,18 @@ public final class ExpectedProfitBook {
   // ── 规模 / 关系 / 义务 ────────────────────────────────────────────────────────────────────
 
   /**
-   * 候选可用资产规模（自有自营 + 同格可租闲置，判据与 {@link ModeMigrationPolicy#isIdleShare} 逐字同源）： {@code min_k
-   * floor(可用资产[k] / capacityPerUnit[k])}。
+   * ★★★ <b>§15.12 B：候选可用资产表</b>（自有自营 + 同格可租闲置，判据与 {@link ModeMigrationPolicy#isIdleShare} 逐字同源）——
+   * "返回资产表"的<b>唯一拼写点</b>。
+   *
+   * <p>★ <b>为什么返回表而不是规模</b>：§15.12 B 要求"候选用与现有 {@code assetScaleOf} 同一判据的可用资产表"喂 {@code
+   * probe.assetOccupancy}，而规模只是同一张表的一次 {@code min}（{@link #assetScaleOf(IndustryDefinitionView,
+   * Map)}）。分成"先算规模、再算占用"两处算术就是两份判据 —— 本方法只做表，规模从表来。
+   *
+   * <p>★ <b>D-024 修复 1</b>：{@code claimedByEnterprises} 由调用方从当天工作副本 {@code enterprises}/{@code
+   * units} 算出并传入，本类不从 {@code base} 重算（过期快照会把已使用份额误判成闲置）。
    */
-  private static long assetScaleOf(
-      Industry industry,
+  private static Map<AssetKind, Long> candidateUsableAssets(
+      IndustryDefinitionView industry,
       HouseholdId household,
       Map<AssetShareId, OwnershipStake> shares,
       Set<AssetShareId> claimedByEnterprises) {
@@ -898,11 +974,52 @@ public final class ExpectedProfitBook {
       }
       available.merge(share.asset(), share.quantity(), Math::addExact);
     }
+    return available;
+  }
+
+  /**
+   * ★★ <b>资产表的产能规模（唯一算式）</b>：{@code min_k ⌊可用资产[k] ÷ capacityPerUnit[k]⌋}（缺键 = 0；空表 = 0）。
+   *
+   * <p>★ 与 {@code ProductionRuntimeEngine} 的资产通道逐字同式（E=1000 时既有的 {@code 资产规模} 读数不变）；既有 unit 的
+   * 可用资产表由 {@link ProductionProcessBook#usableAssets(ProductionProcess, Map)} 给（同 industry +
+   * operator 的份额合计）。
+   */
+  private static long assetScaleOf(
+      IndustryDefinitionView industry, Map<AssetKind, Long> availableAssets) {
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> required : industry.capacityPerUnit().entrySet()) {
-      scale = Math.min(scale, available.getOrDefault(required.getKey(), 0L) / required.getValue());
+      scale =
+          Math.min(
+              scale, availableAssets.getOrDefault(required.getKey(), 0L) / required.getValue());
     }
     return scale == Long.MAX_VALUE ? 0L : scale;
+  }
+
+  /**
+   * ★★ <b>§15.12 B：probe 的不可行理由 → 经济侧的旧词表</b>（键序/词表稳定性）。
+   *
+   * <pre>
+   * asset-short   → NO_ASSET:&lt;industry&gt;      （旧词，逐字保留）
+   * labor-short   → NO_LABOR:&lt;household&gt;     （旧词，逐字保留）
+   * plan-unknown  → NO_INDUSTRY               （旧词：该格没有可用产业定义）
+   * 其余          → PROBE:&lt;production 的具名理由&gt;（locked / condition-unsatisfied:* / input-short …）
+   * </pre>
+   *
+   * <p>★ 其余理由<b>不得</b>被折叠成 NO_INDUSTRY/SCALE_ZERO：{@code locked} 与 {@code condition-unsatisfied:*}
+   * 是"这户还不够格 用这个方案"（R1 要求它们具名出现在选择链的拒绝里），与"没有产业模板"是两件事。
+   */
+  private static String probeRejectionReason(
+      String probeReason, IndustryDefinitionView industry, HouseholdId household) {
+    if ("asset-short".equals(probeReason)) {
+      return "NO_ASSET:" + industry.id().value();
+    }
+    if ("labor-short".equals(probeReason)) {
+      return "NO_LABOR:" + household.value();
+    }
+    if ("plan-unknown".equals(probeReason)) {
+      return "NO_INDUSTRY";
+    }
+    return "PROBE:" + probeReason;
   }
 
   private static long shipCattleUpkeepOf(
@@ -927,7 +1044,7 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionRules> relations,
       ProductionUnitId unitId,
       ProductionModeId modeId,
-      Industry industry,
+      IndustryDefinitionView industry,
       HouseholdEconomy householdEconomy,
       ActorRef operator) {
     ProductionRules explicit = relations.get(unitId);
@@ -1152,14 +1269,14 @@ public final class ExpectedProfitBook {
         && position.surplusRole() != ProductionRole.SurplusRole.SELF_SUBSISTENCE;
   }
 
-  private static boolean isMerchantRegime(Industry industry) {
+  private static boolean isMerchantRegime(IndustryDefinitionView industry) {
     return industry != null && RegimeOperators.MERCHANT.equals(industry.regime().value());
   }
 
-  private static Industry resolveIndustry(
+  private static IndustryDefinitionView resolveIndustry(
       EconomyDayView base, HexCoord hex, ProductionModeId modeId) {
     for (IndustryId industryId : ModeMigrationPolicy.industriesForMode(base, hex, modeId)) {
-      Industry industry = base.industries().get(industryId);
+      IndustryDefinitionView industry = base.industries().get(industryId);
       if (industry != null) {
         return industry;
       }
@@ -1188,8 +1305,8 @@ public final class ExpectedProfitBook {
    *   <li>mode/产业兼容性按 {@link #employerModeRank} 分档（2 &gt; 1 &gt; 0）：有高秩候选时只在最高秩里选。
    * </ol>
    *
-   * <p>规模 = {@link ProductionProcessBook#capacityScaleOf(ProductionProcess, Industry, Map)}；规模 &lt;
-   * 1 的候选先跳过 （没有真实产能可雇人，且 wageProspect 也会以 scale&lt;1 判 NO_EMPLOYER）；同秩同规模按 {@link
+   * <p>规模 = {@link ProductionProcessBook#capacityScaleOf(ProductionProcess, IndustryDefinitionView,
+   * Map)}；规模 &lt; 1 的候选先跳过 （没有真实产能可雇人，且 wageProspect 也会以 scale&lt;1 判 NO_EMPLOYER）；同秩同规模按 {@link
    * ProductionUnitId#value()} 升序取第一个（确定性）。
    *
    * <p>★ 已知近似（如实记）：同一 farm 产业下 wage/family 两种 unit 的产业 regime 都是 feudal ⇒ target=wage_farm 时
@@ -1197,7 +1314,7 @@ public final class ExpectedProfitBook {
    */
   private static Employer employerOf(
       ProductionModeId modeId,
-      Industry industry,
+      IndustryDefinitionView industry,
       HexCoord hex,
       HouseholdId household,
       Map<ProductionUnitId, ProductionProcess> units,
@@ -1245,7 +1362,7 @@ public final class ExpectedProfitBook {
    * candidateId@version} 无法反解 modeId ⇒ 按产业 regime 落第 1/0 档（具名近似，不猜版本内容）。
    */
   private static int employerModeRank(
-      ProductionProcess unit, ProductionModeId modeId, Industry industry) {
+      ProductionProcess unit, ProductionModeId modeId, IndustryDefinitionView industry) {
     if (unit.modeKey().equals(EconomyEnterpriseSettlement.MODE_KEY_PREFIX + modeId.value())) {
       return 2;
     }
@@ -1263,7 +1380,9 @@ public final class ExpectedProfitBook {
    * id 去查 {@code relations} 会漏掉真实关系、退回制度默认（那会让佃农拿到封建庄园规则）。
    */
   private static ProductionUnitId existingUnitId(
-      Industry industry, ActorRef operator, Map<ProductionUnitId, ProductionProcess> units) {
+      IndustryDefinitionView industry,
+      ActorRef operator,
+      Map<ProductionUnitId, ProductionProcess> units) {
     ProductionUnitId canonical = ProductionUnitId.idOf(industry.id(), operator);
     if (units.containsKey(canonical)) {
       return canonical;
@@ -1284,7 +1403,8 @@ public final class ExpectedProfitBook {
   // ── 价 / 量 / 收益小工具 ───────────────────────────────────────────────────────────────────
 
   /** 产出的毛值（毫钱）：{@code Σ outputPerUnit × scale × bidPrice}（商品单位 × 规模 × 毫钱/单位）。 */
-  private static long grossOutputValue(Industry industry, long scale, MarketTable market) {
+  private static long grossOutputValue(
+      IndustryDefinitionView industry, long scale, MarketTable market) {
     long total = 0L;
     for (Map.Entry<CommodityId, Long> output : industry.recipe().outputPerUnit().entrySet()) {
       if (output.getValue() <= 0L || market == null) {

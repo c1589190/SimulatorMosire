@@ -314,12 +314,18 @@ public final class CatalogTool implements SimosTool {
                   + OPERATOR_HINT
                   + "）"),
           Map.entry(
-              "economy.UpsertIndustry",
-              "id(<kind>@<q>_<r>；新版本写进 kind 后缀：office_v2@0_0), name, regime, cycleDays(≥1),"
+              "production.UpsertIndustry",
+              "id(<kind>@<q>_<r>；新版本写进 kind 后缀：office_v2@0_0), name, regime, skill?(六声明 kind"
+                  + " 的稳定技能键；自定义可缺), cycleDays(≥1),"
                   + " capacityPerUnit(非空且逐值>0), dailyInputPerUnit?, dailyLaborPerUnit?(≥0),"
-                  + " laborPerUnit?(≥0), outputPerUnit?(空 map = 无商品产出), cycleInputPerUnit?,"
+                  + " laborPerUnit?(≥0), outputPerUnit?(空 map = 无商品产出), moneyOutputPerUnit?, cycleInputPerUnit?,"
                   + " slots[{id,name,laborParticipationPerMille}],"
-                  + " allocation(@class=split；两权重各≥0 且和=1000)"
+                  + " allocation(@class=split；两权重各≥0 且和=1000),"
+                  + " buildDays?(≥0；缺省 0 = 无建设期),"
+                  + " acceptedRightKinds?[OWNED|TENANCY|COMMUNAL](缺省空集 = 不接受任何资产权利 ⇒"
+                  + " 采用算法具名拒 NO_RIGHT_KIND；要能被家户采用的方案必须显式声明)"
+                  + "（★ B2c：buildDays 与 acceptedRightKinds 是候选面退役后搬进方案定义的两组件；"
+                  + " **不绑地点**的 id（不含 @<q>_<r>）才是可被家户采用的方案，带格键的定义是某格已物化的定义；"
                   + "（★ Z1a：id 不存在 ⇒ 创建（格必须已有已激活经济状态；同格同 kind 版本不得倒退/撞号）；"
                   + "id 已存在 ⇒ 仅当无 units/assetShares/relations 引用时原地全量替换，被引用 ⇒ 具名拒并指路"
                   + "新版本 id；逐值相同的重放 = 幂等 no-op；老 unit 引用老 id 零影响；GM-only）"),
@@ -477,11 +483,28 @@ public final class CatalogTool implements SimosTool {
               "key(政策键枚举名), valueMilli(整数)（★ W10：GM 把一个**经济侧行为值**写成运行期生效的政策预设 —— 用户裁定"
                   + "「凡\"行为\"一律做成 GM 可调的预设」。九个键与缺省值：FAMINE_MAX_PPM_PER_TICK=1000 /"
                   + " SLIDE_SPEED_PER_MILLE_PER_RATIO=100 / SLIDE_COST_PER_LEVEL=1000 / SLIDE_ROUND_DAYS=5 /"
-                  + " MINT_MILLI_PER_FURNACE_CYCLE=500 / MINT_LABOR_SHARE_PER_MILLE=30 / LOAN_BASE_RATE_PER_MILLE=20 /"
-                  + " MIGRATION_SPEED_CAP_PER_MILLE=100 / PROFIT_GAP_SPEED_SLOPE_PER_MILLE=100。★ 缺键 = 该键的具名缺省"
+                  + " MINT_LABOR_SHARE_PER_MILLE=30 / LOAN_BASE_RATE_PER_MILLE=20 /"
+                  + " MIGRATION_SPEED_CAP_PER_MILLE=100 / PROFIT_GAP_SPEED_SLOPE_PER_MILLE=100。"
+                  + "★★ MINT_MILLI_PER_FURNACE_CYCLE 自 B2 批（I12）起被本命令**具名拒**"
+                  + "(mint-rate-moved-to-production-definition)：铸币产出率的唯一权威已收口到 **production 的产业定义**"
+                  + "（IndustryDefinitionView.moneyOutputPerUnit），改走 production.UpsertIndustry"
+                  + "（工具 simos.economy.upsertIndustry）的 moneyOutputPerUnit 字段。★ 缺键 = 该键的具名缺省"
                   + " ⇒ 从没被写过的世界逐值等于改动前；写成缺省值 ⇒ 该行从政策表删掉。具名拒：unknown-key / bad-range /"
-                  + " unchanged / not-activated；★ 只写 economy.meta 的一个键，其余组件一个数都不动；★ GM-only"
+                  + " unchanged / not-activated / mint-rate-moved-to-production-definition；"
+                  + "★ 只写 economy.meta 的一个键，其余组件一个数都不动；★ GM-only"
                   + "（不进令/RegisterEffect/决策人目录），窄工具 simos.economy.setEconomyPolicy 可用）"),
+          Map.entry(
+              "economy.SetPlanSources",
+              "plan(方案稳定 id，**不绑地点** = 不带 `@q_r` 格段), assetSource?({kind,id} 主体 | null),"
+                  + " laborSource?(SELF|FAMILY|TENANT|SERF|WAGE | null)（★ D-032 B3 裁定十一 + 裁定十二：GM"
+                  + " 声明/清除某个**生产方案**在 economy 侧的两条经济关系。assetSource = 该方案可借用其**空闲**份额的"
+                  + "主体（缺省/清除 ⇒ **只认自有份额**）；laborSource = 该方案被采用时写进生产关系的劳动来源"
+                  + "（缺省/清除 ⇒ **SELF**，= 旧候选缺省，逐值不变）。两条**至少要给一条**；**缺键 = 不动这一维**，"
+                  + "**显式 null = 清除该维**；写成缺省值 ⇒ 该行从声明表删掉。具名拒：bad-payload / plan-not-a-plan"
+                  + "（带格段的 id ⇒ 声明永远读不到）/ no-declaration / unchanged / not-activated；"
+                  + "★ 只写 economy.meta 的两张声明表（planAssetSources / planLaborSources），方案定义（production"
+                  + " 权威）/实例/家户/债务/市场一个数都不动；不做版本、不做窗口；★ GM-only"
+                  + "（不进令/RegisterEffect/决策人目录），窄工具 simos.economy.setPlanSources 可用）"),
           Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
@@ -574,14 +597,6 @@ public final class CatalogTool implements SimosTool {
               "id, reason?（★ R1：撤销一条政府市场授权；不存在/已耗尽到期清除 ⇒ 具名拒 unknown-authorization，"
                   + "不静默成功；★ 只删状态行，不回滚任何已成交的货/钱；GM-only）"),
           Map.entry(
-              "economy.RegisterCandidate",
-              "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
-                  + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"
-                  + " buildDays?(缺省 0), cycleDays(≥1), regime, laborSource?(缺省 SELF),"
-                  + " acceptedRightKinds[OWNED|TENANCY|COMMUNAL]?, assetSource{kind,id}?"
-                  + "（★ (id,version) 已存在 ⇒ 拒；旧 unit 的 modeKey=id@version 不受修订影响；只写 candidates；"
-                  + "进入采用算法留 E2b）"),
-          Map.entry(
               "economy.SwitchMode",
               "organizationId, toModeId, retainOriginalPerMille(0..1000),"
                   + " effectiveDay?(缺省=当前日；不得早于当前日), reason?"
@@ -612,19 +627,21 @@ public final class CatalogTool implements SimosTool {
           Map.entry(
               "economy.GmAdjust",
               "adjustment(forgiveDebt|setLiquidationPolicy"
-                  + "|upsertProductionMode|deactivateProductionMode|upsertClassStructure|upsertClassPosition"
-                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate|setOutputQuantity|clearOutputQuantity),"
+                  + "|upsertClassStructure|upsertClassPosition"
+                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization),"
+                  + " 已迁出的五个 kind（upsertCandidate / setOutputQuantity / clearOutputQuantity /"
+                  + " upsertProductionMode / deactivateProductionMode）命中 ⇒ 具名拒"
+                  + "（plan-definition-moved-to-production-definition / output-quantity-moved-to-production-definition /"
+                  + " production-mode-definition-moved-to-production），白名单 12 → 9 → 7 项（★ B5：生产方式定义那两个 kind 已删，"
+                  + "写面在 production.UpsertProductionMode / DeactivateProductionMode）；"
                   + " parameters(JSON 对象), reason(必填非空白)（★ GM-only、只改源状态：白名单外/派生读数 ⇒"
                   + " 拒；旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤"
                   + " 本金)；setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000),"
                   + " protectedReserve(≥0), priceSource(MARKET|AGREED|POLICY),"
                   + " policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
-                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；P7 生产方式编辑八"
-                  + " kind：upsertProductionMode={id,name,version?,classStructureId}（version"
-                  + " 必须推进；classStructureId 须已存在）；deactivateProductionMode={id}（被"
-                  + " classStructures/classPositions/productionOrganizations/assetRules/modeTransitions/pledges"
-                  + " 任一引用 ⇒"
-                  + " 具名拒绝）；upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置"
+                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；P7 生产方式定义编辑已迁"
+                  + " production.UpsertProductionMode / DeactivateProductionMode（★ B5 起本命令**命中即具名拒**）；本命令只做："
+                  + "upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置"
                   + " upsert 并同步全局 classPositions 与所有结构副本；份额给到即整体替换；新建必须给非空 positions）；"
                   + "upsertClassPosition={id,modeId,name?,relationToMeans?,laborRole?,surplusRole?,ruleExtensions?,classStructureId?}（位置不属于任何结构时必须给"
                   + " classStructureId；既有位置的 modeId 不可改）；"
@@ -635,15 +652,9 @@ public final class CatalogTool implements SimosTool {
                   + "upsertProductionOrganization={id?,modeId,classPositionId,unitId?,organizer,laborSources?,"
                   + "assetSources?,inputSources?,outputOwnership,relationTemplateRef?,status,statusReason?}（ACTIVE/EXITING"
                   + " 必须有 unitId；SHORTAGE 必须具名 reason；引用 fail-closed）；"
-                  + "upsertCandidate={id,version?,output?,outputPerUnit?,inputPerUnit?,requiredAssets?,laborPerUnit?,"
-                  + "buildDays?,cycleDays?,regime?,laborSource?,acceptedRightKinds?,assetSource?,name?}（新建"
-                  + " output/outputPerUnit/cycleDays/regime 必填；修订须推进 version；★ ProductionCandidate"
-                  + " 没有 modeId 字段，显式 modeId ⇒ 具名拒绝）；Z1 产品产出数量覆盖两 kind（只写"
-                  + " outputQuantityOverrides）：setOutputQuantity={industryId,commodityId,quantity(0..1000000"
-                  + " 整数；值=商品数量/单位规模)}（industryId 须已存在；commodityId 须在该产业 recipe().outputPerUnit()"
-                  + " 产出键里、不开新商品；quantity 缺失/非整数/越界 ⇒"
-                  + " QUANTITY_OUT_OF_RANGE；缺省覆盖=配方默认）；clearOutputQuantity={industryId,commodityId}（industryId"
-                  + " 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，不做静默幂等；回落配方默认））"),
+                  + "★ B2c（D-032 §13.12.2 裁定八）：upsertCandidate 已随候选面整体退役 —— 方案定义的写面是"
+                  + " production.UpsertIndustry（GM 工具 simos.economy.upsertIndustry），不是本命令；"
+                  + " Z1 的产品产出数量覆盖两 kind 也已迁出（唯一权威在 production 的定义 outputPerUnit））"),
           // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套 —— 注册面新增三个 type ⇒ 本表必须同批
           //   登记（构造成员守卫会逐条比对注册面，缺项当场抛）。三条都不打 {@code DmUsableCommand}：GM 的
           //   simos.command.submit 与窄工具照常可用，令 / RegisterEffect / 决策人命令目录三条路不放大。
@@ -941,7 +952,42 @@ public final class CatalogTool implements SimosTool {
                   + "只给 seed = 用该 seed 投骰；都不给 = 由 combatId+stageId+tick+概率表 确定性派生 seed；"
                   + "两者同给 = 按 seed 复核 outcome（不一致 ⇒ 具名拒）；已判定的阶段不可重复判定；"
                   + "本命令只写记录、不动单位——损失写进单位由组合工具 simos.army.resolveCombat 用同批"
-                  + " unit.AdjustComposition 完成；★ GmOnly）"));
+                  + " unit.AdjustComposition 完成；★ GmOnly）"),
+          Map.entry(
+              "production.UpsertProductionMode",
+              "id, name, version?(新 id 缺省 1；既有 id 必须显式推进 ≥ 现有+1), classStructureId(须已存在)"
+                  + "（★ D-031 P1：生产方式定义写入归 production；被引用 mode 的显式版本升级照旧允许；GM-only）"),
+          Map.entry(
+              "production.DeactivateProductionMode",
+              "id（★ 被 classStructures/classPositions/productionOrganizations/assetRules/modeTransitions/pledges"
+                  + " 任一引用 ⇒ 具名拒绝；GM-only）"),
+          Map.entry(
+              "production.CreateInstance",
+              "plan(已存在的方案 id), unit(实例 id，按 ProductionUnitId.idOf(plan,operator) 派生),"
+                  + " operator{kind,id}, modeKey, location?(缺省 = 方案 id 的格段；两者都没有 ⇒ 具名拒"
+                  + " location-unknown，不写 UNSPECIFIED 占位)"
+                  + "（★ B2c 裁定十：按需立实例的唯一命令面；与 ProductionRuntime#createInstance 同一实现，"
+                  + "同一套守卫：unit 冲突 / plan 不存在 / 方案自带地点与实例地点矛盾 ⇒ 具名拒、零状态变化；GM-only）"),
+          Map.entry(
+              "production.Seed",
+              "industries[完整产业定义], modes[完整模式定义]（★ 定义批量播种；具名校验、保序、同值 no-op；"
+                  + "冲突/版本拒绝零状态变化；与经济实例同批 submitBatch 原子落账；GM-only）"),
+          Map.entry(
+              "production.ClearRegionDefinitions",
+              "hexes[<q>_<r>]（★ B2c 裁定九：**同一命令内先退役该区生产实例、再删该区无人引用的产业定义**"
+                  + "（退役数与删除数都进具名读数）；仍被引用（如别的格/别的域）的定义保留；全局 mode 不随区删；"
+                  + "先删 economy 引用行再清定义、同批 submitBatch；GM-only）"),
+          Map.entry(
+              "culture.SetHouseholdCulture",
+              "householdId, cultureId, religionId, customs[string…]?"
+                  + "（★ D-031：幂等键 = householdId，设置/覆盖该家户文化标签；customs 缺省/null = 无习俗；"
+                  + "内容逐值相同 = no-op；本轮不生成传播/同化、不动人口经济；GM-only）"));
+
+  // ★★ D-032 删除面（本表同步）：
+  //   ① production.RegisterTechnology / production.SetMastery —— 科技点抽象面随 D1 退役（用户 2026-10-17
+  //      「D1 直接删」；U1「科技最终以生产方式的可选升级体现出来」）；
+  //   ② culture.UpsertAptitudeRule / culture.RemoveAptitudeRule —— "文化 → 生产效率倍率"链随 D2 退役
+  //      （U5「文化直接决定生产效率太不唯物主义了」）；culture 模块本体与标签面保留为占位。
 
   /** {@code regime→种类} 的 ` / ` 连接串（登记表序；见 {@link #OPERATOR_HINT}）。 */
   private static String operatorHint() {

@@ -29,6 +29,8 @@ public final class AppSocialToolViews implements SocialToolViews {
     return ToolSupport.population(
         ToolSupport.socialData(state),
         ToolSupport.economyData(state),
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+        io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
         coord,
         state.meta().timestamp(),
         calendars);

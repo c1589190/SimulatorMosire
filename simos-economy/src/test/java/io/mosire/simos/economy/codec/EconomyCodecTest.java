@@ -11,6 +11,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -22,6 +23,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -37,12 +39,8 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.api.stock.DeductionReason;
-import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -50,14 +48,18 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionEfficiencyState;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.BranchId;
@@ -92,6 +94,8 @@ import org.junit.jupiter.api.Test;
  * {@link ProductionUnitId}（关系挂在 unit 上，不再是 {@code IndustryId}），故夹具必须先有同 operator 的 unit。
  */
 class EconomyCodecTest {
+
+  private static final DemandId DEMAND = new DemandId("codec-demand-1");
 
   private static final IndustryId FARM = new IndustryId("farm");
   private static final IndustryId WORKSHOP = new IndustryId("workshop");
@@ -158,7 +162,7 @@ class EconomyCodecTest {
   /** ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_LAND_SHARE =
       OwnershipStake.idOf(
-          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, OwnershipStake.RightKind.OWNED, 0L);
+          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, AssetRightKind.OWNED, 0L);
 
   // ── ★★ W1 收尾批（2026-10-11）：市场夹具（本文件原先**一个市场都没有**）───────────────────────────────
   //   为什么必须有：`MarketTable.isEmpty()` 是**派生判断**、不是状态组件 ⇒ 它一旦漏掉 `@JsonIgnore`，
@@ -253,7 +257,9 @@ class EconomyCodecTest {
             OptionalLong.of(2L),
             "rules-2026-10",
             Optional.of("worlds/v17levant.json"),
-            configured);
+            configured,
+            java.util.Map.of(), // ★ D-032 第 7 组件 planAssetSources（缺键 = 只认自有份额，逐值 == 旧缺省）
+            java.util.Map.of());
     EconomyData data = EconomyData.empty().withMeta(Optional.of(withPolicies));
     EconomySnapshot snapshot = snapshotOf(data, SimosTimestamp.of(13));
 
@@ -284,14 +290,36 @@ class EconomyCodecTest {
         .isEqualTo(encoded);
   }
 
-  /** 变更集往返：四条变体各造一条（都落在 {@code industries} 组件上），逐条过线。 */
+  /**
+   * 变更集往返：四条变体各造一条，逐条过线。
+   *
+   * <p>★★ <b>D-032 B2b 改用 {@code demands} 组件承载四条变体</b>（原承载者是 {@code units} —— 它已随实例权威 迁往 production
+   * 而<b>整段删除</b>）。本用例判的是 <b>{@code EconomyChangeSet} 的四条 {@link FieldDelta}
+   * 变体能否过线格式</b>，与"哪一维"无关；换一维不降低判别力。
+   */
   @Test
   void changeSetRoundTripsWithAllFourDeltaVariants() {
-    EconomyData full = fullData();
-    // ★ 第二个实参是模板里的 laborPerUnit（旧 API 用进度位制造差异；R3B.2 起进度已移出 Industry）。
-    EconomyData base = dataWithIndustries(industriesFrom(industry(FARM, 143L), industry(MILL, 0L)));
+    DemandId secondDemand = new DemandId("codec-second-demand");
+    DemandId thirdDemand = new DemandId("codec-third-demand");
+    HouseholdDemand demandA = demand(DEMAND);
+    HouseholdDemand demandAChanged = demand(DEMAND);
+    // ★★ D-032 T5（a 桶夹具欠账，两处）：
+    //   ① 需求表**键必须等于行内 id**（构造期守卫）⇒ 第二/第三条要用自己的 id 造行（旧稿三条都造 DEMAND 行）；
+    //   ② HEX 范围的需求指名 (0,0) ⇒ 该格必须有经济状态（家户行或市场键）⇒ 夹具给一行本格家户（base/moved 同值，
+    //      于是四条 FieldDelta 变体仍由 demands 那一维承载，判别力不变）。
+    Map<HouseholdId, HouseholdEconomy> demandHexRows =
+        Map.of(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L));
+    EconomyData base =
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withHouseholdEconomies(demandHexRows)
+            .withHouseholdDemands(Map.of(DEMAND, demandA, secondDemand, demand(secondDemand)));
     EconomyData moved =
-        dataWithIndustries(industriesFrom(industry(FARM, 5L), industry(WORKSHOP, 0L)));
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withHouseholdEconomies(demandHexRows)
+            .withHouseholdDemands(Map.of(DEMAND, demandAChanged, thirdDemand, demand(thirdDemand)));
+    EconomyData full = base;
 
     EconomyChangeSet unchanged = EconomyChangeSet.between(full, full);
     EconomyChangeSet upsert = EconomyChangeSet.between(EconomyData.empty(), full);
@@ -299,10 +327,10 @@ class EconomyCodecTest {
     EconomyChangeSet patch = EconomyChangeSet.between(base, moved);
 
     // 前置：夹具确实落在了四条变体上
-    assertThat(unchanged.industries()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(upsert.industries()).isInstanceOf(FieldDelta.Upsert.class);
-    assertThat(remove.industries()).isInstanceOf(FieldDelta.Remove.class);
-    assertThat(patch.industries()).isInstanceOf(FieldDelta.Patch.class);
+    assertThat(unchanged.demands()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(upsert.demands()).isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(remove.demands()).isInstanceOf(FieldDelta.Remove.class);
+    assertThat(patch.demands()).isInstanceOf(FieldDelta.Patch.class);
 
     assertThat((EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(unchanged)))
         .isEqualTo(unchanged);
@@ -312,87 +340,6 @@ class EconomyCodecTest {
         .isEqualTo(remove);
     assertThat((EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(patch)))
         .isEqualTo(patch);
-  }
-
-  /**
-   * ★ 值类型的绑定不能在读入侧丢成 Map：{@code Industry} 得还是 {@code Industry}，且它内部的商品键得还是 {@code CommodityId}、
-   * 资产键得还是 {@code AssetKind}、分配函数得还是 {@code AllocationRule}（sealed 多态 + 嵌套 map 键在这里受检）。
-   */
-  @Test
-  void deltaValuesSurviveAsIndustryWithCommodityKeys() {
-    EconomyChangeSet back =
-        (EconomyChangeSet)
-            CODEC.decodeChangeSet(
-                CODEC.encodeChangeSet(
-                    EconomyChangeSet.between(
-                        EconomyData.empty(),
-                        dataWithIndustries(
-                            industriesFrom(industry(FARM, 143L), workshopIndustry())))));
-
-    FieldDelta.Upsert<Industry> upsert = (FieldDelta.Upsert<Industry>) back.industries();
-    Industry farm = upsert.entries().get("farm");
-    Industry workshop = upsert.entries().get("workshop");
-
-    assertThat(farm).isInstanceOf(Industry.class);
-    assertThat(farm.outputPerUnit()).containsOnlyKeys(GRAIN);
-    assertThat(farm.dailyInputPerUnit()).containsOnlyKeys(AssetKind.CATTLE);
-    // ★ R3：值侧的商品维度也必须真的过线（{"LAND":{"grain":1200}}）—— 退化成标量就在这里红。
-    assertThat(farm.dailyInputPerUnit().get(AssetKind.CATTLE)).containsEntry(GRAIN, 1L);
-    assertThat(farm.allocation()).isInstanceOf(AllocationRule.Split.class);
-    assertThat(farm.capacityPerUnit()).as("★ R3 的产能锚必须过线").containsEntry(AssetKind.LAND, 1000L);
-    assertThat(farm.laborPerUnit()).as("★ R3 的劳动那一路必须过线").isEqualTo(143L);
-    assertThat(farm.cycleInputPerUnit())
-        .as("★ 新字段必须真的过线：空 map 与「字段没进线格式」在值层面不可区分")
-        .containsOnlyKeys(AssetKind.LAND);
-    assertThat(farm.cycleInputPerUnit().get(AssetKind.LAND)).containsEntry(GRAIN, 1200L);
-    assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
-    AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
-    assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
-  }
-
-  /**
-   * ★★ <b>R3B.2：operator / 周期状态的真值搬进了 {@link ProductionProcess}</b> —— 旧用例在 {@code Industry} 上断言
-   * {@code operator()} / {@code cycleInputUsedMilli()}（那两个字段现在只是旧档兼容位，新代码一律走 12 参模板、恒中性），
-   * 故这里把**同一条判别力** 迁到 unit 上：
-   *
-   * <ul>
-   *   <li>{@code operator} 取**非派生值**（{@code ESTATE:farm}；{@code tenant} 的推导值是 {@code
-   *       HOUSEHOLD:farm}） ⇒ 把 operator 从线格式里丢掉、或解码时按 regime 重新推导，读到的都会是推导值 ⇒ 当场红；
-   *   <li>{@code progressDays} / {@code cycleLaborMilli} / {@code cycleInputUsedMilli} 取**非零 /
-   *       非空**值 ⇒ "字段没进线格式"在值层面不可区分，只有真过线才能满足。
-   * </ul>
-   */
-  @Test
-  void unitOperatorAndCycleStateSurviveAsProductionUnit() {
-    ProductionProcess unit =
-        new ProductionProcess(
-            FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 7L, 1234L, Map.of(GRAIN, 400L));
-    EconomyData target =
-        EconomyData.empty()
-            .withIndustries(Map.of(FARM, industry(FARM, 143L)))
-            .withProcesses(Map.of(FARM_UNIT, unit));
-
-    EconomyChangeSet back =
-        (EconomyChangeSet)
-            CODEC.decodeChangeSet(
-                CODEC.encodeChangeSet(EconomyChangeSet.between(EconomyData.empty(), target)));
-
-    assertThat(back.units()).isInstanceOf(FieldDelta.Upsert.class);
-    FieldDelta.Upsert<ProductionProcess> upsert =
-        (FieldDelta.Upsert<ProductionProcess>) back.units();
-    ProductionProcess read = upsert.entries().get(FARM_UNIT.value());
-
-    assertThat(read).isNotNull();
-    assertThat(read.operator())
-        .as("★ S1/R3B.2：经营主体必须真的过线（缺它 ⇒ 往返后 operator 没了）")
-        .isEqualTo(FARM_OPERATOR);
-    assertThat(read.modeKey()).as("生产方式键必须过线").isEqualTo(FARM.value());
-    assertThat(read.progressDays()).as("本周期进度必须过线").isEqualTo(7L);
-    assertThat(read.cycleLaborMilli()).as("本周期累计劳动必须过线").isEqualTo(1234L);
-    assertThat(read.cycleInputUsedMilli())
-        .as("★ R3：本周期实际扣到的投入（按商品）必须过线")
-        .containsEntry(GRAIN, 400L);
-    assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(target);
   }
 
   /**
@@ -415,8 +362,8 @@ class EconomyCodecTest {
     ActorRef operator = FARM_OPERATOR;
     EconomyData target =
         EconomyData.empty()
-            .withIndustries(Map.of(FARM, industry(FARM, 143L)))
-            .withProcesses(Map.of(FARM_UNIT, farmUnit()))
+            // ★ B2b：实例权威已迁 production ⇒ economy 侧的关系表不再自带 unit 行；"关系指名的实例是否存在"
+            //   改由 EconomyReferenceValidation 读 production 投影判（见 EconomyInvariantsTest）。
             .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, operator)));
 
     EconomyChangeSet back =
@@ -541,7 +488,13 @@ class EconomyCodecTest {
   void applyProducesNewSnapshotStampedWithNewMeta() {
     EconomySnapshot base = snapshotOf(EconomyData.empty(), SimosTimestamp.of(10));
     EconomyChangeSet changeSet =
-        EconomyChangeSet.between(base.data(), EconomyData.empty().withIndustries(oneIndustry()));
+        EconomyChangeSet.between(
+            base.data(),
+            EconomyData.empty()
+                .withMeta(Optional.of(meta()))
+                // ★ D-032 T5（a 桶夹具欠账）：HEX 范围的 (0,0) 需求要求该格有经济状态（家户行或市场键）。
+                .withHouseholdEconomies(Map.of(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L)))
+                .withHouseholdDemands(Map.of(DEMAND, demand(DEMAND))));
     StateMeta newMeta =
         new StateMeta(
             new StateRef(new BranchId("main"), new RevisionId(42)), SimosTimestamp.of(11));
@@ -550,8 +503,8 @@ class EconomyCodecTest {
 
     assertThat(applied.ref()).isEqualTo(newMeta.ref());
     assertThat(applied.timestamp()).isEqualTo(newMeta.timestamp());
-    assertThat(applied.data().industries()).containsOnlyKeys(FARM);
-    assertThat(base.data().industries()).as("base 不得被就地改").isEmpty();
+    assertThat(applied.data().demands()).containsOnlyKeys(DEMAND);
+    assertThat(base.data().demands()).as("base 不得被就地改").isEmpty();
   }
 
   /** 施加到别的模块的切片上 ⇒ 当场炸，不给出一份错快照。 */
@@ -606,35 +559,6 @@ class EconomyCodecTest {
   }
 
   /**
-   * ★★ **旧档兼容：缺键的快照必须读得回来**（§11 的口径，照 {@code LedgerCodecTest}）。
-   *
-   * <p>字节刻意只留 {@code industries}：其余组件键**缺席**。 若让构造器对 null 抛，等于"这个世界打不开"。缺省方向是 fail-closed：缺 ⇒ 空表 /
-   * 未激活。
-   */
-  @Test
-  void legacySnapshotWithoutEconomyKeysDecodesToUnactivatedEmptyTables() {
-    String legacy =
-        "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},"
-            + "\"timestamp\":{\"tick\":0,\"calendarLabel\":null},"
-            + "\"data\":{\"industries\":{}}}";
-
-    EconomySnapshot back = (EconomySnapshot) CODEC.decodeSnapshot(legacy);
-
-    assertThat(back.data().industries()).isEmpty();
-    assertThat(back.data().classes()).as("旧档没提阶层 ⇒ 空表，不抛").isEmpty();
-    assertThat(back.data().debtContracts()).as("旧档没提债务 ⇒ 空表，不抛").isEmpty();
-    assertThat(back.data().flows()).as("旧档没提流水 ⇒ 空表，不抛").isEmpty();
-    assertThat(back.data().meta()).as("旧档没提元信息 ⇒ 未激活，不抛").isEmpty();
-    // ★ R2 起的新组件同款：缺键 ⇒ 空表（fail-closed 方向）；P2-A 已删 laborSupply / memberships。
-    assertThat(back.data().allocations()).isEmpty();
-    assertThat(back.data().relations()).isEmpty();
-    assertThat(back.data().units()).isEmpty();
-    // ★★ Z1：两个新节点缺席 ⇒ 空表（中性 = 全 0 余数 + 全 1000‰；§3.1/§3.2/§11.2 的"旧档缺节点"方向）。
-    assertThat(back.data().outputQuantityOverrides()).as("旧档没提产品产出数量覆盖 ⇒ 空表（回落配方默认），不抛").isEmpty();
-    assertThat(back.data().productionEfficiency()).as("旧档没提生产效率累计 ⇒ 空表（缺行 = 中性），不抛").isEmpty();
-  }
-
-  /**
    * ★★ <b>2026-10-09 选项 A 的旧档兼容</b>（此前只有实现方的一次性探针、没有任何测试守着）：改前写出的家户行里带着已退役的 {@code debts} 键（引用列表现住在
    * {@code EconomyData.householdDebtRefs}）⇒ 读回来必须**不抛**，且引用由合同表重建。
    *
@@ -680,93 +604,6 @@ class EconomyCodecTest {
         .forEachRemaining(
             entry -> ((ObjectNode) entry.getValue()).set(key, mapper.valueToTree(value)));
     return mapper.writeValueAsString(root);
-  }
-
-  /**
-   * ★★ **§3.1/§11.2：悬空产出数量覆盖 ⇒ 载入契约 ERROR + fail-closed**。两个方向各一例： 产业不存在 / 商品不在该产业 {@code
-   * recipe().outputPerUnit()} 产出键里 —— 都不许静默丢弃或放行（构造期只判值域，跨表引用由载入边界判）。
-   */
-  @Test
-  void danglingOutputQuantityOverridesFailClosedOnLoad() {
-    EconomySnapshot ghostIndustry =
-        snapshotOf(
-            EconomyData.empty()
-                .withOutputQuantityOverrides(Map.of(new IndustryId("ghost"), Map.of(GRAIN, 5L))),
-            SimosTimestamp.of(10));
-    assertThatThrownBy(() -> CODEC.decodeSnapshot(CODEC.encodeSnapshot(ghostIndustry)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasStackTraceContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
-        .hasStackTraceContaining("产业不存在");
-
-    EconomySnapshot foreignCommodity =
-        snapshotOf(
-            EconomyData.empty()
-                .withIndustries(Map.of(FARM, industry(FARM, 143L)))
-                .withOutputQuantityOverrides(Map.of(FARM, Map.of(CLOTH, 5L))),
-            SimosTimestamp.of(10));
-    assertThatThrownBy(() -> CODEC.decodeSnapshot(CODEC.encodeSnapshot(foreignCommodity)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasStackTraceContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
-        .hasStackTraceContaining("商品不在配方产出键里");
-  }
-
-  /**
-   * ★★ **旧档兼容：缺键的变更集必须读得回来**。缺省 = {@link FieldDelta.Unchanged}（"一字未动"）——读成 null 的话 {@code
-   * isEmpty()} 与 {@code apply} 都会 NPE。
-   */
-  @Test
-  void legacyChangeSetWithoutEconomyKeysDecodesToUnchangedComponents() {
-    String legacy = "{\"industries\":{\"@class\":\"unchanged\"}}";
-
-    EconomyChangeSet back = (EconomyChangeSet) CODEC.decodeChangeSet(legacy);
-
-    assertThat(back.meta()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.industries()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.classes()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.debtContracts()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.flows()).isInstanceOf(FieldDelta.Unchanged.class);
-    // ★ R2：配额表也是同款（旧档里没有这个键 ⇒ Unchanged，不是 null）
-    assertThat(back.allocations()).isInstanceOf(FieldDelta.Unchanged.class);
-    // ★ T2/H4/M2.4/S1/S3/R3B/R4-E2 依次补齐的组件同款。
-    assertThat(back.relations()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.marketTables()).isInstanceOf(FieldDelta.Unchanged.class);
-    // ★★ W1：第 40 个组件（市场轮统计簿）同款 —— 旧变更集里没有这个键 ⇒ Unchanged，不是 null。
-    assertThat(back.marketRoundStats()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.shipments()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.assetShares()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.operatorConditions()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.units()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.demands()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.candidates()).isInstanceOf(FieldDelta.Unchanged.class);
-    // ★★ Z1：两个新组件同款（旧变更集没提 ⇒ Unchanged，不是 null）。
-    assertThat(back.outputQuantityOverrides()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.productionEfficiency()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("全部组件都未变 ⇒ 这份旧变更集是空的").isTrue();
-    assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(EconomyData.empty());
-  }
-
-  /**
-   * ★★ <b>§3.1：变更集 apply 重放同样守跨表引用</b> —— 变更集可以（经 decode 重放）把覆盖表写成悬空引用；{@link EconomyCodec#apply} 把
-   * {@code requireOutputQuantityOverridesValid} 再跑一遍，违反 ⇒ 契约 ERROR + fail-closed，不落一条"看起来合法"的
-   * revision。
-   */
-  @Test
-  void changeSetReplayWithDanglingOutputQuantityOverrideFailsClosed() {
-    EconomyData base = EconomyData.empty().withIndustries(Map.of(FARM, industry(FARM, 143L)));
-    EconomyData dangling = base.withOutputQuantityOverrides(Map.of(FARM, Map.of(CLOTH, 5L)));
-    EconomyChangeSet changeSet = EconomyChangeSet.between(base, dangling);
-
-    EconomyChangeSet replayed =
-        (EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(changeSet));
-    StateMeta newMeta =
-        new StateMeta(
-            new StateRef(new BranchId("main"), new RevisionId(42)), SimosTimestamp.of(11));
-
-    assertThatThrownBy(
-            () -> CODEC.apply(replayed, snapshotOf(base, SimosTimestamp.of(10)), newMeta))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
-        .hasMessageContaining("商品不在配方产出键里");
   }
 
   // ── Z1b：劳动承诺 kind 的旧档缺省 / 显式往返 / 坏值 fail-closed ─────────────────────────────
@@ -981,43 +818,6 @@ class EconomyCodecTest {
         .isEqualTo(HexCrisisSignal.Kind.MORTALITY);
   }
 
-  /**
-   * ★★ <b>z3c1 §9.8：{@code DeductionReason.ADMIN_SALARY} 经 codec 往返</b>；旧档 {@code MILITARY_SALARY}
-   * 读回不变（新增档不得改写旧档的线格式）。
-   */
-  @Test
-  void adminSalaryAndLegacyDeductionReasonsSurviveCodecRoundTrip() {
-    for (DeductionReason reason :
-        List.of(DeductionReason.MILITARY_SALARY, DeductionReason.ADMIN_SALARY)) {
-      HouseholdPeriodicAdjustment rule =
-          new HouseholdPeriodicAdjustment(
-              PERIODIC_ADJUSTMENT,
-              FARM_HH,
-              Optional.empty(),
-              Map.of(GRAIN, 5L),
-              Map.of(),
-              reason,
-              30L,
-              0L,
-              0L,
-              OptionalLong.empty(),
-              "gm:test");
-      EconomyData data =
-          EconomyData.empty().withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, rule));
-
-      EconomyData back =
-          ((EconomySnapshot)
-                  CODEC.decodeSnapshot(
-                      CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)))))
-              .data();
-
-      assertThat(back).as("%s 的整份状态往返", reason).isEqualTo(data);
-      assertThat(back.periodicAdjustments().get(PERIODIC_ADJUSTMENT).reason())
-          .as("%s 读回不变", reason)
-          .isEqualTo(reason);
-    }
-  }
-
   /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
   private record ForeignSlice(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
 
@@ -1041,9 +841,6 @@ class EconomyCodecTest {
    * relations} 键 == unit id —— 于是构造期迁移是 no-op，往返量的就是本夹具本身。
    */
   private static EconomyData fullData() {
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
-    industries.put(FARM, industry(FARM, 143L));
-    industries.put(WORKSHOP, workshopIndustry());
     Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     classes.put(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L));
     classes.put(LANDLORD_HH, classRow(LANDLORD_HH, LANDLORD_KEY, 8L));
@@ -1077,24 +874,18 @@ class EconomyCodecTest {
             FARM_OPERATOR,
             FARM_OPERATOR,
             1000L,
-            OwnershipStake.RightKind.OWNED));
+            AssetRightKind.OWNED));
     // ★ E1–E6：用 withX 逐组件搭（避免 28 参 record arity 漂移）。P2-A 已删 laborSupply / memberships。
     return EconomyData.empty()
         .withMeta(Optional.of(meta()))
-        .withIndustries(industries)
         .withHouseholdEconomies(classes)
         .withOwnershipStakes(assetShares)
-        .withProcesses(units)
+        // ★★ B2b：`units` / `outputQuantityOverrides` / `productionEfficiency` 三维已随实例/覆盖/效率权威
+        //   迁往 production 而整段删除 ⇒ 本夹具不再有它们（Alpha：不写兼容位、不读旧档）。
         .withDebtContracts(debts)
         .withFlows(flows)
         .withLaborCommitments(allocations)
         .withRelations(relations)
-        // ★★ Z1：两个新组件也**非空** —— outputQuantityOverrides 的键 = IndustryId、内层键 = CommodityId（两处
-        //   自定义键反序列化）；productionEfficiency 的键 = ProductionUnitId。空表会让这些键注册项永远不被走到。
-        //   ★ 覆盖值取**非默认**（FARM 默认 7 ⇒ 3；WORKSHOP 默认 5 ⇒ 2），否则"字段没进线格式"与"值等于默认"不可区分。
-        .withOutputQuantityOverrides(Map.of(FARM, Map.of(GRAIN, 3L), WORKSHOP, Map.of(CLOTH, 2L)))
-        .withProductionEfficiency(
-            Map.of(FARM_UNIT, new ProductionEfficiencyState(117_000L, 3L, 5L, 2L, 7L)))
         // ★★ W1 收尾批：市场三件套都**非空**。★ 区先落、价表后落（派生形态要求成员格非空，而"key 不是区的
         //   价表条目"必须有成员格 ⇒ 反过来落会撞守卫）；两处成员格不重叠（构造期守卫②）。
         .withMarketZones(Map.of(ZONE, persistentZone()))
@@ -1162,17 +953,15 @@ class EconomyCodecTest {
     return new CommodityRound(demandMilli, supplyMilli, tradedMilli, averagePriceMilli, unmetMilli);
   }
 
-  private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
-    return EconomyData.empty().withMeta(Optional.of(meta())).withIndustries(industries);
+  private static Map<ProductionUnitId, ProductionProcess> oneUnit() {
+    return Map.of(FARM_UNIT, farmUnit());
   }
 
-  private static Map<IndustryId, Industry> oneIndustry() {
-    return Map.of(FARM, industry(FARM, 143L));
-  }
-
-  private static Map<IndustryId, Industry> industriesFrom(Industry... industries) {
-    Map<IndustryId, Industry> out = new LinkedHashMap<>();
-    for (Industry industry : industries) {
+  @SuppressWarnings("unused")
+  private static Map<IndustryId, IndustryDefinitionView> industriesFrom(
+      IndustryDefinitionView... industries) {
+    Map<IndustryId, IndustryDefinitionView> out = new LinkedHashMap<>();
+    for (IndustryDefinitionView industry : industries) {
       out.put(industry.id(), industry);
     }
     return out;
@@ -1265,9 +1054,20 @@ class EconomyCodecTest {
     return new EconomyMeta("m1", 7L, OptionalLong.of(3L), "rules-2026-10", Optional.empty());
   }
 
+  /**
+   * ★★ D-032 T5（a 桶夹具欠账）：本类的 {@code FARM = new IndustryId("farm")} 是**不绑地点的方案**（A 批起合法） ⇒ {@code
+   * ProductionLocation.ofPlan(FARM)} 返回 empty，旧稿的 {@code .orElseThrow()} 在夹具构造期抛 {@code
+   * NoSuchElementException}（11 条 ERROR 全停在此处，不是被测行为变了）。实例的地点必须有落定值（构造期拒 null；{@code UNSPECIFIED}
+   * 不是真实格）⇒ 给"不绑地点方案"的实例取本文件的测试格 {@code 0_0}。
+   */
+  private static ProductionLocation locationOf(IndustryId plan) {
+    return ProductionLocation.ofPlan(plan).orElseGet(() -> ProductionLocation.parse("0_0"));
+  }
+
   /** 本夹具共用的生产单元：{@link #FARM_UNIT} + 显式 operator + 中性周期状态。 */
   private static ProductionProcess farmUnit() {
-    return new ProductionProcess(FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 0L, 0L, Map.of());
+    return new ProductionProcess(
+        FARM_UNIT, FARM, locationOf(FARM), FARM_OPERATOR, FARM.value(), 0L, Map.of(), Map.of());
   }
 
   /**
@@ -1278,10 +1078,10 @@ class EconomyCodecTest {
    * @param laborPerUnit 每 1 单位规模需要的劳动（千分劳动）；顺带当 {@code changeSetRoundTripsWithAllFourDeltaVariants}
    *     制造"同键不同值"的差异维
    */
-  private static Industry industry(IndustryId id, long laborPerUnit) {
+  private static IndustryDefinitionView industry(IndustryId id, long laborPerUnit) {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 950), new ClassSlot(LANDLORD, "地主", 900));
-    return new Industry(
+    return IndustryViews.industry(
         id,
         "农业",
         new RegimeId("tenant"),
@@ -1348,12 +1148,12 @@ class EconomyCodecTest {
   }
 
   /** 资本主义工业：{@code WageFirst} + 嵌套商品键（企业主剩余）。 */
-  private static Industry workshopIndustry() {
+  private static IndustryDefinitionView workshopIndustry() {
     List<ClassSlot> slots = List.of(new ClassSlot(PEASANT, "工人", 1000));
     Map<CommodityId, Long> residual = new LinkedHashMap<>();
     residual.put(GRAIN, 30L);
     residual.put(CLOTH, 20L);
-    return new Industry(
+    return IndustryViews.industry(
         WORKSHOP,
         "工坊",
         new RegimeId("capitalist"),
@@ -1420,5 +1220,22 @@ class EconomyCodecTest {
         4L,
         Map.of(CURRENCY, 5L),
         Map.of(DebtUnit.commodity(GRAIN).key(), 7L));
+  }
+
+  /** 最小自洽需求（B2b 起本类用它承载四条 {@code FieldDelta} 变体；原承载者 {@code units} 已随实例权威迁走）。 */
+  private static HouseholdDemand demand(DemandId id) {
+    return new HouseholdDemand(
+        id,
+        HouseholdDemand.DemandScope.HEX,
+        Optional.empty(),
+        Optional.of(new io.mosire.simos.map.hex.HexCoord(0, 0)),
+        GRAIN,
+        HouseholdDemand.DemandKind.RECURRING,
+        HouseholdDemand.DemandUnit.TOTAL,
+        100L,
+        0L,
+        -1L,
+        0,
+        "fixture");
   }
 }

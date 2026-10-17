@@ -6,6 +6,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -13,6 +14,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -20,18 +22,20 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,15 +80,21 @@ class ModeMigrationPolicyClaimedAssetsTest {
       long quantity,
       long sequence) {
     AssetShareId id =
-        OwnershipStake.idOf(
-            industry, asset, owner, operator, OwnershipStake.RightKind.OWNED, sequence);
-    return new OwnershipStake(
-        id, industry, asset, owner, operator, quantity, OwnershipStake.RightKind.OWNED);
+        OwnershipStake.idOf(industry, asset, owner, operator, AssetRightKind.OWNED, sequence);
+    return new OwnershipStake(id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED);
   }
 
   private static ProductionProcess unit(IndustryId industry, ActorRef operator) {
     ProductionUnitId id = ProductionUnitId.idOf(industry, operator);
-    return new ProductionProcess(id, industry, operator, industry.value(), 0L, 0L, Map.of());
+    return new ProductionProcess(
+        id,
+        industry,
+        ProductionLocation.ofPlan(industry).orElseThrow(),
+        operator,
+        industry.value(),
+        0L,
+        Map.of(),
+        Map.of());
   }
 
   private static ProductionEnterprise organization(
@@ -114,8 +124,8 @@ class ModeMigrationPolicyClaimedAssetsTest {
         .orElseThrow();
   }
 
-  private static Industry craftIndustry() {
-    return new Industry(
+  private static IndustryDefinitionView craftIndustry() {
+    return IndustryViews.industry(
         CRAFT_INDUSTRY,
         "craft-claimed-test",
         new RegimeId("handicraft"),
@@ -178,7 +188,6 @@ class ModeMigrationPolicyClaimedAssetsTest {
             0L);
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(Map.of(NEWCOMER, row))
@@ -187,8 +196,6 @@ class ModeMigrationPolicyClaimedAssetsTest {
                     NEWCOMER,
                     new HouseholdClassMembership(
                         NEWCOMER, position, position, Map.of(), 0L, 0L, "test-claimed")))
-            .withIndustries(Map.of(CRAFT_INDUSTRY, craftIndustry()))
-            .withProcesses(units)
             .withRelations(Map.of())
             .withOwnershipStakes(shares)
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
@@ -203,11 +210,11 @@ class ModeMigrationPolicyClaimedAssetsTest {
   private static ExpectedProfitBook.Prospect newcomerProspect(
       EstateUnitFixture fixture, Set<AssetShareId> claimed) {
     return ExpectedProfitBook.prospect(
-        fixture.base(),
+        EconomyFixtures.dayView(fixture.base(), defs()),
         NEWCOMER,
         CRAFT,
         H,
-        fixture.base().industries().get(CRAFT_INDUSTRY),
+        defs().industries().get(CRAFT_INDUSTRY),
         market(),
         demand(),
         fixture.shares(),
@@ -216,7 +223,9 @@ class ModeMigrationPolicyClaimedAssetsTest {
         fixture.units(),
         fixture.base().relations(),
         fixture.topology(),
-        0L);
+        0L,
+        // ★ T9（R1 签名）：物理量唯一来源 = production 试算（同一份 defs 切片）。
+        EconomyFixtures.runtimeOf(defs()));
   }
 
   // ── 单元判据 ────────────────────────────────────────────────────────────────────────────
@@ -328,5 +337,11 @@ class ModeMigrationPolicyClaimedAssetsTest {
         newcomerProspect(fixture, ModeMigrationPolicy.claimedOwnershipStakes(Map.of()));
     assertThat(idle.feasible()).as("正对照：单参兼容重载（只算组织引用，空）仍把该份额当闲置 ⇒ 可行").isTrue();
     assertThat(idle.feasibleScale()).as("闲置份额 3 ⇒ assetScale=3").isEqualTo(3L);
+  }
+
+  private static ProductionData defs() {
+    return ProductionData.empty()
+        .withModes(DefaultProductionModes.modes())
+        .withIndustry(craftIndustry());
   }
 }

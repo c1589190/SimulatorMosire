@@ -13,6 +13,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.MerchantCapacityPool.CarrierAllocation;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -137,7 +138,6 @@ class HaulGlobalPoolW7Test {
       standings.put(entry.getKey(), merchantStanding(entry.getKey()));
     }
     return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(rows)
@@ -307,7 +307,6 @@ class HaulGlobalPoolW7Test {
     // ★ 非服务成市格（只有 grain 有价）⇒ 运力回到"劳动 + 工具"算式（缺省中性），本用例只管占比取整。
     EconomyData base =
         EconomyData.empty()
-            .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
             .withProductionRoles(DefaultProductionModes.classPositions())
             .withHouseholdEconomies(
@@ -362,5 +361,10 @@ class HaulGlobalPoolW7Test {
     assertThat(MerchantCapacityPool.LogisticsBlock.NO_MERCHANT_HOUSEHOLD.detail())
         .as("第三支（连跑商家户都没有）仍然独立")
         .isEqualTo(MerchantCapacityPool.NO_MERCHANT_HOUSEHOLD_REASON);
+  }
+
+  /** production 定义权威夹具：默认生产方式目录（P1 起定义显式注入）。 */
+  private static ProductionData defs() {
+    return ProductionData.empty().withModes(DefaultProductionModes.modes());
   }
 }

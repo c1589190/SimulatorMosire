@@ -38,6 +38,17 @@ final class RegionClearPlan {
 
   static final String ECONOMY_CLEAR_TYPE = EconomyClearRegionHandler.TYPE;
 
+  /**
+   * ★★ D-031 P1：production 清区（<b>B2c 裁定九加宽</b>：同一命令内<b>先退役该区生产实例、再清该区无人引用的 产业定义</b>；退役数与删除数都进该命令的具名
+   * INFO 读数；全局 mode 不随区删）。
+   *
+   * <p>★★ <b>批序为什么由本类保证</b>：economy 的 {@code ClearRegion} 先摘掉指向本区的引用行（relations /
+   * operatorConditions / allocations / assetShares …），随后本命令才既退役实例又删定义 —— 三段同批，
+   * 所以"先摘引用、再退役实例、最后删定义"这个次序是**批序的函数**，不是各命令内部再排序。
+   */
+  static final String PRODUCTION_CLEAR_TYPE =
+      io.mosire.simos.production.spi.ClearRegionDefinitionsHandler.TYPE;
+
   /** {@code ga.PutInfo} 的类型字面与 {@link RegionSeedPlan#PUT_INFO_TYPE} 同源（同住包内，不另抄）。 */
   static final String PUT_INFO_TYPE = RegionSeedPlan.PUT_INFO_TYPE;
 
@@ -156,6 +167,11 @@ final class RegionClearPlan {
     }
     if (!economy.clean()) {
       commands.add(ECONOMY_CLEAR_TYPE);
+    }
+    // ★★ D-031 P1 + B2c 裁定九：只要本区域有任何域命中，就在 economy 引用清理之后追加 production 清区
+    //   （同批内先退役该区实例、再删无人引用的定义；两者都进具名读数；无实例/无定义 ⇒ no-op）。
+    if (!commands.isEmpty()) {
+      commands.add(PRODUCTION_CLEAR_TYPE);
     }
     if (!commands.isEmpty()) {
       commands.add(PUT_INFO_TYPE);

@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -15,6 +16,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -39,20 +41,19 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -161,7 +162,11 @@ public final class ModeMigrationSettlement {
     LinkedHashMap<AssetShareId, OwnershipStake> assetShares = session.sheet().assetShares();
     LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
-    LinkedHashMap<ProductionUnitId, ProductionProcess> units = session.sheet().units();
+    // ★★ B2b（§13.11.4 第 4 条）：本方法的实例**写侧**（退役/新建，见下面两处）**直调 production 契约口**
+    //   （`removeInstance` / `createInstance`）—— `unitsWorkCopy` 写回桥与 `flushUnitWorkCopy` 已整体删除。
+    //   ★ 这里读的 `units` 是 production 候选态的**真只读投影**：新建/退役后当刻即可见（零拷贝、不缓存），
+    //     故本方法内部后续的读判（如"unit id 是否已存在"）与写入结果一致。
+    Map<ProductionUnitId, ProductionProcess> units = session.sheet().units();
     LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
         operatorConditions = session.sheet().operatorConditions();
     LinkedHashMap<ProductionUnitId, ProductionRules> relations = session.sheet().relations();
@@ -178,7 +183,7 @@ public final class ModeMigrationSettlement {
     //     （★ W7-fix 起 = **工具**，改前 = 牲口；D-023 §4 可移动资产随迁）。⇒ 执行前先按"这一笔实际能带过来
     //     多少作业资本"**具名过滤**：带不来的笔**整笔跳过**（INFO 具名），绝不建一间凑不齐作业资本的空商号，
     //     也绝不让 tick 在 {@code createEnterpriseAndProcess} 里当场抛（那会把整个世界卡死）。
-    LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
+    LinkedHashMap<IndustryId, IndustryDefinitionView> industries = session.sheet().industries();
     LinkedHashSet<HexCoord> onDemandTradeHexes = new LinkedHashSet<>();
     for (ModeMigrationPolicy.MigrationMove move : plan.moves()) {
       if (DefaultProductionModes.MERCHANT.equals(move.targetMode())
@@ -204,7 +209,41 @@ public final class ModeMigrationSettlement {
           || createdTradeIndustries.containsKey(move.targetHex())) {
         continue;
       }
-      Industry created = MerchantTradeTemplate.industry(move.targetHex());
+      IndustryDefinitionView created = MerchantTradeTemplate.industry(move.targetHex());
+      // ★★★ B8（缺陷 DEF-T2b-1）：按需长出来的 `trade@hex` 定义**必须先立进 production 的方案权威**，
+      //   否则下面 `createEnterpriseAndProcess` 的 `runtime.createInstance(...)` 恒被具名拒 `plan-unknown`
+      //   （`createInstance` 对"方案不存在"**不隐式建定义**，见 `ProductionRuntime#registerPlan` 的契约注释
+      //   「先 registerPlan(定义) 把它立进方案权威，再 createInstance(请求) 引用它」）
+      //   ⇒ "非城市格按需长出跑商"整条玩法不可用。
+      //   ★ 正确样板 = 同模块 `EconomyEntrySettlement:1103-1110`：`registerPlan` → 判
+      //     `ProductionPlanOutcome.Rejected`（具名、不降级）→ 再 `createInstance`。
+      //   ★ 登记是**幂等**的（同 id 逐值相同 ⇒ no-op），故本循环在"同一次 apply 里第二次走到同一格"时无副作用；
+      //     同 id 不同值 ⇒ `registerPlan` 自己抛 `ProductionContractFault`（契约故障，不静默覆盖）。
+      io.mosire.simos.production.contract.ProductionPlanOutcome registered =
+          session.productionRuntime().registerPlan(created);
+      if (registered
+          instanceof io.mosire.simos.production.contract.ProductionPlanOutcome.Rejected rejected) {
+        EventLog.channel(LOG)
+            .error(
+                LogEvent.of(
+                    "MERCHANT_TRADE_INDUSTRY_REGISTER_REJECTED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "hex",
+                    move.targetHex(),
+                    "industry",
+                    created.id().value(),
+                    "reason",
+                    rejected.reason()));
+        throw new IllegalStateException(
+            "按需跑商产业定义被 production 拒绝登记（跨切片不一致，不降级）: industry="
+                + created.id().value()
+                + " reason="
+                + rejected.reason());
+      }
+      // ★ 会话覆盖层仍要写：让**同一段后续的经济侧读者**（关系模板 / 组织 / 收获）当刻看得见这份定义；
+      //   方案数值的权威仍是上面登记进 production 的那一份（这行只是 economy 侧的当刻可见性）。
       industries.put(created.id(), created);
       createdTradeIndustries.put(move.targetHex(), created.id());
       EventLog.channel(LOG)
@@ -304,7 +343,7 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
-      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
           operatorConditions,
       LinkedHashMap<ProductionUnitId, ProductionRules> relations,
@@ -317,7 +356,7 @@ public final class ModeMigrationSettlement {
       long day,
       Set<HouseholdId> createdTargets,
       ProductionLedger.Accumulator auditLedger,
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     HouseholdEconomy sourceHouseholdEconomy = householdEconomies.get(source);
     if (sourceHouseholdEconomy == null) {
       throw new IllegalStateException("迁移源家户不存在（拒绝静默丢人）: " + source);
@@ -502,6 +541,7 @@ public final class ModeMigrationSettlement {
         //   ★★ P0：传**投影行视图**（带投影人口/劳动），只读参数，不 put 回 householdEconomies。
         targetUnit =
             createEnterpriseAndProcess(
+                session.productionRuntime(),
                 move,
                 industries,
                 householdEconomies,
@@ -599,6 +639,40 @@ public final class ModeMigrationSettlement {
         moveDebt(move, debts, day, auditLedger);
       }
 
+      // ★★★ D-032 B3（I10 / §13.13.7 第 6 条）：**人口迁移完整携带各经验条**（主值 + 余数、**不**乘人口比例），
+      //   到迁入户后按**人口加权平均**合并（V6 的用户例式：来源 60 的 10 人 + 原有 30 人经验 20 ⇒ 30）。
+      //   ★ 唯一权威在 production（`mergeExperience` 契约口；economy 只给人口事实，不碰经验账）——
+      //     见 `ProductionData.mergeExperienceInto` 的逐条口径与自证。
+      //   ★ 财债那一半（资产/货币/商品/债务）已由 D-023/W9 在本方法内**按迁移人口比例逐项切分并相加**，
+      //     不在这里重做（见上面 migrateAssetsForMove / moveMoney / carryGoodsForMove / moveDebt 四段）。
+      io.mosire.simos.production.contract.ProductionExperienceMoveOutcome experienceMove =
+          session
+              .productionRuntime()
+              .mergeExperience(source, popTake, move.target(), targetPlannedPopulationBox);
+      if (experienceMove.changed() && EconomyLog.migration().isDebugEnabled()) {
+        EventLog.channel(EconomyLog.migration())
+            .debug(
+                LogEvent.of(
+                    "MIGRATION_EXPERIENCE_MERGED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "source",
+                    source.value(),
+                    "target",
+                    move.target().value(),
+                    "movedPeople",
+                    popTake,
+                    "targetPeople",
+                    targetPlannedPopulationBox,
+                    "tracksMerged",
+                    experienceMove.tracksMerged(),
+                    "unlocksAdded",
+                    experienceMove.unlocksAdded(),
+                    "day",
+                    day,
+                    "note",
+                    "迁移完整携带（含余数、不乘比例）+ 合户按人口加权平均；解锁并集（I7）"));
+      }
+
       // ★★ P0：本笔 move 校验/落账全部成功后追加 outbox（人口事实），由 App 在同一 revision 内
       //    翻译成 Social 工单、再把 Social 真值 delta 回写经济行。outbox 是瞬态：整次 advance 失败 ⇒ 会话丢弃。
       EconomyPopulationTransfer populationTransfer =
@@ -694,7 +768,7 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
-      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
           operatorConditions,
       LinkedHashMap<ProductionUnitId, ProductionRules> relations,
@@ -848,7 +922,19 @@ public final class ModeMigrationSettlement {
       }
     }
     for (ProductionUnitId unitId : removedUnits) {
-      units.remove(unitId);
+      // ★★ B2b：实例退役直调契约口（`removeInstance`）。★ 返回 false = 该实例在 production 当刻不存在
+      //   ——对"整户迁出"是合法幂等（这条 unit 由别处先退役），记 INFO 具名，不静默。
+      if (!session.productionRuntime().removeInstance(unitId)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "MODE_MIGRATION_UNIT_ALREADY_GONE",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "unit",
+                    unitId.value(),
+                    "day",
+                    day));
+      }
       relations.remove(unitId);
       operatorConditions.remove(unitId);
     }
@@ -892,7 +978,7 @@ public final class ModeMigrationSettlement {
       AccountSession accounts,
       EconomyDayView base,
       long day,
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     HouseholdId target = move.target();
     if (householdEconomies.containsKey(target)) {
       throw new IllegalStateException("新建目标家户 id 已存在（拒绝覆盖）: " + target);
@@ -963,16 +1049,16 @@ public final class ModeMigrationSettlement {
    */
   private static SocialClassId stratumForTier(
       EconomyDayView base,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       ModeMigrationPolicy.MigrationMove move) {
     int tier = move.targetTierIndex();
     if (tier <= 0) {
       return null;
     }
-    Industry industry = null;
+    IndustryDefinitionView industry = null;
     for (IndustryId candidate :
         ModeMigrationPolicy.industriesForMode(base, move.targetHex(), move.targetMode())) {
-      Industry resolved = industries.get(candidate);
+      IndustryDefinitionView resolved = industries.get(candidate);
       if (resolved != null) {
         industry = resolved;
         break;
@@ -994,7 +1080,7 @@ public final class ModeMigrationSettlement {
       ProductionModeId modeId,
       HouseholdEconomy sourceHouseholdEconomy,
       Map<HouseholdId, HouseholdClassMembership> classMemberships) {
-    ProductionMode mode = base.modes().get(modeId);
+    ProductionModeDefinitionView mode = base.modes().get(modeId);
     if (mode == null) {
       throw new IllegalStateException("计划的目标 mode 不在目录里（拒绝凭空造 mode）: " + modeId);
     }
@@ -1043,6 +1129,24 @@ public final class ModeMigrationSettlement {
   }
 
   /**
+   * ★★★ <b>D-032 B3（§13.8 裁定二第 1/3/4 条）：实例地点必须落定</b> —— 方案串解不出地点即**契约故障 ERROR 不降级**（跨切片不一致），**不**写
+   * {@code UNSPECIFIED} 占位（旧的 {@code ofPlanOrUnspecified} 已删除）。
+   *
+   * <p>★ 本类的调用点：{@code industryId} 取自 {@code IndustryHexKeys.at(..., move.targetHex())}（自带格段） ⇒
+   * 正常路径必命中；走不到这里说明候选态自相矛盾（不是业务拒绝）。
+   */
+  private static io.mosire.simos.production.contract.ProductionLocation requireInstanceLocation(
+      IndustryId industryId) {
+    return io.mosire.simos.production.contract.ProductionLocation.ofPlan(industryId)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "location-unknown: 迁移搬迁新建实例的产业 id 不带格段（地点无从落定，跨切片不一致，"
+                        + "不降级）: industry="
+                        + industryId.value()));
+  }
+
+  /**
    * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link OwnershipStakeBook#apply} 唯一写口）； 任一 capacity 种类不足
    * ⇒ null（该模板不可行）。
    *
@@ -1061,7 +1165,7 @@ public final class ModeMigrationSettlement {
    */
   private static List<OwnershipStakeBook.Move> planAssetMoves(
       IndustryId industryId,
-      Industry industry,
+      IndustryDefinitionView industry,
       ActorRef targetActor,
       long scale,
       Map<AssetShareId, OwnershipStake> assetShares,
@@ -1105,7 +1209,7 @@ public final class ModeMigrationSettlement {
         }
         moves.add(
             new OwnershipStakeBook.Move(
-                share.id(), take, share.owner(), targetActor, OwnershipStake.RightKind.TENANCY));
+                share.id(), take, share.owner(), targetActor, AssetRightKind.TENANCY));
         need -= take;
       }
       if (need > 0L) {
@@ -1116,13 +1220,14 @@ public final class ModeMigrationSettlement {
   }
 
   private static ProductionUnitId createEnterpriseAndProcess(
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
       ModeMigrationPolicy.MigrationMove move,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdEconomy targetHouseholdEconomy,
       ClassPositionId positionId,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
-      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, ProductionRules> relations,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
       EconomyDayView base,
@@ -1140,7 +1245,7 @@ public final class ModeMigrationSettlement {
       throw new IllegalStateException("新建目标 hex 没有产业模板（拒绝凭空造生产）: " + move.targetHex());
     }
     IndustryId industryId = null;
-    Industry industry = null;
+    IndustryDefinitionView industry = null;
     List<OwnershipStakeBook.Move> assetMoves = new ArrayList<>();
     // ★★ P10.7 / P10.8 / D-024 修复 1b：既有组织 assetSources 正在使用的份额不是闲置；seeder 直接以 ESTATE 等
     //    operator 建立的 farm/weave/craft/trade 主 unit 没有对应组织，故 claimed 还必须并入"在产 unit 占用的份额"
@@ -1155,7 +1260,7 @@ public final class ModeMigrationSettlement {
     //   现场只有 labor=8857，看不出执行期要的是 scale=8 ⇒ 与计划期预留 scale=1 的具名不一致）。
     StringBuilder triedCandidates = new StringBuilder();
     for (IndustryId candidate : industryCandidates) {
-      Industry candidateIndustry = industries.get(candidate);
+      IndustryDefinitionView candidateIndustry = industries.get(candidate);
       if (candidateIndustry == null) {
         continue;
       }
@@ -1239,10 +1344,44 @@ public final class ModeMigrationSettlement {
     if (units.containsKey(unitId)) {
       throw new IllegalStateException("新建目标 unit id 已存在（拒绝覆盖）: " + unitId);
     }
-    ProductionProcess unit =
-        new ProductionProcess(
-            unitId, industryId, targetActor, "mode:" + move.targetMode().value(), 0L, 0L, Map.of());
-    units.put(unitId, unit);
+    // ★★★ D-032 B3（§13.8 裁定二第 1/3/4 条）：地点是语义边界 —— 实例必须有真实地点，解不出即**契约故障
+    //   ERROR 不降级**（跨切片不一致），不写 UNSPECIFIED 占位。★ industryId 取自
+    //   `IndustryHexKeys.at(..., move.targetHex())`（自带格段）⇒ 正常路径必命中。
+    io.mosire.simos.production.contract.ProductionLocation instanceLocation =
+        requireInstanceLocation(industryId);
+    // ★★ B2b：实例新建直调契约口（`createInstance`）。被拒 = 跨切片不一致 ⇒ ERROR 不降级（I15 / §13.2 ①④）。
+    io.mosire.simos.production.contract.ProductionInstanceOutcome created =
+        runtime.createInstance(
+            new io.mosire.simos.production.contract.ProductionCreationRequest(
+                industryId,
+                unitId,
+                instanceLocation,
+                targetActor,
+                "mode:" + move.targetMode().value()));
+    if (created
+        instanceof
+        io.mosire.simos.production.contract.ProductionInstanceOutcome.Rejected rejected) {
+      EventLog.channel(LOG)
+          .error(
+              LogEvent.of(
+                  "MODE_MIGRATION_UNIT_CREATE_REJECTED",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "unit",
+                  unitId.value(),
+                  "plan",
+                  industryId.value(),
+                  "day",
+                  day,
+                  "reason",
+                  rejected.reason()));
+      throw new IllegalStateException(
+          "迁移搬迁新建实例被 production 拒绝（跨切片不一致，不降级）: unit="
+              + unitId.value()
+              + " plan="
+              + industryId.value()
+              + " reason="
+              + rejected.reason());
+    }
     // ★★ D-023 第 5 项：新家户必须用目标产业 regime + 目标 mode 的**完整关系模板**（不再空规则全归 operator）。
     MigrationRelationPlan relationPlan =
         buildMigrationRelation(
@@ -1746,7 +1885,7 @@ public final class ModeMigrationSettlement {
       Set<AssetShareId> foreignUsedShareIds,
       Set<AssetShareId> movedWholeShareIds,
       Map<AssetShareId, String> residualReasons,
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     boolean sameHex = move.targetHex().equals(sourceHex);
     ActorRef targetActor = HouseholdActors.of(move.target());
     List<OwnershipStakeBook.Move> sameHexMoves = new ArrayList<>();
@@ -1771,7 +1910,7 @@ public final class ModeMigrationSettlement {
         continue;
       }
       AssetKind asset = share.asset();
-      OwnershipStake.RightKind kind = transferRightKind(share);
+      AssetRightKind kind = transferRightKind(share);
       ActorRef newOperator = transferOperator(share, targetActor);
       if (sameHex) {
         sameHexMoves.add(
@@ -1852,10 +1991,8 @@ public final class ModeMigrationSettlement {
   }
 
   /** 随迁新份额的权利性质：共有保持共有；其余一律随目标户自营（owner == operator ⇒ OWNED）。 */
-  private static OwnershipStake.RightKind transferRightKind(OwnershipStake share) {
-    return share.kind() == OwnershipStake.RightKind.COMMUNAL
-        ? OwnershipStake.RightKind.COMMUNAL
-        : OwnershipStake.RightKind.OWNED;
+  private static AssetRightKind transferRightKind(OwnershipStake share) {
+    return share.kind() == AssetRightKind.COMMUNAL ? AssetRightKind.COMMUNAL : AssetRightKind.OWNED;
   }
 
   /**
@@ -1871,9 +2008,9 @@ public final class ModeMigrationSettlement {
 
   /** 目标 hex 能承载该 AssetKind 的第一个产业（{@link IndustryHexKeys#at} 已按 id 升序）；无 ⇒ 空。 */
   private static Optional<IndustryId> hostIndustryFor(
-      Map<IndustryId, Industry> industries, HexCoord targetHex, AssetKind asset) {
+      Map<IndustryId, IndustryDefinitionView> industries, HexCoord targetHex, AssetKind asset) {
     for (IndustryId candidate : IndustryHexKeys.at(industries, targetHex.q(), targetHex.r())) {
-      Industry industry = industries.get(candidate);
+      IndustryDefinitionView industry = industries.get(candidate);
       if (industry != null && industry.capacityPerUnit().containsKey(asset)) {
         return Optional.of(candidate);
       }
@@ -2259,7 +2396,7 @@ public final class ModeMigrationSettlement {
       EconomyDayView base,
       long day,
       ProductionLedger.Accumulator auditLedger,
-      Map<IndustryId, Industry> industries) {
+      Map<IndustryId, IndustryDefinitionView> industries) {
     MigrationRelationPlan plan =
         planMigrationRelation(
             move,
@@ -2279,7 +2416,7 @@ public final class ModeMigrationSettlement {
     //   ★ 处置 = 退回**具名**空规则（产出全归 operator，既有显式允许的缺省路径）+ 当天 ledger 审计 + INFO 一条；
     //     绝不静默、也绝不让世界死。★ 实物租腿（FIXED_IN_KIND_RENT）**不在此列**：它走三级支付链
     //     （ProductionSettlement），欠租是可读的缺口/债权，不是配置错误。
-    Industry industry = industries.get(industryId);
+    IndustryDefinitionView industry = industries.get(industryId);
     if (industry != null) {
       for (CompensationRule rule : plan.relation().rules()) {
         if (rule.commodity().isEmpty() || rule.type() == RuleType.FIXED_IN_KIND_RENT) {
@@ -2398,7 +2535,7 @@ public final class ModeMigrationSettlement {
     if (DefaultProductionModes.FAMILY_FARM.equals(mode)) {
       // ★ family_farm 没有自己的产业模板（复用农场的产业 regime=feudal）；HOUSEHOLD 默认规则的
       //   CLOTH 不在农场产出表里（harvest 的 E14 会当场拒）⇒ 有已登记产业 regime 时用它，否则退回 household。
-      Industry industry = base.industries().get(industryId);
+      IndustryDefinitionView industry = base.industries().get(industryId);
       if (industry != null && RegimeRelations.registered().containsKey(industry.regime().value())) {
         return Optional.of(industry.regime());
       }
@@ -2409,7 +2546,7 @@ public final class ModeMigrationSettlement {
           ? Optional.of(new RegimeId(RegimeOperators.MERCHANT))
           : Optional.empty();
     }
-    Industry industry = base.industries().get(industryId);
+    IndustryDefinitionView industry = base.industries().get(industryId);
     if (industry != null && RegimeRelations.registered().containsKey(industry.regime().value())) {
       return Optional.of(industry.regime());
     }

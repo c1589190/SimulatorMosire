@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketNode;
@@ -9,7 +10,6 @@ import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.CommodityFreightBase;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.TransportTariff;

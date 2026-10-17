@@ -33,6 +33,7 @@ import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
@@ -53,9 +54,10 @@ import java.util.Optional;
  * {@code u-1} 在 {@code [1,1]} + {@code [1,1]} 上一条人口序列。
  *
  * <p>★ **它与启动选择的关系（P1.1）**：登记在 {@link WorldRegistry#CORRIDOR}（{@code --world=corridor} 可选中），供后续小世界与
- * 确定性用例复用；但它**不是缺省世界**——缺省是 {@link WorldRegistry#V17LEVANT}（{@link RichWorld}）。★ 它当前只带
- * map/unit/social/sd/economy/actor/gov 七片（**没有 army 片**）：足以让创世状态通过现有 codec 表落盘，但以它为底跑 army
- * 写命令会因切片缺席 而拒（见 {@code ArmySnapshots}）——把它升级成完整小世界是后续批次的事，本类先保持既有形状不动。
+ * 确定性用例复用；但它**不是缺省世界**——缺省是 {@link WorldRegistry#V17LEVANT}（{@link RichWorld}）。★ 它当前带
+ * map/unit/social/economy/actor/gov/ga 七片（**没有 army 片**）；★★ D-031 Z4 起经 {@link GenesisModuleSlices}
+ * 另加 production/culture 两份空片（共九片）。以它为底跑 army 写命令仍会因切片缺席而拒（见 {@code
+ * ArmySnapshots}）——把它升级成完整小世界是后续批次的事，本类先保持既有形状不动。
  */
 public final class CorridorWorld {
 
@@ -95,21 +97,21 @@ public final class CorridorWorld {
       throw new IllegalArgumentException("mapId 不得为空白: " + mapId);
     }
     StateRef at = new StateRef(MAIN, new RevisionId(1));
-    return new SimulationState(
-        new StateMeta(at, AT),
-        Map.of(
-            "map", new MapSnapshot(at, AT, corridorMap()),
-            "unit", new UnitSnapshot(at, AT, unitState()),
-            "social", new SocialSnapshot(at, AT, socialData()),
-            // ★ R2a：命令总线要求切片在场（缺 economy 时 slice() 会响亮失败）⇒ 空/未激活的 economy 切片。
-            "economy", new EconomySnapshot(at, AT, EconomyData.empty()),
-            // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。
-            "actor", new ActorSnapshot(at, AT, ActorData.empty()),
-            // ★ 阶段 11b/12：gov 片由参与者写；缺席时带 GovernmentFormation 的推进会被 TimeAdvance 拒 ⇒ 补空片。
-            "gov", new GovSnapshot(at, AT, GovState.empty()),
-            // ★★ 2026-10-12 批次 3a：ga 切片（决策包 / 合并效果集两表）——命令总线与 app 读面都要求切片在场。
-            "ga", new GaSnapshot(at, AT, GaState.empty())),
-        InMemoryInfoSystem.empty());
+    Map<String, Snapshot> modules = new LinkedHashMap<>();
+    modules.put("map", new MapSnapshot(at, AT, corridorMap()));
+    modules.put("unit", new UnitSnapshot(at, AT, unitState()));
+    modules.put("social", new SocialSnapshot(at, AT, socialData()));
+    // ★ R2a：命令总线要求切片在场（缺 economy 时 slice() 会响亮失败）⇒ 空/未激活的 economy 切片。
+    modules.put("economy", new EconomySnapshot(at, AT, EconomyData.empty()));
+    // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。
+    modules.put("actor", new ActorSnapshot(at, AT, ActorData.empty()));
+    // ★ 阶段 11b/12：gov 片由参与者写；缺席时带 GovernmentFormation 的推进会被 TimeAdvance 拒 ⇒ 补空片。
+    modules.put("gov", new GovSnapshot(at, AT, GovState.empty()));
+    // ★★ 2026-10-12 批次 3a：ga 切片（决策包 / 合并效果集两表）——命令总线与 app 读面都要求切片在场。
+    modules.put("ga", new GaSnapshot(at, AT, GaState.empty()));
+    // ★★ D-031 Z4：production / culture 两份空快照（同世界 meta）；缺片时两 namespace 的命令在 CommandBus 找不到切片。
+    GenesisModuleSlices.ensureEmptyProductionAndCulture(modules, at, AT);
+    return new SimulationState(new StateMeta(at, AT), modules, InMemoryInfoSystem.empty());
   }
 
   /** 三格沙漠走廊：{@code [1,1] → [1,2] → [1,3]}。 */

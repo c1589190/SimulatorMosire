@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;

@@ -75,17 +75,34 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
   /** 承诺份额的权威（可为 null：旧夹具/无 economy 的组合 ⇒ 官吏户等分；生产由组合根传入）。 */
   private final EconomyData economy;
 
+  /**
+   * ★★ B2b：生产实例的只读投影（`EconomyData.units` 已删）—— 本 oracle 只读它来算 GOV_SERVICE 承诺权重； 可为
+   * null（旧夹具/无生产运行时的组合 ⇒ 与 `economy == null` 同一支：等权）。
+   */
+  private final Map<
+          io.mosire.simos.economy.api.id.ProductionUnitId,
+          io.mosire.simos.production.contract.ProductionProcess>
+      productionUnits;
+
   /** 每个 GOV 的分摊目标缓存（GOV_SERVICE 承诺是 revision 内不变量；本 oracle 在生产里每日新建）。 */
   private final Map<UnitId, List<StipendTarget>> stipendTargetsByUnit = new LinkedHashMap<>();
 
   GovernmentUpkeepOracle(AccountSession accounts, UnitState units) {
-    this(accounts, units, null);
+    this(accounts, units, null, null);
   }
 
-  GovernmentUpkeepOracle(AccountSession accounts, UnitState units, EconomyData economy) {
+  GovernmentUpkeepOracle(
+      AccountSession accounts,
+      UnitState units,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits) {
     this.accounts = Objects.requireNonNull(accounts, "accounts");
     this.units = Objects.requireNonNull(units, "units");
     this.economy = economy;
+    this.productionUnits = productionUnits == null ? Map.of() : productionUnits;
   }
 
   @Override
@@ -308,7 +325,8 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
     Map<HouseholdId, Long> committed =
         economy == null
             ? Map.of()
-            : GovernmentServiceLaborBridge.committedLaborByHousehold(economy, unitId, day);
+            : GovernmentServiceLaborBridge.committedLaborByHousehold(
+                economy, productionUnits, unitId, day);
     List<StipendTarget> targets = new ArrayList<>(candidates.size());
     for (HouseholdId household : candidates) {
       long weight = committed.getOrDefault(household, 0L);

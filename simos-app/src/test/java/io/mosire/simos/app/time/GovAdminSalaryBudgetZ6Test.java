@@ -3,6 +3,7 @@ package io.mosire.simos.app.time;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.household.GovernmentServiceLaborBridge;
@@ -19,6 +20,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -29,12 +31,9 @@ import io.mosire.simos.economy.govpolicy.GovBudgetLine;
 import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
 import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
 import io.mosire.simos.economy.govpolicy.GovPostTier;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.spi.EconomyGovServiceCommitments;
 import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
 import io.mosire.simos.economy.time.AccountSession;
@@ -49,6 +48,13 @@ import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
@@ -115,7 +121,8 @@ class GovAdminSalaryBudgetZ6Test {
             new GovOfficialSalaryRule(10L, 1L)));
 
     GovSalaryRuleBridge.Report report =
-        GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(economy), DAY);
+        GovSalaryRuleBridge.deriveReport(
+            unitState(), withFixturePolicy(economy), productionUnits(), DAY);
     assertThat(report.rules()).as("16000 承诺 × 10/1000 = 160 粮、× 1/1000 = 16 银").hasSize(1);
     var rule = report.rules().get(0);
     assertThat(rule.id().value()).isEqualTo("gov-salary:u-1:hh-unit-u");
@@ -135,7 +142,8 @@ class GovAdminSalaryBudgetZ6Test {
             List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
             new GovOfficialSalaryRule(0L, 0L)));
     GovSalaryRuleBridge.Report noRule =
-        GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(economy), DAY);
+        GovSalaryRuleBridge.deriveReport(
+            unitState(), withFixturePolicy(economy), productionUnits(), DAY);
     assertThat(noRule.rules()).isEmpty();
     assertThat(noRule.zeroAmounts()).isEmpty();
     assertThat(noRule.gaps()).isEmpty();
@@ -152,7 +160,8 @@ class GovAdminSalaryBudgetZ6Test {
               List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
               new GovOfficialSalaryRule(10L, 1L)));
       GovSalaryRuleBridge.Report report =
-          GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(tiny), DAY);
+          GovSalaryRuleBridge.deriveReport(
+              unitState(), withFixturePolicy(tiny), productionUnits(), DAY);
       assertThat(report.rules()).isEmpty();
       assertThat(report.zeroAmounts())
           .singleElement()
@@ -170,7 +179,9 @@ class GovAdminSalaryBudgetZ6Test {
               new GovOfficialSalaryRule(Long.MAX_VALUE, Long.MAX_VALUE)));
       log.clear();
       assertThatThrownBy(
-              () -> GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(big), DAY))
+              () ->
+                  GovSalaryRuleBridge.deriveReport(
+                      unitState(), withFixturePolicy(big), productionUnits(), DAY))
           .as("工资桥算术溢出 = 契约故障 ⇒ ISE")
           .isInstanceOf(IllegalStateException.class);
       assertThat(log.hasError("GOV_SALARY_CONTRACT_VIOLATION", "reason=salary-overflow"))
@@ -202,6 +213,7 @@ class GovAdminSalaryBudgetZ6Test {
             legUnits,
             social(),
             withFixturePolicy(economyWithoutCommitment()),
+            productionUnits(),
             accounts,
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 0L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 0L)),
@@ -235,6 +247,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economyWithCommitment(16_000L, HH_UNIT)),
+            productionUnits(),
             accounts(100L, 0L, 0L),
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 16_000L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 16_000L)),
@@ -311,6 +324,7 @@ class GovAdminSalaryBudgetZ6Test {
               frozenUnits,
               social(),
               withFixturePolicy(economy),
+              productionUnits(),
               frozen,
               Map.of(GOV, frozenEfficiency),
               Map.of(GOV, frozenSupply),
@@ -437,6 +451,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economy),
+            productionUnits(),
             accounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -488,6 +503,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(withCommitment),
+            productionUnits(),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -505,6 +521,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economyWithoutCommitment()),
+            productionUnits(),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -539,6 +556,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economyWithoutCommitment()),
+            productionUnits(),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -593,6 +611,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economy),
+            productionUnits(),
             broke,
             Map.of(GOV, zeroCoverage),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 0L)),
@@ -623,6 +642,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economy),
+            productionUnits(),
             rich,
             Map.of(GOV, efficient),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(16_000L, 16_000L)),
@@ -652,7 +672,7 @@ class GovAdminSalaryBudgetZ6Test {
                 List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
                 new GovOfficialSalaryRule(10L, 1L)));
     GovernmentServiceLaborBridge.Supply supply =
-        GovernmentServiceLaborBridge.supply(selfPay, GOV, formation, DAY);
+        GovernmentServiceLaborBridge.supply(selfPay, Map.of(), GOV, formation, DAY);
     GovEfficiency.Efficiency efficiency =
         GovEfficiency.of(
             formation,
@@ -671,6 +691,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(selfPay),
+            productionUnits(),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -730,6 +751,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economy),
+            productionUnits(),
             legacyAccounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -749,6 +771,7 @@ class GovAdminSalaryBudgetZ6Test {
               units,
               social(),
               withFixturePolicy(economy),
+              productionUnits(),
               accounts,
               Map.of(GOV, efficiency),
               Map.of(GOV, supply),
@@ -802,6 +825,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social,
             planningEconomy,
+            productionUnits(),
             accounts,
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 16_000L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 16_000L)),
@@ -912,6 +936,7 @@ class GovAdminSalaryBudgetZ6Test {
             units,
             social(),
             withFixturePolicy(economy),
+            productionUnits(),
             accounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -1119,20 +1144,67 @@ class GovAdminSalaryBudgetZ6Test {
   private static EconomyData economyWithCommitment(long laborMilli, HouseholdId household) {
     EconomyData base = baseEconomy();
     SocialData social = social();
+    // ★★ D-032 T6：`project(...)` 的**第一实参是 production 的当刻实例表**（不是空表）——
+    //   旧稿传 `Map.of()` ⇒ `reconcile` 的 `existingUnit == null` 支具名拒 `OFFICE_UNIT_NOT_IN_PRODUCTION`
+    //   （11 条 ERROR 的真根因；`defs()` 只负责**定义**权威，实例表要单独给）。
     EconomyGovUnitUpserts.Projection unit =
-        EconomyGovUnitUpserts.project(base, social, upsertPayload());
+        EconomyGovUnitUpserts.project(productionUnits(), base, social, defs(), upsertPayload());
     EconomyGovServiceCommitments.Projection created =
         EconomyGovServiceCommitments.project(
-            unit.projected(), social, commitment(household.value(), laborMilli));
+            productionUnits(),
+            unit.projected(),
+            social,
+            defs(),
+            commitment(household.value(), laborMilli));
     return created.projected();
   }
 
   private static EconomyData economyWithoutCommitment() {
-    return EconomyGovUnitUpserts.project(baseEconomy(), social(), upsertPayload()).projected();
+    return EconomyGovUnitUpserts.project(
+            productionUnits(), baseEconomy(), social(), defs(), upsertPayload())
+        .projected();
+  }
+
+  /** 夹具的 production 实例投影（= {@link #defs()} 里那唯一一条 office 实例）。 */
+  private static Map<ProductionUnitId, ProductionProcess> productionUnits() {
+    return defs().instances();
+  }
+
+  /**
+   * ★★ D-032 T6（a 桶夹具欠账，与 {@code DeathDebtWriteOffTest}/{@code MintProductionSettlementTest} 同处置）：
+   * 实例的唯一权威在 production（I1）⇒ 夹具必须把本 GOV 的 office 生产实例**落进权威实例表**。
+   *
+   * <p>旧稿只造了产业定义、没造实例 ⇒ {@code EconomyGovUnitUpserts.reconcile} 在 {@code existingUnit == null}
+   * 那一支具名拒 {@code OFFICE_UNIT_NOT_IN_PRODUCTION}（fail-closed 正确）⇒ 本文件 11 条 ERROR 全在此。
+   *
+   * <p>取值与 {@link #upsertPayload()} 同源：{@code industryId=office@0_0}、{@code
+   * operator=HouseholdActors.of(HH_GOV)} （= {@code hh-gov-u-1}，即 main 侧 {@code
+   * EconomyGovUnitUpserts} 与 {@code ThreePowersGovBootstrap.createOfficeInstancePayload}
+   * 的同一约定）、{@code modeKey = "gov_service"} （= main 常量 {@code GOV_SERVICE_MODE_KEY} 的缺省值）、地点由 {@code
+   * office@0_0} 的格段解出。
+   */
+  private static ProductionData defs() {
+    return ProductionData.empty()
+        .withIndustry(officeIndustry("office@0_0"))
+        .withInstance(officeUnit());
+  }
+
+  /** office 生产实例（id / operator / modeKey / location 与 {@code upsertPayload()} 逐值同源）。 */
+  private static ProductionProcess officeUnit() {
+    IndustryId officeId = IndustryId.parse("office@0_0");
+    ActorRef operator = HouseholdActors.of(HH_GOV);
+    return new ProductionProcess(
+        ProductionUnitId.idOf(officeId, operator),
+        officeId,
+        ProductionLocation.ofPlan(officeId).orElseThrow(),
+        operator,
+        "gov_service",
+        0L,
+        Map.of(),
+        Map.of());
   }
 
   private static EconomyData baseEconomy() {
-    Industry industry = officeIndustry("office@0_0");
     Map<GovernmentId, Government> governments = new LinkedHashMap<>();
     GovernmentId id = GovernmentIds.ofUnit("u-1");
     governments.put(id, new Government(id, "u-1", HouseholdActors.of(HH_GOV), Set.of()));
@@ -1143,7 +1215,6 @@ class GovAdminSalaryBudgetZ6Test {
     EconomyMeta meta = new EconomyMeta("demo", 0L, OptionalLong.empty(), "z6a", Optional.empty());
     return EconomyData.empty()
         .withMeta(Optional.of(meta))
-        .withIndustries(Map.of(industry.id(), industry))
         .withHouseholdEconomies(classes)
         .withGovernments(governments);
   }
@@ -1189,12 +1260,14 @@ class GovAdminSalaryBudgetZ6Test {
         new HouseholdVitalRates(List.of()));
   }
 
-  private static Industry officeIndustry(String id) {
-    return new Industry(
+  private static IndustryDefinitionView officeIndustry(String id) {
+    return new IndustryDefinitionView(
         new IndustryId(id),
         "衙署",
         new RegimeId("government_office"),
+        Optional.empty(),
         30L,
+        0L /* ★ D-032 T1：buildDays 新增组件（中性 0，与 testing.IndustryViews 同款）*/,
         Map.of(AssetKind.TOOL, 1L),
         Map.of(),
         0L,
@@ -1202,7 +1275,11 @@ class GovAdminSalaryBudgetZ6Test {
         Map.of(),
         Map.of(),
         List.of(new ClassSlot(SocialClassId.OFFICIAL, "文员", 1000)),
-        new AllocationRule.Split(500, 500));
+        new AllocationRule.Split(500, 500),
+        MoneyOutput.NONE,
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE,
+        java.util.List.of(),
+        java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED));
   }
 
   private static String upsertPayload() {

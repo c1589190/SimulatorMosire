@@ -38,6 +38,7 @@ public final class AppGovToolViews implements GovToolViews {
   public Map<String, Long> staffHouseholdProjection(SimulationState state, long tick) {
     return HouseholdUnitConsistency.staffHouseholdProjection(
         ToolSupport.economyData(state),
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
         ToolSupport.socialData(state),
         ToolSupport.unitState(state),
         tick);
@@ -48,7 +49,11 @@ public final class AppGovToolViews implements GovToolViews {
       SimulationState state, UnitId govUnitId, GovernmentFormation formation, long tick) {
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            ToolSupport.economyData(state), govUnitId, formation, tick);
+            ToolSupport.economyData(state),
+            io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+            govUnitId,
+            formation,
+            tick);
     return new Supply(
         supply.securityLaborMilli(),
         supply.paperworkLaborMilli(),
@@ -61,7 +66,10 @@ public final class AppGovToolViews implements GovToolViews {
   public Map<HouseholdId, Long> committedLaborByHousehold(
       SimulationState state, UnitId govUnitId, long tick) {
     return GovernmentServiceLaborBridge.committedLaborByHousehold(
-        ToolSupport.economyData(state), govUnitId, tick);
+        ToolSupport.economyData(state),
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+        govUnitId,
+        tick);
   }
 
   @Override

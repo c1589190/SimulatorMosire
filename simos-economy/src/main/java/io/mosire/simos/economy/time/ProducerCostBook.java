@@ -6,12 +6,12 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -127,7 +127,7 @@ public final class ProducerCostBook {
    */
   public static Estimate estimate(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       Map<AssetShareId, OwnershipStake> assetShares,
       MarketTable market,
       ProductionRules relation) {
@@ -154,7 +154,7 @@ public final class ProducerCostBook {
    */
   public static Estimate estimate(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       SettlementIndex index,
       MarketTable market,
       ProductionRules relation) {
@@ -172,7 +172,7 @@ public final class ProducerCostBook {
   /** 单位成本估计的唯一算式：{@code capacityScale} 作为延迟取值在**与旧实现相同的位置**调用，故异常/取整顺序都保持不变。 */
   private static Estimate estimate(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       MarketTable market,
       ProductionRules relation,
       LongSupplier capacityScale) {
@@ -221,12 +221,15 @@ public final class ProducerCostBook {
 
   /**
    * 资产租（同一刻度）：关系表里 {@code FIXED_IN_KIND_RENT} / {@code FIXED_MONEY_RENT} 的每周期固定额，
-   * 按参考价折成毫银后除以满规模（{@link EconomySettlement#capacityScaleOf(Industry)}；规模 0 ⇒ 不摊）。
+   * 按参考价折成毫银后除以满规模（{@link EconomySettlement#capacityScaleOf(IndustryDefinitionView)}；规模 0 ⇒ 不摊）。
    *
    * <p>★ 只读规则类型 + {@code fixedAmount}；不解释规则公式（那是 {@code ProductionSettlement} 的职责）。
    */
   public static long assetRentPerUnit(
-      Industry industry, MarketTable market, ProductionRules relation, long capacityScale) {
+      IndustryDefinitionView industry,
+      MarketTable market,
+      ProductionRules relation,
+      long capacityScale) {
     if (relation == null || relation.rules().isEmpty()) {
       return DEFAULT_ASSET_RENT_PER_UNIT;
     }

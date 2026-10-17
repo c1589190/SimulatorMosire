@@ -13,7 +13,8 @@ import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -154,15 +155,23 @@ public final class EconomyGovServiceCommitments {
    *
    * @param base 当前 economy 状态
    * @param social 当前 Social 状态（家户表 + 正成员批次；economy 直连 social 是既有的允许面）
+   * @param definitions ★★ <b>机械修正（D-032 A 批续做）：产业定义的只读来源</b>（U2 起定义权威在 production； 由组合根以 {@code
+   *     EconomyProductionDefinitions.of(state)} 注入，工具/handler 两侧同一份）
    * @param payloadJson {@code economy.SetGovServiceCommitment} 载荷（形状见类注）
    * @throws Rejection 业务/世界规则拒绝（零 revision；理由具名）
    * @throws IllegalArgumentException 载荷形状/坏 id/负值等（handler 同折 INFO + {@code Rejected}）
    * @throws IllegalStateException 写出后的状态违反 {@link EconomyData} 跨表契约、或既有 GOV_SERVICE 行破坏确定性 id
    *     约定（一致性故障，不是载荷错）
    */
-  public static Projection project(EconomyData base, SocialData social, String payloadJson) {
+  public static Projection project(
+      Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> units,
+      EconomyData base,
+      SocialData social,
+      ProductionDefinitionLookup definitions,
+      String payloadJson) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）");
     Objects.requireNonNull(payloadJson, "payloadJson");
     JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
     String govUnitId = EconomyCommandPayloads.requireText(COMMAND, payload, "govUnitId");
@@ -177,7 +186,8 @@ public final class EconomyGovServiceCommitments {
     // reason 只作审计（不进状态）；仍要求非空白，保住"每条写命令都可审计"的既有边界。
     EconomyCommandPayloads.requireText(COMMAND, payload, "reason");
     requireGovernmentEnvelope(base, social, govUnitId, govHousehold, operator);
-    ProductionUnitId unitId = resolveGovServiceUnit(base, operator, activityText);
+    ProductionUnitId unitId =
+        resolveGovServiceUnit(units, base, definitions, operator, activityText);
     requireCommitmentHousehold(base, social, household);
     return reconcile(base, social, govUnitId, operator, unitId, household, laborMilli);
   }
@@ -249,9 +259,13 @@ public final class EconomyGovServiceCommitments {
    * activity 也必须是该 GOV 的 office unit（存在 + operator 命中 + industry base kind=office）。
    */
   private static ProductionUnitId resolveGovServiceUnit(
-      EconomyData base, ActorRef operator, String activityText) {
+      Map<ProductionUnitId, ProductionProcess> units,
+      EconomyData base,
+      ProductionDefinitionLookup definitions,
+      ActorRef operator,
+      String activityText) {
     if (activityText == null) {
-      List<ProductionUnitId> candidates = govServiceUnitsOf(base, operator);
+      List<ProductionUnitId> candidates = govServiceUnitsOf(units, definitions, operator);
       if (candidates.isEmpty()) {
         throw new Rejection(
             COMMAND
@@ -279,7 +293,7 @@ public final class EconomyGovServiceCommitments {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(COMMAND + " 的 activity 不合法: " + e.getMessage(), e);
     }
-    ProductionProcess unit = base.units().get(explicit);
+    ProductionProcess unit = units.get(explicit);
     if (unit == null) {
       throw new Rejection(COMMAND + " 的 activity 指名的 unit 不存在: " + explicit.value());
     }
@@ -293,7 +307,7 @@ public final class EconomyGovServiceCommitments {
               + "|"
               + unit.operator().id());
     }
-    String baseKind = baseKindOrContractFault(base, unit);
+    String baseKind = baseKindOrContractFault(definitions, unit);
     if (!EconomyGovUnitUpserts.OFFICE_BASE_KIND.equals(baseKind)) {
       throw new Rejection(
           COMMAND
@@ -309,13 +323,17 @@ public final class EconomyGovServiceCommitments {
   }
 
   /** 该 GOV 名下的 office unit（保序，units 表首次出现序）；industry/base kind 由状态守卫保证存在。 */
-  private static List<ProductionUnitId> govServiceUnitsOf(EconomyData base, ActorRef operator) {
+  private static List<ProductionUnitId> govServiceUnitsOf(
+      Map<ProductionUnitId, ProductionProcess> units,
+      ProductionDefinitionLookup definitions,
+      ActorRef operator) {
     List<ProductionUnitId> candidates = new ArrayList<>();
-    for (ProductionProcess unit : base.units().values()) {
+    for (ProductionProcess unit : units.values()) {
       if (!unit.operator().equals(operator)) {
         continue;
       }
-      if (EconomyGovUnitUpserts.OFFICE_BASE_KIND.equals(baseKindOrContractFault(base, unit))) {
+      if (EconomyGovUnitUpserts.OFFICE_BASE_KIND.equals(
+          baseKindOrContractFault(definitions, unit))) {
         candidates.add(unit.id());
       }
     }
@@ -323,8 +341,9 @@ public final class EconomyGovServiceCommitments {
   }
 
   /** unit 指名的产业必须存在（EconomyData 跨表守卫应已判死；读到缺产业 ⇒ 一致性故障，不是载荷错）。 */
-  private static String baseKindOrContractFault(EconomyData base, ProductionProcess unit) {
-    if (!base.industries().containsKey(unit.industry())) {
+  private static String baseKindOrContractFault(
+      ProductionDefinitionLookup definitions, ProductionProcess unit) {
+    if (!definitions.industries().containsKey(unit.industry())) {
       throw new IllegalStateException(
           COMMAND
               + " 读到 unit 指名的产业模板不存在（EconomyData 跨表守卫应已判死，一致性故障）: unit="

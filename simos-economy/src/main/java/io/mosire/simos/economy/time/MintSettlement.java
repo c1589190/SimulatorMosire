@@ -12,12 +12,11 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.MoneyOutput;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -43,8 +42,8 @@ import java.util.OptionalLong;
  * </ul>
  *
  * <p>★★ <b>钱是怎么来的（本类唯一的产出算式）</b>：货币<b>与粮/布/工具同一条生产路径</b> —— 它挂在 {@link
- * Industry#moneyOutputPerUnit()}（{@link MoneyOutput}）上，由 {@code EconomySettlement} 在<b>产业周期关账</b>时
- * 按<b>同一个规模</b>收获：
+ * IndustryDefinitionView#moneyOutputPerUnit()}（{@link MoneyOutput}）上，由 {@code EconomySettlement}
+ * 在<b>产业周期关账</b>时 按<b>同一个规模</b>收获：
  *
  * <pre>
  * 毛产出(币种 c) = scale × moneyOutputPerUnit.perUnit[c]        // 毫；scale = 关账处求好的规模
@@ -194,7 +193,7 @@ final class MintSettlement {
         if (unit == null) {
           continue; // 关账表里有、工作表里没有：不是本方法的状态（别在这里猜）
         }
-        Industry industry = session.sheet().industries().get(unit.industry());
+        IndustryDefinitionView industry = session.sheet().industries().get(unit.industry());
         if (industry == null || industry.moneyOutputPerUnit().isEmpty()) {
           continue; // 这一路不铸币（绝大多数产业）⇒ 一个字节都不动
         }
@@ -231,21 +230,49 @@ final class MintSettlement {
           continue;
         }
         long scale = entry.getValue();
-        // ★★★ W10：铸币产出率的**运行期**权威 = 政策键 MINT_MILLI_PER_FURNACE_CYCLE（GM 写入即下一关账日生效）。
-        //   ★ "未配置"⇒ 用产业载荷里声明的值（`Industry.moneyOutputPerUnit`）—— 那正是这条改动前的唯一来源
-        //     （创世由 EconomySeeder 从同一个常量播种）⇒ **从没被 GM 写过的世界逐值不变**。
-        boolean policyOverride =
-            base.economyPolicyConfigured(EconomyPolicyKey.MINT_MILLI_PER_FURNACE_CYCLE);
-        long policyMilliPerFurnaceCycle =
-            base.economyPolicyOf(EconomyPolicyKey.MINT_MILLI_PER_FURNACE_CYCLE);
+        // ★★★ I12 / §13.10.4 第 6 条（B2 批）：铸币产出率的**唯一权威 = production 的有效参数**
+        //   （`IndustryDefinitionView.moneyOutputPerUnit`，即产业定义 + GM 产出/定义覆盖共同决定的当刻有效值）。
+        //   ★★ **B2 删掉了 W10 的政策键覆盖分支**（旧形态：`policyOverride ? policyMilliPerFurnaceCycle
+        //     : line.getValue()`，读 economy 的 `MINT_MILLI_PER_FURNACE_CYCLE`）—— 那让同一个数值有两份权威：
+        //     production 的产业定义说一套、economy 的政策键说另一套，且 economy 那份能静默顶掉定义。
+        //     `I1`：「方案、实例、经验、解锁、效率/精度、GM 产出覆盖的**唯一权威在 production**」。
+        //   ★ **GM 仍可调生产率**：入口是 production 的定义写面
+        //     （`production.UpsertIndustry` 的 `moneyOutputPerUnit`，GM-only）—— 两个工具提示已同步改指向它；
+        //     详见 `MintSettlement` 上面那条注释与 `EconomyUpsertIndustryTool` 的说明。
+        //   ★★ **数值后果如实记**（Δ 已写进 B2 账本）：从没被 GM 写过 `MINT_MILLI_PER_FURNACE_CYCLE` 的世界
+        //     **逐值不变**（那条分支本来就没生效，定义值就是创世播种的那个常量）；被写过的世界
+        //     **会回落到产业定义值** —— 那正是本次收口的语义（政策键不再是权威）。
         for (Map.Entry<CurrencyId, Long> line :
             industry.moneyOutputPerUnit().perUnit().entrySet()) {
           CurrencyId currency = line.getKey();
-          long requested =
-              Math.multiplyExact(
-                  scale, policyOverride ? policyMilliPerFurnaceCycle : line.getValue());
+          long requested = Math.multiplyExact(scale, line.getValue());
           if (requested <= 0L) {
             continue; // 规模 0 或产出率 0 ⇒ 没有产出（不做"0 毫的发行记录"：金额必须 > 0）
+          }
+          if (LOG.isTraceEnabled()) {
+            EventLog.channel(LOG)
+                .trace(
+                    LogEvent.of(
+                        "MINT_RATE_SOURCE",
+                        EconomyLogSource.ECONOMY_MONEY,
+                        "day",
+                        day,
+                        "period",
+                        currentCycle,
+                        "unit",
+                        unit.id().value(),
+                        "industry",
+                        industry.id().value(),
+                        "currency",
+                        currency.value(),
+                        "rateMilliPerScale",
+                        line.getValue(),
+                        "scale",
+                        scale,
+                        "requested",
+                        requested,
+                        "source",
+                        "production-industry-definition"));
           }
           if (!government.issuable().contains(currency)) {
             // ★ 越权发行（M6）：说不出"这是我发的钱"就不许铸。契约故障 ⇒ ERROR 且不降级（§一.9）。

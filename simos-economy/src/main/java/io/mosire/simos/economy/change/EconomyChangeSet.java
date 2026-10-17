@@ -6,7 +6,6 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -16,14 +15,12 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
-import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -50,7 +47,6 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -58,11 +54,7 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -74,16 +66,17 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 31 个：{@code meta} / {@code industries} /
- * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
- * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} /
- * {@code operatorConditions} / {@code units} / {@code demands} / {@code candidates} / {@code modes}
- * / {@code classStructures} / {@code classPositions} / {@code classStandings} / {@code
- * productionOrganizations} / {@code assetRules} + E3 的 {@code governments} / {@code moneyIssuances}
- * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
- * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P4a 的 {@code
- * periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} / {@code productionEfficiency} + A1 的
- * {@code currencies} / {@code moneyInstruments} + B2 的 {@code marketZones}）。
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 32 个；★ D-032 B4 / §13.14.2 裁定十五起
+ * <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
+ * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
+ * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
+ * operatorConditions} / {@code units} / {@code demands} / {@code modes} / {@code classStructures} /
+ * {@code classPositions} / {@code classStandings} / {@code productionOrganizations} / {@code
+ * assetRules} + E3 的 {@code governments} / {@code moneyIssuances} + E4a 的 {@code debtContracts} /
+ * {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code crisisSignals} + E6a 的 {@code
+ * modeTransitions} / {@code classShares} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code
+ * outputQuantityOverrides} / {@code productionEfficiency} + A1 的 {@code currencies} / {@code
+ * moneyInstruments} + B2 的 {@code marketZones}）。
  *
  * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
  * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★
@@ -136,7 +129,6 @@ import java.util.function.Function;
 @JsonIgnoreProperties("commodityFreightPerMille")
 public record EconomyChangeSet(
     FieldDelta<EconomyMeta> meta,
-    FieldDelta<Industry> industries,
     FieldDelta<HouseholdEconomy> classes,
     FieldDelta<DebtContract> debtContracts,
     FieldDelta<FlowRow> flows,
@@ -146,10 +138,12 @@ public record EconomyChangeSet(
     FieldDelta<ShipmentBatch> shipments,
     FieldDelta<OwnershipStake> assetShares,
     FieldDelta<OperatorCondition> operatorConditions,
-    FieldDelta<ProductionProcess> units,
+    // ★★★ B2b（§13.11.2 裁定六）+ B2c（§13.12.2 裁定八）：`units` / `candidates` /
+    //   `outputQuantityOverrides` / `productionEfficiency`
+    //   四个组件随 {@link EconomyData} 的同名组件一起从本变更集删除 —— 它们的唯一权威在 production
+    //   （{@code production.change.ProductionChangeSet} 携带这些维度的差异，与本次 Advance 的 economy 变更集
+    //   在同一条 Revision 里原子提交）。economy 不再有"第二份可独立修改的实例/定义/覆盖/效率"。
     FieldDelta<HouseholdDemand> demands,
-    FieldDelta<ProductionCandidate> candidates,
-    FieldDelta<ProductionMode> modes,
     FieldDelta<ClassStructure> classStructures,
     FieldDelta<ProductionRole> classPositions,
     FieldDelta<HouseholdClassMembership> classStandings,
@@ -163,8 +157,6 @@ public record EconomyChangeSet(
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
     FieldDelta<HouseholdPeriodicAdjustment> periodicAdjustments,
-    FieldDelta<Map<CommodityId, Long>> outputQuantityOverrides,
-    FieldDelta<ProductionEfficiencyState> productionEfficiency,
     // ── A1（2026-10-08）货币词表的两张表（与 EconomyData 的两个新组件一一对应，铁律 5）──
     FieldDelta<CurrencyDef> currencies,
     FieldDelta<MoneyInstrument> moneyInstruments,
@@ -198,9 +190,6 @@ public record EconomyChangeSet(
     if (meta == null) {
       meta = new FieldDelta.Unchanged<>();
     }
-    if (industries == null) {
-      industries = new FieldDelta.Unchanged<>();
-    }
     if (classes == null) {
       classes = new FieldDelta.Unchanged<>();
     }
@@ -233,21 +222,12 @@ public record EconomyChangeSet(
     if (operatorConditions == null) {
       operatorConditions = new FieldDelta.Unchanged<>();
     }
-    // ★ 第 14 个组件（R3B.2）：同一口径（旧档没提该组件，就是没动它）。
-    if (units == null) {
-      units = new FieldDelta.Unchanged<>();
-    }
-    // ★★ R4-E2 第 15/16 个组件（需求账本 + 候选预设）：同一口径（旧档没提该组件，就是没动它）。
+    // ★★ R4-E2 第 15 个组件（需求账本）：同一口径（旧档没提该组件，就是没动它）。
+    //   ★ B2b/B2c：第 14 个组件 `units` 与第 16 个组件 `candidates` 的变更集维已删除（权威在 production）。
     if (demands == null) {
       demands = new FieldDelta.Unchanged<>();
     }
-    if (candidates == null) {
-      candidates = new FieldDelta.Unchanged<>();
-    }
     // ★★ E1 的四个新组件：同一口径（旧变更集没提该组件，就是没动它）。
-    if (modes == null) {
-      modes = new FieldDelta.Unchanged<>();
-    }
     if (classStructures == null) {
       classStructures = new FieldDelta.Unchanged<>();
     }
@@ -300,13 +280,8 @@ public record EconomyChangeSet(
     if (marketRoundStats == null) {
       marketRoundStats = new FieldDelta.Unchanged<>();
     }
-    // ★★ Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）：旧变更集没提该组件，就是没动它。
-    if (outputQuantityOverrides == null) {
-      outputQuantityOverrides = new FieldDelta.Unchanged<>();
-    }
-    if (productionEfficiency == null) {
-      productionEfficiency = new FieldDelta.Unchanged<>();
-    }
+    // ★★ B2b：Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）的变更集维已删除
+    //   （两维的唯一权威在 production 的 {@code ProductionChangeSet}）。
     // ★★ A1 的第 34/35 个组件（货币词表两张表）：旧变更集没提该组件，就是没动它
     //   （旧档读到 null ⇒ Unchanged，旧世界词表照旧走 EconomyData 的旧世界默认归一）。
     if (currencies == null) {
@@ -338,7 +313,6 @@ public record EconomyChangeSet(
     Objects.requireNonNull(target, "target");
     return new EconomyChangeSet(
         FieldDelta.diff(metaTable(base.meta()), metaTable(target.meta())),
-        FieldDelta.diff(base.industries(), target.industries()),
         FieldDelta.diff(base.classes(), target.classes()),
         FieldDelta.diff(base.debtContracts(), target.debtContracts()),
         FieldDelta.diff(base.flows(), target.flows()),
@@ -348,10 +322,7 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.shipments(), target.shipments()),
         FieldDelta.diff(base.assetShares(), target.assetShares()),
         FieldDelta.diff(base.operatorConditions(), target.operatorConditions()),
-        FieldDelta.diff(base.units(), target.units()),
         FieldDelta.diff(base.demands(), target.demands()),
-        FieldDelta.diff(base.candidates(), target.candidates()),
-        FieldDelta.diff(base.modes(), target.modes()),
         FieldDelta.diff(base.classStructures(), target.classStructures()),
         FieldDelta.diff(base.classPositions(), target.classPositions()),
         FieldDelta.diff(base.classStandings(), target.classStandings()),
@@ -365,8 +336,6 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
         FieldDelta.diff(base.periodicAdjustments(), target.periodicAdjustments()),
-        FieldDelta.diff(base.outputQuantityOverrides(), target.outputQuantityOverrides()),
-        FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()),
         FieldDelta.diff(base.currencies(), target.currencies()),
         FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()),
         FieldDelta.diff(base.marketZones(), target.marketZones()),
@@ -384,7 +353,8 @@ public record EconomyChangeSet(
     Objects.requireNonNull(base, "base");
     return new EconomyData(
         metaOf(FieldDelta.rebuild(metaTable(base.meta()), cs.meta(), Function.identity())),
-        FieldDelta.rebuild(base.industries(), cs.industries(), IndustryId::parse),
+        // ★★★ D-032 B4（§13.14.2 裁定十五）：A 批续做的"占位带过 base.industries()"一行**已删** ——
+        //   组件本身已从 EconomyData 删除（定义权威唯一归 production），本变更集从来没有这一维。
         FieldDelta.rebuild(base.classes(), cs.classes(), EconomyChangeSet::householdId),
         FieldDelta.rebuild(base.debtContracts(), cs.debtContracts(), DebtContractId::parse),
         FieldDelta.rebuild(base.flows(), cs.flows(), EconomyChangeSet::householdId),
@@ -395,10 +365,9 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.assetShares(), cs.assetShares(), AssetShareId::parse),
         FieldDelta.rebuild(
             base.operatorConditions(), cs.operatorConditions(), ProductionUnitId::parse),
-        FieldDelta.rebuild(base.units(), cs.units(), ProductionUnitId::parse),
         FieldDelta.rebuild(base.demands(), cs.demands(), DemandId::parse),
-        FieldDelta.rebuild(base.candidates(), cs.candidates(), CandidateId::parse),
-        FieldDelta.rebuild(base.modes(), cs.modes(), ProductionModeId::parse),
+        // ★★★ B5（§13.15.2 裁定十八）：第 17 个组件 `modes` 已从 EconomyData 删除 ⇒ 本处不再有
+        //   "逐值带过 base 的表"这一腿（本变更集从来没有 modes 组件 —— 生产方式定义唯一归 production）。
         FieldDelta.rebuild(base.classStructures(), cs.classStructures(), ClassStructureId::parse),
         FieldDelta.rebuild(base.classPositions(), cs.classPositions(), ClassPositionId::parse),
         FieldDelta.rebuild(
@@ -420,12 +389,8 @@ public record EconomyChangeSet(
             base.periodicAdjustments(),
             cs.periodicAdjustments(),
             PeriodicHouseholdAdjustmentId::parse),
-        // ★★ Z1：覆盖表的外层键 = IndustryId；内层 Map<CommodityId, Long> 走 Jackson 的嵌套泛型绑定
-        //   （CommodityId 的键反序列化器已在 EconomyCodec.keyModule 注册）。
-        FieldDelta.rebuild(
-            base.outputQuantityOverrides(), cs.outputQuantityOverrides(), IndustryId::parse),
-        FieldDelta.rebuild(
-            base.productionEfficiency(), cs.productionEfficiency(), ProductionUnitId::parse),
+        // ★★ B2b：Z1 的两维（outputQuantityOverrides / productionEfficiency）已从本变更集删除 ——
+        //   apply 不再重建它们（权威在 production 的切片与变更集里）。
         // ★★ A1：货币词表的两张表（键 = 币种身份 / 工具身份）。
         FieldDelta.rebuild(base.currencies(), cs.currencies(), CurrencyId::parse),
         FieldDelta.rebuild(base.moneyInstruments(), cs.moneyInstruments(), InstrumentId::parse),
@@ -445,7 +410,6 @@ public record EconomyChangeSet(
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
     return !(meta.changed()
-        || industries.changed()
         || classes.changed()
         || debtContracts.changed()
         || flows.changed()
@@ -455,10 +419,7 @@ public record EconomyChangeSet(
         || shipments.changed()
         || assetShares.changed()
         || operatorConditions.changed()
-        || units.changed()
         || demands.changed()
-        || candidates.changed()
-        || modes.changed()
         || classStructures.changed()
         || classPositions.changed()
         || classStandings.changed()
@@ -472,8 +433,6 @@ public record EconomyChangeSet(
         || modeTransitions.changed()
         || classShares.changed()
         || periodicAdjustments.changed()
-        || outputQuantityOverrides.changed()
-        || productionEfficiency.changed()
         || currencies.changed()
         || moneyInstruments.changed()
         || marketZones.changed()

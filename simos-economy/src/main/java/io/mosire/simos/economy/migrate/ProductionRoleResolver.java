@@ -120,12 +120,8 @@ public final class ProductionRoleResolver {
               0L, // ★ 创世/旧档种子没有迁移日
               LegacyClassStructure.SEED_REASON));
     }
-    // ★ 逐组件写口：每一段都是 EconomyData 的公开 with*（对侧为空时引用完整性分段放开，四段按依赖顺序落），
-    //   不直接改运行对象、不绕过状态构造。播种后的完整状态再过一次全部守卫（键身份、mode↔structure↔position
-    //   闭环、standing 的 household/position 存在性）。
-    return data.withModes(
-            Map.of(LegacyClassStructure.defaultModeId(), LegacyClassStructure.defaultMode()))
-        .withClassStructures(
+    // ★ P1：生产方式定义已迁出 economy（权威在 production）；本迁移器只播种 economy 侧的阶层结构/位置/归属。
+    return data.withClassStructures(
             Map.of(
                 LegacyClassStructure.defaultClassStructureId(),
                 LegacyClassStructure.defaultClassStructure()))
@@ -133,10 +129,9 @@ public final class ProductionRoleResolver {
         .withClassMemberships(Collections.unmodifiableMap(classMemberships)); // ★ 冻在赋值处
   }
 
-  /** ★ "新状态"是否已有任何一格被写过（四个组件任一非空即视为已播种/已由别的路径写入）。 */
+  /** ★ "新状态"是否已有任何一格被写过（三个组件任一非空即视为已播种/已由别的路径写入）。 */
   private static boolean hasAnyNewState(EconomyData data) {
-    return !data.modes().isEmpty()
-        || !data.classStructures().isEmpty()
+    return !data.classStructures().isEmpty()
         || !data.classPositions().isEmpty()
         || !data.classStandings().isEmpty();
   }

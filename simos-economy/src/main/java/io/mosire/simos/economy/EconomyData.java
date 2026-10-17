@@ -4,14 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -22,14 +19,13 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
-import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
-import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -49,7 +45,6 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
-import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
@@ -64,8 +59,6 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -74,13 +67,8 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -111,8 +99,8 @@ import java.util.Set;
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
  *
  * <ul>
- *   <li>E1（第 17–20 个，4 个）：{@code modes} / {@code classStructures} / {@code classPositions} / {@code
- *       classStandings}；
+ *   <li>E1（第 18–20 个，3 个）：{@code classStructures} / {@code classPositions} / {@code
+ *       classStandings}（★ 第 17 个 {@code modes} 已由 B5 删除，见下）；
  *   <li>E2（第 21–22 个，2 个）：{@code productionOrganizations} / {@code assetRules}；
  *   <li>E3（第 23–24 个，2 个）：{@code governments} / {@code moneyIssuances}；
  *   <li>E4（第 25 个，另替换第 4 个组件的旧 {@code debts} 槽为 {@code debtContracts}）：{@code pledges}；
@@ -177,9 +165,10 @@ import java.util.Set;
  *
  * <ol>
  *   <li>每个键**必须**是该格上已存在的产业（"{@code 关系指名的产业不存在}"）——否则结算时按 id 取不到产业；
- *   <li>{@code relations[k].operator()} **必须**等于 {@code industries[k].operator()}：**同一件事不许有两处拼写**
+ *   <li>{@code relations[k].operator()} **必须**等于该实例的 {@code operator}：**同一件事不许有两处拼写**
  *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRules.activity()}（同 {@code
- *       classes}/{@code flows} 的"键 == 值内 key"口径）。
+ *       classes}/{@code flows} 的"键 == 值内 key"口径）。★ 这条判据读 production 的实例投影，落点是 {@code
+ *       EconomyReferenceValidation.validateUnitCrossReferences}（B2b 起；B4 起构造期不再持有定义副本）。
  * </ol>
  *
  * <p>★ <b>S1 起 {@code classes}/{@code flows} 的键都是稳定家户身份 {@link HouseholdId}</b>（旧档的 {@link
@@ -211,16 +200,25 @@ import java.util.Set;
  * ShipmentBatch}（在途批次）。★ 它是**跨 tick 状态**：发运日建、到货日销；到货前目的地消费不到它。
  *
  * <p>★★ **S1 的第 12 个组件 {@code assetShares}**（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>，
- * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
- * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由
- * S1 一次性补齐，本阶段空表缺省。★ <b>P2-A A3：成员份额已从本切片整体删除</b>——家户人口组成的唯一权威是 Social 的 {@code
- * Household.members}，Economy 只在结算入口读一份只读投影（不进状态、不进变更集/Codec）。
+ * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤
+ * IndustryDefinitionView.capacity" 这类 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code
+ * operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由 S1 一次性补齐，本阶段空表缺省。★ <b>P2-A
+ * A3：成员份额已从本切片整体删除</b>——家户人口组成的唯一权威是 Social 的 {@code Household.members}，Economy
+ * 只在结算入口读一份只读投影（不进状态、不进变更集/Codec）。
  *
- * <p>★★ **E1 追加第 17–20 个组件**（{@code modes} / {@code classStructures} / {@code classPositions} /
- * {@code classStandings}）：它们建立"生产方式 → 阶层结构 → 阶层位置 → 家户归属"的权威状态。★ **E1 不接线结算**： 这四张表为空时，旧 {@code
+ * <p>★★ **E1 追加第 18–20 个组件**（{@code classStructures} / {@code classPositions} / {@code
+ * classStandings}）：它们建立"阶层结构 → 阶层位置 → 家户归属"的权威状态。★ **E1 不接线结算**： 这三张表为空时，旧 {@code
  * HouseholdClassRule}、旧 {@code settle*} 路径与旧档行为逐值不变；有值时也只做状态与读口， 旧路径仍以 {@code
  * HouseholdEconomy.view} 为准（见 {@code HouseholdClassMembership} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code
  * with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
+ *
+ * <p>★★ <b>B5（§13.15.2 裁定十八）：第 17 个组件 {@code modes} 已整段删除</b> —— 生产方式定义（{@code
+ * ProductionModeDefinitionView}）的唯一权威在 production（{@code ProductionData.modes}，经 {@code
+ * production.contract.ProductionDefinitionLookup#modes()} 只读）。economy 侧不再有任何 mode 定义副本、
+ * 也没有它的写口；原"结构/位置/组织/规则/质押/变迁 → mode 存在性"六维守卫的落点是候选态守卫 {@code
+ * EconomyReferenceValidation#validateModeAssociations}，反向"mode → 结构存在性"落点是 {@code
+ * validateModeStructures}（两者都在 {@code EconomyProductionReferenceValidator} 里，注册点 {@code
+ * Shell.java:1199}）。
  *
  * <p>★★ **E2 追加第 21–22 个组件**（{@code productionOrganizations} / {@code assetRules}）：前者是"生产方式 + 阶层结构
  * + 劳动 + 资产"之间的桥（{@code ProductionEnterprise}），由日结算的自动组织阶段 upsert；后者是 mode 下每种生产资料的
@@ -311,7 +309,13 @@ import java.util.Set;
 //   ★ 加 implements 不改任何组件/形状/编解码：record 的组件访问器原样满足接口（方法名与返回类型逐字相同）。
 public record EconomyData(
     Optional<EconomyMeta> meta,
-    Map<IndustryId, Industry> industries,
+    // ★★★ D-032 B4（§13.14.2 裁定十五）：第 2 个组件 `industries`（产业定义副本）**整段删除** ——
+    //   它是 I1 在 economy 侧的最后一份"可独立修改的方案定义权威"。定义权威唯一归 production
+    //   （`IndustryDefinitionView` 的持久面在 ProductionData），economy 侧读定义一律经
+    //   `EconomyDayView.definitions()`（production.contract 的当刻只读投影）。
+    //   ★ 本记录**仍然 implements EconomyDayView**，但 `industries()` 从此走接口的 default
+    //     （`definitions().industries()`）：裸 EconomyData 没有 definitions ⇒ 误用当场 fail-closed
+    //     （IllegalStateException），而不是静默读一张空表。
     Map<HouseholdId, HouseholdEconomy> classes,
     Map<DebtContractId, DebtContract> debtContracts,
     Map<HouseholdId, FlowRow> flows,
@@ -321,10 +325,28 @@ public record EconomyData(
     Map<ShipmentId, ShipmentBatch> shipments,
     Map<AssetShareId, OwnershipStake> assetShares,
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
-    Map<ProductionUnitId, ProductionProcess> units,
+    // ★★★ B2b（§13.11.2 裁定六 / §13.11.4 第 2 条）：第 14 个组件 `units`、第 32 个组件
+    //   `outputQuantityOverrides`、第 33 个组件 `productionEfficiency` **整段删除**。
+    //   ⇒ 生产实例 / GM 产出覆盖 / 效率累计余数的唯一权威只有 production（I1）；
+    //     economy 侧读它们一律经 `production.contract` 的当刻只读投影（I13），不再有第二份可独立修改的数值。
+    //   ★ 旧档不兼容：Alpha 口径 —— 缺这些键的旧档当场由其余守卫/未知键 fail-closed。
     Map<DemandId, HouseholdDemand> demands,
-    Map<CandidateId, ProductionCandidate> candidates,
-    Map<ProductionModeId, ProductionMode> modes,
+    // ★★★ B2c（§13.12.2 裁定八 / §13.12.6 第 1 条）：第 16 个组件 `candidates`（候选预设表）**整段删除**
+    //   —— 候选面退役：可以采用的东西就是 production 里的**方案定义**（`IndustryDefinitionView`，
+    //   `hexKeyOf(id)` 为空的那些是"不绑地点的方案"）。economy 不再持有第二份定义面（I1）。
+    //   ★ 它的五个字段的落点见裁定八：version 删 / output 删概念（产出按商品逐项）/
+    //     buildDays 与 acceptedRightKinds 搬进方案定义 / assetSource 留 economy
+    //     （`EconomyMeta.planAssetSources`）。
+    // ★★★ B5（§13.15.2 裁定十八）：第 17 个组件 `modes`（生产方式定义副本）**整段删除** ——
+    //   它是 I1 在 economy 侧的**最后一个第二权威**：定义权威唯一归 production
+    //   （`ProductionData.modes`，经 `production.contract.ProductionDefinitionLookup#modes()` 只读）。
+    //   economy 侧原来的两条写腿：① 播种（载荷 `modes[]`）② GM 命令 `economy.GmAdjust`
+    //   的 `upsertProductionMode` / `deactivateProductionMode` 两个 kind —— 均已删除；
+    //   写面唯一落在 production 既有的 `production.UpsertProductionMode` /
+    // `production.DeactivateProductionMode`
+    //   （装配点 `Shell.java:925/:926`）。
+    //   ★ 定义迁移面写全，见 {@code EconomyReferenceValidation#validateModeAssociations} /
+    //     {@code validateModeStructures}（候选态守卫，读 production 当刻权威）。
     Map<ClassStructureId, ClassStructure> classStructures,
     Map<ClassPositionId, ProductionRole> classPositions,
     Map<HouseholdId, HouseholdClassMembership> classStandings,
@@ -338,8 +360,6 @@ public record EconomyData(
     Map<ModeTransitionId, ModeTransition> modeTransitions,
     Map<ClassShareId, ClassShare> classShares,
     Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
-    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
-    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency,
     // ── A1（2026-10-08）货币身份的两个新组件：词表入世界状态（约束设计书 §3.1-2）────────────────
     Map<CurrencyId, CurrencyDef> currencies,
     Map<InstrumentId, MoneyInstrument> moneyInstruments,
@@ -503,346 +523,52 @@ public record EconomyData(
   }
 
   /**
-   * ★★ <b>Z1 旧组件面的便捷构造器</b>（P4a 时期的 29 参 canonical 形状）：{@code outputQuantityOverrides} 与 {@code
-   * productionEfficiency} 取空表 —— 历史调用点（含 {@code EconomyPayloads} 的播种载荷）不必为了新增两个组件逐个改动；所有 {@code
-   * with*} 与 codec/changeset 路径都必须显式携带这两个组件。
-   */
-  public EconomyData(
-      Optional<EconomyMeta> meta,
-      Map<IndustryId, Industry> industries,
-      Map<HouseholdId, HouseholdEconomy> classes,
-      Map<DebtContractId, DebtContract> debtContracts,
-      Map<HouseholdId, FlowRow> flows,
-      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
-      Map<ProductionUnitId, ProductionRules> relations,
-      Map<MarketZoneId, MarketTable> marketTables,
-      Map<ShipmentId, ShipmentBatch> shipments,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<DemandId, HouseholdDemand> demands,
-      Map<CandidateId, ProductionCandidate> candidates,
-      Map<ProductionModeId, ProductionMode> modes,
-      Map<ClassStructureId, ClassStructure> classStructures,
-      Map<ClassPositionId, ProductionRole> classPositions,
-      Map<HouseholdId, HouseholdClassMembership> classStandings,
-      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
-      Map<AssetRuleId, AssetRule> assetRules,
-      Map<GovernmentId, Government> governments,
-      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
-      Map<PledgeId, Pledge> pledges,
-      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
-      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
-      Map<ModeTransitionId, ModeTransition> modeTransitions,
-      Map<ClassShareId, ClassShare> classShares,
-      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
-    this(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        Map.of(),
-        Map.of());
-  }
-
-  /**
-   * ★★ <b>B2 旧组件面的便捷构造器</b>（B2 之前的 35 参 canonical 形状）：新组件 {@code marketZones} 取空表 ⇒ <b>市场区仍按"城市 +
-   * tier 半径"派生</b>（{@code MarketTopologyBook}），于是"没有声明过市场区"的世界读出来与 B2 之前逐值相同。
+   * 往返用例的起点：未激活 + 32 张空表。
    *
-   * <p>★ 2026-10-09 选项 A 的 {@code householdDebtRefs}（第 37 个组件）同款：本构造器给它空表 ⇒ 构造期由 {@code
-   * DebtReferenceReconciler} 从合同表重建（空表 = "还没有引用表"，不是"没有债"）。
-   *
-   * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这个组件 —— 漏带 =
-   * 一次无关的写入把世界的市场区表抹掉、市场区悄悄退回派生值（本仓最贵的那类静默丢字段）。故本构造器与每个 {@code with*} 的注释都把这件事写死。
+   * <p>★★ B2b（§13.11.2 裁定六）：{@code units} / {@code outputQuantityOverrides} / {@code
+   * productionEfficiency} 三个组件已从本类型删除；★★ B2c（§13.12.2 裁定八）：第四个 {@code candidates} 同批删净（唯一权威在
+   * production）⇒ 四个「旧组件面便捷构造器」 一并删除：本类型只剩 canonical 构造器与 {@code with*}，不再有「取空表兜底」的第二条构造口径。
    */
-  public EconomyData(
-      Optional<EconomyMeta> meta,
-      Map<IndustryId, Industry> industries,
-      Map<HouseholdId, HouseholdEconomy> classes,
-      Map<DebtContractId, DebtContract> debtContracts,
-      Map<HouseholdId, FlowRow> flows,
-      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
-      Map<ProductionUnitId, ProductionRules> relations,
-      Map<MarketZoneId, MarketTable> marketTables,
-      Map<ShipmentId, ShipmentBatch> shipments,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<DemandId, HouseholdDemand> demands,
-      Map<CandidateId, ProductionCandidate> candidates,
-      Map<ProductionModeId, ProductionMode> modes,
-      Map<ClassStructureId, ClassStructure> classStructures,
-      Map<ClassPositionId, ProductionRole> classPositions,
-      Map<HouseholdId, HouseholdClassMembership> classStandings,
-      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
-      Map<AssetRuleId, AssetRule> assetRules,
-      Map<GovernmentId, Government> governments,
-      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
-      Map<PledgeId, Pledge> pledges,
-      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
-      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
-      Map<ModeTransitionId, ModeTransition> modeTransitions,
-      Map<ClassShareId, ClassShare> classShares,
-      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
-      Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
-      Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency,
-      Map<CurrencyId, CurrencyDef> currencies,
-      Map<InstrumentId, MoneyInstrument> moneyInstruments) {
-    this(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
-  }
-
-  /**
-   * ★★ <b>A1 旧组件面的便捷构造器</b>（A1 之前的 31 参 canonical 形状）：两个新组件 {@code currencies} / {@code
-   * moneyInstruments} 取空表 ⇒ 构造期归一到<b>旧世界默认词表</b>（{@code silver} + {@code silver-specie}），
-   * 于是"没有声明过词表的世界"读出来与 A1 之前逐值相同。
-   *
-   * <p>★ 2026-10-09 选项 A 的 {@code householdDebtRefs} 与 ★ B2 的 {@code marketZones} 同款：本构造器给它空表 ⇒
-   * 构造期由 {@code DebtReferenceReconciler} 从合同表重建（见上方 B2 构造器的同一条说明）。
-   *
-   * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这两个组件 —— 漏带 =
-   * 一次无关的写入把世界的词表打回出厂值（本仓最贵的那类静默丢字段）。故本构造器的注释与 {@code with*} 的注释都把这件事写死。
-   */
-  public EconomyData(
-      Optional<EconomyMeta> meta,
-      Map<IndustryId, Industry> industries,
-      Map<HouseholdId, HouseholdEconomy> classes,
-      Map<DebtContractId, DebtContract> debtContracts,
-      Map<HouseholdId, FlowRow> flows,
-      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
-      Map<ProductionUnitId, ProductionRules> relations,
-      Map<MarketZoneId, MarketTable> marketTables,
-      Map<ShipmentId, ShipmentBatch> shipments,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<DemandId, HouseholdDemand> demands,
-      Map<CandidateId, ProductionCandidate> candidates,
-      Map<ProductionModeId, ProductionMode> modes,
-      Map<ClassStructureId, ClassStructure> classStructures,
-      Map<ClassPositionId, ProductionRole> classPositions,
-      Map<HouseholdId, HouseholdClassMembership> classStandings,
-      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
-      Map<AssetRuleId, AssetRule> assetRules,
-      Map<GovernmentId, Government> governments,
-      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
-      Map<PledgeId, Pledge> pledges,
-      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
-      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
-      Map<ModeTransitionId, ModeTransition> modeTransitions,
-      Map<ClassShareId, ClassShare> classShares,
-      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
-      Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
-      Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency) {
-    this(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
-  }
-
-  /**
-   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments} 取空表；★ Z1 起两个新组件（{@code
-   * outputQuantityOverrides} / {@code productionEfficiency}）同样取空表，让既有调用点无需为了新增组件逐个改动；所有 {@code
-   * with*} 与 codec/changeset 路径都必须显式携带这些组件（★ A1 的 currencies/moneyInstruments 与 ★ B2 的 marketZones
-   * 同款）。
-   */
-  public EconomyData(
-      Optional<EconomyMeta> meta,
-      Map<IndustryId, Industry> industries,
-      Map<HouseholdId, HouseholdEconomy> classes,
-      Map<DebtContractId, DebtContract> debtContracts,
-      Map<HouseholdId, FlowRow> flows,
-      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
-      Map<ProductionUnitId, ProductionRules> relations,
-      Map<MarketZoneId, MarketTable> marketTables,
-      Map<ShipmentId, ShipmentBatch> shipments,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<DemandId, HouseholdDemand> demands,
-      Map<CandidateId, ProductionCandidate> candidates,
-      Map<ProductionModeId, ProductionMode> modes,
-      Map<ClassStructureId, ClassStructure> classStructures,
-      Map<ClassPositionId, ProductionRole> classPositions,
-      Map<HouseholdId, HouseholdClassMembership> classStandings,
-      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
-      Map<AssetRuleId, AssetRule> assetRules,
-      Map<GovernmentId, Government> governments,
-      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
-      Map<PledgeId, Pledge> pledges,
-      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
-      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
-      Map<ModeTransitionId, ModeTransition> modeTransitions,
-      Map<ClassShareId, ClassShare> classShares) {
-    this(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        Map.of());
-  }
-
-  /** 往返用例的起点：未激活 + 二十八张空表（P2-A A3/A4 起成员份额表与劳动供给表已删除；P4a 起加空规则表）。 */
   public static EconomyData empty() {
     return new EconomyData(
-        Optional.empty(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+        Optional.empty(), // meta
+        Map.of(), // classes
+        Map.of(), // debtContracts
+        Map.of(), // flows
+        Map.of(), // allocations
+        Map.of(), // relations
+        Map.of(), // marketTables
+        Map.of(), // shipments
+        Map.of(), // assetShares
+        Map.of(), // operatorConditions
+        Map.of(), // demands
+        // ★★ B5（裁定十八）：`modes`（第 17 个组件）已从本类型删除 ⇒ 无该实参。
+        Map.of(), // classStructures
+        Map.of(), // classPositions
+        Map.of(), // classStandings
+        Map.of(), // productionOrganizations
+        Map.of(), // assetRules
+        Map.of(), // governments
+        Map.of(), // moneyIssuances
+        Map.of(), // pledges
+        Map.of(), // liquidationPolicies
+        Map.of(), // crisisSignals
+        Map.of(), // modeTransitions
+        Map.of(), // classShares
+        Map.of(), // periodicAdjustments
+        Map.of(), // currencies
+        Map.of(), // moneyInstruments
+        Map.of(), // marketZones
+        Map.of(), // householdDebtRefs
+        Map.of(), // commodityFreightBaseMilli
+        Map.of(), // govMarketMandates
+        Map.of()); // marketRoundStats
   }
 
   public EconomyData {
     // ★ 缺键（null）⇒ 未激活 / 空表，见类注释（旧档兼容，fail-closed 方向）。
     if (meta == null) {
       meta = Optional.empty();
-    }
-    if (industries == null) {
-      industries = Map.of();
     }
     if (classes == null) {
       classes = Map.of();
@@ -876,7 +602,7 @@ public record EconomyData(
       allocations = Map.of();
     }
     // ★ S1 的新组件：同一口径（缺键 ⇒ 空表，见类注释）。
-    //   （由 LegacyHouseholdMigration 补齐）；运行期的类状态与成员份额必须同源（见下面的守恒守卫）。
+    //   （★ B2b：旧档迁移段已整段删除 —— 旧档一律作废，见下面 units 组件处的说明）。
     if (assetShares == null) {
       assetShares = Map.of();
     }
@@ -884,22 +610,15 @@ public record EconomyData(
     if (operatorConditions == null) {
       operatorConditions = Map.of();
     }
-    // ★★ R3B.2 第 14 个组件（生产单元）：缺键 ⇒ 空表（旧档由迁移器从资产份额反推默认 unit）。
-    if (units == null) {
-      units = Map.of();
-    }
-    // ★★ R4-E2 第 15/16 个组件（需求账本 + 候选预设）：缺键 ⇒ 空表（旧档不因缺键失败）。
+    // ★★ R4-E2 第 15 个组件（需求账本）：缺键 ⇒ 空表（旧档不因缺键失败）。
+    //   ★★ B2b/B2c：第 14 个组件 `units` 与第 16 个组件 `candidates` 已从本类型删除（唯一权威在 production）
+    //     —— 它们的"缺键 ⇒ 空表"归一随之删除（没有该组件可归一）。
     if (demands == null) {
       demands = Map.of();
     }
-    if (candidates == null) {
-      candidates = Map.of();
-    }
-    // ★★ E1 的四个新组件（生产方式/阶层结构/阶层位置/家户阶层归属）：旧档缺键 ⇒ 空表（同一条旧档兼容口径；
+    // ★★ E1 的三个新组件（阶层结构/阶层位置/家户阶层归属）：旧档缺键 ⇒ 空表（同一条旧档兼容口径；
     //   新状态为空时旧结算路径逐值不变）。空表不是"坏数据"，是"这个档还没有新地基"。
-    if (modes == null) {
-      modes = Map.of();
-    }
+    //   ★★ B5（裁定十八）：生产方式定义副本 `modes` 已删 ⇒ 它的"缺键 ⇒ 空表"归一随之删除。
     if (classStructures == null) {
       classStructures = Map.of();
     }
@@ -953,150 +672,28 @@ public record EconomyData(
     if (relations == null) {
       relations = Map.of();
     }
-    // ★★ R3B.2b：旧档 Industry 兼容位（record 末尾 5 个）→ 默认 unit + 整额 OWNED OwnershipStake。
-    //   ★ **必须在 LegacyHouseholdMigration 之前**：迁移器要靠新造的 unit 才能把旧 relations /
-    //     operatorConditions 键与 allocations.activity 对齐。
-    //   ★ 它是 **Timeline 直读旧 changeset** 的兜底（那条路径不经过 EconomyCodec.decodeChangeSet 的节点整形）；
-    //     codec/载荷已把兼容位摘成中性的路径下，这里的判据不成立 ⇒ 本段 no-op，两条路径幂等共存。
-    //   ★ 判据 = "兼容位非中性"（operator 非 null / progress/劳动 > 0 / 两张表非空）；新形状恒中性。
-    if (hasLegacyProductionBits(industries)) {
-      Map<IndustryId, Industry> normalizedIndustries = new LinkedHashMap<>();
-      Map<ProductionUnitId, ProductionProcess> normalizedUnits = new LinkedHashMap<>(units);
-      Map<AssetShareId, OwnershipStake> normalizedShares = new LinkedHashMap<>(assetShares);
-      Set<IndustryId> unitIndustries = new LinkedHashSet<>();
-      for (ProductionProcess unit : normalizedUnits.values()) {
-        unitIndustries.add(unit.industry());
-      }
-      Set<IndustryId> shareIndustries = new LinkedHashSet<>();
-      for (OwnershipStake share : normalizedShares.values()) {
-        shareIndustries.add(share.industry());
-      }
-      for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
-        Industry industry = entry.getValue();
-        IndustryId industryId = entry.getKey();
-        if (industry == null || !hasLegacyProductionBits(industry)) {
-          normalizedIndustries.put(industryId, industry);
-          continue;
-        }
-        // ★ operator 缺省：与 EconomyCodec.migrateLegacyProductionComponents / EconomyPayloads 同一拼写点 ——
-        //   industry.operator 有就用；否则 RegimeOperators.defaultOperator(regime, industryId)（不另拼）。
-        ActorRef operator =
-            industry.operator() != null
-                ? industry.operator()
-                : RegimeOperators.defaultOperator(industry.regime(), industryId);
-        // ★ OwnershipStake：该 industry 尚无任何份额时才物化；只造 quantity > 0 的项（0 值不造行、也不构成生产规模）。
-        //   id 走 OwnershipStake.idOf(..., sequence=0)：与既有迁移同一条 id 规则 ⇒ 重放/重跑不会重复。
-        boolean hasExistingShare = shareIndustries.contains(industryId);
-        boolean hasPositiveCapacity = false;
-        for (Map.Entry<AssetKind, Long> capacity : industry.capacity().entrySet()) {
-          if (capacity.getValue() <= 0L) {
-            continue;
-          }
-          hasPositiveCapacity = true;
-          if (hasExistingShare) {
-            continue;
-          }
-          AssetShareId shareId =
-              OwnershipStake.idOf(
-                  industryId,
-                  capacity.getKey(),
-                  operator,
-                  operator,
-                  OwnershipStake.RightKind.OWNED,
-                  0L);
-          normalizedShares.putIfAbsent(
-              shareId,
-              new OwnershipStake(
-                  shareId,
-                  industryId,
-                  capacity.getKey(),
-                  operator,
-                  operator,
-                  capacity.getValue(),
-                  OwnershipStake.RightKind.OWNED));
-        }
-        // ★ 默认 unit：同 industry 已有 unit 则不动（幂等）；capacity 全 0/空 ⇒ 旧档"规模恒 0、无生产"，不造 unit。
-        //   进度/劳动/投入从兼容位原样带过。
-        if (!unitIndustries.contains(industryId) && hasPositiveCapacity) {
-          ProductionUnitId unitId = ProductionUnitId.idOf(industryId, operator);
-          normalizedUnits.putIfAbsent(
-              unitId,
-              new ProductionProcess(
-                  unitId,
-                  industryId,
-                  operator,
-                  industryId.value(),
-                  industry.progressDays(),
-                  industry.cycleLaborMilli(),
-                  industry.cycleInputUsedMilli()));
-          unitIndustries.add(industryId);
-        }
-        // ★ 归一化后换成 12 参模板：兼容位清成中性 ⇒ EconomyChangeSet.between/diff 不再产生兼容位漂移。
-        normalizedIndustries.put(
-            industryId,
-            new Industry(
-                industryId,
-                industry.name(),
-                industry.regime(),
-                industry.cycleDays(),
-                industry.capacityPerUnit(),
-                industry.dailyInputPerUnit(),
-                industry.dailyLaborPerUnit(),
-                industry.laborPerUnit(),
-                industry.outputPerUnit(),
-                industry.cycleInputPerUnit(),
-                industry.slots(),
-                industry.allocation()));
-      }
-      industries = normalizedIndustries;
-      units = normalizedUnits;
-      assetShares = normalizedShares;
-    }
-    // ★★ S1 旧档迁移（显式、幂等、可重放；见 LegacyHouseholdMigration 的类注）：
-    //   旧 HouseholdLaborCommitment 没有 household 时，在这里按配额反查补一个稳定家户身份。
-    //   ★ 它必须发生在**所有守卫之前**：迁移后的状态才参与 pending 检查、Σ 守卫与关系归一。
-    //   ★★ Minor-5（2026-09-28 评审）：这一步是**构造期自动**跑的 ⇒ 任何旧形状测试夹具（classes 非空但
-    //   assetShares 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐 assetShares 后才进守卫。
-    //   V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的组件，是构造期补出来的）。
-    if (LegacyHouseholdMigration.needed(
-        industries,
-        units,
-        classes,
-        allocations,
-        assetShares,
-        relations,
-        operatorConditions,
-        meta)) {
-      LegacyHouseholdMigration.Result migrated =
-          LegacyHouseholdMigration.migrate(
-              industries,
-              units,
-              classes,
-              allocations,
-              assetShares,
-              relations,
-              operatorConditions,
-              meta);
-      units = migrated.units();
-      allocations = migrated.allocations();
-      assetShares = migrated.assetShares();
-      relations = migrated.relations();
-      operatorConditions = migrated.operatorConditions();
-      meta = migrated.meta();
-    }
+    // ★★ R3B.2b 的"旧档 IndustryDefinitionView 兼容位"归一化段（默认 unit + 整额 OWNED OwnershipStake）
+    //   已随 D-032 A 批**整段删除**：那 5 个兼容位（operator / progressDays / capacity / cycleLaborMilli /
+    //   cycleInputUsedMilli）**不再是** {@link IndustryDefinitionView} 的组件 —— 实例身份/地点/进度/逐家户
+    //   周期贡献已按边界裁决搬进 {@code production.contract.ProductionProcess}，本类型不再承载运行实例字段。
+    //   ⇒ "从定义上读出实例字段"在本类型上**无法表达**（读不到 = 编译期就断），故这里没有可机械改写的等价物；
+    //   旧档归一化的 JSON 侧仍在（{@code EconomyCodec.migrateLegacyProductionComponents} 造 units/assetShares
+    // 节点），
+    //   那一条路径不经过本段。★ 旧档兼容整体作废（Alpha 不兼容旧档），本删除不是"删守卫让编译过"。
+    // ★★★ B2b（D-032 §13.11.2 裁定六）：**旧档自动迁移段整段删除**（原 `LegacyHouseholdMigration.needed/migrate`
+    //   调用就在这一行位）。它服务的唯一对象是**旧档**（CohortKey 占位家户 `legacy-pending-*`、旧 industry 串键的
+    //   relations/operatorConditions、旧活动标签配额），而 Alpha 明令**旧存档一律作废**（`docs/agents/02-一.11`）
+    //   ⇒ 为它保留一条"构造期在所有守卫之前自动改写状态"的路径，等于让已作废的旧形状继续定义新状态。
+    //   ★ 为什么必须删而不是"静默跳过"：本段是 units 组件线（第 14 个组件）的**唯一构造期写者**——它存在一天，
+    //     `units` 就不能从本类型删掉（B2 批的删除卡点，见 §13.11.1/§13.11.2）。
+    //   ★ 删后旧档的判据全部落到**下面的守卫**上（fail-closed，不是静默放行）：pending 家户在
+    //     classes/allocations 的键一致性守卫处具名抛；悬空 relations/operatorConditions 在 units 守卫处具名抛。
+    //   ★ 迁移器文件本体（`economy/migrate/LegacyHouseholdMigration.java`）同批删除。
     // ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
     // ★ 第 9 个组件（H4）：同一口径（缺键 ⇒ 空表 = 世界上一个市场都没有，见类注释）。
     if (marketTables == null) {
       marketTables = Map.of(); // 归一方向：缺表 = 没有任何市场（见类注）
     }
-    Map<IndustryId, Industry> industriesCopy = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("industries 的键与值都不得为 null: " + entry.getKey());
-      }
-      industriesCopy.put(entry.getKey(), entry.getValue());
-    }
-    industries = Collections.unmodifiableMap(industriesCopy); // ★ 冻在赋值处
     Map<HouseholdId, HouseholdEconomy> householdEconomiesCopy = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : classes.entrySet()) {
       if (householdEconomyEntry.getKey() == null || householdEconomyEntry.getValue() == null) {
@@ -1111,9 +708,10 @@ public record EconomyData(
                 + householdEconomyEntry.getValue().id());
       }
       HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
-      // ★★ R4-B.4（R3 决策单 §0.1/§1.5，R3B.4）：**view 不再受 Industry.slots 约束**。
+      // ★★ R4-B.4（R3 决策单 §0.1/§1.5，R3B.4）：**view 不再受 IndustryDefinitionView.slots 约束**。
       //   旧守卫（view 必须命中该格产业的 slots 且 participationPerMille ≤ 该 slot 的
-      //   laborParticipationPerMille）已删除；Industry.slots / ClassSlot 只作为生产方式内部的角色/劳动配置。
+      //   laborParticipationPerMille）已删除；IndustryDefinitionView.slots / ClassSlot
+      // 只作为生产方式内部的角色/劳动配置。
       //   HouseholdEconomy 自己的 [0,1000] 参与率守卫仍在（见 HouseholdEconomy 构造期）。
       householdEconomiesCopy.put(householdEconomyEntry.getKey(), householdEconomy);
     }
@@ -1203,21 +801,20 @@ public record EconomyData(
       if (flowHouseholdEconomy == null) {
         throw new IllegalArgumentException("flows 的键必须是已存在的家户（S1 起两表同键）：" + entry.getKey());
       }
-      requireIndustryRegistered(industriesCopy, flowHouseholdEconomy.view(), "flows");
+      // ★★★ D-032 B4（§13.14.2 裁定十五）：本行的"flow 落点必须登记过产业"判据**已平移**到 state-aware 守卫
+      //   `EconomyReferenceValidation.validateFlowsOnIndustryHex`（读 production 当刻定义权威；由
+      //   `EconomyProductionReferenceValidator` 在每条命令 / submitBatch 最终候选态 / restore / Advance
+      // 候选态落库前执行）。
+      //   ★ 构造期看不见 production ⇒ 这里不再判（判据没删，换了读源与落点）。
       flowsCopy.put(entry.getKey(), entry.getValue());
     }
     flows = Collections.unmodifiableMap(flowsCopy); // ★ 冻在赋值处
     // ── R2：劳动分配表 + 三条结构判据（见类注释）────────────────────────────────────────────
-    Set<String> industryIds = new LinkedHashSet<>();
-    for (IndustryId id : industriesCopy.keySet()) {
-      industryIds.add(id.value());
-    }
-    // ★★ R3B.2：劳动配额的 activity 是 unit id（String）⇒ "这份劳动喂哪条生产活动"按值查 unit。
-    //   ★ 用 values 建索引（id 值 → unit）：units 表自身的键一致性由后面的 unit 守卫判。
-    Map<String, ProductionProcess> unitsByValue = new LinkedHashMap<>();
-    for (ProductionProcess unit : units.values()) {
-      unitsByValue.put(unit.id().value(), unit);
-    }
+    // ★★★ D-032 B4（§13.14.2 裁定十五）：原先在这里从 `industries` 副本建的 `industryIds`
+    //   （"actor 不得与产业 id 撞名"判据的参照集）**已随该副本删除**；判据本身平移到了 state-aware 守卫
+    //   `EconomyReferenceValidation.validateLaborActorIndustryCollision`（读 production 当刻定义权威）。
+    // ★★ R3B.2 的"activity 是 unit id ⇒ 按值查 unit"索引已随 B2b 的 units 组件删除：判据本身没删，
+    //   移到跨片校验面（{@code EconomyReferenceValidation.validateUnitCrossReferences}，读 production 只读投影）。
     Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentsCopy = new LinkedHashMap<>();
     Map<HouseholdId, Long> productionPerHousehold = new LinkedHashMap<>();
     Map<HouseholdId, Long> govServicePerHousehold = new LinkedHashMap<>();
@@ -1235,11 +832,10 @@ public record EconomyData(
                 + "，行内 id="
                 + laborCommitment.id());
       }
-      // ①-b ★★ S1：这份劳动必须属于一个已存在的家户（或旧档迁移期的 pending 占位 —— 只有
-      //   EconomyCodec 的旧档反序列化器会造它，迁移器必须在交回状态前换成真实家户）。
+      // ①-b ★★ S1：这份劳动必须属于一个已存在的家户。★★ B2c（§13.12.5）：迁移期 pending 占位的豁免已删
+      //   （占位整套删除 ⇒ 没有"合法的不存在家户"这一档）—— 旧档缺 household 在 codec 边界就 fail-closed。
       HouseholdId allocatedHousehold = laborCommitment.household();
-      if (!HouseholdIds.isPending(allocatedHousehold)
-          && !householdEconomiesCopy.containsKey(allocatedHousehold)) {
+      if (!householdEconomiesCopy.containsKey(allocatedHousehold)) {
         throw new IllegalArgumentException(
             "劳动分配的家户必须是已存在的家户（S1 起身份与视图分离）："
                 + laborCommitmentEntry.getKey()
@@ -1252,37 +848,14 @@ public record EconomyData(
       //   ★★ **R3 起 HOUSEHOLD 是"自由档"**：家户 actor id **可以**命名一个产业（那时配额照进该产业），也可以不命名。
       //   ★★ **P2-A §13.3**：ESTATE/WORKSHOP 退役 ⇒ 生产主体身份改走 ORGANIZATION（产业经营者）与 HOUSEHOLD；
       //     两者都允许命中产业 id（不再有"必须命中"的 kind —— ORGANIZATION 也可用来表示非产业组织）。
-      ActorKind kind = laborCommitment.actor().kind();
-      boolean mayResolveToIndustry = kind == ActorKind.ORGANIZATION || kind == ActorKind.HOUSEHOLD;
-      boolean resolvesToIndustry = industryIds.contains(laborCommitment.actor().id());
-      if (resolvesToIndustry && !mayResolveToIndustry) {
-        throw new IllegalArgumentException(
-            "劳动分配的 actor 与产业 id 的对应关系不成立（结算按 actor id 把配额归给产业）：kind="
-                + kind
-                + "，id="
-                + laborCommitment.actor().id()
-                + " ⇒ 非产业型主体的 id 不得与任何产业 id 相同");
-      }
-      // ①-c ★★ R3B.2：activity 若指名了现存 unit，则收劳动的主体必须就是该 unit 的 operator ——
-      //   "劳动喂了谁"（activity）与"谁收劳动"（actor）是同一件事的两处拼写，不一致时没有哪一处能判谁对。
-      //   ★ activity 不命中 unit 的配额合法（自由家户劳动/旧档未接线档）：它不喂任何生产，只进守恒与读口。
-      ProductionProcess referencedUnit = unitsByValue.get(laborCommitment.activity());
-      if (referencedUnit == null && laborCommitment.activity().startsWith(UNIT_ID_PREFIX)) {
-        throw new IllegalArgumentException(
-            "劳动配额的 activity 看起来是 unit id（以 \""
-                + UNIT_ID_PREFIX
-                + "\" 开头）但该 unit 不存在（悬空引用；自由家户劳动请用非 unit 的活动词）: "
-                + laborCommitment);
-      }
-      if (referencedUnit != null && !referencedUnit.operator().equals(laborCommitment.actor())) {
-        throw new IllegalArgumentException(
-            "劳动配额的 activity 指名的 unit 与 actor 不一致（同一件事不许两处拼写）：activity="
-                + laborCommitment.activity()
-                + " unit.operator="
-                + referencedUnit.operator()
-                + "，actor="
-                + laborCommitment.actor());
-      }
+      //   ★★★ D-032 B4（§13.14.2 裁定十五）：判据本体**平移**到 state-aware 守卫
+      //     `EconomyReferenceValidation.validateLaborActorIndustryCollision`（它逐条比 production 当刻定义
+      // id）；
+      //     构造期不再持有产业定义副本 ⇒ 判不了，也不许"因为看不见就放过"——落库前的候选态校验面照旧拦。
+      // ①-c ★★ R3B.2：activity 若指名了现存 unit，则收劳动的主体必须就是该 unit 的 operator。
+      //   ★ 判据**没有删**：它要读 production 的实例投影 ⇒ 落在跨片校验面
+      //     （{@code EconomyReferenceValidation.validateUnitCrossReferences}，每次候选提交前跑）。
+      //   ★ activity 不命中 unit 的配额合法（自由家户劳动）：它不喂任何生产，只进守恒与读口。
       // ★★ P2-A A4：配额上限改为**家户每 tick 时间预算**（{@code HouseholdEconomy.laborMilli}，毫小时）——
       //   不再有"每批次供给表"这第二权威（LaborSupply 已删除；预算每 tick 由 Social 人口组成重算）。
       //   ★★ Z7d-1：按 kind 分账 —— GOV_SERVICE 是"职位/诉求"（允许超过饿少后的预算，有效供给由 app
@@ -1304,7 +877,7 @@ public record EconomyData(
     for (Map.Entry<HouseholdId, Long> entry : productionPerHousehold.entrySet()) {
       HouseholdEconomy householdEconomy = householdEconomiesCopy.get(entry.getKey());
       if (householdEconomy == null) {
-        continue; // 旧档迁移期的 pending 家户：迁移器会换成真实家户（见 LegacyHouseholdMigration）
+        continue; // ★ B2b：旧档迁移器已删 ⇒ pending 家户不再被自动改写（旧档作废；真实家户由守卫把守）
       }
       long budget = householdEconomy.laborMilli();
       long govService = govServicePerHousehold.getOrDefault(entry.getKey(), 0L);
@@ -1328,8 +901,9 @@ public record EconomyData(
     // ── R3B.1 第 12 个组件：实物资产份额表 ──────────────────────────────────────────────
     //   ★ 键 == 值内 id；industry 必须存在；asset/owner/operator/kind 非空、quantity ≥ 0（非空与 quantity
     //     由 OwnershipStake 构造期判，这里判跨表的 industry 引用与键身份）。
-    //   ★★ **这里不再有"Σ quantity ≤ Industry.capacity"的上界守卫，也不写 Σ == capacity**：OwnershipStake 是
-    //     独立的实物资产总账，Industry.capacity 在 B.1 里只是过渡字段（B.2 移出生产模型）；把技术模板当
+    //   ★★ **这里不再有"Σ quantity ≤ IndustryDefinitionView.capacity"的上界守卫，也不写 Σ ==
+    // capacity**：OwnershipStake 是
+    //     独立的实物资产总账，IndustryDefinitionView.capacity 在 B.1 里只是过渡字段（B.2 移出生产模型）；把技术模板当
     //     实物账本上界，会把"实物已存在、模板尚未及更新"这类合法状态误判成坏数据。
     //   ★ 关系表的 operator 与 unit 的关系由**第 14 个组件（units）**的守卫判（R3B.2 起关系挂在 unit 上）。
     Map<AssetShareId, OwnershipStake> ownershipStakesCopy = new LinkedHashMap<>();
@@ -1342,9 +916,9 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "assetShares 的键必须与 OwnershipStake.id 一致：键=" + entry.getKey() + "，行内 id=" + share.id());
       }
-      if (!industriesCopy.containsKey(share.industry())) {
-        throw new IllegalArgumentException("资产份额指名的产业不存在: " + share.industry());
-      }
+      // ★★★ D-032 B4（§13.14.2 裁定十五）：本行的 assetShare→industry 存在性判据**已平移**到 state-aware 守卫
+      //   `EconomyReferenceValidation.validateUnitsAndShares`（份额侧仍读 economy 的 assetShares，产业侧读
+      //   production 当刻定义权威）；构造期没有定义副本可查 ⇒ 不再判。
       ownershipStakesCopy.put(entry.getKey(), share);
     }
     assetShares = Collections.unmodifiableMap(ownershipStakesCopy); // ★ 冻在赋值处
@@ -1375,22 +949,8 @@ public record EconomyData(
                 + "，行内 activity="
                 + relation.activity());
       }
-      ProductionProcess unit = unitsByValue.get(entry.getKey().value());
-      if (unit == null) {
-        throw new IllegalArgumentException(
-            "关系指名的生产单元（unit）不存在："
-                + entry.getKey()
-                + "（旧档请先由 LegacyHouseholdMigration 把旧 industry 键对齐到 unit）");
-      }
-      if (!relation.operator().equals(unit.operator())) {
-        throw new IllegalArgumentException(
-            "关系的 operator 必须与 unit.operator 一致（同一件事不许两处拼写）："
-                + entry.getKey()
-                + " 关系="
-                + relation.operator()
-                + "，unit="
-                + unit.operator());
-      }
+      // ★ B2b：原判据 ②（关系指名的 unit 存在、且 operator == unit.operator）已移到跨片校验面
+      //   （{@code EconomyReferenceValidation.validateUnitCrossReferences}）——它要读 production 的实例投影。
     }
     // ── 第 9 个组件：市场价表（H4；★★ W1 起**每区一张**：键 = 市场区 id / 派生市场 id）──────────────────
     //   ★ 键 = {@link MarketZoneId}；**缺键 = 那个市场没有价表**（持久形态下"区必须有价表"由下面的跨表守卫判死）。
@@ -1429,56 +989,21 @@ public record EconomyData(
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("operatorConditions 的键与值都不得为 null: " + entry.getKey());
       }
-      ProductionProcess unit = unitsByValue.get(entry.getKey().value());
-      if (unit == null) {
-        throw new IllegalArgumentException(
-            "operatorConditions 指名的生产单元（unit）不存在："
-                + entry.getKey()
-                + "（旧档请先由 LegacyHouseholdMigration 把旧 industry 键对齐到 unit）");
-      }
-      if (!unit.industry().equals(entry.getValue().industry())) {
-        throw new IllegalArgumentException(
-            "operatorConditions 值内的 industry 必须与 unit.industry 一致：键="
-                + entry.getKey()
-                + "，unit.industry="
-                + unit.industry()
-                + "，值内="
-                + entry.getValue().industry());
-      }
+      // ★ B2b：原"键的 unit 存在 + 值内 industry == unit.industry"两条守卫已移到跨片校验面
+      //   （{@code EconomyReferenceValidation.validateUnitCrossReferences}）——它们要读 production 的实例投影。
       operatorConditionsCopy.put(entry.getKey(), entry.getValue());
     }
     operatorConditions = Collections.unmodifiableMap(operatorConditionsCopy); // ★ 冻在赋值处
-    // ── R3B.2 第 14 个组件：生产单元表（units）────────────────────────────────────────────
-    //   ★ 键 == unit.id；industry 必须存在；progressDays ≤ industry.cycleDays（跨表上界）。
-    //   ★★ **迁移完成态**：每个非 EXITED/ABANDONED 的 unit，其 operator 至少有一条同 industry 的
-    //     OwnershipStake（否则明确抛，不静默）—— 这条守卫是"OwnershipStake 是实物总账、unit 是实际生产"两件事
-    //     之间的桥：没有份额的 unit 没有任何产能来源，让它留在 ACTIVE 或让它在结算里静默产出都是坏数据。
-    Map<ProductionUnitId, ProductionProcess> unitsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : units.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("units 的键与值都不得为 null: " + entry.getKey());
-      }
-      ProductionProcess unit = entry.getValue();
-      if (!entry.getKey().equals(unit.id())) {
-        throw new IllegalArgumentException(
-            "units 的键必须与 ProductionProcess.id 一致：键=" + entry.getKey() + "，行内 id=" + unit.id());
-      }
-      Industry industryTemplate = industriesCopy.get(unit.industry());
-      if (industryTemplate == null) {
-        throw new IllegalArgumentException("生产单元指名的产业（技术模板）不存在: " + unit.industry());
-      }
-      if (unit.progressDays() > industryTemplate.cycleDays()) {
-        throw new IllegalArgumentException(
-            "ProductionProcess.progressDays 必须 ∈ [0, industry.cycleDays]：unit="
-                + entry.getKey()
-                + " progressDays="
-                + unit.progressDays()
-                + "，cycleDays="
-                + industryTemplate.cycleDays());
-      }
-      unitsCopy.put(entry.getKey(), unit);
-    }
-    units = Collections.unmodifiableMap(unitsCopy); // ★ 冻在赋值处
+    // ── R3B.2 第 14 个组件：生产单元表（units）—— ★★ B2b 起**本组件已从本类型删除** ──────────────
+    //   生产实例（键/身份/方案引用/经营者/地点/进度/周期台账）的唯一权威在 production
+    //   （{@code production.contract.ProductionRuntime#units()} 的当刻候选态，I1/I13）。
+    //   ★ 原在此处的守卫**一条没删**，全部改读 production 的只读投影：
+    //     ① 键 == 行内 id、② 方案存在、③ progressDays ∈ [0, cycleDays]、④ 经营者非空 / 地点非 UNSPECIFIED
+    //        ⇒ {@code EconomyReferenceValidation.validateProductionInstances(runtime, label)}（B2
+    // 落，运行期契约口）；
+    //     ⑤ relations / operatorConditions / allocations.activity / productionOrganizations
+    // 与实例的交叉引用
+    //        ⇒ {@code EconomyReferenceValidation.validateUnitCrossReferences}（候选提交前的跨片校验面）。
     // ★★ B.3b：**unit 不要求必须有 OwnershipStake**（R4 计划禁把"资产闲置/退出"判成坏数据）。
     //   资产可以全部转走（见 economy.TransferAssetShare），此时该 unit 的规模由
     //   ProductionProcessBook 纯派生为 0 —— "有经营者、无资产、不生产"是合法状态（也是 E1 退出处置的前态）。
@@ -1508,8 +1033,10 @@ public record EconomyData(
         }
       } else {
         HexCoord hex = demand.hex().orElseThrow();
-        if (!hexRegistered(
-            industriesCopy, householdEconomiesCopy, marketTables, marketZones, hex)) {
+        // ★★★ D-032 B4（§13.14.2 裁定十五）：本行的产业维（"该格登记过产业"）**已平移**到 state-aware 守卫
+        //   `EconomyReferenceValidation.validateDemandHexes`（读 production 当刻定义权威）；构造期只剩本域两维
+        //   （家户行 / 市场），判据没删、也没放宽 —— 少了"产业"这一维只会更严，而更严的那一维由落库前校验面补齐。
+        if (!hexRegistered(householdEconomiesCopy, marketTables, marketZones, hex)) {
           throw new IllegalArgumentException(
               "HEX 范围的需求指名的格没有经济状态（该格不存在/未播种，也不在任何市场键里）: " + demand.id().value() + " → " + hex);
         }
@@ -1517,62 +1044,20 @@ public record EconomyData(
       householdDemandsCopy.put(householdDemand.getKey(), demand);
     }
     demands = Collections.unmodifiableMap(householdDemandsCopy); // ★ 冻在赋值处
-    // ── R4-E2 第 16 个组件：候选预设表 ────────────────────────────────────────────────────
-    //   ★ 键 == 值内 id；regime 必须是已登记的制度（否则 E2b 建 relation 时必然抛 —— 登记处 fail-closed）；
-    //     output 必须在本行的 outputPerUnit 里（ProductionCandidate 构造期已判，这里对状态入口再兜一层）。
-    Map<CandidateId, ProductionCandidate> candidatesCopy = new LinkedHashMap<>();
-    for (Map.Entry<CandidateId, ProductionCandidate> entry : candidates.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("candidates 的键与值都不得为 null: " + entry.getKey());
-      }
-      ProductionCandidate candidate = entry.getValue();
-      if (!entry.getKey().equals(candidate.id())) {
-        throw new IllegalArgumentException(
-            "candidates 的键必须与 ProductionCandidate.id 一致：键="
-                + entry.getKey()
-                + "，行内 id="
-                + candidate.id());
-      }
-      if (!RegimeOperators.registered().containsKey(candidate.regime().value())) {
-        throw new IllegalArgumentException(
-            "候选预设的 regime 未登记（进入算法无法为它推导默认经营主体/关系）: "
-                + candidate.id().value()
-                + " regime="
-                + candidate.regime().value()
-                + "；已登记: "
-                + RegimeOperators.registered().keySet());
-      }
-      if (!candidate.outputPerUnit().containsKey(candidate.output())) {
-        throw new IllegalArgumentException(
-            "候选预设的 output 必须出现在 outputPerUnit 里: "
-                + candidate.id().value()
-                + " output="
-                + candidate.output().value());
-      }
-      candidatesCopy.put(entry.getKey(), candidate);
-    }
-    candidates = Collections.unmodifiableMap(candidatesCopy); // ★ 冻在赋值处
-    // ── E1 第 17–20 个组件：生产方式 / 阶层结构 / 阶层位置 / 家户阶层归属 ────────────────────
+    // ── E1 第 18–20 个组件：阶层结构 / 阶层位置 / 家户阶层归属 ────────────────────────────
     //   ★ 缺键 ⇒ 空表（上面已归一）；**新状态为空时本段整体 no-op**，旧档逐值行为不受影响。
     //   ★ 引用完整性是 fail-closed 的，但按"对侧是否已提供"分段生效：`with*` 是逐组件写口，
-    //     四个组件之间有两处循环引用（mode ↔ structure）与层次引用（position → mode、standing → household/position）；
+    //     三个组件之间有层次引用（position → mode、standing → household/position）；
     //     若每一段都无条件要求完整闭环，单项 `with*` 永远构造不出中间态。空表在这里读作"这一侧还没提供"，
     //     一旦对侧非空，键身份、引用与的位置形状就必须逐值自洽 —— 最终完整状态因此仍是 fail-closed 的。
-    Map<ProductionModeId, ProductionMode> modesCopy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionModeId, ProductionMode> entry : modes.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("modes 的键与值都不得为 null: " + entry.getKey());
-      }
-      if (!entry.getKey().equals(entry.getValue().id())) {
-        throw new IllegalArgumentException(
-            "modes 的键必须与 ProductionMode.id 一致：键="
-                + entry.getKey()
-                + "，行内 id="
-                + entry.getValue().id());
-      }
-      modesCopy.put(entry.getKey(), entry.getValue());
-    }
-    modes = Collections.unmodifiableMap(modesCopy); // ★ 冻在赋值处
+    //   ★★★ B5（§13.15.2 裁定十八）：原第 17 个组件 `modes` 与它的键身份/结构↔mode 双向闭环守卫**已删** ——
+    //     定义权威唯一在 production，构造期看不见它。判据一条没删，两处落点如下（都在候选态校验面，
+    //     注册点 `Shell.java:1199`，创世态也跑）：
+    //       ① "结构/位置/组织/规则/质押/变迁 → mode 存在性" ⇒
+    //          `EconomyReferenceValidation.validateModeAssociations`（读 production 当刻权威）；
+    //       ② "mode → 其 classStructureId 必须在 economy 候选态里存在" ⇒
+    //          `EconomyReferenceValidation.validateModeStructures`（双向闭环的另一半）。
+    //     ⇒ 本构造期只剩本域形状约束（键 == 值内 id 等），与 P1 §3.3"纯 codec 只验证本片固有约束"一致。
     Map<ClassStructureId, ClassStructure> structuresCopy = new LinkedHashMap<>();
     for (Map.Entry<ClassStructureId, ClassStructure> entry : classStructures.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -1586,25 +1071,9 @@ public record EconomyData(
                 + "，行内 id="
                 + structure.id());
       }
-      if (!modesCopy.isEmpty() && !modesCopy.containsKey(structure.modeId())) {
-        throw new IllegalArgumentException(
-            "classStructures 的 modeId 必须是已存在的生产方式：结构="
-                + entry.getKey()
-                + "，modeId="
-                + structure.modeId());
-      }
       structuresCopy.put(entry.getKey(), structure);
     }
     classStructures = Collections.unmodifiableMap(structuresCopy); // ★ 冻在赋值处
-    for (ProductionMode mode : modesCopy.values()) {
-      if (!structuresCopy.isEmpty() && !structuresCopy.containsKey(mode.classStructureId())) {
-        throw new IllegalArgumentException(
-            "ProductionMode.classStructureId 必须是已存在的阶层结构：mode="
-                + mode.id()
-                + "，classStructureId="
-                + mode.classStructureId());
-      }
-    }
     Map<ClassPositionId, ProductionRole> positionsCopy = new LinkedHashMap<>();
     for (Map.Entry<ClassPositionId, ProductionRole> entry : classPositions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -1617,13 +1086,6 @@ public record EconomyData(
                 + entry.getKey()
                 + "，行内 id="
                 + position.id());
-      }
-      if (!modesCopy.isEmpty() && !modesCopy.containsKey(position.modeId())) {
-        throw new IllegalArgumentException(
-            "classPositions 的 modeId 必须是已存在的生产方式：位置="
-                + entry.getKey()
-                + "，modeId="
-                + position.modeId());
       }
       positionsCopy.put(entry.getKey(), position);
     }
@@ -1736,10 +1198,8 @@ public record EconomyData(
                 + "，行内 id="
                 + enterprise.id());
       }
-      if (!modesCopy.isEmpty() && !modesCopy.containsKey(enterprise.modeId())) {
-        throw new IllegalArgumentException(
-            "生产组织的 modeId 必须是已存在的生产方式：组织=" + entry.getKey() + "，modeId=" + enterprise.modeId());
-      }
+      // ★ B5（裁定十八）：原"生产组织的 modeId 必须已存在"一维已删（本域看不见定义）⇒
+      //   `EconomyReferenceValidation.validateModeAssociations`（读 production 当刻权威）。
       if (!positionsCopy.isEmpty() && !positionsCopy.containsKey(enterprise.classPositionId())) {
         throw new IllegalArgumentException(
             "生产组织的 classPositionId 必须是已存在的阶层位置：组织="
@@ -1747,24 +1207,8 @@ public record EconomyData(
                 + "，位置="
                 + enterprise.classPositionId());
       }
-      if (enterprise.unitId().isPresent()
-          && !units.isEmpty()
-          && !units.containsKey(enterprise.unitId().get())) {
-        throw new IllegalArgumentException(
-            "生产组织指名的 unit 必须已存在：组织=" + entry.getKey() + "，unitId=" + enterprise.unitId().get());
-      }
-      if (enterprise.unitId().isPresent() && units.containsKey(enterprise.unitId().get())) {
-        ProductionProcess organizedUnit = units.get(enterprise.unitId().get());
-        if (!organizedUnit.operator().equals(enterprise.organizer())) {
-          throw new IllegalArgumentException(
-              "生产组织的 organizer 必须与它指名 unit 的 operator 一致（同一件事不许两处拼写）：组织="
-                  + entry.getKey()
-                  + " organizer="
-                  + enterprise.organizer()
-                  + "，unit.operator="
-                  + organizedUnit.operator());
-        }
-      }
+      // ★ B2b：原"组织指名的 unit 必须已存在、且 organizer == unit.operator"两条守卫已移到跨片校验面
+      //   （{@code EconomyReferenceValidation.validateUnitCrossReferences}）——它们要读 production 的实例投影。
       for (AssetShareId assetSource : enterprise.assetSources()) {
         if (!assetShares.isEmpty() && !assetShares.containsKey(assetSource)) {
           throw new IllegalArgumentException(
@@ -1803,10 +1247,8 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "assetRules 的键必须与 AssetRule.id 一致：键=" + entry.getKey() + "，行内 id=" + rule.id());
       }
-      if (!modesCopy.isEmpty() && !modesCopy.containsKey(rule.modeId())) {
-        throw new IllegalArgumentException(
-            "生产资料规则的 modeId 必须是已存在的生产方式：规则=" + entry.getKey() + "，modeId=" + rule.modeId());
-      }
+      // ★ B5（裁定十八）：原"生产资料规则的 modeId 必须已存在"一维已删（本域看不见定义）⇒
+      //   `EconomyReferenceValidation.validateModeAssociations`（读 production 当刻权威）。
       // ★ 身份 = (modeId, assetKind) 的纯函数 ⇒ 同一组合只允许一条规则（重复 = 同一件事两个拼写点）。
       String modeKindKey = rule.modeId().value() + "|" + rule.assetKind().name();
       if (!assetRuleModeKindKeys.add(modeKindKey)) {
@@ -2227,10 +1669,8 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "质押指名的资产份额必须已存在：质押=" + entry.getKey() + "，份额=" + pledge.assetShareId());
       }
-      if (!modes.isEmpty() && !modes.containsKey(pledge.modeId())) {
-        throw new IllegalArgumentException(
-            "质押指名的生产方式必须已存在：质押=" + entry.getKey() + "，modeId=" + pledge.modeId());
-      }
+      // ★ B5（裁定十八）：原"质押指名的生产方式必须已存在"一维已删（本域看不见定义）⇒
+      //   `EconomyReferenceValidation.validateModeAssociations`（读 production 当刻权威）。
       if (pledge.status() == Pledge.Status.ACTIVE) {
         activePledgedByShare.merge(pledge.assetShareId(), pledge.quantity(), Math::addExact);
       }
@@ -2312,8 +1752,10 @@ public record EconomyData(
     crisisSignals = Collections.unmodifiableMap(crisisSignalsCopy); // ★ 冻在赋值处
     // ── E6a 第 28 个组件：模式变迁（键 == 值内 id == (organizationId, toModeId, effectiveDay) 的确定性派生）──
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表 = 没有变迁请求，旧结算路径逐值不变。
-    //   ★ 引用完整性按“对侧已提供”分段（与 E1/E2/E5 同款）：modes/productionOrganizations 为空 = 该侧尚未提供
-    //     ⇒ 只判结构；非空才判组织/mode 存在与 fromMode 一致性。★ “同一组织至多一条 PENDING”在构造期判死 ——
+    //   ★ 引用完整性按“对侧已提供”分段（与 E1/E2/E5 同款）：productionOrganizations 为空 = 该侧尚未提供
+    //     ⇒ 只判结构；非空才判组织存在与 fromMode 一致性。★ B5（裁定十八）：原"from/to mode 存在性"那一维
+    //     已删（本域看不见定义）⇒ `EconomyReferenceValidation.validateModeAssociations`。
+    //     ★ “同一组织至多一条 PENDING”在构造期判死 ——
     //     它是模式变迁命令幂等与“一条 revision 只应用一次”的地基（重复 PENDING 会让同一次切换被两次结算）。
     Map<ModeTransitionId, ModeTransition> modeTransitionsCopy = new LinkedHashMap<>();
     Set<ProductionOrganizationId> pendingEnterprises = new LinkedHashSet<>();
@@ -2357,22 +1799,8 @@ public record EconomyData(
                   + enterprise.modeId());
         }
       }
-      if (!modesCopy.isEmpty()) {
-        if (!modesCopy.containsKey(transition.fromModeId())) {
-          throw new IllegalArgumentException(
-              "模式变迁的 fromModeId 必须是已存在的生产方式：变迁="
-                  + entry.getKey()
-                  + "，fromMode="
-                  + transition.fromModeId());
-        }
-        if (!modesCopy.containsKey(transition.toModeId())) {
-          throw new IllegalArgumentException(
-              "模式变迁的 toModeId 必须是已存在的生产方式：变迁="
-                  + entry.getKey()
-                  + "，toMode="
-                  + transition.toModeId());
-        }
-      }
+      // ★ B5（裁定十八）：原"变迁的 from/to mode 必须已存在"两维已删（本域看不见定义）⇒
+      //   `EconomyReferenceValidation.validateModeAssociations`（读 production 当刻权威）。
       if (transition.status() == ModeTransition.Status.PENDING
           && !pendingEnterprises.add(transition.organizationId())) {
         throw new IllegalArgumentException(
@@ -2443,93 +1871,43 @@ public record EconomyData(
     }
     periodicAdjustments = Collections.unmodifiableMap(periodicAdjustmentsCopy); // ★ 冻在赋值处
 
-    // ── Z1 第 32 个组件：产品产出数量覆盖表（§3.1；键 = 产业，内层键 = 商品）──────────────────────
-    //   ★ 守卫范围（命令边界 + 载入边界，§3.1）：本构造期判"结构非空 / 逐值 ∈ [0, MAX_OUTPUT_QUANTITY]"；
-    //     "产业存在 / 商品在该产业 recipe().outputPerUnit() 键里"由命令 handler 与 EconomyCodec 的载入守卫判
-    //     （前者具名 Rejected、后者 PRODUCTION_EFFICIENCY_CONTRACT ERROR）。★ 旧档缺节点 ⇒ 空表（中性）。
-    //   ★ 两段逐字展开（外层 + 内层），绝不抽 helper 去冻：SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析，
-    //     只认它看得见的两处 Collections.unmodifiableMap。
-    if (outputQuantityOverrides == null) {
-      outputQuantityOverrides = Map.of();
-    }
-    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverridesCopy = new LinkedHashMap<>();
-    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : outputQuantityOverrides.entrySet()) {
-      IndustryId outputIndustryId = entry.getKey();
-      Map<CommodityId, Long> outputLine = entry.getValue();
-      if (outputIndustryId == null || outputLine == null) {
-        throw new IllegalArgumentException(
-            OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX + "表的键与值都不得为 null: " + outputIndustryId);
-      }
-      Map<CommodityId, Long> outputLineCopy = new LinkedHashMap<>();
-      for (Map.Entry<CommodityId, Long> lineEntry : outputLine.entrySet()) {
-        CommodityId commodityId = lineEntry.getKey();
-        Long quantity = lineEntry.getValue();
-        if (commodityId == null || quantity == null) {
-          throw new IllegalArgumentException(
-              OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX
-                  + "内层商品表的键与值都不得为 null: "
-                  + outputIndustryId
-                  + "/"
-                  + commodityId);
-        }
-        if (quantity < 0L || quantity > MAX_OUTPUT_QUANTITY) {
-          throw new IllegalArgumentException(
-              OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX
-                  + "数量必须 ∈ [0, "
-                  + MAX_OUTPUT_QUANTITY
-                  + "]: "
-                  + outputIndustryId
-                  + "/"
-                  + commodityId
-                  + " = "
-                  + quantity);
-        }
-        outputLineCopy.put(commodityId, quantity);
-      }
-      outputQuantityOverridesCopy.put(
-          outputIndustryId, Collections.unmodifiableMap(outputLineCopy)); // ★ 内层冻在赋值处
-    }
-    outputQuantityOverrides = Collections.unmodifiableMap(outputQuantityOverridesCopy); // ★ 外层冻在赋值处
+    // ── Z1 第 32 个组件：产品产出数量覆盖表 —— ★★ B2b 起**本组件已从本类型删除** ──────────────
+    //   GM 产出数值覆盖的唯一权威在 production（{@code ProductionData.outputQuantityOverrides()}，经
+    //   {@code ProductionRuntime#outputQuantityOverrides()} 只读投影）；预计与实际共用它
+    //   （{@code ProductionRuntimeEngine.effectiveOutputPerUnit}，I6）。
+    //   ★ 原构造期守卫（键/值非 null、数量 ∈ [0, {@link #MAX_OUTPUT_QUANTITY}]）由 {@code ProductionData}
+    //     自己的构造期判（非 null、非负）；"产业存在 / 商品在该方案配方产出键里"由
+    //     {@code EconomyReferenceValidation.validateOutputQuantityOverrides} 在候选提交前判（读 production
+    // 投影）。
 
-    // ── Z1 第 33 个组件：生产效率累计与余数表（§3.2；键 = unit）──────────────────────────────
-    //   ★ 只判键/值非 null 并冻表；五个字段的"≥ 0"守卫在 ProductionEfficiencyState 自己的构造期。
-    //   ★ 旧档缺节点 ⇒ 空表（缺行 = 全 0 余数、当周期全 1000‰ ⇒ 中性）。
-    if (productionEfficiency == null) {
-      productionEfficiency = Map.of();
-    }
-    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiencyCopy =
-        new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, ProductionEfficiencyState> entry :
-        productionEfficiency.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("productionEfficiency 的键与值都不得为 null: " + entry.getKey());
-      }
-      productionEfficiencyCopy.put(entry.getKey(), entry.getValue());
-    }
-    productionEfficiency = Collections.unmodifiableMap(productionEfficiencyCopy); // ★ 冻在赋值处
+    // ── Z1 第 33 个组件：生产效率累计与余数表 —— ★★ B2b 起**本组件已从本类型删除** ──────────────
+    //   效率累计与三段精度余数的唯一权威在 production（{@code ProductionData.efficiency()}，经
+    //   {@code ProductionRuntime#efficiencyOf(unit)} 只读投影），由 {@code ProductionRuntime#executeDay}
+    // 写。
   }
 
   /**
-   * ★★ R4-E2：一个格在 economy 侧是否"可定位" —— 该格至少登记过一条产业、一行家户，或一张市场。
+   * ★★ R4-E2：一个格在 economy 侧是否"可定位" —— 该格至少有一行家户，或一张市场。
    *
    * <p>★ <b>为什么市场也算</b>：{@code economy.SetMarketPrice} 可以先给一个尚无家户/产业的格建市场（命令只要求格存在），其后落在该格的 HEX
    * 需求不应因为"还没有家户行"被判成坏状态 —— 需求路径会在订单生成时按当时人口摊到 0 户（合法）。
    *
-   * <p>★ <b>为什么没有格键的产业不算</b>：{@code IndustryId} 允许不带格键的值（说不出它在哪一格）⇒ 不拿它当"该格存在"的证据（同 {@code
-   * requireIndustryRegistered} 的保守方向）。
+   * <p>★★ <b>D-032 B4（§13.14.2 裁定十五）/ B5（§13.15.4 裁定二十）</b>：产业那一维（"该格登记过产业定义"）已随 economy 的定义副本删除 ——
+   * 它现在由 state-aware 守卫 {@code EconomyReferenceValidation.validateDemandHexes} 读 production
+   * 当刻定义权威判： <b>落点 = {@code EconomyReferenceValidation.java} 里 {@code definitions.industries()}
+   * 的那一支</b>（与家户行 / 市场两支合成同一个三元判据）。 本方法只判本域（家户行 / 市场）。
+   *
+   * <p>★ <b>边界（裁定二十明文要求写明，如实记）</b>：{@code EconomyCodec} <b>单独 decode</b>（不经候选态校验面）时， "HEX
+   * 需求指名的格只有产业、没有家户/市场"这一形态<b>不再被拦</b>；该维只在候选态校验面补齐（注册点 {@code Shell.java:1199}， 含创世态 {@code
+   * CoreSimos.bootstrapGenesisInternal:399-402}）。⇒ 落库前仍然 fail-closed，V10 往返由测试 owner 覆盖。
    */
   private static boolean hexRegistered(
-      Map<IndustryId, Industry> industries,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<MarketZoneId, MarketTable> marketTables,
       Map<MarketZoneId, MarketZone> marketZones,
       HexCoord hex) {
-    String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (IndustryId id : industries.keySet()) {
-      if (IndustryHexKeys.hexKeyOf(id).filter(hexKey::equals).isPresent()) {
-        return true;
-      }
-    }
+    // ★★★ D-032 B4（§13.14.2 裁定十五）：产业维（"该格登记过产业定义"）已不在本域可查（定义副本已删）⇒
+    //   本方法只判 economy 侧两维；那一维由 state-aware 守卫 `EconomyReferenceValidation.validateDemandHexes` 补齐。
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       if (householdEconomy.view().hex().equals(hex)) {
         return true;
@@ -2552,31 +1930,10 @@ public record EconomyData(
     return false;
   }
 
-  /**
-   * ★★ <b>flows 行的结构引用完整性</b>：flow 行的 view 指出它住在哪一格，该格必须登记过至少一个产业 —— 否则这行流水没有落点。
-   *
-   * <p>★★ <b>R4-B.4 收窄</b>：本方法**只**判"该格存在产业"。旧版还判 view 必须命中该格产业的 {@code ClassSlot}、并返回最紧槽位供调用方限制
-   * {@code participationPerMille}；该槽位耦合已删除 —— {@code Industry.slots} / {@code ClassSlot}
-   * 只作为生产方式内部的角色/劳动配置， 不再是 {@code HouseholdEconomy.view} 的限制来源。{@code classes} 侧也不再调用本方法（view 完全由
-   * {@code HouseholdClassRule} 纯派生）。
-   */
-  private static void requireIndustryRegistered(
-      Map<IndustryId, Industry> industries, CohortKey key, String what) {
-    String hexKey = IndustryHexKeys.hexKey(key.hex().q(), key.hex().r());
-    for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
-      // ★ **没有格键的产业 id**（{@code IndustryId} 允许这种值，真档里不会出现）：说不出它在哪一格 ⇒
-      //   **不拿它来否决**（对任何格都算"可能"）。★ 反过来，带了格键的必须**逐字相等**才算命中 ——
-      //   `1_10` 与 `1_1` 因此不会互相误命中（同 {@code IndustryHexKeys.at} 的口径）。
-      if (IndustryHexKeys.hexKeyOf(entry.getKey()).filter(hexKey::equals).isEmpty()
-          && IndustryHexKeys.hexKeyOf(entry.getKey()).isPresent()) {
-        continue;
-      }
-      return; // 该格有产业登记
-    }
-    // ★ 消息保留"不存在的产业"这几个字：它是既有的判据用语（{@code EconomyInvariantsTest} 逐字钉着）。
-    throw new IllegalArgumentException(
-        what + " 引用了不存在的产业（该格上没有登记任何产业）: " + hexKey + "（键=" + key + "）");
-  }
+  // ★★★ D-032 B4（§13.14.2 裁定十五）：原先的 `requireIndustryRegistered(industries, view, what)`
+  //   （flows 行的"该格登记过产业"构造期守卫）**已删除** —— 判据本身没删，它平移到了 state-aware 守卫
+  //   `EconomyReferenceValidation.validateFlowsOnIndustryHex`（读 production 当刻定义权威）。
+  //   构造期没有定义副本可查 ⇒ 留在那里的只会是一条永远看不见定义的死判据。
 
   /**
    * ★★ <b>2026-10-09 选项 A 的读口：一个家户作为债务人的全部合同 id（规范序 = {@link DebtContractId} 规范串升序）</b>。
@@ -2609,7 +1966,6 @@ public record EconomyData(
   public EconomyData withMeta(Optional<EconomyMeta> value) {
     return new EconomyData(
         value,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -2619,10 +1975,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2636,8 +1989,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2647,53 +1998,31 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
-  public EconomyData withIndustries(Map<IndustryId, Industry> value) {
-    return new EconomyData(
-        meta,
-        value,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
+  /**
+   * ★★ <b>本切片已占用的格键</b>（规范 {@code <q>_<r>}；<b>唯一拼写点</b>）= 家户行的居住格。
+   *
+   * <p>★ <b>为什么它在这里</b>：这条判据同时服务三条路径 —— ① 追加播种的"格已被占用"守卫（{@code economy.Seed}）；② {@code
+   * economy.UpsertGovUnit} 的格守卫；③ <b>D-032 B4 起</b>组合根的 {@code
+   * ProductionConsumerPort#isHexEconomicallyActive}（"某格是否已有已激活的经济状态"的 economy 半边）。 它是"economy
+   * 侧现状"的纯派生读，故挂在状态类型上、由使用者共用，而不是在别处各抄一份。
+   *
+   * <p>★★ <b>权威边界（B2b/B4）</b>：本方法只认 <b>economy 自己的家户行</b>。生产实例不在这里 —— 实例的唯一权威在 production，组合根把"本方法
+   * ∪ production 落在此格的实例"拼成完整的"格已激活"判据（旧 economy {@code units}/定义副本两维都已删）。
+   */
+  public Set<String> occupiedHexKeys() {
+    Set<String> hexes = new LinkedHashSet<>();
+    for (HouseholdEconomy householdEconomy : classes.values()) {
+      hexes.add(
+          IndustryHexKeys.hexKey(
+              householdEconomy.view().hex().q(), householdEconomy.view().hex().r()));
+    }
+    return hexes;
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withHouseholdEconomies(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     return new EconomyData(
         meta,
-        industries,
         householdEconomies,
         debtContracts,
         flows,
@@ -2703,10 +2032,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2720,8 +2046,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2733,12 +2057,11 @@ public record EconomyData(
 
   /**
    * ★★ E4a：债务合同表（第 4 个组件，替换旧的 {@code debts} 槽）—— 键 = {@link DebtContractId}， 值 = {@link
-   * DebtContract}。其余 29 个组件原样带过（全表共 30 个组件）。
+   * DebtContract}。其余 30 个组件原样带过（全表共 31 个组件）。
    */
   public EconomyData withDebtContracts(Map<DebtContractId, DebtContract> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         value,
         flows,
@@ -2748,10 +2071,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2765,8 +2085,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2780,7 +2098,6 @@ public record EconomyData(
   public EconomyData withFlows(Map<HouseholdId, FlowRow> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         value,
@@ -2790,10 +2107,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2807,8 +2121,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2822,7 +2134,6 @@ public record EconomyData(
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -2832,10 +2143,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2849,8 +2157,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2860,11 +2166,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withRelations(Map<ProductionUnitId, ProductionRules> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -2874,10 +2179,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2891,8 +2193,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2903,7 +2203,7 @@ public record EconomyData(
   }
 
   /**
-   * 一个组件一个 with（H4：市场表）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * 一个组件一个 with（H4：市场表）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ <b>它是"GM 定价格"的唯一写入口</b>（铁律 2：所有修改最终表示为 Command → ChangeSet → Revision）——
    * 本批还没有"设价"命令，故它现在只被载荷（创世播种）与用例用到；命令留待 GM 参数目录落地。
@@ -2916,7 +2216,6 @@ public record EconomyData(
   public EconomyData withMarketRoundStats(Map<MarketZoneId, MarketRoundStats> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -2926,10 +2225,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2943,8 +2239,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -2966,7 +2260,6 @@ public record EconomyData(
   public EconomyData withMarketTables(Map<MarketZoneId, MarketTable> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -2976,10 +2269,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -2993,8 +2283,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3005,14 +2293,13 @@ public record EconomyData(
   }
 
   /**
-   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ 与 {@link #withMarketTables} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
    */
   public EconomyData withShipments(Map<ShipmentId, ShipmentBatch> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3022,10 +2309,7 @@ public record EconomyData(
         value,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3039,8 +2323,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3053,7 +2335,6 @@ public record EconomyData(
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3063,10 +2344,7 @@ public record EconomyData(
         shipments,
         value,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3080,8 +2358,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3091,11 +2367,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withOperatorConditions(Map<ProductionUnitId, OperatorCondition> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3105,10 +2380,7 @@ public record EconomyData(
         shipments,
         assetShares,
         value,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3122,8 +2394,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3133,53 +2403,15 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withProcesses(Map<ProductionUnitId, ProductionProcess> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        value,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
-  }
+  // ★★ B2b：`withProcesses` 已删（units 组件退役）。实例的唯一权威在 production，写它一律经契约口
+  //   `createInstance` / `removeInstance` / `reoperateInstance`（见 EconomyEntrySettlement /
+  // EconomyEnterpriseSettlement /
+  //   EconomyModeTransitionSettlement / ModeMigrationSettlement）。
 
-  /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
+  /** ★★ R4-E2：需求账本（第 15 个组件）；其余 30 个组件原样带过（全表共 31 个组件）（GM 命令的唯一写入口）。 */
   public EconomyData withHouseholdDemands(Map<DemandId, HouseholdDemand> householdDemands) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3189,10 +2421,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         householdDemands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3206,8 +2435,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3217,95 +2444,15 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
-  public EconomyData withCandidates(Map<CandidateId, ProductionCandidate> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        value,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
-  }
+  // ★★★ B5（§13.15.2 裁定十八）：`withModes(Map<ProductionModeId, ProductionModeDefinitionView>)`
+  //   （第 17 个组件的写口）**整方法删除** —— 组件本身已从本类型删除，生产方式定义的唯一权威与唯一写面
+  //   都在 production（`ProductionData.withModes`，经 production 命令面
+  //   `production.UpsertProductionMode` / `production.DeactivateProductionMode`）。
 
-  /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withModes(Map<ProductionModeId, ProductionMode> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        value,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
-  }
-
-  /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E1：阶层结构表（第 18 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withClassStructures(Map<ClassStructureId, ClassStructure> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3315,10 +2462,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         value,
         classPositions,
         classStandings,
@@ -3332,8 +2476,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3343,11 +2485,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withProductionRoles(Map<ClassPositionId, ProductionRole> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3357,10 +2498,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         value,
         classStandings,
@@ -3374,8 +2512,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3386,7 +2522,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ <b>为什么必须成对</b>：{@link ClassStructure#positions()} 与全局 {@code classPositions} 有"逐值相等 +
    * 每条位置至少属于一个结构"的双向守卫，而现有 {@code withClassStructures}/{@code withProductionRoles} 各自只改一个组件 ——
@@ -3399,7 +2535,6 @@ public record EconomyData(
       Map<ClassPositionId, ProductionRole> positions) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3409,10 +2544,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         structures,
         positions,
         classStandings,
@@ -3426,8 +2558,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3437,12 +2567,11 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withClassMemberships(
       Map<HouseholdId, HouseholdClassMembership> classMemberships) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3452,10 +2581,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classMemberships,
@@ -3469,8 +2595,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3480,12 +2604,11 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withProductionEnterprises(
       Map<ProductionOrganizationId, ProductionEnterprise> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3495,10 +2618,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3512,8 +2632,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3523,11 +2641,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withAssetRules(Map<AssetRuleId, AssetRule> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3537,10 +2654,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3554,8 +2668,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3565,11 +2677,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withGovernments(Map<GovernmentId, Government> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3579,10 +2690,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3596,8 +2704,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3607,11 +2713,10 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
+  /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
   public EconomyData withMoneyIssuances(Map<MoneyIssuanceId, MoneyIssuanceRecord> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3621,10 +2726,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3638,8 +2740,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3650,14 +2750,13 @@ public record EconomyData(
   }
 
   /**
-   * ★★ E4a：质押表（第 25 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ E4a：质押表（第 25 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ {@code pledges} 为空 = 没有质押；本方法只让调用方逐组件构造，跨表守卫 （Σ活跃质押 ≤ share.quantity）仍由规范构造器按“对侧已提供”分段判。
    */
   public EconomyData withPledges(Map<PledgeId, Pledge> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3667,10 +2766,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3684,8 +2780,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3696,7 +2790,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ E5a：清算政策表（第 26 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ E5a：清算政策表（第 26 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ 键 == 值内 {@code ruleId}；{@code assetRules} 非空时被引用规则必须存在 —— 两条守卫都由规范构造器 fail-closed。 空表 =
    * 没有清算制度参数，旧行为逐值不变。
@@ -3704,7 +2798,6 @@ public record EconomyData(
   public EconomyData withLiquidationPolicies(Map<AssetRuleId, LiquidationPolicy> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3714,10 +2807,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3731,8 +2821,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3743,7 +2831,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ E5a：hex 危机信号表（第 27 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ E5a：hex 危机信号表（第 27 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code CrisisSignalId.idOf(hex, kind)}；同 hex 同 kind 覆盖即更新（不追加历史）。 空表 =
    * 没有信号；E5a 不产生任何信号。
@@ -3751,7 +2839,6 @@ public record EconomyData(
   public EconomyData withCrisisSignals(Map<CrisisSignalId, HexCrisisSignal> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3761,10 +2848,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3778,8 +2862,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3790,7 +2872,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ E6a：模式变迁表（第 28 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ E6a：模式变迁表（第 28 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code ModeTransitionId.idOf(organizationId, toModeId,
    * effectiveDay)}；同一组织至多一条 PENDING。空表 = 没有模式变迁请求，旧行为逐值不变。
@@ -3798,7 +2880,6 @@ public record EconomyData(
   public EconomyData withModeTransitions(Map<ModeTransitionId, ModeTransition> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3808,10 +2889,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3825,8 +2903,6 @@ public record EconomyData(
         value,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3837,7 +2913,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ E6a：阶层保留份额表（第 29 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
+   * ★★ E6a：阶层保留份额表（第 29 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code ClassShareId.idOf(transitionId, householdId, classPositionId)}；同一
    * {@code (transitionId, householdId)} 的 Σ sharePerMille 必须 = 1000（规范构造器逐组判）。空表 = 没有份额记录。
@@ -3845,7 +2921,6 @@ public record EconomyData(
   public EconomyData withClassShares(Map<ClassShareId, ClassShare> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3855,10 +2930,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3872,8 +2944,6 @@ public record EconomyData(
         modeTransitions,
         value,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3884,7 +2954,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ P4a：周期家户扣增规则表（第 31 个组件，追加在末尾）；其余 30 个组件原样带过。
+   * ★★ P4a：周期家户扣增规则表（第 31 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
    *
    * <p>键 = {@link PeriodicHouseholdAdjustmentId}，且必须等于值内 {@link HouseholdPeriodicAdjustment#id()}。
    * 规则只描述"每周期请求扣多少"，不落账户；是否到期与部分支付由 app 的 executor 按绝对世界日现算。
@@ -3893,7 +2963,6 @@ public record EconomyData(
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -3903,10 +2972,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -3920,8 +2986,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         value,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -3931,129 +2995,15 @@ public record EconomyData(
         marketRoundStats);
   }
 
-  /**
-   * ★★ <b>Z1：产品产出数量覆盖表</b>（第 32 个组件，追加在末尾）；其余 30 个组件原样带过。
-   *
-   * <p>键 = {@link IndustryId}（必须存在于 {@code industries}），内层键 = {@link CommodityId}（必须是该产业 {@code
-   * recipe().outputPerUnit()} 的键），值 ∈ {@code [0, MAX_OUTPUT_QUANTITY]}（§3.1）。缺 key = 回落配方默认；
-   * 表的构造期守卫只判结构与值域，跨表引用由命令边界（具名拒绝）与 {@code EconomyCodec} 载入边界（契约 ERROR）判。
-   */
-  public EconomyData withOutputQuantityOverrides(Map<IndustryId, Map<CommodityId, Long>> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        value,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
-  }
+  // ★★ B2b：`withOutputQuantityOverrides` 已删（GM 产出覆盖的唯一权威在 production）。
 
-  /**
-   * ★★ <b>Z1：生产效率累计与余数表</b>（第 33 个组件，追加在末尾）；其余 32 个组件原样带过。
-   *
-   * <p>键 = {@link ProductionUnitId}（生产单元稳定身份），值 = {@link ProductionEfficiencyState}（五个 long，构造期判
-   * {@code ≥ 0}）。缺行 = 全 0 余数、当周期全 1000‰ ⇒ 中性；周期末消费与清零在 Z2 的结算路径。
-   */
-  public EconomyData withProductionEfficiency(
-      Map<ProductionUnitId, ProductionEfficiencyState> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        marketTables,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        value,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates,
-        marketRoundStats);
-  }
+  // ★★ B2b：`withProductionEfficiency` 已删（效率累计与余数的唯一权威在 production）。
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
   private static final String UNIT_ID_PREFIX = "unit-";
 
-  /** ★★ B.2b：任一 Industry 带非中性旧档兼容位 ⇒ 构造期归一化（见 compact 构造器那一段）。 */
-  private static boolean hasLegacyProductionBits(Map<IndustryId, Industry> industries) {
-    for (Industry industry : industries.values()) {
-      if (industry != null && hasLegacyProductionBits(industry)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * ★★ B.2b：单个 {@link Industry} 的旧档兼容位判据（与修复规格逐字一致）：{@code operator != null || progressDays > 0 ||
-   * cycleLaborMilli > 0 || !capacity.isEmpty() || !cycleInputUsedMilli.isEmpty()}。
-   *
-   * <p>★ 新形状（12 参构造器 / 归一化后）恒为 {@code false} —— 这是"codec 已整形路径 no-op、Timeline 直读 changeset
-   * 路径兜底"的幂等边界。
-   */
-  private static boolean hasLegacyProductionBits(Industry industry) {
-    return industry.operator() != null
-        || industry.progressDays() > 0L
-        || industry.cycleLaborMilli() > 0L
-        || !industry.capacity().isEmpty()
-        || !industry.cycleInputUsedMilli().isEmpty();
-  }
+  // ★★ B.2b 的两个 hasLegacyProductionBits(...) 判据已随 D-032 A 批删除（原因见 compact 构造器里那段注释）：
+  //   它们读的 5 个兼容位已不在 {@link IndustryDefinitionView} 上，判据在本类型上无法表达。
 
   /**
    * ★★ <b>A1：币种表</b>（货币词表的身份一半）；其余组件原样带过。
@@ -4064,7 +3014,6 @@ public record EconomyData(
   public EconomyData withCurrencies(Map<CurrencyId, CurrencyDef> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4074,10 +3023,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4091,8 +3037,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         value,
         moneyInstruments,
         marketZones,
@@ -4111,7 +3055,6 @@ public record EconomyData(
   public EconomyData withMoneyInstruments(Map<InstrumentId, MoneyInstrument> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4121,10 +3064,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4138,8 +3078,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         value,
         marketZones,
@@ -4161,7 +3099,6 @@ public record EconomyData(
   public EconomyData withMarketZones(Map<MarketZoneId, MarketZone> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4171,10 +3108,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4188,8 +3122,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         value,
@@ -4228,7 +3160,6 @@ public record EconomyData(
       Map<MarketZoneId, MarketZone> zones, Map<MarketZoneId, MarketTable> tables) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4238,10 +3169,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4255,8 +3183,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         zones,
@@ -4279,7 +3205,6 @@ public record EconomyData(
   public EconomyData withCommodityFreightBaseMilli(Map<CommodityId, Long> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4289,10 +3214,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4306,8 +3228,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,
@@ -4331,7 +3251,6 @@ public record EconomyData(
   public EconomyData withGovMarketMandates(Map<MarketMandateId, GovernmentMarketMandate> value) {
     return new EconomyData(
         meta,
-        industries,
         classes,
         debtContracts,
         flows,
@@ -4341,10 +3260,7 @@ public record EconomyData(
         shipments,
         assetShares,
         operatorConditions,
-        units,
         demands,
-        candidates,
-        modes,
         classStructures,
         classPositions,
         classStandings,
@@ -4358,8 +3274,6 @@ public record EconomyData(
         modeTransitions,
         classShares,
         periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
         currencies,
         moneyInstruments,
         marketZones,

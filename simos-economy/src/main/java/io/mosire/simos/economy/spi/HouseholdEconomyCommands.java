@@ -8,9 +8,9 @@ import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.ResourcePaths;
 import java.util.ArrayList;
@@ -97,7 +97,11 @@ final class HouseholdEconomyCommands {
    * {@code modes} 字段 → 该 mode 结构下的全部位置（"可参与生产方式"的粗粒度配置）。mode 必须已存在；没有结构 ⇒ 拒绝。 ★ 具体哪些位置真的生产由组织阶段的
    * {@code shouldProduce} 过滤（本类不复制那份判据）。
    */
-  static Set<ClassPositionId> expandModes(String command, EconomyData base, JsonNode payload) {
+  static Set<ClassPositionId> expandModes(
+      String command,
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      JsonNode payload) {
     JsonNode modes = payload.get("modes");
     if (modes == null || modes.isNull()) {
       return Set.of();
@@ -111,7 +115,7 @@ final class HouseholdEconomyCommands {
         throw new IllegalArgumentException(command + " 的 modes 元素必须是非空白文本: " + element);
       }
       ProductionModeId modeId = ProductionModeId.parse(element.asText());
-      ProductionMode mode = base.modes().get(modeId);
+      ProductionModeDefinitionView mode = definitions.mode(modeId).orElse(null);
       if (mode == null) {
         throw new IllegalArgumentException(command + " 的生产方式不存在: " + modeId.value());
       }

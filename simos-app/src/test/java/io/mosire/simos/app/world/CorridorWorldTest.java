@@ -36,7 +36,7 @@ class CorridorWorldTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
 
   @Test
-  void corridorStateIsDeterministicAndCarriesTheFourSlices() {
+  void corridorStateIsDeterministicAndCarriesTheNineSlices() {
     SimulationState first = CorridorWorld.state("Map1");
     SimulationState second = CorridorWorld.state("Map1");
 
@@ -44,7 +44,9 @@ class CorridorWorldTest {
     assertThat(first.meta().ref()).isEqualTo(new StateRef(new BranchId("main"), new RevisionId(1)));
     assertThat(first.meta().timestamp()).isEqualTo(T5);
     assertThat(first.modules().keySet())
-        .containsExactlyInAnyOrder("map", "unit", "social", "ga", "economy", "actor", "gov");
+        .as("★ D-031 Z6：production/culture 两片自 Z4 起在场 ⇒ 7 → 9（按真跑读数改，不照抄预测）")
+        .containsExactlyInAnyOrder(
+            "map", "unit", "social", "ga", "economy", "actor", "gov", "production", "culture");
   }
 
   @Test

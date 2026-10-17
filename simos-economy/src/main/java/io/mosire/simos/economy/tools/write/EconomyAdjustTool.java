@@ -14,6 +14,7 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustments;
 import io.mosire.simos.economy.tools.EconomyToolReads;
@@ -98,11 +99,10 @@ public final class EconomyAdjustTool implements SimosTool {
   public String description() {
     return "GM 经济调整（economy.GmAdjust 的窄封装）：先用 economy 侧纯函数算好 projected 状态与前后差异，"
         + "preview=true（缺省）只算不写；preview=false 时提交同一条 payload（reason 必填，进载荷/事件与工具结果）。"
-        + "adjustment 白名单（12）—— 旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、"
+        + "adjustment 白名单（7）—— 旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、"
         + "setLiquidationPolicy（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/"
         + "policyValuePerUnitMilli/recipientRule）；P7 生产方式编辑八 kind —— "
-        + "upsertProductionMode（id + name + version? + classStructureId；version 必须推进，classStructureId 须已存在）、"
-        + "deactivateProductionMode（id；被结构/位置/组织/资产规则/变迁/质押引用 ⇒ 具名拒绝）、"
+        + "（生产方式定义编辑已迁 production.UpsertProductionMode / DeactivateProductionMode，命中即具名拒）、"
         + "upsertClassStructure（id + modeId + positions? + defaultSharesPerMille?；位置 upsert 并同步全局表与所有结构副本）、"
         + "upsertClassPosition（id + modeId + name?/relationToMeans?/laborRole?/surplusRole?/ruleExtensions? + classStructureId?）、"
         + "upsertProductionRelation（activity + operator? + inputSupplier? + rules? + residualOwner? + laborSource?；"
@@ -112,12 +112,10 @@ public final class EconomyAdjustTool implements SimosTool {
         + "upsertProductionOrganization（id? + modeId + classPositionId + unitId? + organizer + laborSources?/assetSources?/"
         + "inputSources? + outputOwnership + relationTemplateRef? + status + statusReason?；ACTIVE/EXITING 必须有 unit，"
         + "SHORTAGE 必须有具名 reason）、"
-        + "upsertCandidate（按 ProductionCandidate 现有字段；新建需 output/outputPerUnit/cycleDays/regime，"
-        + "修订必须推进 version；★ ProductionCandidate 没有 modeId，本 kind 按现有模型走 regime，显式 modeId 具名拒绝）；"
-        + "Z1 产品产出数量覆盖两 kind（只写 outputQuantityOverrides，GmOnly）—— "
-        + "setOutputQuantity（industryId + commodityId + quantity(0..1000000 整数；值 = 商品数量/单位规模；"
-        + "industryId 须已存在、commodityId 须在该产业配方产出键里）"
-        + "、clearOutputQuantity（industryId + commodityId；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，不做静默幂等）。"
+        + "★ B2c（裁定八）：upsertCandidate 已随候选面整体退役、Z1 的两个产出覆盖 kind 已随 outputQuantityOverrides "
+        + "迁出 economy —— 三个 kind 命中 ⇒ **具名拒**（plan-definition-moved-to-production-definition / "
+        + "output-quantity-moved-to-production-definition），白名单 12 → 9 → 7 项。方案定义的写面是 "
+        + "production.UpsertIndustry（GM 工具 simos.economy.upsertIndustry）。"
         + "白名单外 adjustment（flows/demandBook/crisisSignals/classStandings 等派生读数）一律拒："
         + "派生读数不可由 GM 调整工具直写。★ 只在 GM 桶，决策人不可调用。";
   }
@@ -130,9 +128,10 @@ public final class EconomyAdjustTool implements SimosTool {
         ToolSchema.prop(
             "string",
             "调整名（源状态白名单）：forgiveDebt | setLiquidationPolicy"
-                + " | upsertProductionMode | deactivateProductionMode | upsertClassStructure | upsertClassPosition"
-                + " | upsertProductionRelation | upsertAssetRule | upsertProductionOrganization | upsertCandidate"
-                + " | setOutputQuantity | clearOutputQuantity；"
+                + " | (生产方式编辑见 production.UpsertProductionMode / DeactivateProductionMode) | upsertClassStructure | upsertClassPosition"
+                + " | upsertProductionRelation | upsertAssetRule | upsertProductionOrganization；"
+                + "★ 已迁出五 kind（upsertCandidate / setOutputQuantity / clearOutputQuantity /"
+                + " upsertProductionMode / deactivateProductionMode）命中 ⇒ 具名拒；"
                 + "白名单外一律拒（派生读数不可直写）"));
     props.put(
         "parameters",
@@ -143,10 +142,7 @@ public final class EconomyAdjustTool implements SimosTool {
                 + "setLiquidationPolicy={assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                 + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
                 + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)}；"
-                + "upsertProductionMode={id, name, version?(须 ≥ 现有+1；缺省仅幂等重放), classStructureId(须已存在；"
-                + "upsertClassStructure 必须先建结构)}；"
-                + "deactivateProductionMode={id(被 classStructures/classPositions/productionOrganizations/assetRules/"
-                + "modeTransitions/pledges 任一引用 ⇒ 具名拒绝)}；"
+                + "（生产方式定义编辑已迁 production.UpsertProductionMode / DeactivateProductionMode；本工具不再收，命中即具名拒 production-mode-definition-moved-to-production）；"
                 + "upsertClassStructure={id, modeId, positions?[{id, modeId?, name, relationToMeans, laborRole, surplusRole,"
                 + " ruleExtensions?}], defaultSharesPerMille?{位置:≥0}；至少给一项；位置 upsert-合并并同步全局表与所有结构副本，"
                 + "份额给到即整体替换；新建必须给非空 positions}；"
@@ -160,16 +156,10 @@ public final class EconomyAdjustTool implements SimosTool {
                 + " assetSources?[shareId], inputSources?[recipient], outputOwnership{actor|household|cohort}, relationTemplateRef?,"
                 + " status(ACTIVE|SHORTAGE|SUSPENDED|EXITING), statusReason?(ACTIVE 必须空，SHORTAGE 必须非空)；"
                 + "id 缺省需 organizer 是 HOUSEHOLD 且有 unitId}；"
-                + "upsertCandidate={id, version?, output?, outputPerUnit?{商品:>0}, inputPerUnit?{商品:≥0},"
-                + " requiredAssets?{资产:≥0}, laborPerUnit?, buildDays?, cycleDays?, regime?, laborSource?,"
-                + " acceptedRightKinds?[OWNED|TENANCY|COMMUNAL], assetSource?, name?；新建 output/outputPerUnit/cycleDays/regime 必填；"
-                + "修订须推进 version；★ 无 modeId（模型无此字段，显式给 ⇒ 拒）}；"
-                + "setOutputQuantity={industryId, commodityId, quantity(0..1000000 整数；值 = 商品数量/单位规模)}"
-                + "（industryId 须已存在、commodityId 须在该产业 recipe().outputPerUnit() 产出键里，不开新商品；"
-                + "quantity 缺失/非整数/越界 ⇒ QUANTITY_OUT_OF_RANGE；缺省覆盖 = 配方默认）；"
-                + "clearOutputQuantity={industryId, commodityId}"
-                + "（industryId 须已存在、commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，"
-                + "不做静默幂等；回落配方默认）}"));
+                + "★ B2c/B5：upsertCandidate / setOutputQuantity / clearOutputQuantity / upsertProductionMode /"
+                + " deactivateProductionMode 五个 kind 已迁出 ⇒ 命中时"
+                + "具名拒（不在这里收参数）；方案定义（含 buildDays / acceptedRightKinds）的写面是"
+                + " production.UpsertIndustry}"));
     props.put("reason", ToolSchema.prop("string", "调整原因（必填非空白；进命令载荷与工具结果/审计）"));
     props.put(
         "preview", ToolSchema.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 economy.GmAdjust"));
@@ -235,7 +225,24 @@ public final class EconomyAdjustTool implements SimosTool {
       EconomyData base = EconomyToolReads.economyData(state);
       long day = state.meta().timestamp().tick();
       EconomyGmAdjustments.Projection projection =
-          EconomyGmAdjustments.project(base, adjustment, parameters, reason, day);
+          // ★★★ B5（§13.15.2 裁定十八）：`EconomyData.modes` 副本已删 ⇒ 显式注入 production 定义权威
+          //   （与 EconomyGmAdjustHandler / EconomySetHouseholdParticipationHandler 同一形态）。
+          EconomyGmAdjustments.project(
+              base,
+              io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+              io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+              adjustment,
+              parameters,
+              reason,
+              day);
+      // ★★ D-031 P1 §9.3：preview 与单发提交共用同一份完整候选态跨片校验 —— preview 不得放行同一候选态 commit 会被
+      //   领域规则拒的调整（如 upsertClassStructure 指向 production 里不存在的 mode）。批级原子批不走本工具。
+      io.mosire.simos.economy.EconomyReferenceValidation.validate(
+          EconomyProductionDefinitions.of(state),
+          // ★★ B2b：实例/产出覆盖两维的交叉引用守卫改读 production 的当刻投影。
+          EconomyProductionDefinitions.stateOf(state),
+          projection.projected(),
+          io.mosire.simos.economy.spi.EconomyGmAdjustHandler.TYPE + "." + adjustment);
       Map<String, Object> view = diffView(projection);
       if (preview) {
         view.put("preview", true);

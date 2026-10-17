@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -90,17 +91,19 @@ public final class EconomySetHouseholdParticipationHandler
       }
       Set<ClassPositionId> positions = new LinkedHashSet<>();
       positions.addAll(HouseholdEconomyCommands.parsePositions(TYPE, base, payload));
-      positions.addAll(HouseholdEconomyCommands.expandModes(TYPE, base, payload));
+      positions.addAll(
+          HouseholdEconomyCommands.expandModes(
+              TYPE, base, EconomyProductionDefinitions.of(state), payload));
       // ★ 位置所属 mode 必须在场：不在场的 mode 组织阶段根本不会遍历，写进去就是"看起来可参与、实际永不生效"。
       for (ClassPositionId positionId : positions) {
         ProductionRole position = base.classPositions().get(positionId);
         if (position == null) {
           throw new IllegalArgumentException(TYPE + " 的阶层位置不存在: " + positionId.value());
         }
-        if (!base.modes().containsKey(position.modeId())) {
+        if (EconomyProductionDefinitions.of(state).mode(position.modeId()).isEmpty()) {
           throw new IllegalArgumentException(
               TYPE
-                  + " 的位置所属生产方式不存在（先 economy.GmAdjust.upsertProductionMode）: 位置="
+                  + " 的位置所属生产方式不存在（先 production.UpsertProductionMode）: 位置="
                   + positionId.value()
                   + " mode="
                   + position.modeId().value());

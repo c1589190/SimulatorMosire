@@ -33,6 +33,8 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -114,10 +116,11 @@ class ShellSmokeTest {
     try (Shell shell = Shell.start(shellConfig())) {
       assertThat(shell.registeredModuleCount())
           .as(
-              "壳应注册 map/social/unit/sd/economy/actor/gov/army 八个 codec"
+              "壳应注册 map/social/unit/sd/economy/actor/gov/army/production/culture 十个 codec"
                   + "（R2a 起第 5 个是 EconomyCodec，S1 阶段 2 起第 6 个是 ActorCodec，"
-                  + "阶段 10a 起第 7 个是 gov.codec.GovCodec，D1 起第 8 个是 army.codec.ArmyCodec）")
-          .isEqualTo(8);
+                  + "阶段 10a 起第 7 个是 gov.codec.GovCodec，D1 起第 8 个是 army.codec.ArmyCodec，"
+                  + "★ D-031 Z6：第 9/10 个是 production.codec.ProductionCodec / culture.codec.CultureCodec）")
+          .isEqualTo(10);
 
       CommandResult result =
           shell.coreSimos().submit(rename(1L, "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}"));
@@ -229,6 +232,7 @@ class ShellSmokeTest {
                 "ga", new GaSnapshot(ref("main", 1), T0, GaState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
                 "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty()),
+                "production", new ProductionSnapshot(ref("main", 1), T0, ProductionData.empty()),
                 // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
                 "actor", new ActorSnapshot(ref("main", 1), T0, ActorData.empty()),
                 // ★ 2026-10-13 急停协议：army 也成了时间参与者（ArmyTimeParticipant：逐日判"两军相遇"）
@@ -247,6 +251,7 @@ class ShellSmokeTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     new SocialCodec(),
                     new ActorCodec(),
                     new ArmyCodec())));

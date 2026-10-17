@@ -27,6 +27,7 @@ import io.mosire.simos.calendar.SolarTerm;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
@@ -38,6 +39,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -50,9 +52,7 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
-import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
@@ -62,8 +62,6 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
@@ -71,9 +69,7 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.DebtCapacityBook;
@@ -116,6 +112,10 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -1156,15 +1156,10 @@ public final class ApiViews {
    * 逐值等于标量）， 与 dashboard 侧既有的"本金不跨 unit 合计"（{@code stocks.debtPrincipal.byUnit}）同键域。★
    * 只改读口：不动任何债务状态、 不动任何算式、不删既有键（GUI 面板与既有用例仍在读标量）。
    */
-  public static Map<String, Object> economyHex(HexCoord coord, EconomyData data, ActorData actors) {
-    return economyHex(
-        coord,
-        data,
-        actors,
-        Optional.empty(),
-        -1L,
-        "读口没有 SimulationState 上下文（3 参重载）⇒ 拿不到 tick 与进程内市场报告");
-  }
+  // ★★★ D-032 B3（§13.13.7 第 4 条）：无 state 的 3 参重载（economyHex(coord, EconomyData, units, actors)）
+  //   已**删除** —— 它是阶段 2 的过渡入口：没有 SimulationState 就拿不到 production 的**当刻**方案定义权威，
+  //   只能读 economy 的临时兼容组件 `EconomyData.industries`（该组件已同批删除）。main 里 0 个调用点
+  //   （GUI/HTTP 与 MCP 都走 `economyHex(coord, state)`），没有实际职责的旧重载按 §13.3 第 2 条删除。
 
   /** ★★ M2.7：GUI / MCP 的正式入口（从状态装配焦点区读数与 tick；R3a 起旧市场读数组件已删除）。 */
   public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
@@ -1176,6 +1171,10 @@ public final class ApiViews {
     return economyHex(
         coord,
         data,
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+        // ★★ D-032 B4（§13.14.2 裁定十五）：定义只经 production 的**契约来源**传（economy 的副本已删）——
+        //   底下既要"本格产业"（键集），也要把它喂给读口（capacitiesForState / HouseholdCondition.derive）。
+        io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
         actors,
         Optional.empty(),
         tick,
@@ -1185,6 +1184,11 @@ public final class ApiViews {
   private static Map<String, Object> economyHex(
       HexCoord coord,
       EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup productionDefinitions,
       ActorData actors,
       Optional<MarketReport> report,
       long tick,
@@ -1233,11 +1237,14 @@ public final class ApiViews {
     }
     long grainStock = goods.getOrDefault(EconomyVocabulary.GRAIN_COMMODITY_ID, 0L);
     List<Map<String, Object>> industries = new ArrayList<>();
-    for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
-      Industry industry = data.industries().get(id);
+    // ★★★ D-032 B3：方案定义的唯一权威是 production ⇒ 本格的产业清单按**注入的定义视图**过滤/取值
+    //   （旧口径读 `EconomyData.industries` = 阶段 2 的临时兼容组件，已同批删除）。
+    for (IndustryId id :
+        IndustryHexKeys.at(productionDefinitions.industries(), coord.q(), coord.r())) {
+      IndustryDefinitionView industry = productionDefinitions.industries().get(id);
       // ★★ R3B.2：该行业在本格的 unit（按 unit id canonical 序；旧口径"一产业一 unit"下恰一条）。
       List<ProductionProcess> units = new ArrayList<>();
-      for (ProductionProcess unit : data.units().values()) {
+      for (ProductionProcess unit : productionUnits.values()) {
         if (unit.industry().equals(id)) {
           units.add(unit);
         }
@@ -1399,8 +1406,10 @@ public final class ApiViews {
     // ★★ R4-E2：**需求账本**只读视图（本格相关：HEX 范围命中本格 + HOUSEHOLD 范围住在该格的家户）。
     //   ★ 与订单路径同一份状态（{@code EconomyData.demands()}），视图不重算摊分；{@code effective} 由当前 tick 现判。
     view.put("demands", demandViews(data, coord, tick));
-    // ★★ R4-E2：**候选预设**只读视图（世界级、与格无关 ⇒ 全量发；按 id 值排序 ⇒ 响应字节是内容的纯函数）。
-    view.put("candidates", candidateViews(data));
+    // ★★ R4-E2 + B2c（裁定八）：**可以采用的方案定义**只读视图（世界级、与格无关 ⇒ 全量发；按 id 值排序
+    //   ⇒ 响应字节是内容的纯函数）。★ 读的是 **production 的当刻定义**（不再有 economy 的候选表）；
+    //   ★ 键名由 {@code candidates} 改成 {@code plans}：候选面已退役，读口不该继续用旧概念名。
+    view.put("plans", planViews(productionDefinitions.industries()));
     // ★★ E5a：**清算政策**（世界级、与格无关 ⇒ 全量发；按 ruleId 排序 ⇒ 响应字节是内容的纯函数）与
     //   **本格 hex 危机信号**（按 (hex, kind) 派生的 id 排序）。两张表都是持久状态：空表 = 没有登记，
     //   不是"读不到"；E5a 不产生任何信号/清算（生成留 E5b），这里只如实反映为空。
@@ -1473,6 +1482,8 @@ public final class ApiViews {
     Map<HouseholdId, DebtCapacity> debtCapacities =
         DebtCapacityBook.capacitiesForState(
             data,
+            productionUnits,
+            productionDefinitions,
             classKeys,
             key ->
                 grainStockByHousehold.containsKey(key)
@@ -1489,7 +1500,7 @@ public final class ApiViews {
     Map<String, Object> debtCapacityBlock = debtCapacityBlockView(classKeys, debtCapacities);
     view.put("debtCapacity", debtCapacityBlock);
     // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
-    HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data);
+    HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data, productionUnits);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
     List<Map<String, Object>> classifications = new ArrayList<>();
     for (HouseholdId key : householdKeys) {
@@ -1499,7 +1510,8 @@ public final class ApiViews {
               ? OptionalLong.of(grainStockByHousehold.get(key))
               : OptionalLong.empty();
       HouseholdCondition condition =
-          HouseholdCondition.derive(data, key, dayLedger, grainStockMilli);
+          HouseholdCondition.derive(
+              data, productionUnits, productionDefinitions, key, dayLedger, grainStockMilli);
       HouseholdClassRule.Classification classification = classIndex.classify(key, dayLedger);
       householdConditions.add(householdConditionView(condition, classification.stratum().value()));
       classifications.add(
@@ -1582,6 +1594,7 @@ public final class ApiViews {
         economyDashboard(
             coord,
             data,
+            productionUnits,
             actors,
             moneyByKind,
             moneyByClass,
@@ -2132,6 +2145,10 @@ public final class ApiViews {
   private static Map<String, Object> economyDashboard(
       HexCoord coord,
       EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       ActorData actors,
       Map<String, Map<String, Long>> moneyByKind,
       Map<String, Map<String, Long>> moneyByClass,
@@ -2160,6 +2177,7 @@ public final class ApiViews {
     dashboard.put(
         "derived",
         dashboardDerived(
+            productionUnits,
             data,
             actors,
             coord,
@@ -2373,7 +2391,7 @@ public final class ApiViews {
       } else {
         ownerNotOperatorQuantity += quantity;
       }
-      if (share.kind() == OwnershipStake.RightKind.TENANCY) {
+      if (share.kind() == AssetRightKind.TENANCY) {
         tenancyQuantity += quantity;
         tenancyShareCount++;
       }
@@ -2585,6 +2603,10 @@ public final class ApiViews {
 
   /** dashboard 的 derived 分组（只读派生；F/headroom 复用 E4b 块视图，不重算公式）。 */
   private static Map<String, Object> dashboardDerived(
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       EconomyData data,
       ActorData actors,
       HexCoord coord,
@@ -2602,7 +2624,8 @@ public final class ApiViews {
     derived.put("basicNeedGap", basicNeedGapDerivedView(data, householdKeys, hexFlows));
     derived.put(
         "nextRoundInputGap",
-        nextRoundInputGapDerivedView(data, actors, coord, householdKeys, debtCapacities));
+        nextRoundInputGapDerivedView(
+            data, productionUnits, actors, coord, householdKeys, debtCapacities));
     return derived;
   }
 
@@ -2895,6 +2918,10 @@ public final class ApiViews {
    */
   private static Map<String, Object> nextRoundInputGapDerivedView(
       EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       ActorData actors,
       HexCoord coord,
       List<HouseholdId> householdKeys,
@@ -2940,7 +2967,8 @@ public final class ApiViews {
             : null);
     view.put("unavailableHouseholds", unavailableHouseholds);
     view.put("households", households);
-    view.put("shortageOrganizations", shortageEnterpriseSummary(data, actors, coord));
+    view.put(
+        "shortageOrganizations", shortageEnterpriseSummary(data, productionUnits, actors, coord));
     return view;
   }
 
@@ -2952,7 +2980,13 @@ public final class ApiViews {
    * 汇总。
    */
   private static Map<String, Object> shortageEnterpriseSummary(
-      EconomyData data, ActorData actors, HexCoord coord) {
+      EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      ActorData actors,
+      HexCoord coord) {
     Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
     for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
       organizersAtHex.add(HouseholdActors.of(inventory.key().household()));
@@ -2970,7 +3004,8 @@ public final class ApiViews {
       }
       worldTotal++;
       worldByReason.merge(enterprise.statusReason(), 1L, Long::sum);
-      if (!productionEnterpriseTouchesHex(data, enterprise, coord, organizersAtHex)) {
+      if (!productionEnterpriseTouchesHex(
+          data, productionUnits, enterprise, coord, organizersAtHex)) {
         continue;
       }
       localByReason.merge(enterprise.statusReason(), 1L, Long::sum);
@@ -2998,12 +3033,16 @@ public final class ApiViews {
   /** ProductionEnterprise 是否与本格相关（见 {@link #shortageEnterpriseSummary} 的四路判据）。 */
   private static boolean productionEnterpriseTouchesHex(
       EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       ProductionEnterprise enterprise,
       HexCoord coord,
       Set<ActorRef> organizersAtHex) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     if (enterprise.unitId().isPresent()) {
-      ProductionProcess unit = data.units().get(enterprise.unitId().get());
+      ProductionProcess unit = productionUnits.get(enterprise.unitId().get());
       if (unit != null
           && IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isPresent()) {
         return true;
@@ -3544,7 +3583,14 @@ public final class ApiViews {
    * 的拼法在 {@code HouseholdActors}，H1）。
    */
   public static Map<String, Object> economyOwnership(
-      HexCoord coord, EconomyData economy, ActorData actors) {
+      HexCoord coord,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ActorData actors) {
     Map<String, Object> view = hexCoord(coord);
     List<HouseholdInventory> atHex = inventoriesAt(economy, actors, coord);
     List<Map<String, Object>> inventories = new ArrayList<>(atHex.size());
@@ -3587,7 +3633,7 @@ public final class ApiViews {
     //   ★★ E6c：容量与块视图一次算好，dashboard.derived.creditPosition 复用同一份（不重跑 F/headroom 算法）。
     List<HouseholdId> householdKeys = cohortKeysAt(economy, coord);
     DebtCapacityReadout capacityReadout =
-        debtCapacityReadout(economy, actors, coord, householdKeys);
+        debtCapacityReadout(economy, productionUnits, definitions, actors, coord, householdKeys);
     view.put("debtCapacity", capacityReadout.block());
     view.put("rowGoodsTotal", rowGoodsTotal);
     // ★★ E6c：统一 dashboard（本入口没有 SimulationState ⇒ 进程内参考口径具名缺失；其余仍从现值现算）。
@@ -3596,6 +3642,7 @@ public final class ApiViews {
         economyDashboard(
             coord,
             economy,
+            productionUnits,
             actors,
             moneyByKind,
             moneyByClass,
@@ -3647,7 +3694,7 @@ public final class ApiViews {
    */
   private static Map<String, Object> productionProcessView(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> assetShares,
       ProductionRules relation,
       OperatorCondition condition) {
@@ -3676,7 +3723,7 @@ public final class ApiViews {
    *
    * <p>★★ **R3（T6）起把配方发出来**（{@code capacityPerUnit} / {@code inputPerUnit} / {@code laborPerUnit} /
    * {@code outputPerUnit} + 本周期实际扣到的投入）：这几项原来**不在任何读口里**，而"每单位**什么**"正是 R3 变成数据的那一维 —— 不读出来，"每座作坊产
-   * N 匹布"在报表里就只是数字。★ {@code inputPerUnit} 走 {@link Industry#inputPerUnit()}（={@code
+   * N 匹布"在报表里就只是数字。★ {@code inputPerUnit} 走 {@link IndustryDefinitionView#inputPerUnit()}（={@code
    * cycleInputPerUnit} 的合计），**不在视图层另算一遍**。
    *
    * <p>★★ <b>M1.7：把"实物给养义务"发出来</b>（{@code subsistenceObligations} / {@code subsistencePromised}）——
@@ -3690,12 +3737,14 @@ public final class ApiViews {
    * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code 旧结算引擎（R3a 已删除）.laborOfCohort} 算好传入；不得为 null）
    */
   private static Map<String, Object> industryView(
-      Industry industry, ProductionRules relation, Map<HouseholdId, Long> laborOfHousehold) {
+      IndustryDefinitionView industry,
+      ProductionRules relation,
+      Map<HouseholdId, Long> laborOfHousehold) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", industry.id().value());
     view.put("name", industry.name());
     view.put("regime", industry.regime().value());
-    // ★★ R3B.2：Industry 只留模板 —— 经营者/进度/产能/累计投入改由调用方从 units 汇总发兼容字段（见 economyHex）。
+    // ★★ R3B.2：IndustryDefinitionView 只留模板 —— 经营者/进度/产能/累计投入改由调用方从 units 汇总发兼容字段（见 economyHex）。
     view.put("cycleDays", industry.cycleDays());
     Map<String, Object> capacityPerUnit = new TreeMap<>();
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
@@ -3813,7 +3862,8 @@ public final class ApiViews {
    * 一个家户行（§3.2 逐字段：**居住类型** / 人口 / 有效劳动 / 投入率 / 库存 / 货币 / **债权债务** / 两类需求）；{@code flow} =
    * 本期流水（R3a，可为 null）。
    *
-   * <p>★ **没有"土地"这一项**：H0.3（K3）把生产资料搬到 {@code Industry.capacity} ⇒ 行侧只报"这本账有多少商品/多少钱/欠谁"。
+   * <p>★ **没有"土地"这一项**：H0.3（K3）把生产资料搬到 {@code IndustryDefinitionView.capacity} ⇒
+   * 行侧只报"这本账有多少商品/多少钱/欠谁"。
    *
    * <p>★★ <b>M1.5 起债务双向可查</b>：{@code debts}（我欠谁，保持旧形状 = id 字符串数组）、{@code credits}
    * （谁欠我，新增）两个方向并列；{@code debtDetails} 给每一条债的**明细**（含此前零读口的 {@code dueCycle}）， 一条债在两个方向上读到的本金 / 利率
@@ -4052,7 +4102,15 @@ public final class ApiViews {
       Map<HouseholdId, DebtCapacity> capacities, Map<String, Object> block) {}
 
   private static DebtCapacityReadout debtCapacityReadout(
-      EconomyData data, ActorData actors, HexCoord coord, List<HouseholdId> householdKeys) {
+      EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ActorData actors,
+      HexCoord coord,
+      List<HouseholdId> householdKeys) {
     Map<ActorRef, HouseholdId> householdOfActorAtHex = new LinkedHashMap<>();
     for (HouseholdId key : householdKeys) {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
@@ -4068,6 +4126,8 @@ public final class ApiViews {
     Map<HouseholdId, DebtCapacity> capacities =
         DebtCapacityBook.capacitiesForState(
             data,
+            productionUnits,
+            definitions,
             householdKeys,
             key ->
                 grainStockByHousehold.containsKey(key)
@@ -4528,37 +4588,57 @@ public final class ApiViews {
     return householdEconomy != null && householdEconomy.view().hex().equals(coord);
   }
 
-  /** ★★ R4-E2：候选预设的全量只读视图（世界级、与格无关；按 id 值升序）。 */
-  private static List<Map<String, Object>> candidateViews(EconomyData data) {
-    List<ProductionCandidate> candidates = new ArrayList<>(data.candidates().values());
-    candidates.sort(Comparator.comparing(candidate -> candidate.id().value()));
-    List<Map<String, Object>> out = new ArrayList<>(candidates.size());
-    for (ProductionCandidate candidate : candidates) {
+  /**
+   * ★★ <b>R4-E2 + B2c：可以采用的方案定义的全量只读视图</b>（世界级、与格无关；按 id 值升序）。
+   *
+   * <p>★★ <b>B2c（裁定八）：候选面退役后，本读口改读 production 的产业定义</b> —— 字段逐项来自 {@link
+   * io.mosire.simos.production.contract.IndustryDefinitionView}（不再有 {@code version}／主产出 {@code
+   * output}／{@code requiredAssets} 这些候选专有列）：
+   *
+   * <ul>
+   *   <li>{@code outputPerUnit} 是<b>多商品表</b>（产出按商品逐项，没有"主产出"）；
+   *   <li>{@code capacityPerUnit} / {@code cycleInputPerUnit} 取代旧的 {@code requiredAssets} / {@code
+   *       inputPerUnit}（后者是前者的摊平派生，{@code inputPerUnit} 列仍按定义给）；
+   *   <li>新增 {@code buildDays} 与 {@code acceptedRightKinds}（B2c 搬进定义的两组件）；
+   *   <li>{@code regime} 来自定义；候选的 {@code laborSource} / {@code assetSource} **不在本视图**： 前者由 {@code
+   *       RegimeRelations.laborSourceFor(regime)} 派生（经济关系），后者是 economy 的 {@code
+   *       EconomyMeta.planAssetSources} 声明（不进方案定义）。
+   * </ul>
+   *
+   * <p>★ 只读、不重算：数值逐字段取自 production 的定义权威（I1/I13）。
+   */
+  private static List<Map<String, Object>> planViews(
+      Map<
+              io.mosire.simos.economy.api.id.IndustryId,
+              io.mosire.simos.production.contract.IndustryDefinitionView>
+          definitions) {
+    List<io.mosire.simos.production.contract.IndustryDefinitionView> plans =
+        new ArrayList<>(definitions.values());
+    plans.sort(Comparator.comparing(plan -> plan.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(plans.size());
+    for (io.mosire.simos.production.contract.IndustryDefinitionView plan : plans) {
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("id", candidate.id().value());
-      view.put("version", candidate.version());
-      view.put("modeKey", candidate.modeKey());
-      view.put("name", candidate.name());
-      view.put("output", candidate.output().value());
-      view.put("outputPerUnit", sortedCommodities(candidate.outputPerUnit()));
-      view.put("inputPerUnit", sortedCommodities(candidate.inputPerUnit()));
-      Map<String, Long> requiredAssets = new TreeMap<>();
-      for (Map.Entry<AssetKind, Long> asset : candidate.requiredAssets().entrySet()) {
-        requiredAssets.put(asset.getKey().name(), asset.getValue());
+      view.put("id", plan.id().value());
+      view.put("name", plan.name());
+      // ★ modeKey = 方案 id 字面（版本键已删）：实例采用它时写进 ProductionProcess.modeKey。
+      view.put("modeKey", plan.id().value());
+      view.put("outputPerUnit", sortedCommodities(plan.outputPerUnit()));
+      view.put("inputPerUnit", sortedCommodities(plan.inputPerUnit()));
+      Map<String, Long> capacityPerUnit = new TreeMap<>();
+      for (Map.Entry<AssetKind, Long> asset : plan.capacityPerUnit().entrySet()) {
+        capacityPerUnit.put(asset.getKey().name(), asset.getValue());
       }
-      view.put("requiredAssets", requiredAssets);
-      view.put("laborPerUnit", candidate.laborPerUnit());
-      view.put("buildDays", candidate.buildDays());
-      view.put("cycleDays", candidate.cycleDays());
-      view.put("regime", candidate.regime().value());
-      view.put("laborSource", candidate.laborSource().name());
+      view.put("capacityPerUnit", capacityPerUnit);
+      view.put("laborPerUnit", plan.laborPerUnit());
+      view.put("buildDays", plan.buildDays());
+      view.put("cycleDays", plan.cycleDays());
+      view.put("regime", plan.regime().value());
       List<String> rights = new ArrayList<>();
-      for (OwnershipStake.RightKind right : candidate.acceptedRightKinds()) {
+      for (AssetRightKind right : plan.acceptedRightKinds()) {
         rights.add(right.name());
       }
       rights.sort(Comparator.naturalOrder());
       view.put("acceptedRightKinds", rights);
-      view.put("assetSource", candidate.assetSource().map(ApiViews::actorRefView).orElse(null));
       out.add(view);
     }
     return out;
@@ -4840,17 +4920,17 @@ public final class ApiViews {
         outcomes.add(outcome);
       }
     }
+    // ★★ B2c（裁定八）：候选面退役 ⇒ 本读口按**方案定义**重键（{@code candidateId}+{@code version} →
+    //   {@code plan}）；{@code modeKey} 就是方案 id 字面（不再单独存一份）。
     outcomes.sort(
         Comparator.comparing((EntryOutcome outcome) -> outcome.household().value())
-            .thenComparing(outcome -> outcome.candidateId().value())
-            .thenComparingInt(EntryOutcome::version));
+            .thenComparing(outcome -> outcome.plan().value()));
     List<Map<String, Object>> items = new ArrayList<>(outcomes.size());
     for (EntryOutcome outcome : outcomes) {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("household", outcome.household().value());
-      item.put("candidateId", outcome.candidateId().value());
-      item.put("version", outcome.version());
-      item.put("modeKey", outcome.modeKey());
+      item.put("plan", outcome.plan().value());
+      item.put("modeKey", outcome.plan().value());
       item.put("industry", outcome.industryId().value());
       item.put("accepted", outcome.accepted());
       item.put("reason", outcome.reason());
@@ -5591,6 +5671,11 @@ public final class ApiViews {
   public static Map<String, Object> population(
       SocialData data,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       HexCoord coord,
       SimosTimestamp at,
       CalendarService calendars) {
@@ -5614,7 +5699,8 @@ public final class ApiViews {
     //   ★ 它挂在本读口上（**沿用既有权限判定**：该格有 populations 序列 + 人口可见），不另开更宽的判据。
     List<Map<String, Object>> crisis = new ArrayList<>();
     for (CrisisMonitor.Light light :
-        CrisisMonitor.lightsAt(coord, economy, data, at.tick(), clock)) {
+        CrisisMonitor.lightsAt(
+            coord, economy, productionUnits, definitions, data, at.tick(), clock)) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("kind", light.kind().name());
       entry.put("evidence", new LinkedHashMap<>(light.evidence()));
@@ -5624,13 +5710,10 @@ public final class ApiViews {
     return view;
   }
 
-  /**
-   * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
-   */
-  public static Map<String, Object> population(
-      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
-    return population(data, economy, coord, at, CalendarService.defaults());
-  }
+  // ★★★ D-032 B3（§13.13.7 第 4 条）：5 参"旧签名兼容"重载（缺省历法、**没有 production 定义来源**）已**删除** ——
+  //   它读不到产业定义的当刻权威（危机红灯的相位/周期天数要用），main 里 0 个调用点
+  //   （GuiServer 与 AppSocialToolViews 都走带 definitions 的入口）⇒ 按 §13.3 第 2 条删掉没有实际职责的旧重载，
+  //   不保留"能编译、实际拿不到权威"的入口。
 
   /** {@code groups} 块（R1.5 的形状，一字不动）：{@code total,urban,rural,ageBrackets,sex}。 */
   private static Map<String, Object> groupsView(

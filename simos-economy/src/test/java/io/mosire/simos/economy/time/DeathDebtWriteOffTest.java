@@ -21,14 +21,17 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.population.LotChange;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
@@ -71,7 +74,7 @@ class DeathDebtWriteOffTest {
   @Test
   void deathReducesPrincipalBySurvivorRatioAndRecordsTheWriteOff() {
     EconomyData base = minimalEconomy(100L, 1_000_000L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     EconomySettlement.applyPopulationChangeInto(session, List.of(new LotChange(LOT, HEX, 0L, 1L)));
 
@@ -100,14 +103,14 @@ class DeathDebtWriteOffTest {
   void deathFloorsPerContractAndFullDeathWritesOffTheWholePrincipal() {
     EconomyData base = minimalEconomy(100L, 999L);
     EconomyData afterOneDeath =
-        EconomySettlement.applyPopulationChange(base, List.of(new LotChange(LOT, HEX, 0L, 1L)));
+        applyPopulationChange(base, defs(), List.of(new LotChange(LOT, HEX, 0L, 1L)));
 
     assertThat(afterOneDeath.debtContracts().get(DEBT).principal())
         .as("⌊999 × 99 ÷ 100⌋ = 989（逐笔向下取整，不先合计再摊）")
         .isEqualTo(989L);
 
     EconomyData afterAllDeath =
-        EconomySettlement.applyPopulationChange(base, List.of(new LotChange(LOT, HEX, 0L, 100L)));
+        applyPopulationChange(base, defs(), List.of(new LotChange(LOT, HEX, 0L, 100L)));
     assertThat(afterAllDeath.classes().get(DEBTOR).population()).as("全户死亡").isZero();
     assertThat(afterAllDeath.classes().get(DEBTOR).laborMilli()).as("劳动同步归零").isZero();
     assertThat(afterAllDeath.debtContracts().get(DEBT).principal())
@@ -124,7 +127,7 @@ class DeathDebtWriteOffTest {
     EconomyData base = minimalEconomy(100L, 1_000_000L);
 
     EconomyData withBirths =
-        EconomySettlement.applyPopulationChange(base, List.of(new LotChange(LOT, HEX, 2L, 0L)));
+        applyPopulationChange(base, defs(), List.of(new LotChange(LOT, HEX, 2L, 0L)));
 
     assertThat(withBirths.classes().get(DEBTOR).population()).as("出生不改债务").isEqualTo(102L);
     assertThat(withBirths.debtContracts().get(DEBT).principal())
@@ -132,11 +135,14 @@ class DeathDebtWriteOffTest {
         .isEqualTo(1_000_000L);
     assertThat(DebtStock.totalPrincipal(withBirths.debtContracts())).isEqualTo(1_000_000L);
 
-    EconomyData emptyPlan = EconomySettlement.applyPopulationChange(base, List.of());
-    assertThat(emptyPlan).as("空计划直接返回同一实例（不制造等值新对象）").isSameAs(base);
+    // ★★ D-032 T1：静态形已删 ⇒ 本句**换源**到会话形。旧断言是"同一实例"（isSameAs）——会话形下
+    //   `build()` 会构造一份新状态，故判据改写为**逐值不变**（`applyPopulationChangeInto` 对空计划提前
+    //   return，工作表一字未动 ⇒ 建出来的状态与 base 逐值相等）。这是"空计划不推进"这条判据的会话形表达。
+    EconomyData emptyPlan = applyPopulationChange(base, defs(), List.of());
+    assertThat(emptyPlan).as("空计划 ⇒ 状态逐值不变（会话形下 build() 是新对象，故不比同一性）").isEqualTo(base);
 
     EconomyData zeroChange =
-        EconomySettlement.applyPopulationChange(base, List.of(new LotChange(LOT, HEX, 0L, 0L)));
+        applyPopulationChange(base, defs(), List.of(new LotChange(LOT, HEX, 0L, 0L)));
     assertThat(zeroChange).as("出生/死亡都为 0 的条目是 no-op，状态逐值不变").isEqualTo(base);
     assertThat(zeroChange.debtContracts().get(DEBT).principal()).isEqualTo(1_000_000L);
   }
@@ -144,23 +150,61 @@ class DeathDebtWriteOffTest {
   // ── 最小夹具 ─────────────────────────────────────────────────────────────────────────
 
   /** 一个 100 人家户（一笔粮债）+ 一个债主家户 + 一条喂给 ESTATE unit 的配额。 */
+  private static ProductionData defs() {
+    return ProductionData.empty().withIndustry(industry()).withInstance(unit());
+  }
+
+  /**
+   * ★★ D-032 T5（a 桶夹具欠账）：实例的唯一权威在 production（I1）⇒ 夹具必须把 {@link #UNIT} **落进权威实例表**， 否则 {@code
+   * EconomySettlement.applyPopulationChangeInto} 的批次 → unit 索引（{@code :4511-4525}）两个来源都空、 走「该格没有
+   * unit ⇒ continue」那一支 ⇒ 人口/劳动/本金/删债累加器**全部**被跳过（3 条红即此形态）。
+   *
+   * <p>本方法里的取值与 {@link #minimalEconomy(long, long)} 的配额 {@code activity=UNIT.value()}、份额 {@code
+   * operator=ESTATE} 是**同一个 unit id / 同一个经营者**；旧稿在 {@code minimalEconomy} 里造过同一形状的局部量却
+   * 从不落表（迁移期残留），本处收口后删掉那个死局部量。
+   */
+  private static ProductionProcess unit() {
+    return new ProductionProcess(
+        UNIT,
+        FARM,
+        ProductionLocation.ofPlan(FARM).orElseThrow(),
+        ESTATE,
+        FARM.value(),
+        0L,
+        Map.of(),
+        Map.of());
+  }
+
+  private static IndustryDefinitionView industry() {
+    return IndustryViews.industry(
+        FARM,
+        "农业",
+        new RegimeId("tenant"),
+        120L,
+        Map.of(AssetKind.LAND, 1000L),
+        Map.of(),
+        0L,
+        0L,
+        Map.of(GRAIN, 7L),
+        Map.of(),
+        List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 700)),
+        new AllocationRule.Split(700, 300));
+  }
+
+  /**
+   * ★★★ D-032 T1：静态入口 `EconomySettlement.applyPopulationChange(EconomyData, definitions, changes)`
+   * 已按 B3 裁定删除（"runtime = null 的会话"这种装配形态不再合法）⇒ 判据**换源**到会话形
+   * `applyPopulationChangeInto(EconomySession, changes)`（`EconomyDayStepper.applyPopulationChange`
+   * 走的就是它）。 ★ 断言一字未改（含空计划那条，只是同一性改逐值 —— 见用例内的注）。
+   */
+  private static EconomyData applyPopulationChange(
+      EconomyData base, ProductionData definitions, List<LotChange> changes) {
+    EconomySession session = new EconomySession(base, definitions, runtimeOf(definitions));
+    EconomySettlement.applyPopulationChangeInto(session, changes);
+    return session.build();
+  }
+
   private static EconomyData minimalEconomy(long population, long principal) {
-    Industry industry =
-        new Industry(
-            FARM,
-            "农业",
-            new RegimeId("tenant"),
-            120L,
-            Map.of(AssetKind.LAND, 1000L),
-            Map.of(),
-            0L,
-            0L,
-            Map.of(GRAIN, 7L),
-            Map.of(),
-            List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 700)),
-            new AllocationRule.Split(700, 300));
-    ProductionProcess unit =
-        new ProductionProcess(UNIT, FARM, ESTATE, FARM.value(), 0L, 0L, Map.of());
     HouseholdEconomy debtor =
         new HouseholdEconomy(
             DEBTOR,
@@ -208,8 +252,6 @@ class DeathDebtWriteOffTest {
                     OptionalLong.empty(),
                     EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
                     Optional.empty())))
-        .withIndustries(Map.of(FARM, industry))
-        .withProcesses(Map.of(UNIT, unit))
         .withHouseholdEconomies(rows)
         .withDebtContracts(Map.of(DEBT, debt))
         .withLaborCommitments(
@@ -217,5 +259,11 @@ class DeathDebtWriteOffTest {
                 ALLOC,
                 new HouseholdLaborCommitment(
                     ALLOC, LOT, DEBTOR, ESTATE, UNIT.value(), 60_000L, 1L)));
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

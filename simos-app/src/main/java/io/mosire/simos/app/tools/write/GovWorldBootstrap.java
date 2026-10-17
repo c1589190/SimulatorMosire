@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
+import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.HouseholdSeeder;
 import io.mosire.simos.calendar.CalendarClock;
@@ -28,12 +29,12 @@ import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
-import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.gov.tools.write.GovCreateOfficePlan;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.spi.UpsertIndustryHandler;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -498,9 +499,9 @@ public final class GovWorldBootstrap {
     next =
         applier.apply(
             next,
-            EconomyUpsertIndustryHandler.TYPE,
-            new EconomyUpsertIndustryHandler(),
-            new EconomyCodec(),
+            UpsertIndustryHandler.TYPE,
+            new UpsertIndustryHandler(new AppProductionConsumerPort()),
+            new io.mosire.simos.production.codec.ProductionCodec(),
             officeIndustryPayload(officeIndustryId, spec));
     next =
         applier.apply(
@@ -557,6 +558,16 @@ public final class GovWorldBootstrap {
               new UnitCodec(),
               setTaxRatePayload(spec));
     }
+    // ★★ B2c（§13.12.4 裁定十）：**先**经 production 契约给这个 GOV 立 office 生产实例，**再**发 economy 侧
+    //   （economy 的具名拒 OFFICE_UNIT_NOT_IN_PRODUCTION 是 fail-closed 的正确行为，不放宽 —— 补的是"建实例的
+    //   入口"）。次序不可换：economy 侧要求实例已存在。
+    next =
+        applier.apply(
+            next,
+            io.mosire.simos.production.spi.CreateInstanceHandler.TYPE,
+            new io.mosire.simos.production.spi.CreateInstanceHandler(),
+            new io.mosire.simos.production.codec.ProductionCodec(),
+            createOfficeInstancePayload(spec, officeIndustryId, reason));
     next =
         applier.apply(
             next,
@@ -660,6 +671,9 @@ public final class GovWorldBootstrap {
     payload.put("id", industryId);
     payload.put("name", spec.name() + "官署");
     payload.put("regime", OFFICE_REGIME);
+    // ★★ D-031 P1 §9.2：office 属于 P0 声明的六 kind ⇒ 显式写入权威技能键（不解析 id 猜）。
+    payload.put(
+        "skill", io.mosire.simos.production.contract.ProductionSkillKeys.ADMINISTRATION.value());
     payload.put("cycleDays", OFFICE_CYCLE_DAYS);
     payload.put("capacityPerUnit", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("dailyInputPerUnit", new LinkedHashMap<>());
@@ -758,6 +772,39 @@ public final class GovWorldBootstrap {
     payload.put("unitId", spec.govId());
     payload.put("regionId", spec.jurisdictionRegionId());
     payload.put("ratePerMille", PROVINCE_TAX_RATE_PER_MILLE);
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * ★★ <b>B2c（裁定十）：office 生产实例的载荷</b> —— 身份四字段与 {@code economy.UpsertGovUnit} 的期望逐字对齐 （{@code
+   * operator = HOUSEHOLD:hh-gov-<govId>}、{@code unit = ProductionUnitId.idOf(industryId,
+   * operator)}、 {@code modeKey = GOV_SERVICE}（= economy 侧缺省）；地点取 office 产业 id 的格段，与 {@code
+   * officeIndustryId(at)} 同源）。
+   */
+  private static String createOfficeInstancePayload(
+      GovSpec spec, String officeIndustryId, String reason) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("plan", officeIndustryId);
+    payload.put(
+        "unit",
+        io.mosire.simos.economy.api.id.ProductionUnitId.idOf(
+                io.mosire.simos.economy.api.id.IndustryId.parse(officeIndustryId),
+                io.mosire.simos.economy.api.cohort.HouseholdActors.of(
+                    GovernmentHouseholds.of(spec.govId())))
+            .value());
+    payload.put(
+        "operator",
+        Map.of(
+            "kind",
+            io.mosire.simos.actor.api.actor.ActorKind.HOUSEHOLD.name(),
+            "id",
+            GovernmentHouseholds.of(spec.govId()).value()));
+    payload.put("modeKey", OFFICE_REGIME);
+    // ★ 地点 = office 产业 id 的格段（"把既有生成约定读成地点"——同一处约定，不另抄一份坐标）。
+    io.mosire.simos.production.contract.ProductionLocation.ofPlan(
+            io.mosire.simos.economy.api.id.IndustryId.parse(officeIndustryId))
+        .ifPresent(location -> payload.put("location", location.value()));
+    payload.put("reason", reason);
     return ToolSupport.json(payload);
   }
 

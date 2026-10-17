@@ -35,8 +35,8 @@ package io.mosire.simos.util.spi;
  *   <li><b>① 属于 GM 的推演 / 世界构造权</b>：单位位置与状态（{@code unit.PlaceAt} / {@code SetStatus} / {@code
  *       SetVisionRadius} / {@code SetStateDescription}）、单位编制与指挥链（改名 / 改编 / 挂靠 / 拆分 / 合并 / 指挥链 /
  *       单位家户表）、聚落（{@code social.CreateCity} / {@code UpdateCity}）与经济世界参数 / 产权结构 （{@code
- *       economy.RegisterCandidate} / {@code TransferAssetShare} / {@code SetMarketPrice} / {@code
- *       MigrateHousehold}）；
+ *       economy.TransferAssetShare} / {@code economy.SetMarketPrice} / {@code
+ *       economy.MigrateHousehold}；★ B2c：{@code economy.RegisterCandidate} 已随候选面退役删除，故从例子里移除）；
  *   <li><b>② 能绕过工单直接创造 / 毁灭资源或人口（钱、人口、军队）</b>：{@code actor.Seed} / {@code economy.Seed}
  *       （凭空造钱造货）、{@code social.SetPopulation} / {@code SeedGroups} / {@code CreateHousehold} /
  *       {@code AddHouseholdMembers} / {@code RemoveHouseholdMembers} / {@code

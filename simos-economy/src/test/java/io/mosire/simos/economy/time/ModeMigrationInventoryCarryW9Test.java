@@ -19,6 +19,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.testing.TestLogCapture;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
@@ -170,7 +171,7 @@ class ModeMigrationInventoryCarryW9Test {
   /** 跑一次迁移执行器（走真实 {@code ModeMigrationSettlement.apply} + 真实账本铸造口）。 */
   private static CarryRun run(List<Long> populations, Map<CommodityId, Long> goods) {
     EconomyData base = base();
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(SOURCE, H1, goods, Map.of(), Map.of(), Map.of());
     accounts.registerHousehold(HOST, H2, Map.of(), Map.of(), Map.of(), Map.of());
@@ -195,7 +196,12 @@ class ModeMigrationInventoryCarryW9Test {
     List<String> logLines;
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
       ModeMigrationSettlement.apply(
-          session, accounts, new ModeMigrationPolicy.MigrationPlan(moves), base, DAY, ledger);
+          session,
+          accounts,
+          new ModeMigrationPolicy.MigrationPlan(moves),
+          EconomyFixtures.dayView(base, defs()),
+          DAY,
+          ledger);
       logLines = List.copyOf(log.lines());
     }
 
@@ -243,7 +249,6 @@ class ModeMigrationInventoryCarryW9Test {
               household, position, position, Set.of(), Map.of(), 0L, 0L, "w9-carry-test"));
     }
     return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(rows)
@@ -267,5 +272,16 @@ class ModeMigrationInventoryCarryW9Test {
         Map.of(),
         Map.of(),
         0L);
+  }
+
+  /** production 定义权威夹具：默认生产方式目录（P1 起定义显式注入）。 */
+  private static ProductionData defs() {
+    return ProductionData.empty().withModes(DefaultProductionModes.modes());
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

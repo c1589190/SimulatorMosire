@@ -66,6 +66,8 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -819,7 +821,8 @@ class DecisionMakerScopeEndToEndTest {
                 //   服务该端点的世界必须装配经济切片 —— 与 unit/sd 同款（缺切片 = 装配故障，不静默兜底）。
                 //   ★ 本夹具给**未激活**的空经济（`EconomyData.empty()`）：它足够回答"这一格的劳动配额为空"，
                 //     而本类的判据是**权限**（可见/不可见），不是劳动的数字。
-                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty())),
+                "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty()),
+                "production", new ProductionSnapshot(ref("main", 1), T7, ProductionData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -832,6 +835,7 @@ class DecisionMakerScopeEndToEndTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 gov、`armies` 住 army
                     //   ⇒ 信封里有这两片就必须有对应 codec（CheckpointEncoder 缺一个当场抛）。
                     new GovCodec(),

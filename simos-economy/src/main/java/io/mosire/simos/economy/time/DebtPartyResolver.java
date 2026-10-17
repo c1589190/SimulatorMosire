@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -12,14 +13,13 @@ import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -532,7 +532,7 @@ final class DebtPartyResolver {
 
   /** 该聚合生产主体是否是 {@code feudal}（庄园）制度：是 ⇒ estate 口径回退，否则按作坊口径。 */
   private static boolean isFeudalIndustry(EconomyDayView data, ActorRef actor) {
-    Industry industry = data.industries().get(new IndustryId(actor.id()));
+    IndustryDefinitionView industry = data.industries().get(new IndustryId(actor.id()));
     return industry != null && RegimeOperators.FEUDAL.equals(industry.regime().value());
   }
 

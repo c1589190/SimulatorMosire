@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -19,16 +20,17 @@ import org.slf4j.Logger;
  *
  * <pre>{@code
  * {"adjustment":"forgiveDebt"|"setLiquidationPolicy"
- *              |"upsertProductionMode"|"deactivateProductionMode"
  *              |"upsertClassStructure"|"upsertClassPosition"
  *              |"upsertProductionRelation"|"upsertAssetRule"
- *              |"upsertProductionOrganization"|"upsertCandidate"
- *              |"setOutputQuantity"|"clearOutputQuantity",
+ *              |"upsertProductionOrganization"|"upsertCandidate"(已退役)
+ *              |"setOutputQuantity"|"clearOutputQuantity"(已迁出)
+ *              |"upsertProductionMode"|"deactivateProductionMode"(已迁出)",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>十二条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
+ * <p>★★ <b>七条源状态白名单</b>（B2c 起；五个已迁出的 kind 只给具名拒，见 {@link EconomyGmAdjustments#project}）—— 唯一语义落点在
+ * {@link EconomyGmAdjustments#project}：
  *
  * <ul>
  *   <li><b>旧表两</b>：
@@ -42,16 +44,16 @@ import org.slf4j.Logger;
  *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
  *             {@code AssetRule} 不存在 ⇒ 具名拒绝。
  *       </ul>
- *   <li><b>P7 生产方式编辑（八）</b>： {@code upsertProductionMode}（{@code
- *       id,name,version?,classStructureId}；version 必须推进，classStructureId 必须已存在）、{@code
- *       deactivateProductionMode}（被结构/位置/组织/资产规则/变迁/质押引用 ⇒ 具名拒绝）、{@code
- *       upsertClassStructure}（{@code id,modeId,positions?,defaultSharesPerMille?}； 位置 upsert
- *       并同步全局表与所有结构副本）、{@code upsertClassPosition}（{@code id,modeId,字段?,classStructureId?}）、{@code
+ *   <li><b>P7 生产方式/阶层编辑</b>：生产方式定义写入已迁 {@code production.UpsertProductionMode} / {@code
+ *       production.DeactivateProductionMode}（本命令不再收）；{@code upsertClassStructure}（{@code
+ *       id,modeId,positions?,defaultSharesPerMille?}； 位置 upsert 并同步全局表与所有结构副本）、{@code
+ *       upsertClassPosition}（{@code id,modeId,字段?,classStructureId?}）、{@code
  *       upsertProductionRelation}（{@code activity,operator?,
  *       inputSupplier?,rules?,residualOwner?,laborSource?}；operator 必须与 unit.operator 一致）、 {@code
  *       upsertAssetRule}（{@code modeId,assetKind,...}；id 由 {@code AssetRuleId.idOf} 派生）、 {@code
- *       upsertProductionOrganization}（引用与四档状态守卫）、{@code upsertCandidate}（按 ProductionCandidate
- *       现有字段；见 {@link EconomyGmAdjustments#project}）。八个 kind 只做形状校验， 引用存在性与幂等由 {@code project} 统一判。
+ *       upsertProductionOrganization}（引用与四档状态守卫）。★ B2c（裁定八）：{@code upsertCandidate} 已随候选面
+ *       整体退役（方案定义的写面在 {@code production.UpsertIndustry}），命中 ⇒ 具名拒。这些 kind 只做形状校验， 引用存在性与幂等由 {@code
+ *       project} 统一判。
  *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@code setOutputQuantity}（{@code
  *       {industryId,commodityId,quantity}}；quantity 必须是 [0, 1000000] 整数）、{@code
  *       clearOutputQuantity}（{@code {industryId,commodityId}}；没有既有覆盖 ⇒ 拒）；守卫与具名 reason 见 {@link
@@ -108,10 +110,6 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
           EconomyCommandPayloads.requireText(label, parameters, "debtContractId");
       case EconomyGmAdjustments.SET_LIQUIDATION_POLICY ->
           EconomyCommandPayloads.requireText(label, parameters, "assetRuleId");
-      case EconomyGmAdjustments.UPSERT_PRODUCTION_MODE ->
-          requireUpsertProductionModeShape(label, parameters);
-      case EconomyGmAdjustments.DEACTIVATE_PRODUCTION_MODE ->
-          EconomyCommandPayloads.requireText(label, parameters, "id");
       case EconomyGmAdjustments.UPSERT_CLASS_STRUCTURE ->
           requireUpsertClassStructureShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CLASS_POSITION ->
@@ -121,7 +119,11 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       case EconomyGmAdjustments.UPSERT_ASSET_RULE -> requireUpsertAssetRuleShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_PRODUCTION_ORGANIZATION ->
           requireUpsertProductionEnterpriseShape(label, parameters);
-      case EconomyGmAdjustments.UPSERT_CANDIDATE -> requireUpsertCandidateShape(label, parameters);
+      // ★★ B2c（裁定八）：候选 kind 已退役 —— shape 校验没有意义（它不再写任何状态），
+      //   由 project(...) 给具名拒（plan-definition-moved-to-production-definition）。
+      case EconomyGmAdjustments.UPSERT_CANDIDATE -> {
+        // 故意不做形状校验：退休 kind 的载荷形状不是契约面（防止"看起来还在支持的"假信号）。
+      }
       case EconomyGmAdjustments.SET_OUTPUT_QUANTITY ->
           requireSetOutputQuantityShape(label, parameters);
       case EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY ->
@@ -138,16 +140,6 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
                   + "）");
     }
     return List.of();
-  }
-
-  /** {@code upsertProductionMode} 的形状：id/name/classStructureId 必填非空；version 可选但必须是整数。 */
-  private static void requireUpsertProductionModeShape(String label, JsonNode parameters) {
-    EconomyCommandPayloads.requireText(label, parameters, "id");
-    EconomyCommandPayloads.requireText(label, parameters, "name");
-    EconomyCommandPayloads.requireText(label, parameters, "classStructureId");
-    if (hasValue(parameters, "version")) {
-      EconomyCommandPayloads.requireLong(label, parameters, "version");
-    }
   }
 
   /** {@code upsertClassStructure} 的形状：id/modeId 必填；positions 可选但必须是对象数组；份额表可选但必须是对象。 */
@@ -223,23 +215,6 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     }
     if (hasValue(parameters, "status")) {
       EconomyCommandPayloads.requireText(label, parameters, "status");
-    }
-  }
-
-  /** {@code upsertCandidate} 的形状：id 必填；version 可选整数；output/cycleDays/regime 在有给时做最小类型判。 */
-  private static void requireUpsertCandidateShape(String label, JsonNode parameters) {
-    EconomyCommandPayloads.requireText(label, parameters, "id");
-    if (hasValue(parameters, "version")) {
-      EconomyCommandPayloads.requireLong(label, parameters, "version");
-    }
-    if (hasValue(parameters, "output")) {
-      EconomyCommandPayloads.requireText(label, parameters, "output");
-    }
-    if (hasValue(parameters, "cycleDays")) {
-      EconomyCommandPayloads.requireLong(label, parameters, "cycleDays");
-    }
-    if (hasValue(parameters, "regime")) {
-      EconomyCommandPayloads.requireText(label, parameters, "regime");
     }
   }
 
@@ -389,7 +364,18 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
                     reason == null ? 0 : reason.length()));
       }
       EconomyGmAdjustments.Projection projection =
-          EconomyGmAdjustments.project(base, adjustment, parameters, reason, day);
+          // ★★★ B5（§13.15.2 裁定十八）：`EconomyData.modes` 副本已删 ⇒ "modeId 必须已存在"这类判据
+          //   必须读 production 当刻定义权威 —— 本处显式注入 `EconomyProductionDefinitions.of(state)`
+          //   （与 `EconomySetHouseholdParticipationHandler` 同一形态；缺切片 ⇒ 装配故障，不降级成空表）。
+          // ★★ B2b：实例投影从 production 切片的只读口取（economy 侧的 units 组件已删）。
+          EconomyGmAdjustments.project(
+              base,
+              EconomyProductionDefinitions.of(state),
+              EconomyProductionDefinitions.stateOf(state).instances(),
+              adjustment,
+              parameters,
+              reason,
+              day);
       logApplied(adjustment, projection, reason, day, parameters.size());
       return new HandlerOutcome.Applied(projection.changeSet());
     } catch (IllegalArgumentException e) {

@@ -7,6 +7,7 @@ import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -121,7 +122,7 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     LinkedHashSet<String> writes = new LinkedHashSet<>();
     reads.add(economyAddressRoot());
     writes.add(economyAddressRoot());
-    for (IndustryId id : economy.industries().keySet()) {
+    for (IndustryId id : productionDataOf(state).industries().keySet()) {
       reads.add(economyAddress("industry", id.value()));
       writes.add(economyAddress("industry", id.value()));
     }
@@ -173,7 +174,7 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
                 "accounts",
                 actor.accounts().size(),
                 "industries",
-                economy.industries().size()));
+                productionDataOf(state).industries().size()));
     // ★★ S1：唯一账户会话（家户 + 经营者；商品 + 货币 + 冻结）一次装载。
     //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
     ActorData migratedBooks = actor; // ★ P2-A：旧账户随旧世界报废，不再做 legacy actor 账户搬家
@@ -186,14 +187,33 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     // ★★ D3（2026-10-09）：过滤集取**活会话**的键集（见日循环），不用 advance 起点的快照 —— 迁移会在中途
     //   `AccountSession.registerHousehold` 新建家户，快照漏掉它 ⇒ 它的当日条目被折到 actor 基准上而终值又被
     //   绝对值覆盖 ⇒ 前缀校验拿非权威基准判负（同款 500，见 PopulationEconomyTimeParticipant 的同类注释）。
+    // ★★★ D-032 U2：**备用推进路径同样装配生产运行时引擎**（§12.3 第 9 条：两条推进接线都要按新契约接线）。
+    //   一次 Advance 新建一个实例、独占使用到底；changeSet() 在下面与 ACTOR 账户汇入同一次提案（I11）。
+    io.mosire.simos.production.ProductionRuntimeEngine productionRuntime =
+        new io.mosire.simos.production.ProductionRuntimeEngine(
+            // ★★ B1（D-032 §13.3 第 3 条）：**基态由组合根本地读切片**（`productionDataOf(state)`）——
+            //   它**不是** economy 越界：本类是组合根（simos-app 允许直接依赖 production 全部包）。
+            //   旧形态经 `EconomyProductionDefinitions.runtimeDataOf` 让 **economy 读 production 内部状态类型**
+            //   （`io.mosire.simos.production.ProductionData`）再回传 —— 那条 import 已删除（V11 扫描面）。
+            //   ★ 实例/经验/解锁/效率/覆盖的读与写此后一律走 `ProductionRuntime` 自己的口；
+            //     本域变更集由 `ProductionChangeSet.between(段首基态, 当刻候选态)` 派生（铁律 5）。
+            productionDataOf(state));
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
+            EconomyProductionDefinitions.of(state),
+            productionRuntime,
             session,
             // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
             MarketTopologyBook.from(state));
     ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
+      // ── ★★ D-032（D2 直接删）：备用经济路径上的"文化加成中性接线点"（CultureAptitudeBridge）已随
+      //   "文化 → 生产效率倍率"整条通路退役（用户 U5）；两条推进路径现在都不注入任何效率修正。
+      // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：**备用推进路径同样每 tick 恰开一次生产推进**
+      //   （先按明确日序衰减一次经验，再冻结本 tick 生效条件）。两条路径口径<b>逐字相同</b> ——
+      //   备用路径不是"少一步"的路径；重复开启/回退由引擎具名抛契约故障（不在此捕获）。
+      productionRuntime.beginTick(day);
       ProductionLedger ledger = stepper.step(day);
       // ★★ W3（2026-10-11）：经济腿每天还会推一份"逐户缺口"瞬态 outbox（报给 Social 的饥荒输入）。
       //   本参与者只认识 economy + actor（**不认识 Social**）⇒ 它没有下家：这里必须**取走并丢弃**，
@@ -249,17 +269,48 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
                 "accounts",
                 books.accounts().size(),
                 "industries",
-                currentEconomy.industries().size()));
-    return new WorldTimeProposal(
-        NAMESPACE,
-        Map.of(
-            ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
-            ACTOR, ActorChangeSet.between(actor, books)),
-        reads,
-        writes);
+                productionDataOf(state).industries().size()));
+    java.util.LinkedHashMap<String, io.mosire.simos.util.state.ChangeSet> moduleChanges =
+        new java.util.LinkedHashMap<>();
+    moduleChanges.put(ECONOMY, EconomyChangeSet.between(economy, currentEconomy));
+    moduleChanges.put(ACTOR, ActorChangeSet.between(actor, books));
+    // ★★ D-031 P1 §9.1：本段按需创建的定义必须与经济实例在同一次 Advance 原子落账（备用路径同样接线）。
+    java.util.Map<
+            io.mosire.simos.economy.api.id.IndustryId,
+            io.mosire.simos.production.contract.IndustryDefinitionView>
+        createdDefinitions = stepper.createdIndustryDefinitions();
+    // ★★★ D-032 U2/§12.3 第 9 条（I11）：production 本域变更集汇入同一个 moduleChanges ⇒ 与 ACTOR 账户同一条
+    //   Revision。合并口径与真实日循环逐字相同：起点是**引擎当刻候选态**，按需定义再经 production 自己的登记投影合流，
+    //   最后**一份** ChangeSet 相对推进起点的 production 状态派生（不在同一个键上 put 两次）。
+    io.mosire.simos.production.ProductionData productionCandidate = productionRuntime.state();
+    if (!createdDefinitions.isEmpty()) {
+      // ★★ §9.2：与真实日循环同一份 production 登记投影，不各抄一份合并规则。
+      io.mosire.simos.production.spi.DefinitionRegistration.Projection registered =
+          io.mosire.simos.production.spi.DefinitionRegistration.registerCreated(
+              productionCandidate, createdDefinitions);
+      productionCandidate = registered.projected();
+    }
+    moduleChanges.put(
+        "production",
+        io.mosire.simos.production.change.ProductionChangeSet.between(
+            productionDataOf(state), productionCandidate));
+    return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
   }
 
   // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────
+
+  /** ★★ D-031 P1：production 切片状态（产业定义权威；装配故障当场炸）。 */
+  private static io.mosire.simos.production.ProductionData productionDataOf(SimulationState state) {
+    io.mosire.simos.util.state.Snapshot snapshot =
+        state
+            .module("production")
+            .orElseThrow(() -> new IllegalStateException("state 里没有 production 切片（装配故障：定义权威必须在场）"));
+    if (!(snapshot instanceof io.mosire.simos.production.ProductionSnapshot productionSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 production 切片不是 ProductionSnapshot: " + snapshot.getClass().getName());
+    }
+    return productionSnapshot.state();
+  }
 
   private static EconomyData economyOf(SimulationState state) {
     Snapshot snapshot =

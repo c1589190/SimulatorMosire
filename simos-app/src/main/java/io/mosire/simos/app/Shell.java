@@ -44,6 +44,7 @@ import io.mosire.simos.app.ga.channel.HttpDecisionChannel;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.llm.LlmProviderResolver;
+import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.render.RenderService;
@@ -74,6 +75,8 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.advance.AdvanceOutcome;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.culture.codec.CultureCodec;
+import io.mosire.simos.culture.spi.SetHouseholdCultureHandler;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
@@ -88,7 +91,6 @@ import io.mosire.simos.economy.spi.EconomyMergeMarketZonesHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyReassignZoneHexesHandler;
 import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
-import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
@@ -107,11 +109,11 @@ import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketZoneLoanRateAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
+import io.mosire.simos.economy.spi.EconomySetPlanSourcesHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
-import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
@@ -176,6 +178,13 @@ import io.mosire.simos.map.spi.SetHexAreaHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.SplitRegionHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
+import io.mosire.simos.production.codec.ProductionCodec;
+import io.mosire.simos.production.contract.ProductionConsumerPort;
+import io.mosire.simos.production.spi.ClearRegionDefinitionsHandler;
+import io.mosire.simos.production.spi.DeactivateProductionModeHandler;
+import io.mosire.simos.production.spi.ProductionSeedHandler;
+import io.mosire.simos.production.spi.UpsertIndustryHandler;
+import io.mosire.simos.production.spi.UpsertProductionModeHandler;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -617,7 +626,13 @@ public final class Shell implements AutoCloseable {
             //   的一般决策人……储存可以交给 Core」）。★ namespace() 恒 "ga" —— 必须与 GaSnapshot.namespace() 同
             //   字面，写歪 SimulationState 构造期当场抛。★ 四条 ga.* 命令的 handler 返回 GaChangeSet，名称前缀决定
             //   CommandBus 把变更集喂给哪个 codec ⇒ 改一处必须同时改另一处。
-            new GaCodec());
+            new GaCodec(),
+            // ★★ D-031 Z4（第十、十一切片）：production / culture 两个新切片。★ 各自的 namespace() 恒
+            //   "production" / "culture" —— 必须与 ProductionSnapshot / CultureSnapshot.namespace()
+            //   同字面，写歪 SimulationState 构造期当场抛。★ 命令前缀由各 handler 的 type() 决定；新世界的
+            //   初始空片由各世界生成器经 GenesisModuleSlices 登记（只注册 codec 不会让命令拿到初始 snapshot）。
+            new ProductionCodec(),
+            new CultureCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -637,6 +652,11 @@ public final class Shell implements AutoCloseable {
     //   肯定不该给 DM 用」冲突 ⇒ **整条摘掉** {@code DmUsableCommand}。可嵌令面 / 可入队面 /
     //   声明面 **18 → 17**（catalog 141 与落点面 2 不变；摘 1 / 新增 0）。★ 未按 plan 种类分别
     //   放行 —— 那会引入第二处权限声明/判定点。保留 DM 的 17 条 = 上一段去掉工单入口后的其余 17 条。
+    // ★★ D-032 B4（§13.14.5 第 1 条 / 裁定十三）：生产定义命令的跨切片使用端口 —— **组合根在这里装配它**。
+    //   它要同时回答 economy 半边（家户行 / assetShares / relations / 生产方式六类引用者）与 production 半边
+    //   （**生产实例**：IndustryReferenceCounts#units 在 B2b 后的唯一权威）⇒ 只有同时认识两边的组合根能实现；
+    //   四个 production handler 在构造期 requireNonNull 收下它（缺了启动期当场炸，不再等到运行期抛装配故障）。
+    ProductionConsumerPort productionConsumers = new AppProductionConsumerPort();
     List<CommandHandler> handlers =
         new ArrayList<>(
             List.of(
@@ -862,11 +882,20 @@ public final class Shell implements AutoCloseable {
                 //   GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //   窄工具 simos.economy.setEconomyPolicy 照常可用。──
                 new EconomySetEconomyPolicyHandler(),
-                // ★★ 2026-10-13 批次 4（② 凭空注入/改写经济对象）：需求账本与候选预设三条**摘掉**
-                //   {@code DmUsableCommand} ⇒ 仅 GM（三条的 handler 类注本就写明 GM 路径）。──
+                // ★★ D-032 B3（§13.13.2 裁定十一 + §13.13.3 裁定十二）：**方案经济关系声明**的 GM 写口
+                //   （economy.SetPlanSources）—— 声明/清除"某方案借用谁的空闲份额"（economy.meta.planAssetSources）
+                //   与"该方案的劳动由谁出"（economy.meta.planLaborSources）。缺键 = 只认自有份额 / SELF
+                //   （= 旧候选缺省，逐值不变，I14）。GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 /
+                //   RegisterEffect / 决策人目录；窄工具 simos.economy.setPlanSources 照常可用。──
+                new EconomySetPlanSourcesHandler(),
+                // ★★ 2026-10-13 批次 4（② 凭空注入/改写经济对象）：需求账本两条**摘掉**
+                //   {@code DmUsableCommand} ⇒ 仅 GM（两条的 handler 类注本就写明 GM 路径）。
+                //   ★★★ B2c（D-032 §13.12.2 裁定八）：候选面**整体退役** —— `ProductionCandidate` 类型、
+                //   `economy.RegisterCandidate` handler、`EconomyData.candidates` 组件同批删除；
+                //   "可以采用的方案"改由 production 的**产业定义**承接（`production.UpsertIndustry`，
+                //   GM 工具 `simos.economy.upsertIndustry`）。──
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
-                new EconomyRegisterCandidateHandler(),
                 // ── economy（P2-B §13.6）：家户经济配置窄写四条 —— Class 归属、可参与生产方式（多生产方式）、
                 //   劳动时间/参与率、需求更新。★ 前三条仍**打 DmUsableCommand**（零和的家户经济角色配置；能否到决策令由
                 //   economy 命名空间的目标格可达面决定 —— handler 的 CommandTargets 从载荷 at 声明目标格，见各自类注）。
@@ -891,7 +920,19 @@ public final class Shell implements AutoCloseable {
                 // /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertIndustry 照常可用。★ 不实现 CommandTargets（不进决策令桶）。──
-                new EconomyUpsertIndustryHandler(),
+                new UpsertIndustryHandler(productionConsumers),
+                // ── production（D-031 P1）：生产方式定义 upsert / 停用（显式版本推进；停用守卫六类真实引用）。
+                new UpsertProductionModeHandler(productionConsumers),
+                new DeactivateProductionModeHandler(productionConsumers),
+                // ── production（D-031 P1）：定义批量播种（industries + modes）与区域清区。
+                new ProductionSeedHandler(),
+                //   ★★ B2c（§13.12.3 裁定九）：清区在**同一命令内**先退役该区实例、再删无人引用的定义。
+                new ClearRegionDefinitionsHandler(productionConsumers),
+                // ── production（B2c §13.12.4 裁定十）：按需为一个已存在的方案定义立实例（经
+                //   {@code ProductionRuntime#createInstance} 同一实现；GM 窄工具
+                // simos.economy.upsertGovUnit
+                //   在同批里先发它、再发 economy.UpsertGovUnit）。★ GM-only：不打 DmUsableCommand。
+                new io.mosire.simos.production.spi.CreateInstanceHandler(),
                 // ── economy（Z1c 2026-10-23）：为 GOV 单位创建/补齐 office 行政服务生产 unit（units +
                 //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：不打 {@code
                 // DmUsableCommand} ⇒
@@ -1029,7 +1070,19 @@ public final class Shell implements AutoCloseable {
                 // ★★ D4（2026-10-02 / D-009 补裁 + D-010）：记录演进的两条命令——追加阶段与投骰判定。★ 都
                 //   不打 DmUsableCommand（同 D1 的边界）；判定算法在 CombatResolution（唯一拼写点），本注册只负责路由。
                 new AppendCombatStageHandler(),
-                new ResolveCombatStageHandler()));
+                new ResolveCombatStageHandler(),
+                // ★★ D-031 Z4：production / culture 两个新切片的命令面（每 namespace 一 codec + 若干 handler 的
+                //   既有登记形制）。★ 命令都**不打** DmUsableCommand ⇒ 沿用缺省 GM-only（用户「其他工具都是GM
+                //   专有」）；不加 DmUsable / DecisionProposable 等权限标签。★ 命令类型前缀（production.* /
+                //   culture.*）决定 CommandBus 把变更集喂给哪个 codec，与上面对应 codec 的 namespace() 同字面。
+                //   ★ 载荷提示（CatalogTool.PAYLOAD_HINTS）与其它静默面归 Z6 同步，见 z4 账本 §1.5。
+                //   ★★ D-032（D1 直接删）：production.RegisterTechnology / production.SetMastery 两条科技点命令
+                //     已随科技点抽象面一起退役（用户 2026-10-17「D1 直接删」；U1「科技最终以生产方式的可选升级
+                //     体现出来」）⇒ 这里不再登记对应 handler。
+                //   ★★ D-032（D2 直接删）：culture.UpsertAptitudeRule / culture.RemoveAptitudeRule 两条
+                //     "文化 → 生产效率倍率"规则命令已随该通路退役（U5「文化直接决定生产效率太不唯物主义了」）；
+                //     culture 模块本体与文化标签面（culture.SetHouseholdCulture）保留为占位。
+                new SetHouseholdCultureHandler()));
     // ★★ 批次 1（2026-10-12「权限统一到 ga 规范层」）：命令权限**只有一处声明**（handler 上的 {@code DmUsableCommand}
     //   标记），四个面全部由 ga 的规则层从这一份声明派生 + 装配期 fail-closed 审计。
     //   ⇒ Shell **不再有任何权限判断**：迁移前的三处判据全部删除——
@@ -1140,6 +1193,10 @@ public final class Shell implements AutoCloseable {
     //   它必须住在**组合根**：判据要同时看 map 的 Region→hexes 与 unit 的 Unit.jurisdiction()，
     //   而 simos-map 永远不知道 GOV 存在（铁律 3），simos-gov 也看不见区表（见类注）。
     coreSimos.register(new GovJurisdictionGuard());
+    // ★★ D-031 P1 §9.3：候选态落库前跨片校验 —— economy 实例对 production 定义权威的引用（unit/assetShare→industry、
+    //   progressDays≤cycleDays、classStructure/position/组织/规则/质押/变迁→mode、输出覆盖→配方产出键）。
+    //   单条命令 / submitBatch 最终候选态 / restore / Advance 都在落库前拦；领域判断在 economy，app 只注册。
+    coreSimos.register(new io.mosire.simos.economy.EconomyProductionReferenceValidator());
 
     // ★★★ 2026-10-14 W2（设计书 §10.2 / 用户裁定「在1的基础上给每个决策人一个默认工作区」）：**装配期挂载**。
     //   ① 宿主根挂载（`mount_workspace` 只做派生形态 ⇒ 没根就无从起步）；② 此刻已有的每个决策人一块默认工作区。
@@ -1742,25 +1799,31 @@ public final class Shell implements AutoCloseable {
         .destructiveAllowed(true)
         .resourceScopes(
             ResourceScopeMap.of(
-                Map.of(
-                    ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited(),
-                    ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited(),
-                    ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
-                    ToolSupport.GA_NAMESPACE, ResourceScope.unlimited(),
+                java.util.Map.ofEntries(
+                    java.util.Map.entry(ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited()),
+                    java.util.Map.entry(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited()),
+                    java.util.Map.entry(ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited()),
+                    java.util.Map.entry(ToolSupport.GA_NAMESPACE, ResourceScope.unlimited()),
                     // ★ R2a：第六个命名空间（economy:<q>_<r>）——不在这里表态，GM 面就落到"未表态"分支。
-                    ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited(),
+                    java.util.Map.entry(ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited()),
+                    // ★★ D-031 P1：production 命名空间（定义权威迁入 production）——GM 命令
+                    // production.UpsertIndustry 等
+                    //   与窄工具 simos.economy.upsertIndustry 都写它；不表态就回落"未表态"分支。
+                    java.util.Map.entry(
+                        ToolSupport.PRODUCTION_NAMESPACE, ResourceScope.unlimited()),
                     // ★ S1 阶段 2：第七个命名空间（actor:<mapId>[:…]）——同款，不表态就回落"未表态"分支。
-                    ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited(),
+                    java.util.Map.entry(ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited()),
                     // ★★ D1（2026-10-02 / D-012）：第八个命名空间（army:combat.<id>）——写侧表态（GM 的
                     //   army.RecordCombat 窄工具与通用提交）；读侧的可见性按记录所在格判，不落在这个命名空间上。
-                    ToolSupport.ARMY_NAMESPACE, ResourceScope.unlimited(),
+                    java.util.Map.entry(ToolSupport.ARMY_NAMESPACE, ResourceScope.unlimited()),
                     // ★★ 2026-10-14 W1（设计书 §10.3 / 指南 §4 第 1/3 条）：**第九/十/十一**个命名空间 =
                     //   外来 Workspace/Docs 两个库的工作面。★ 不表态 = 一个挂载都建不了（M1 实测原文）、
                     //   doc_* 全部 RESOURCE_DENIED（实测原文）⇒「GM 维护工作区 + DM 记录文档」两件事都不可达。
                     //   ★ 三者都取 unlimited：GM 面就是宿主本人（也是装配期挂载的 holder），它的可达面 = 整棵树。
-                    WorkspacePermissions.WORKSPACES, ResourceScope.unlimited(),
-                    SimosToolSource.DOCS_NAMESPACE, ResourceScope.unlimited(),
-                    SimosToolSource.DOCS_EDIT_NAMESPACE, ResourceScope.unlimited())))
+                    java.util.Map.entry(WorkspacePermissions.WORKSPACES, ResourceScope.unlimited()),
+                    java.util.Map.entry(SimosToolSource.DOCS_NAMESPACE, ResourceScope.unlimited()),
+                    java.util.Map.entry(
+                        SimosToolSource.DOCS_EDIT_NAMESPACE, ResourceScope.unlimited()))))
         .build();
   }
 

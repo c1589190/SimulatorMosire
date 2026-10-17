@@ -58,6 +58,15 @@ public final class ToolResources {
   public static final String ECONOMY_NAMESPACE = "economy";
 
   /**
+   * production 资源所属的命名空间（{@code production}；D-031 P1：定义权威迁入 production）。
+   *
+   * <p>★ 与 {@link #ECONOMY_NAMESPACE} 同款：它出现在 GM 组的逐命名空间范围与工具自己的资源声明（如 {@code
+   * simos.economy.upsertIndustry} 现提交 {@code production.UpsertIndustry}）；新命名空间不加进前者，GM
+   * 面就会回落成"未表态"分支。
+   */
+  public static final String PRODUCTION_NAMESPACE = "production";
+
+  /**
    * actor 资源所属的命名空间（{@code actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> | :goods.<key>]}）。
    *
    * <p>★★ <b>字面量 {@code "actor"} 全仓三处同字面</b>：这里、{@code ActorSnapshot.namespace()}、 {@code

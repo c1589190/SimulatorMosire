@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -77,7 +78,12 @@ public final class EconomySetGovServiceCommitmentHandler implements CommandHandl
     }
     try {
       EconomyGovServiceCommitments.Projection projection =
-          EconomyGovServiceCommitments.project(base, social, payloadJson);
+          EconomyGovServiceCommitments.project(
+              EconomyProductionDefinitions.stateOf(state).instances(),
+              base,
+              social,
+              EconomyProductionDefinitions.of(state),
+              payloadJson);
       logApplied(projection);
       return new HandlerOutcome.Applied(projection.changeSet());
     } catch (IllegalStateException e) {

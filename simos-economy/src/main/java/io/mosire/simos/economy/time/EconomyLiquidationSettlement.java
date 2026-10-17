@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -22,12 +23,12 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -126,10 +127,18 @@ public final class EconomyLiquidationSettlement {
 
   private EconomyLiquidationSettlement() {}
 
-  /** ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。 */
-  public static boolean isActive(EconomyData base) {
+  /**
+   * ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。
+   *
+   * <p>★★ <b>B5（§13.15.2 裁定十八）</b>：生产方式定义副本已从 {@code EconomyData} 删除 ⇒ "有没有接线生产方式"这一维 改读
+   * <b>production 当刻定义权威</b>（{@code definitions.modes()}，由调用方显式注入；缺来源 ⇒ 当场拒，不静默当空表）。
+   */
+  public static boolean isActive(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions) {
     Objects.requireNonNull(base, "base");
-    return !base.modes().isEmpty()
+    Objects.requireNonNull(definitions, "definitions（B5：生产方式定义的唯一权威在 production）");
+    return !definitions.modes().isEmpty()
         || !base.classPositions().isEmpty()
         || !base.classStandings().isEmpty()
         || !base.pledges().isEmpty()
@@ -154,6 +163,7 @@ public final class EconomyLiquidationSettlement {
    */
   static void settle(
       EconomySession session,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       long day,
       long currentCycle,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -163,9 +173,10 @@ public final class EconomyLiquidationSettlement {
       Map<DebtContractId, Long> principalAtDayStart,
       Map<DebtContractId, Long> repaidPrincipalByDebt,
       Map<HouseholdId, DebtCapacity> debtCapacities,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       ProductionLedger.Accumulator ledger) {
     Objects.requireNonNull(session, "session 不得为 null");
+    Objects.requireNonNull(definitions, "definitions（B5：生产方式定义的唯一权威在 production，必须显式注入）");
     Objects.requireNonNull(ledger, "ledger 不得为 null");
     Objects.requireNonNull(householdEconomies, "rows 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
@@ -180,6 +191,7 @@ public final class EconomyLiquidationSettlement {
     Context context =
         new Context(
             session,
+            definitions,
             base,
             day,
             currentCycle,
@@ -235,6 +247,7 @@ public final class EconomyLiquidationSettlement {
   /** planner 的只读输入（所有 Map 都是调用方的当刻工作副本引用；planner 不写它们）。 */
   private record Context(
       EconomySession session,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       EconomyData base,
       long day,
       long currentCycle,
@@ -245,7 +258,7 @@ public final class EconomyLiquidationSettlement {
       Map<DebtContractId, Long> principalAtDayStart,
       Map<DebtContractId, Long> repaidPrincipalByDebt,
       Map<HouseholdId, DebtCapacity> debtCapacities,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       ProductionLedger.Accumulator ledger) {}
 
   /** 一条已选路的资产转移（新份额 id 在 apply 时由 {@link OwnershipStakeBook} 确定性生成）。 */
@@ -923,8 +936,7 @@ public final class EconomyLiquidationSettlement {
     if (share == null) {
       return new PledgeCandidate(pledge, null, null, null, null, "pledge-share-missing");
     }
-    if (share.kind() != OwnershipStake.RightKind.OWNED
-        && share.kind() != OwnershipStake.RightKind.COMMUNAL) {
+    if (share.kind() != AssetRightKind.OWNED && share.kind() != AssetRightKind.COMMUNAL) {
       return new PledgeCandidate(
           pledge, share, null, null, null, "right-kind-not-disposable:" + share.kind().name());
     }
@@ -1033,7 +1045,8 @@ public final class EconomyLiquidationSettlement {
         return position.modeId();
       }
     }
-    return context.base().modes().containsKey(pledge.modeId()) ? pledge.modeId() : null;
+    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
+    return context.definitions().mode(pledge.modeId()).isPresent() ? pledge.modeId() : null;
   }
 
   /** 同 assetKind 的规则按 ruleId.value() 升序（退化选择的稳定序）。 */
@@ -1109,7 +1122,7 @@ public final class EconomyLiquidationSettlement {
                 move.quantity(),
                 HouseholdActors.of(reduction.debt().creditor()),
                 HouseholdActors.of(reduction.debt().creditor()),
-                OwnershipStake.RightKind.OWNED));
+                AssetRightKind.OWNED));
       }
     }
 
@@ -1436,7 +1449,7 @@ public final class EconomyLiquidationSettlement {
     List<AutoPledgeCandidate> candidates = new ArrayList<>();
     for (OwnershipStake share : shares) {
       if (!share.owner().equals(HouseholdActors.of(debt.debtor()))
-          || share.kind() != OwnershipStake.RightKind.OWNED
+          || share.kind() != AssetRightKind.OWNED
           || (!context.industries().isEmpty()
               && !context.industries().containsKey(share.industry()))) {
         continue;

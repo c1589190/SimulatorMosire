@@ -13,6 +13,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
@@ -42,8 +43,8 @@ import java.util.Set;
  * economy.UpsertGovUnit} 的预览 / 提交入口（照 {@code simos.economy.upsertIndustry} 的 GM 经济写工具先例）。
  *
  * <p>★★ <b>载荷逐字透传</b>：{@code payloadJson} 与命令 handler 的载荷同形；工具不做第二套字段翻译，直接原样交给 {@link
- * EconomyGovUnitUpserts#project(EconomyData, SocialData, String)} 预览、原样装进 {@link CommandEnvelope}
- * 提交（ADR-1 R11：Core 逐字节转交）。
+ * EconomyGovUnitUpserts#project(EconomyData, SocialData, ProductionDefinitionLookup, String)}
+ * 预览、原样装进 {@link CommandEnvelope} 提交（ADR-1 R11：Core 逐字节转交）。
  *
  * <ul>
  *   <li>{@code preview=true}（缺省）：读当前状态跑同一个纯函数，返回三表前后差异 + changeSetEmpty；<b>不提交、不写状态</b>；
@@ -176,7 +177,12 @@ public final class EconomyUpsertGovUnitTool implements SimosTool {
       EconomyData economy = EconomyToolReads.economyData(state);
       SocialData social = EconomyToolReads.socialData(state);
       EconomyGovUnitUpserts.Projection projection =
-          EconomyGovUnitUpserts.project(economy, social, payloadJson);
+          EconomyGovUnitUpserts.project(
+              io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+              economy,
+              social,
+              EconomyProductionDefinitions.of(state),
+              payloadJson);
       // ★ 控制方裁定 A：preview 与 apply 都做 unit 切片预检；不满足 ⇒ REJECTED、零提交。
       requireGovUnitFormation(state, projection.govUnitId());
       Map<String, Object> view = diffView(projection, payloadJson);
@@ -193,7 +199,7 @@ public final class EconomyUpsertGovUnitTool implements SimosTool {
         view.put("noopReason", "逐值相同的幂等重放（changeSet 为空）");
         return ToolResults.ok(view);
       }
-      return commit(view, payloadJson, branch, expectedRevision);
+      return commit(view, payloadJson, branch, expectedRevision, projection);
     } catch (EconomyGovUnitUpserts.Rejection e) {
       // ★ 业务拒绝（GOV 未登记/非 office/assets 不足或超出/字段冲突/unit 预检失败）：具名 REJECTED，零 revision。
       return ToolResult.error("REJECTED", e.getMessage());
@@ -230,39 +236,87 @@ public final class EconomyUpsertGovUnitTool implements SimosTool {
     throw new EconomyGovUnitUpserts.Rejection(r.reason());
   }
 
-  /** 提交阶段：同一条 payloadJson 原样装信封、走唯一写入口，把三结局与预览差异拼在一份结果里。 */
+  /**
+   * ★★ <b>B2c（§13.12.4 裁定十）：批提交 —— 同一批里先建 production 的 office 实例、再写 economy 侧</b>。
+   *
+   * <p>★★ <b>为什么必须同批</b>：economy 侧的具名拒 {@code OFFICE_UNIT_NOT_IN_PRODUCTION} 是 fail-closed
+   * 的<b>正确</b>行为（不许静默建无实例的 office）⇒ 修的是"没有建实例的入口"，不是放宽拒因。 同批内 core 把前一条的变更集累加到候选态上，后一条因此能看见它（{@code
+   * CommandBus.submitBatch} 的既有语义）。
+   *
+   * <p>★ 实例命令的四个身份字段<b>全部取自 {@link EconomyGovUnitUpserts.Projection}</b>（unitId / operator /
+   * modeKey / industryId 的唯一拼写点在 economy 的语义纯函数里，本工具不另拼一份）；地点按方案 id 的格段给 （office 产业 id 形如 {@code
+   * office@<q>_<r>}）——判不出格段时不给该键，由 production 侧具名拒 {@code location-unknown}（绝不写 UNSPECIFIED 占位）。
+   */
   private ToolResult commit(
-      Map<String, Object> view, String payloadJson, BranchId branch, long expectedRevision) {
-    ToolWritePort.Receipt receipt =
-        writes.submitWithReceipt(
-            branch,
-            () -> new RevisionId(expectedRevision),
-            EconomyUpsertGovUnitHandler.TYPE,
-            payloadJson);
-    String commandId = receipt.commandId();
+      Map<String, Object> view,
+      String payloadJson,
+      BranchId branch,
+      long expectedRevision,
+      EconomyGovUnitUpserts.Projection projection) {
+    List<ToolWritePort.Request> batch = new ArrayList<>(2);
+    batch.add(
+        new ToolWritePort.Request(
+            // ★ 只经 contract 包取命令类型（I4：economy 不得 import production 内部类）。
+            io.mosire.simos.production.contract.ProductionCommandTypes.CREATE_INSTANCE,
+            ToolResults.json(instancePayload(projection))));
+    batch.add(new ToolWritePort.Request(EconomyUpsertGovUnitHandler.TYPE, payloadJson));
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(branch, new RevisionId(expectedRevision), batch);
+    String correlationId = receipt.correlationId();
+    List<String> commandIds = receipt.commandIds();
+    String commandId = commandIds.isEmpty() ? correlationId : commandIds.get(commandIds.size() - 1);
     view.put("preview", false);
     view.put("submitted", true);
     view.put("commandId", commandId);
+    view.put("correlationId", correlationId);
+    view.put("batchCommandIds", commandIds);
     return switch (receipt.outcome()) {
-      case ToolWritePort.Outcome.Committed committed -> {
-        view.put("submission", ToolResults.committedView(committed.ref(), commandId, commandId));
+      case ToolWritePort.BatchOutcome.Committed committed -> {
+        view.put(
+            "submission", ToolResults.committedView(committed.ref(), commandId, correlationId));
         yield ToolResults.ok(view);
       }
-      case ToolWritePort.Outcome.Conflict conflict -> {
+      case ToolWritePort.BatchOutcome.Conflict conflict -> {
         Map<String, Object> submission = new LinkedHashMap<>();
         submission.put("result", "conflict");
         submission.put("current", ToolResults.stateRef(conflict.current()));
         view.put("submission", submission);
         yield ToolResult.error("CONFLICT", ToolResults.json(view));
       }
-      case ToolWritePort.Outcome.Rejected rejected -> {
+      case ToolWritePort.BatchOutcome.Rejected rejected -> {
+        // ★ 整批拒：逐条把真拒因摆出来（批是原子的，一条修不了就全体不生效），不吞成一句"提交失败"。
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int i = 0; i < rejected.outcomes().size() && i < batch.size(); i++) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("type", batch.get(i).type());
+          row.put(
+              "reason",
+              rejected.outcomes().get(i) instanceof ToolWritePort.Outcome.Rejected item
+                  ? item.reason()
+                  : rejected.outcomes().get(i).toString());
+          rows.add(row);
+        }
         Map<String, Object> submission = new LinkedHashMap<>();
         submission.put("result", "rejected");
-        submission.put("reason", rejected.reason());
+        submission.put("commands", rows);
         view.put("submission", submission);
         yield ToolResult.error("REJECTED", ToolResults.json(view));
       }
     };
+  }
+
+  /** ★ 一条 {@code production.CreateInstance} 载荷：身份四字段取自 economy 的投影（唯一拼写点），地点按方案 id 的格段。 */
+  private static Map<String, Object> instancePayload(EconomyGovUnitUpserts.Projection projection) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("plan", projection.industryId().value());
+    payload.put("unit", projection.unitId().value());
+    payload.put(
+        "operator",
+        Map.of("kind", projection.operator().kind().name(), "id", projection.operator().id()));
+    payload.put("modeKey", projection.modeKey());
+    io.mosire.simos.production.contract.ProductionLocation.ofPlan(projection.industryId())
+        .ifPresent(location -> payload.put("location", location.value()));
+    return payload;
   }
 
   /** 预览/结果共同部分：身份口径、三表写入标志、逐 kind 资产前后、变更集是否为空、待提交命令（type + payloadJson 原样）。 */

@@ -74,17 +74,9 @@ public final class LotMigrationBook {
 
   private LotMigrationBook() {}
 
-  /** ★ 纯函数形态：{@code base} 一字不改；空计划 ⇒ 返回入参同一实例。 */
-  public static EconomyData apply(EconomyData base, List<LotMigration> migrations, long day) {
-    Objects.requireNonNull(base, "LotMigrationBook.apply 的 base 不得为 null");
-    Objects.requireNonNull(migrations, "LotMigrationBook.apply 的 migrations 不得为 null");
-    if (migrations.isEmpty()) {
-      return base;
-    }
-    EconomySession session = new EconomySession(base);
-    applyInto(session, migrations, day);
-    return session.build();
-  }
+  // ★★★ D-032 B3（§13.13.7 第 8 条）：静态形态 `apply(base, definitions, migrations, day)` 已**删除** ——
+  //   它自建 `EconomySession(base, definitions)`（runtime = null），main 里 0 个调用点；会话形态
+  //   `applyInto(EconomySession, ...)` 保留（`EconomyDayStepper` 走它，会话自带合法 runtime）。
 
   /**
    * ★★ <b>会话形态</b>（供日/月结算在工作副本上就地调用）：只改 {@link EconomySession#sheet()} 的家户行与债务表工作副本； 全量守卫由 revision

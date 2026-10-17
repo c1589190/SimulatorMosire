@@ -7,12 +7,14 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -20,19 +22,21 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.market.MarketZone;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.economy.testing.TestLogCapture;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -194,7 +198,7 @@ class MerchantOnDemandTradeW7Test {
     EconomyData base = base(Map.of(), 0L);
     ExpectedProfitBook.Prospect prospect =
         ExpectedProfitBook.prospect(
-            base,
+            EconomyFixtures.dayView(base, defs()),
             SOURCE,
             DefaultProductionModes.MERCHANT,
             H2,
@@ -207,13 +211,15 @@ class MerchantOnDemandTradeW7Test {
             Map.of(),
             Map.of(),
             topology(),
-            0L);
+            0L,
+            // ★ T9（R1 签名）：merchant 路径不读物理产量；runtime 按契约必须非 null。
+            EconomyFixtures.runtimeOf(defs()));
 
     assertThat(prospect.feasible()).as("没有劳动 ⇒ 不可行（不假装可行）").isFalse();
     assertThat(prospect.reason())
         .as("★ 具名理由必须是「没有劳动」，不是改前的「没有自备承运资产」")
         .isEqualTo("NO_MERCHANT_CAPACITY:no-labor");
-    assertThat(base.industries().keySet())
+    assertThat(defs().industries().keySet())
         .as("★ 决策层**不落任何状态**：预估不许把 trade 模板写进世界（它只是纯函数预估）")
         .doesNotContain(MerchantTradeTemplate.industryId(H2));
   }
@@ -228,7 +234,7 @@ class MerchantOnDemandTradeW7Test {
     EconomyData base = base(Map.of(), SOURCE_LABOR_MILLI);
     ExpectedProfitBook.Prospect prospect =
         ExpectedProfitBook.prospect(
-            base,
+            EconomyFixtures.dayView(base, defs()),
             SOURCE,
             DefaultProductionModes.MERCHANT,
             H2,
@@ -241,13 +247,15 @@ class MerchantOnDemandTradeW7Test {
             Map.of(),
             Map.of(),
             topology(),
-            0L);
+            0L,
+            // ★ T9（R1 签名）：merchant 路径不读物理产量；runtime 按契约必须非 null。
+            EconomyFixtures.runtimeOf(defs()));
 
     assertThat(prospect.feasible()).as("劳动够但没工具 ⇒ 不可行").isFalse();
     assertThat(prospect.reason())
         .as("★ 具名理由必须是「没有工具投入」（劳动维已过 ⇒ 不可能是 no-labor）")
         .isEqualTo("NO_MERCHANT_CAPACITY:no-tool-input");
-    assertThat(base.industries().keySet())
+    assertThat(defs().industries().keySet())
         .as("★ 决策层仍然**不落状态**")
         .doesNotContain(MerchantTradeTemplate.industryId(H2));
   }
@@ -263,7 +271,7 @@ class MerchantOnDemandTradeW7Test {
 
     ExpectedProfitBook.Prospect prospect =
         ExpectedProfitBook.prospect(
-            base,
+            EconomyFixtures.dayView(base, defs()),
             SOURCE,
             DefaultProductionModes.MERCHANT,
             H2,
@@ -276,12 +284,14 @@ class MerchantOnDemandTradeW7Test {
             Map.of(),
             Map.of(),
             topology(),
-            0L);
+            0L,
+            // ★ T9（R1 签名）：merchant 路径不读物理产量；runtime 按契约必须非 null。
+            EconomyFixtures.runtimeOf(defs()));
 
     assertThat(prospect.reason())
         .as("★ 劳动 + 工具齐备 ⇒ 「没有投入」这条闸必须放行（改前的 no-carrier-asset 已不存在）")
         .doesNotStartWith("NO_MERCHANT_CAPACITY");
-    assertThat(base.industries().keySet())
+    assertThat(defs().industries().keySet())
         .as("★ 决策层仍然**不落状态**（模板是纯函数；只有执行期才写工作副本）")
         .doesNotContain(MerchantTradeTemplate.industryId(H2));
   }
@@ -289,8 +299,8 @@ class MerchantOnDemandTradeW7Test {
   /** ★★ 判据③ 的模板侧：{@link MerchantTradeTemplate} 是**纯函数**、**不带存量**（不凭空造资产），且配方里**没有 CATTLE**。 */
   @Test
   void merchantTradeTemplateIsPureAndHasNoCattleField() {
-    Industry first = MerchantTradeTemplate.industry(H2);
-    Industry second = MerchantTradeTemplate.industry(H2);
+    IndustryDefinitionView first = MerchantTradeTemplate.industry(H2);
+    IndustryDefinitionView second = MerchantTradeTemplate.industry(H2);
 
     assertThat(second).as("纯函数：同一格两次调用逐字段同值（决策层预估与执行期写入是同一份）").isEqualTo(first);
     assertThat(first.id()).isEqualTo(MerchantTradeTemplate.industryId(H2));
@@ -331,7 +341,7 @@ class MerchantOnDemandTradeW7Test {
   @Test
   void migrationWithoutCarriedToolInputIsSkippedByNameAndCreatesNothing() {
     EconomyData base = base(Map.of(), 0L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     Map<AssetShareId, OwnershipStake> sharesBefore =
         new LinkedHashMap<>(session.sheet().assetShares());
     long toolBefore = toolTotal(sharesBefore);
@@ -341,7 +351,7 @@ class MerchantOnDemandTradeW7Test {
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, defs()),
           30L);
 
       assertThat(log.lines())
@@ -395,14 +405,14 @@ class MerchantOnDemandTradeW7Test {
     OwnershipStake cattle = share(SOURCE, AssetKind.CATTLE, 8_000L);
     Map<AssetShareId, OwnershipStake> shares = Map.of(cattle.id(), cattle);
     EconomyData base = base(shares, 0L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
       ModeMigrationSettlement.apply(
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, defs()),
           30L);
 
       assertThat(log.lines())
@@ -435,14 +445,14 @@ class MerchantOnDemandTradeW7Test {
   @Test
   void migrationWithToolTradedButNoIdleToolInHexIsStillSkippedByName() {
     EconomyData base = baseWithTradableToolInH2(Map.of(), 0L, /* idleToolInH2= */ 0L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
 
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
       ModeMigrationSettlement.apply(
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, defs()),
           30L);
 
       assertThat(log.lines())
@@ -487,7 +497,7 @@ class MerchantOnDemandTradeW7Test {
   void migrationWithoutCarriedToolIsAllowedWhenToolIsTradedAndIdleInHex() {
     long idleToolMilli = 12_000L;
     EconomyData base = baseWithTradableToolInH2(Map.of(), 0L, /* idleToolInH2= */ idleToolMilli);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     long toolBefore = toolTotal(session.sheet().assetShares());
     assertThat(toolBefore).as("★ 前置：本格闲置工具就是这一份（源户自己没有份额 ⇒ 走买/租通道）").isEqualTo(idleToolMilli);
     AssetShareId idleShareId = session.sheet().assetShares().keySet().iterator().next();
@@ -497,7 +507,7 @@ class MerchantOnDemandTradeW7Test {
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, defs()),
           30L);
 
       assertThat(log.lines())
@@ -516,7 +526,8 @@ class MerchantOnDemandTradeW7Test {
           .anyMatch(line -> line.contains("MERCHANT_TRADE_INDUSTRY_CREATED"));
     }
 
-    Industry created = session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
+    IndustryDefinitionView created =
+        session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
     assertThat(created).as("① trade@H2 长出来了").isNotNull();
     assertThat(created)
         .as("①′ 与决策层预估那一份逐字段同值（同一拼写点）")
@@ -552,9 +563,7 @@ class MerchantOnDemandTradeW7Test {
     assertThat(leased.owner())
         .as("④ 租佃**不转移所有权**：owner 仍是原主（不是新商号）")
         .isEqualTo(idleToolShareInH2(idleToolMilli).owner());
-    assertThat(leased.kind())
-        .as("④′ 权利种类随租佃改变（不是 OWNED）")
-        .isEqualTo(OwnershipStake.RightKind.TENANCY);
+    assertThat(leased.kind()).as("④′ 权利种类随租佃改变（不是 OWNED）").isEqualTo(AssetRightKind.TENANCY);
     assertThat(leased.industry()).as("④″ 份额落在**同格**的作业资本产业下（同格跨产业租佃，产业 id 带格键）").isEqualTo(H2_FARM);
     assertThat(toolTotal(session.sheet().assetShares()))
         .as("⑤ 守恒式：Σ TOOL 前后逐值相同（本格闲置 → 目标户租佃，总量一字不变）")
@@ -579,18 +588,28 @@ class MerchantOnDemandTradeW7Test {
     ProductionUnitId busyUnitId = ProductionUnitId.idOf(H2_FARM, busy.operator());
     ProductionProcess busyUnit =
         new ProductionProcess(
-            busyUnitId, H2_FARM, busy.operator(), "mode:family_farm", 0L, 0L, Map.of());
+            busyUnitId,
+            H2_FARM,
+            ProductionLocation.ofPlan(H2_FARM).orElseThrow(),
+            busy.operator(),
+            "mode:family_farm",
+            0L,
+            Map.of(),
+            Map.of());
     EconomyData base =
-        baseWithTradableToolInH2(
-            Map.of(busy.id(), busy), 0L, /* idleToolInH2= */ 0L, Map.of(busyUnitId, busyUnit));
-    EconomySession session = new EconomySession(base);
+        baseWithTradableToolInH2(Map.of(busy.id(), busy), 0L, /* idleToolInH2= */ 0L);
+    // ★★ D-032 T5（a 桶夹具欠账）：在产 unit 的**唯一权威在 production**（I1）—— `idleToolInHex` 的
+    //   "已被占用"那一格读的就是 production 的实例表。旧稿把 busyUnit 塞在一个**从不落表**的经济侧
+    //   `extraUnits` 收件箱里 ⇒ 那份份额看着仍"闲置" ⇒ 迁移被放行（判据红）。本处把它落进 production 切片。
+    ProductionData definitions = defs().withInstance(busyUnit);
+    EconomySession session = new EconomySession(base, definitions, runtimeOf(definitions));
 
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
       ModeMigrationSettlement.apply(
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, definitions),
           30L);
 
       assertThat(log.lines())
@@ -623,7 +642,7 @@ class MerchantOnDemandTradeW7Test {
     OwnershipStake sourceTool = share(SOURCE, AssetKind.TOOL, SOURCE_TOOL_INPUT_MILLI);
     Map<AssetShareId, OwnershipStake> shares = Map.of(sourceTool.id(), sourceTool);
     EconomyData base = base(shares, 0L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     long toolBefore = toolTotal(session.sheet().assetShares());
 
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
@@ -631,7 +650,7 @@ class MerchantOnDemandTradeW7Test {
           session,
           accounts(),
           plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
-          base,
+          EconomyFixtures.dayView(base, defs()),
           30L);
 
       assertThat(log.lines())
@@ -652,7 +671,8 @@ class MerchantOnDemandTradeW7Test {
           .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE"));
     }
 
-    Industry created = session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
+    IndustryDefinitionView created =
+        session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
     assertThat(created).as("① 目标格长出了按需商号（写在工作副本里 ⇒ 随本 tick 的变更集落同一 revision）").isNotNull();
     assertThat(created)
         .as("② 它必须与决策层预估的那一份**逐字段同值**（同一拼写点 ⇒ 不可能漂开）")
@@ -716,14 +736,14 @@ class MerchantOnDemandTradeW7Test {
     OwnershipStake sourceTool = share(SOURCE, AssetKind.TOOL, SOURCE_TOOL_INPUT_MILLI);
     Map<AssetShareId, OwnershipStake> shares = Map.of(sourceTool.id(), sourceTool);
     EconomyData base = base(shares, 0L);
-    EconomySession session = new EconomySession(base);
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
     long toolBefore = toolTotal(session.sheet().assetShares());
 
     ModeMigrationSettlement.apply(
         session,
         accounts(),
         plan(move(DefaultProductionModes.MERCHANT, SOURCE_POPULATION)),
-        base,
+        EconomyFixtures.dayView(base, defs()),
         30L);
 
     long sourceLeft = toolOwnedBy(session.sheet().assetShares(), SOURCE);
@@ -747,7 +767,7 @@ class MerchantOnDemandTradeW7Test {
             asset,
             HouseholdActors.of(owner),
             HouseholdActors.of(owner),
-            OwnershipStake.RightKind.OWNED,
+            AssetRightKind.OWNED,
             0L);
     return new OwnershipStake(
         id,
@@ -756,7 +776,7 @@ class MerchantOnDemandTradeW7Test {
         HouseholdActors.of(owner),
         HouseholdActors.of(owner),
         quantity,
-        OwnershipStake.RightKind.OWNED);
+        AssetRightKind.OWNED);
   }
 
   private static long toolTotal(Map<AssetShareId, OwnershipStake> shares) {
@@ -806,8 +826,8 @@ class MerchantOnDemandTradeW7Test {
         id, position, position, Set.of(), Map.of(), 0L, 0L, "w7-ondemand-test");
   }
 
-  private static Industry farm() {
-    return new Industry(
+  private static IndustryDefinitionView farm() {
+    return IndustryViews.industry(
         FARM,
         "farm-w7-ondemand",
         new RegimeId("household"),
@@ -824,13 +844,11 @@ class MerchantOnDemandTradeW7Test {
 
   private static EconomyData base(Map<AssetShareId, OwnershipStake> shares, long laborMilli) {
     return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
         .withClassMemberships(
             Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.FAMILY_FARM)))
-        .withIndustries(Map.of(FARM, farm()))
         .withOwnershipStakes(shares)
         .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H1, market())));
   }
@@ -852,22 +870,20 @@ class MerchantOnDemandTradeW7Test {
    *
    * @param idleToolInH2 放在 H2 的闲置 TOOL 份额（毫工具）；{@code 0} ⇒ 不放（用来验"买得到但租不到"那一支）
    */
+  /**
+   * ★★ D-032 T5：旧稿还有一个 {@code extraUnits} 形参（{@code Map<ProductionUnitId, ProductionProcess>}）——
+   * 它只被放进一个**从不落表**的局部量里（实例权威迁 production 后的残留）⇒ "看起来在造 unit、其实被静默丢掉"。 该形参整段删除：实例一律经 {@code
+   * defs().withInstance(...)} 落 production 权威（见 {@link
+   * #busyToolShareIsNotLeasableSoTheMoveIsStillSkipped}）。
+   */
   private static EconomyData baseWithTradableToolInH2(
       Map<AssetShareId, OwnershipStake> extraShares, long laborMilli, long idleToolInH2) {
-    return baseWithTradableToolInH2(extraShares, laborMilli, idleToolInH2, Map.of());
-  }
-
-  private static EconomyData baseWithTradableToolInH2(
-      Map<AssetShareId, OwnershipStake> extraShares,
-      long laborMilli,
-      long idleToolInH2,
-      Map<ProductionUnitId, ProductionProcess> extraUnits) {
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>(extraShares);
     if (idleToolInH2 > 0L) {
       OwnershipStake idle = idleToolShareInH2(idleToolInH2);
       shares.put(idle.id(), idle);
     }
-    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    Map<IndustryId, IndustryDefinitionView> industries = new LinkedHashMap<>();
     industries.put(FARM, farm());
     industries.put(H2_FARM, h2Farm());
     // ★ H1 仍是"派生市场"形态（价表自带成员格）；★ H2 是**持久立区**形态 —— 成员格的唯一权威是
@@ -889,25 +905,21 @@ class MerchantOnDemandTradeW7Test {
                 Set.of(H2),
                 MarketSettlementFixtures.SILVER,
                 Map.of()));
-    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>(extraUnits);
     // ★★ 原子写口：区与它的价表必须**同一次构造**给 —— `withMarketTables(...)` 单独调会在中间态被自己的守卫拒掉
     //   （"派生市场（键不在市场区表里）必须有成员格"：H2 的表在区还没落时是"派生形态却没有成员格"）。
     return EconomyData.empty()
-        .withModes(DefaultProductionModes.modes())
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
         .withClassMemberships(
             Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.FAMILY_FARM)))
-        .withIndustries(industries)
         .withOwnershipStakes(shares)
-        .withProcesses(units)
         .withMarketZonesAndTables(zones, marketTables);
   }
 
   /** H2 的另一个产业（**不是** trade）：只是"本格闲置工具"的挂靠处，regime 与 merchant 不同 ⇒ 不会冒充 trade 模板。 */
-  private static Industry h2Farm() {
-    return new Industry(
+  private static IndustryDefinitionView h2Farm() {
+    return IndustryViews.industry(
         H2_FARM,
         "h2-farm-w9",
         new RegimeId("household"),
@@ -934,10 +946,9 @@ class MerchantOnDemandTradeW7Test {
   private static OwnershipStake idleToolShareInH2(long quantity) {
     ActorRef owner = new ActorRef(ActorKind.HOUSEHOLD, "hh-w9-h2-idle-tool-owner");
     AssetShareId id =
-        OwnershipStake.idOf(
-            H2_FARM, AssetKind.TOOL, owner, owner, OwnershipStake.RightKind.OWNED, 0L);
+        OwnershipStake.idOf(H2_FARM, AssetKind.TOOL, owner, owner, AssetRightKind.OWNED, 0L);
     return new OwnershipStake(
-        id, H2_FARM, AssetKind.TOOL, owner, owner, quantity, OwnershipStake.RightKind.OWNED);
+        id, H2_FARM, AssetKind.TOOL, owner, owner, quantity, AssetRightKind.OWNED);
   }
 
   /** 某个 actor（此处 = 新商号）名下**当作业资本用**的 TOOL 份额合计（OWNED + TENANCY 都算）。 */
@@ -1016,5 +1027,19 @@ class MerchantOnDemandTradeW7Test {
         0L,
         "fixture:ondemand",
         Map.of());
+  }
+
+  /** production 定义权威夹具：默认生产方式目录（P1 起定义显式注入）。 */
+  private static ProductionData defs() {
+    return ProductionData.empty()
+        .withModes(DefaultProductionModes.modes())
+        .withIndustry(farm())
+        .withIndustry(h2Farm());
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

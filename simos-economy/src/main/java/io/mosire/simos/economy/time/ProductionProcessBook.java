@@ -4,10 +4,10 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,9 +15,10 @@ import java.util.Objects;
 /**
  * ★★ <b>生产单元的派生读口</b>（R3B.2）：从 {@code OwnershipStake} 实物总账<b>纯派生</b>一个 unit 的可用资产与规模，不落第二份状态。
  *
- * <p>★★ <b>为什么必须是派生</b>：{@code OwnershipStake} 是唯一的实物总账；若 unit 或 {@code Industry} 再存一份 {@code
- * capacity}，两处就会漂开（旧代码正是这样：{@code 旧结算引擎（R3a 已删除）.capacityScaleOf} 读 {@code Industry.capacity}，而
- * {@code HouseholdClassRule} 另用 {@code OwnershipStake} 近似）。本类只做算术，不含公式常量。
+ * <p>★★ <b>为什么必须是派生</b>：{@code OwnershipStake} 是唯一的实物总账；若 unit 或 {@code IndustryDefinitionView}
+ * 再存一份 {@code capacity}，两处就会漂开（旧代码正是这样：{@code 旧结算引擎（R3a 已删除）.capacityScaleOf} 读 {@code
+ * IndustryDefinitionView.capacity}，而 {@code HouseholdClassRule} 另用 {@code OwnershipStake}
+ * 近似）。本类只做算术，不含公式常量。
  *
  * <pre>
  * usableAssets(unit)   = Σ OwnershipStake{industry == unit.industry && operator == unit.operator}.quantity  按 AssetKind 汇总
@@ -37,7 +38,7 @@ public final class ProductionProcessBook {
    * operator==unit.operator}} 按 {@link AssetKind} 汇总。
    *
    * <p>★ <b>只按 operator 汇总</b>（不是 owner）：规模问的是"这个经营者实际能用多少"；所有权只决定收益归属（关系规则）。
-   * 旧档一对一迁移（owner==operator）下两者同值，与旧 {@code Industry.capacity} 逐值相等。
+   * 旧档一对一迁移（owner==operator）下两者同值，与旧 {@code IndustryDefinitionView.capacity} 逐值相等。
    *
    * @param assetShares 实物总账（键序 = 状态插入序；返回表按份额首次出现序保序）
    * @return 按资产种类汇总的数量（只含出现过的种类；无份额 ⇒ 空表）
@@ -89,10 +90,13 @@ public final class ProductionProcessBook {
    * ★★ <b>unit 的产能规模</b> = {@code min over k ∈ capacityPerUnit: ⌊usableAssets[k] ÷
    * capacityPerUnit[k]⌋}。
    *
-   * <p>★ 与旧 {@code 旧结算引擎（R3a 已删除）.capacityScaleOf(Industry)} 同式：缺资产 = 0，空表 = 0，整数向下取整。
+   * <p>★ 与旧 {@code 旧结算引擎（R3a 已删除）.capacityScaleOf(IndustryDefinitionView)} 同式：缺资产 = 0，空表 =
+   * 0，整数向下取整。
    */
   public static long capacityScaleOf(
-      ProductionProcess unit, Industry industry, Map<AssetShareId, OwnershipStake> assetShares) {
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     return capacityScaleOf(usableAssets(unit, assetShares), industry);
   }
 
@@ -101,18 +105,19 @@ public final class ProductionProcessBook {
    * 算式与旧签名逐字相同（不复制第二份模板，也不改变缺项/取整口径）。
    */
   public static long capacityScaleOf(
-      ProductionProcess unit, Industry industry, SettlementIndex index) {
+      ProductionProcess unit, IndustryDefinitionView industry, SettlementIndex index) {
     return capacityScaleOf(index.usableAssetsOf(unit), industry);
   }
 
   /**
    * ★★ <b>按 {@code (industry, operator)} 直接算产能规模</b>（E2 生产组织阶段的只读入口）：与 {@link
-   * #capacityScaleOf(ProductionProcess, Industry, Map)} 共用同一个私有算式；"规模 = 最紧的资产那一路"只有这一处。
+   * #capacityScaleOf(ProductionProcess, IndustryDefinitionView, Map)} 共用同一个私有算式；"规模 =
+   * 最紧的资产那一路"只有这一处。
    */
   public static long capacityScaleOf(
       IndustryId industryId,
       ActorRef operator,
-      Industry industry,
+      IndustryDefinitionView industry,
       Map<AssetShareId, OwnershipStake> assetShares) {
     Objects.requireNonNull(industryId, "industryId");
     Objects.requireNonNull(operator, "operator");
@@ -122,7 +127,8 @@ public final class ProductionProcessBook {
   }
 
   /** 产能规模的唯一算式（两个重载共用；避免“索引版”和“扫描版”各写一份）。 */
-  private static long capacityScaleOf(Map<AssetKind, Long> usable, Industry industry) {
+  private static long capacityScaleOf(
+      Map<AssetKind, Long> usable, IndustryDefinitionView industry) {
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       scale = Math.min(scale, usable.getOrDefault(entry.getKey(), 0L) / entry.getValue());
@@ -135,7 +141,7 @@ public final class ProductionProcessBook {
    */
   public static long plannedCapacityScaleOf(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       Map<AssetShareId, OwnershipStake> assetShares,
       OperatorCondition condition) {
     return capacityScaleOf(unit, industry, assetShares)
@@ -147,7 +153,7 @@ public final class ProductionProcessBook {
   /** ★★ 索引口径的计划规模（产能规模查 {@link SettlementIndex}；计划系数的算式与旧签名逐字相同）。 */
   public static long plannedCapacityScaleOf(
       ProductionProcess unit,
-      Industry industry,
+      IndustryDefinitionView industry,
       SettlementIndex index,
       OperatorCondition condition) {
     return capacityScaleOf(unit, industry, index)

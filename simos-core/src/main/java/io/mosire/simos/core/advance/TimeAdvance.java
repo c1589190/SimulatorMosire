@@ -19,6 +19,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.spi.CandidateStateValidator;
 import io.mosire.simos.util.spi.Incident;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.StopReport;
@@ -140,6 +141,9 @@ public final class TimeAdvance implements AdvanceRoute {
   /** ★ 急停路径的 drain 钩子（口径 3 = A）。未装配 ⇒ {@link StopDrain#NONE}（急停仍停、仍报，只是不 drain）。 */
   private final StopDrain stopDrain;
 
+  /** ★★ D-031 P1 §9.3：候选态落库前校验（迭代序即调用序；空表 = 既有行为不变）。 */
+  private final List<CandidateStateValidator> validators;
+
   /**
    * @param timeline 时间线（查 head、落 revision 与事件、判 checkpoint「应当有」）
    * @param stateLoader "给定坐标给状态"（裁定 34；装配时传 {@code replay::replay}）
@@ -171,12 +175,25 @@ public final class TimeAdvance implements AdvanceRoute {
       Collection<ModuleCodec> codecs,
       Collection<TimeParticipant> participants,
       StopDrain stopDrain) {
+    this(timeline, stateLoader, checkpoints, codecs, participants, stopDrain, List.of());
+  }
+
+  /** ★★ D-031 P1 spec §9.3：带候选态落库前校验器的构造（空表 = 既有调用点行为不变）。 */
+  public TimeAdvance(
+      Timeline timeline,
+      StateLoader stateLoader,
+      CheckpointStore checkpoints,
+      Collection<ModuleCodec> codecs,
+      Collection<TimeParticipant> participants,
+      StopDrain stopDrain,
+      List<CandidateStateValidator> validators) {
     this.timeline = Objects.requireNonNull(timeline, "timeline");
     this.stateLoader = Objects.requireNonNull(stateLoader, "stateLoader");
     this.checkpoints = Objects.requireNonNull(checkpoints, "checkpoints");
     Objects.requireNonNull(codecs, "codecs");
     Objects.requireNonNull(participants, "participants");
     this.stopDrain = Objects.requireNonNull(stopDrain, "stopDrain");
+    this.validators = List.copyOf(Objects.requireNonNull(validators, "validators"));
 
     Map<String, ModuleCodec> codecTable = new LinkedHashMap<>();
     for (ModuleCodec codec : codecs) {
@@ -456,6 +473,20 @@ public final class TimeAdvance implements AdvanceRoute {
               validation.applied().size(),
               "ok",
               true));
+
+      // ★★ D-031 P1 §9.3：本日完整候选态在落库前统一校验（批内中间态允许前向引用）。
+      SimulationState dayCandidate =
+          new SimulationState(dayMeta, mergedModules(state, validation.applied()), state.info());
+      for (CandidateStateValidator validator : validators) {
+        Optional<String> rejection = validator.rejection(state, dayCandidate);
+        if (rejection.isPresent()) {
+          return rejectedOutcome(
+              cmd,
+              trace,
+              "第 " + day + " 天候选态校验失败（" + validator.name() + "）: " + rejection.get(),
+              day);
+        }
+      }
 
       // ⑤ Commit：1 行 revision + **全部**事件，一个事务（裁定 47：`finished` 也在里面）。
       //   ★ `finished` 落在**终结日**（整段走完的最后一天，或急停停下的那天——急停是一段真实推进的终点，I4）。

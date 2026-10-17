@@ -19,6 +19,9 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionRuntimeEngine;
+import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
@@ -66,7 +69,10 @@ class LotMigrationBookTest {
     EconomyData base = base(Map.of());
     LotMigration migration = migration(20L);
 
-    EconomyData after = LotMigrationBook.apply(base, List.of(migration), 7L);
+    // ★★★ D-032 T1：静态形 `LotMigrationBook.apply(base, definitions, migrations, day)` 已按 B3 裁定删除
+    //   （只留"会话自带合法 runtime"的 `applyInto(EconomySession, …)`）⇒ 判据**换源**到会话形：
+    //   断言仍逐值不变（人口/劳动/债务按比例迁移 + 补建规范目标行）。
+    EconomyData after = applyIntoSession(base, List.of(migration), 7L);
 
     HouseholdId target =
         HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
@@ -121,7 +127,7 @@ class LotMigrationBookTest {
             0L);
     EconomyData base = base(Map.of(target, existingTarget));
 
-    EconomyData after = LotMigrationBook.apply(base, List.of(migration(20L)), 3L);
+    EconomyData after = applyIntoSession(base, List.of(migration(20L)), 3L);
 
     HouseholdEconomy targetRow = after.classes().get(target);
     assertThat(targetRow.population()).as("既有目标行合并：5+20").isEqualTo(25L);
@@ -136,7 +142,7 @@ class LotMigrationBookTest {
   void countAboveSourcePopulationFailsClosedWithNamedMessage() {
     EconomyData base = base(Map.of());
 
-    assertThatThrownBy(() -> LotMigrationBook.apply(base, List.of(migration(101L)), 1L))
+    assertThatThrownBy(() -> applyIntoSession(base, List.of(migration(101L)), 1L))
         .as("迁移人数超过源行可迁人口必须具名拒绝，不得把行抽成负")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("可迁人口不足");
@@ -155,7 +161,7 @@ class LotMigrationBookTest {
             5L,
             "测试：源格在 economy 侧没有家户行");
 
-    assertThatThrownBy(() -> LotMigrationBook.apply(base, List.of(fromEmptyHex), 1L))
+    assertThatThrownBy(() -> applyIntoSession(base, List.of(fromEmptyHex), 1L))
         .as("源行找不到时不许静默丢人")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("没有对应家户行");
@@ -179,10 +185,23 @@ class LotMigrationBookTest {
             0L);
     EconomyData base = base(Map.of(target, occupied));
 
-    assertThatThrownBy(() -> LotMigrationBook.apply(base, List.of(migration(20L)), 1L))
+    assertThatThrownBy(() -> applyIntoSession(base, List.of(migration(20L)), 1L))
         .as("目标 id 被不同视图占用 ⇒ 拒绝覆盖")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("已被不同视图占用");
+  }
+
+  /**
+   * ★★ D-032 T1：会话形的 {@code applyInto} 包装（静态形已删）——建一个"空候选态运行时"的会话，推进后取 {@code preview()}。★ 拒绝路径直接由
+   * {@code applyInto} 抛出（不吞异常），故负向用例的断言一字未改。
+   */
+  private static EconomyData applyIntoSession(
+      EconomyData base, List<LotMigration> migrations, long day) {
+    ProductionData definitions = ProductionData.empty();
+    ProductionRuntime runtime = new ProductionRuntimeEngine(definitions);
+    EconomySession session = new EconomySession(base, definitions, runtime);
+    LotMigrationBook.applyInto(session, migrations, day);
+    return session.preview();
   }
 
   // ── 最小夹具 ─────────────────────────────────────────────────────────────────────────

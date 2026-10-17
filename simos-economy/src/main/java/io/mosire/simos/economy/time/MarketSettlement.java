@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
@@ -45,17 +46,16 @@ import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.log.EventLog;
@@ -320,7 +320,7 @@ final class MarketSettlement {
     private final Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney;
     private final Map<HouseholdId, Map<CommodityId, Long>> unmetToday;
     private final Map<ActorRef, HouseholdId> householdOfActor;
-    private final Map<IndustryId, Industry> industries;
+    private final Map<IndustryId, IndustryDefinitionView> industries;
 
     /** ★★ R3B.2：生产单元表（键 = unit id；参与者/必要投入/卖单归属都读它）。 */
     private final Map<ProductionUnitId, ProductionProcess> units;
@@ -481,7 +481,7 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionProcess> units,
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<ProductionUnitId, ProductionRules> relations,
@@ -531,7 +531,7 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionProcess> units,
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<ProductionUnitId, ProductionRules> relations,
@@ -577,7 +577,7 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionProcess> units,
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<ProductionUnitId, ProductionRules> relations,
@@ -633,7 +633,7 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionProcess> units,
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<ProductionUnitId, ProductionRules> relations,
@@ -4855,7 +4855,7 @@ final class MarketSettlement {
       return false; // 合成默认经营者的制度（household / tenant）都是 HOUSEHOLD；其余一律不算
     }
     ProductionProcess unit = round.units.get(unitId);
-    Industry industry = unit == null ? null : round.industries.get(unit.industry());
+    IndustryDefinitionView industry = unit == null ? null : round.industries.get(unit.industry());
     if (unit == null || industry == null || industry.regime() == null) {
       return false;
     }
@@ -9186,7 +9186,8 @@ final class MarketSettlement {
     for (Participant participant : indexes.participantsByHex.getOrDefault(hexKey, List.of())) {
       for (ProductionUnitId id : participant.units) {
         ProductionProcess unit = ctx.round.units.get(id);
-        Industry industry = unit == null ? null : ctx.round.industries.get(unit.industry());
+        IndustryDefinitionView industry =
+            unit == null ? null : ctx.round.industries.get(unit.industry());
         if (unit == null
             || industry == null
             || !industry.outputPerUnit().containsKey(buy.order.commodity())) {
@@ -9960,7 +9961,7 @@ final class MarketSettlement {
     if (unit == null) {
       return ProducerCostBook.Estimate.unknown();
     }
-    Industry industry = round.industries.get(unit.industry());
+    IndustryDefinitionView industry = round.industries.get(unit.industry());
     if (industry == null) {
       return ProducerCostBook.Estimate.unknown();
     }
@@ -9977,7 +9978,8 @@ final class MarketSettlement {
     ProductionProcess match = null;
     for (ProductionUnitId id : seller.units) {
       ProductionProcess unit = round.units.get(id);
-      Industry candidate = unit == null ? null : round.industries.get(unit.industry());
+      IndustryDefinitionView candidate =
+          unit == null ? null : round.industries.get(unit.industry());
       if (unit == null
           || candidate == null
           || !candidate.outputPerUnit().containsKey(commodity)
@@ -9993,7 +9995,8 @@ final class MarketSettlement {
     }
     for (ProductionUnitId id : seller.units) {
       ProductionProcess unit = round.units.get(id);
-      Industry candidate = unit == null ? null : round.industries.get(unit.industry());
+      IndustryDefinitionView candidate =
+          unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || candidate == null || !candidate.outputPerUnit().containsKey(commodity)) {
         continue;
       }
@@ -10009,7 +10012,7 @@ final class MarketSettlement {
     Map<CommodityId, Long> necessary = new LinkedHashMap<>();
     for (ProductionUnitId id : participant.units) {
       ProductionProcess unit = round.units.get(id);
-      Industry industry = unit == null ? null : round.industries.get(unit.industry());
+      IndustryDefinitionView industry = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || industry == null) {
         continue;
       }
@@ -10035,7 +10038,8 @@ final class MarketSettlement {
     // ★★★ A3（2026-10-10）：**这里原有一段"给跑商家户下夹一趟工具"的特例（§16 追加裁定 6 的最小第一步，
     //   提交 b22da5b7）——已撤回**。撤回理由（三支直证，见实现账本 §5）：
     //   ① 上面那个 **标准循环** 已经覆盖同一件事：{@code trade} 产业的 {@code cycleInputPerUnit = {CATTLE:{tool:100}}}
-    //      经 {@code Industry.inputPerUnit()} 摊平后**就是** {@code tool: 100}，该户持有 100 单位 CATTLE 运力资产
+    //      经 {@code IndustryDefinitionView.inputPerUnit()} 摊平后**就是** {@code tool: 100}，该户持有 100 单位
+    // CATTLE 运力资产
     //      ⇒ {@code scale = 100} ⇒ 标准保留 = 100 × 100 = **10,000 毫工具**，逐值 = 旧特例的 {@code declared}
     //      （旧特例是 {@code max(declared, 1,000)} 的"下夹"，declared=10,000 > 1,000 ⇒ 旧代码那一行 **put 都没执行**）
     //      ⇒ 对**有 trade unit 的跑商家户**，旧特例是**恒等操作**（占位而非贡献）。
@@ -10085,7 +10089,7 @@ final class MarketSettlement {
     Map<CommodityId, Long> retained = new LinkedHashMap<>();
     for (ProductionUnitId id : participant.units) {
       ProductionProcess unit = round.units.get(id);
-      Industry industry = unit == null ? null : round.industries.get(unit.industry());
+      IndustryDefinitionView industry = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || industry == null) {
         continue;
       }

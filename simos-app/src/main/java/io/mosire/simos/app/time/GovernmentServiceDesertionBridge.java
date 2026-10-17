@@ -8,6 +8,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -15,12 +16,9 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomySettlement;
@@ -31,6 +29,8 @@ import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.economy.time.ModeMigrationPolicy;
 import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -232,13 +232,16 @@ public final class GovernmentServiceDesertionBridge {
       Map<HouseholdId, HouseholdEconomy> rows,
       Set<AssetShareId> claimedByEnterprises,
       MarketDemandBook.Book demand,
-      AccountSession accounts) {
+      AccountSession accounts,
+      io.mosire.simos.production.contract.ProductionRuntime productionRuntime) {
 
     DestinationContext {
       Objects.requireNonNull(rows, "rows");
       Objects.requireNonNull(claimedByEnterprises, "claimedByEnterprises");
       Objects.requireNonNull(demand, "demand");
       Objects.requireNonNull(accounts, "accounts");
+      Objects.requireNonNull(
+          productionRuntime, "productionRuntime（§15.12 B：去向排序的物理量必须取自 production 的试算）");
     }
   }
 
@@ -247,6 +250,8 @@ public final class GovernmentServiceDesertionBridge {
    *
    * @param socialIn 当日结算后的 Social（含 Z7d-1 satiety）
    * @param economy 推进基态 Economy（只读；用于候选户/承诺集合 —— GOV_SERVICE 行在当日 step 中不可缩）
+   * @param productionRuntime ★ §15.12 B：本会话的生产运行时（去向排序的 {@link ExpectedProfitBook#prospect} 用它取
+   *     产出/所需劳动/所需投入；不得为 null）
    * @param liveEconomy 当日预算执行后的 Economy 工作副本的惰性提供者（只在真需要排序/减承诺时求值； 正常日无真走人 ⇒ 不构造 EconomyData
    *     预览，避免每日全量守卫开销）
    * @param units unit 切片（只读：找 GOV/岗位户/位置）
@@ -260,6 +265,12 @@ public final class GovernmentServiceDesertionBridge {
   static Outcome execute(
       SocialData socialIn,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime productionRuntime,
       Supplier<EconomyData> liveEconomy,
       UnitState units,
       Map<HouseholdId, Long> salaryShortfallByHousehold,
@@ -277,6 +288,8 @@ public final class GovernmentServiceDesertionBridge {
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(reports, "reports");
+    Objects.requireNonNull(
+        productionRuntime, "productionRuntime（§15.12 B：去向排序的物理量必须取自 production 的试算）");
     if (day < 0L) {
       throw new IllegalArgumentException(
           "GovernmentServiceDesertionBridge.execute 的 day 不得为负: " + day);
@@ -308,7 +321,8 @@ public final class GovernmentServiceDesertionBridge {
       LinkedHashSet<HouseholdId> candidates = new LinkedHashSet<>();
       candidates.addAll(formation.governmentPostsOfHousehold().keySet());
       Map<HouseholdId, Long> committed =
-          GovernmentServiceLaborBridge.committedLaborByHousehold(economy, gov, day);
+          GovernmentServiceLaborBridge.committedLaborByHousehold(
+              economy, productionUnits, gov, day);
       for (HouseholdId household : committed.keySet()) {
         if (unit.households().contains(household) && !treasury.equals(household)) {
           candidates.add(household);
@@ -424,10 +438,27 @@ public final class GovernmentServiceDesertionBridge {
           EconomyData live = liveEconomy.get();
           Objects.requireNonNull(live, "liveEconomy.get()");
           DestinationContext destinationContext =
-              buildDestinationContext(live, accounts, topology, reports, day);
+              buildDestinationContext(
+                  productionUnits,
+                  definitions,
+                  productionRuntime,
+                  live,
+                  accounts,
+                  topology,
+                  reports,
+                  day);
           List<DestinationScore> destinations =
               rankDestinations(
-                  social, govSeat.get(), live, units, accounts, topology, day, destinationContext);
+                  productionUnits,
+                  definitions,
+                  social,
+                  govSeat.get(),
+                  live,
+                  units,
+                  accounts,
+                  topology,
+                  day,
+                  destinationContext);
           if (destinations.isEmpty()) {
             noDestinationSkips++;
             // 没有可去的经济家户 ⇒ 整批人原地累积（不丢人）；余数允许暂时 ≥ 1000，等有去向时再按满人走。
@@ -671,6 +702,12 @@ public final class GovernmentServiceDesertionBridge {
 
   /** 建一次需求簿/占用份额（只在真有逃亡候选时构造；失败退化为空簿，不阻断日推进）。 */
   private static DestinationContext buildDestinationContext(
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime productionRuntime,
       EconomyData economy,
       AccountSession accounts,
       MarketTopology topology,
@@ -678,7 +715,7 @@ public final class GovernmentServiceDesertionBridge {
       long day) {
     Set<AssetShareId> claimed =
         ModeMigrationPolicy.claimedOwnershipStakes(
-            economy.productionOrganizations(), economy.units(), economy.assetShares());
+            economy.productionOrganizations(), productionUnits, economy.assetShares());
     MarketDemandBook.Book demand;
     try {
       demand =
@@ -686,8 +723,10 @@ public final class GovernmentServiceDesertionBridge {
               reports,
               topology,
               economy.classes(),
-              economy.units(),
-              economy.industries(),
+              productionUnits,
+              // ★★★ D-032 B3：需求簿的产业模板一律读 production 的**当刻定义权威**
+              //   （旧口径读 `EconomyData.industries` = 阶段 2 的临时兼容组件，已随本批删除）。
+              definitions.industries(),
               economy.assetShares(),
               economy.shipments(),
               accounts,
@@ -697,7 +736,7 @@ public final class GovernmentServiceDesertionBridge {
     } catch (RuntimeException failure) {
       demand = MarketDemandBook.Book.empty(day, DEMAND_HORIZON_DAYS);
     }
-    return new DestinationContext(economy.classes(), claimed, demand, accounts);
+    return new DestinationContext(economy.classes(), claimed, demand, accounts, productionRuntime);
   }
 
   /**
@@ -705,6 +744,11 @@ public final class GovernmentServiceDesertionBridge {
    * 降序；无生产机会（margin/prospect 任一 ≤ 0）退化为 {@code 人均（粮+银+资产）} 降序；同分一律按家户 id 升序。
    */
   private static List<DestinationScore> rankDestinations(
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       SocialData social,
       HexCoord hex,
       EconomyData economy,
@@ -731,8 +775,10 @@ public final class GovernmentServiceDesertionBridge {
       if (destinationRow == null || destinationRow.population() <= 0L) {
         continue; // 经济家户必须真的有人可吸收；0 人壳户（含逃亡后的旧官吏户壳）不是去向。
       }
-      long margin = absorbableLaborMargin(destination, hex, economy);
-      long profit = expectedProfitPerLabor(destination, hex, economy, topology, day, context);
+      long margin = absorbableLaborMargin(destination, hex, economy, productionUnits, definitions);
+      long profit =
+          expectedProfitPerLabor(
+              destination, hex, economy, definitions, productionUnits, topology, day, context);
       long score;
       boolean fallback;
       if (margin > 0L && profit > 0L) {
@@ -764,11 +810,18 @@ public final class GovernmentServiceDesertionBridge {
 
   /** 该户在格上的可吸收劳动余量 = Σ_{自有 unit} max(0, 产能劳动 − 既有承诺劳动)。 */
   private static long absorbableLaborMargin(
-      HouseholdId household, HexCoord hex, EconomyData economy) {
+      HouseholdId household,
+      HexCoord hex,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions) {
     ActorRef operator = HouseholdActors.of(household);
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
     long margin = 0L;
-    for (ProductionProcess process : economy.units().values()) {
+    for (ProductionProcess process : productionUnits.values()) {
       if (!process.operator().equals(operator)) {
         continue;
       }
@@ -776,7 +829,8 @@ public final class GovernmentServiceDesertionBridge {
       if (processHex.isEmpty() || !processHex.get().equals(hexKey)) {
         continue;
       }
-      Industry industry = economy.industries().get(process.industry());
+      // ★★★ D-032 B3：同上 —— 产业定义读 production 的当刻权威。
+      IndustryDefinitionView industry = definitions.industry(process.industry()).orElse(null);
       if (industry == null) {
         continue;
       }
@@ -799,6 +853,11 @@ public final class GovernmentServiceDesertionBridge {
       HouseholdId household,
       HexCoord hex,
       EconomyData economy,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
       MarketTopology topology,
       long day,
       DestinationContext context) {
@@ -811,7 +870,9 @@ public final class GovernmentServiceDesertionBridge {
       return 0L;
     }
     ProductionModeId modeId = role.modeId();
-    if (modeId == null || economy.modes().get(modeId) == null) {
+    // ★★★ B5（§13.15.2 裁定十八）：生产方式定义副本已从 EconomyData 删除 ⇒ 读注入的 production 定义权威
+    //   （本方法已有 `definitions` 形参；裸 EconomyData 读 modes() 会 fail-closed）。
+    if (modeId == null || definitions.mode(modeId).isEmpty()) {
       return 0L;
     }
     // ★ W1：本格价表 = 本格所属市场的那一张（每区一张；不在任何市场里 ⇒ null）。
@@ -819,7 +880,10 @@ public final class GovernmentServiceDesertionBridge {
     try {
       ExpectedProfitBook.Prospect prospect =
           ExpectedProfitBook.prospect(
-              economy,
+              // ★★ D-032 B4（§13.14.2 裁定十五）：`ExpectedProfitBook.prospect` 的入参是 EconomyDayView，
+              //   而它内部要读产业定义（`base.industries()`）——裸 EconomyData 已不持有定义（读到就 fail-closed）
+              //   ⇒ 在这里配一个 revision 边界的只读装配视图（EconomyData + production 定义来源）。
+              io.mosire.simos.economy.EconomyBoundaryView.of(economy, definitions),
               household,
               modeId,
               hex,
@@ -829,10 +893,13 @@ public final class GovernmentServiceDesertionBridge {
               economy.assetShares(),
               context.claimedByEnterprises(),
               context.accounts(),
-              economy.units(),
+              productionUnits,
               economy.relations(),
               topology,
-              day);
+              day,
+              // ★★ D-032 §15.12 B（R1）：单位的劳动预期利润改由 production 的试算给物理量 ——
+              //   桥的运行时来自组合根（stepper.productionRuntime()，与当日结算同一份候选态）。
+              context.productionRuntime());
       if (!prospect.feasible() || prospect.netPerLaborScaled() <= 0L) {
         return 0L;
       }

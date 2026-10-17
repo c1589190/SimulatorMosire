@@ -4,19 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
-import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.DefaultProductionModes;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -347,7 +349,7 @@ class ModeMigrationPolicyW9Test {
    */
   @Test
   void carriedToolInventorySelectsTheTierByThePerValueTable() {
-    Industry trade = MerchantTradeTemplate.industry(H);
+    IndustryDefinitionView trade = MerchantTradeTemplate.industry(H);
     assertThat(trade.slots()).as("夹具：贸易模板四档（贫农/中农/富农/地主）").hasSize(4);
     long labor = 160_000L;
 
@@ -365,7 +367,7 @@ class ModeMigrationPolicyW9Test {
    */
   @Test
   void tierBoundariesAreExactOnBothSides() {
-    Industry trade = MerchantTradeTemplate.industry(H);
+    IndustryDefinitionView trade = MerchantTradeTemplate.industry(H);
     long labor = 160_000L;
     for (int t = 1; t < trade.slots().size(); t++) {
       long need = tierNeed(trade, labor, t);
@@ -389,7 +391,7 @@ class ModeMigrationPolicyW9Test {
   /** ★★ <b>兜底档不设门槛（用户原话②"为啥要拦着"）：{@code 需求(0, ·) ≡ 0} ⇒ 零库存户恒落兜底档</b>。 */
   @Test
   void theBottomTierNeverRequiresAnyInventory() {
-    Industry trade = MerchantTradeTemplate.industry(H);
+    IndustryDefinitionView trade = MerchantTradeTemplate.industry(H);
     assertThat(tierNeed(trade, 160_000L, 0)).as("★ 兜底档（贫农）需求恒 0 —— 这是「零库存也能转业」的结构根").isZero();
     for (long labor : new long[] {1_000L, 160_000L, 1_600_000L}) {
       assertThat(tier(trade, labor, 0L)).as("labor=%d（≥ 一个规模单位）：零库存 ⇒ 恒兜底档", labor).isZero();
@@ -413,13 +415,15 @@ class ModeMigrationPolicyW9Test {
         .as("规模 = 1 且带满工具（≥ 档 3 需求 1,080 毫）⇒ 最高档 3")
         .isEqualTo(3);
     assertThat(tier(trade, 1_000L, 0L)).as("规模 = 1、零库存 ⇒ 仍是兜底档 0（「零库存也能转业」不受 U5 修复影响）").isZero();
-    // ★ 「没有档位表」那一支（`supportedTierIndex` 的 `slots().isEmpty() → 0`）**无法用 Industry 构造出来**：
-    //   `Industry` 的构造期就 fail-closed（"Industry.slots 不得为空"）⇒ 该分支是**防御性**的（旧档/未裁决产业
+    // ★ 「没有档位表」那一支（`supportedTierIndex` 的 `slots().isEmpty() → 0`）**无法用 IndustryDefinitionView
+    // 构造出来**：
+    //   `IndustryDefinitionView` 的构造期就 fail-closed（"IndustryDefinitionView.slots 不得为空"）⇒
+    // 该分支是**防御性**的（旧档/未裁决产业
     //   在到达判据之前就已经被类型挡住）。这里如实钉住"构造函数先挡"这一事实，不假装测到了那一支。
     assertThat(
             org.assertj.core.api.Assertions.catchThrowable(
                 () ->
-                    new Industry(
+                    IndustryViews.industry(
                         IndustryHexKeys.id("no-slots", H.q(), H.r()),
                         "no-slots",
                         new RegimeId("household"),
@@ -432,9 +436,9 @@ class ModeMigrationPolicyW9Test {
                         Map.of(),
                         List.of(),
                         new AllocationRule.Split(500, 500))))
-        .as("★ 空槽位表在 Industry 构造期就被拒 ⇒ 判据里那一支等价存活（测不到，如实记）")
+        .as("★ 空槽位表在 IndustryDefinitionView 构造期就被拒 ⇒ 判据里那一支等价存活（测不到，如实记）")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("Industry.slots 不得为空");
+        .hasMessageContaining("IndustryDefinitionView.slots 不得为空");
   }
 
   /**
@@ -443,7 +447,7 @@ class ModeMigrationPolicyW9Test {
    * <p>★ <b>档 0 恒为 0</b>：判据的循环从 {@code tier = 1} 起（兜底档不查参与率、不设门槛）—— 这不是"算出来 0"， 是 **定义上就是
    * 0**（"零库存也能转业"的结构根，用户原话②）。
    */
-  private static long tierNeed(Industry industry, long laborMilli, int tier) {
+  private static long tierNeed(IndustryDefinitionView industry, long laborMilli, int tier) {
     if (tier == 0) {
       return 0L;
     }
@@ -467,7 +471,7 @@ class ModeMigrationPolicyW9Test {
   }
 
   /** {@code supportedTierIndex} 的薄封装（只为让上面的逐值表读起来像表）。 */
-  private static int tier(Industry industry, long laborMilli, long carriedToolMilli) {
+  private static int tier(IndustryDefinitionView industry, long laborMilli, long carriedToolMilli) {
     Map<AssetKind, Long> carried =
         carriedToolMilli > 0L ? Map.of(AssetKind.TOOL, carriedToolMilli) : Map.of();
     return ModeMigrationPolicy.supportedTierIndex(industry, laborMilli, carried);
@@ -533,10 +537,8 @@ class ModeMigrationPolicyW9Test {
       long quantity,
       long sequence) {
     AssetShareId id =
-        OwnershipStake.idOf(
-            industry, asset, owner, operator, OwnershipStake.RightKind.OWNED, sequence);
-    return new OwnershipStake(
-        id, industry, asset, owner, operator, quantity, OwnershipStake.RightKind.OWNED);
+        OwnershipStake.idOf(industry, asset, owner, operator, AssetRightKind.OWNED, sequence);
+    return new OwnershipStake(id, industry, asset, owner, operator, quantity, AssetRightKind.OWNED);
   }
 
   // ── §D 档位 → 落点位置（升序位阶）──────────────────────────────────────────────────────

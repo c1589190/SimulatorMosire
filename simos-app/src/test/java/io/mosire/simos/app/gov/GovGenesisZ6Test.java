@@ -31,11 +31,11 @@ import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -135,9 +135,11 @@ class GovGenesisZ6Test {
             .isEqualTo(2L);
 
         // gov service unit：operator = hh-gov-<id>（Z1c 身份）
+        // ★★ D-032 T1：生产实例的读数改从 **production 切片**当刻现读（`EconomyData.units()` 已按 B2b/裁定六
+        //   迁移删除；实例的唯一权威在 production）。判据一字未改：仍是"operator = hh-gov-<id> 的 office unit 恰一条"。
         var treasuryActor = HouseholdActors.of(govHousehold);
         List<ProductionProcess> serviceUnits =
-            economy.units().values().stream()
+            productionInstances(state).values().stream()
                 .filter(process -> process.operator().equals(treasuryActor))
                 .toList();
         assertThat(serviceUnits).as(id + " 恰一个 gov service unit").hasSize(1);
@@ -562,6 +564,18 @@ class GovGenesisZ6Test {
       }
     }
     return total;
+  }
+
+  /**
+   * ★★ D-032 T1：**生产实例**的当刻真值（跨模块测试只能经 production 切片的只读投影口读 —— 实例权威在 production）。 形态同 {@code
+   * GovZ6WorldFixture} 的 {@code economySlice/unitSlice}，只是 production 侧没有共享助手。
+   */
+  private static Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess>
+      productionInstances(SimulationState state) {
+    return ((io.mosire.simos.production.ProductionSnapshot)
+            state.module("production").orElseThrow())
+        .state()
+        .instances();
   }
 
   /**

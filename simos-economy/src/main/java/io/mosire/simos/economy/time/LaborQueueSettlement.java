@@ -6,6 +6,7 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -14,13 +15,12 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -134,10 +134,10 @@ final class LaborQueueSettlement {
     Objects.requireNonNull(arbitrageCollector, "arbitrageCollector");
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
         session.sheet().laborCommitments();
-    LinkedHashMap<ProductionUnitId, ProductionProcess> units = session.sheet().units();
+    Map<ProductionUnitId, ProductionProcess> units = session.sheet().units();
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
         session.sheet().householdEconomies();
-    Map<IndustryId, Industry> industryTemplates = session.sheet().industries();
+    Map<IndustryId, IndustryDefinitionView> industryTemplates = session.sheet().industries();
     // ★ W1：结算器内部持**逐格取价表解析器**（价表每区一张 ⇒ 不能再按 hex 直接查表）。
     MarketIndex markets =
         MarketIndex.of(session.sheet().marketTables(), session.sheet().base().marketZones());
@@ -290,7 +290,7 @@ final class LaborQueueSettlement {
             && !unit.modeKey().startsWith(EconomyEnterpriseSettlement.MODE_KEY_PREFIX)) {
           continue; // ★ R4-E2b 试产 unit：本日保留试产配额（不放进队列 ⇒ 被算进 preserved）
         }
-        Industry industry = industryTemplates.get(unit.industry());
+        IndustryDefinitionView industry = industryTemplates.get(unit.industry());
         if (industry == null) {
           continue; // 坏状态：不静默删配额（候选里没有 offer ⇒ 被算进 preserved）
         }
@@ -298,7 +298,19 @@ final class LaborQueueSettlement {
         String rankModeKey = modeId.map(ProductionModeId::value).orElse(unit.modeKey());
         LaborQueueBook.Offer offer =
             LaborQueueBook.offer(
-                unit, industry, market, conditions.get(unit.id()), index, modeId, rankModeKey);
+                unit,
+                industry,
+                market,
+                conditions.get(unit.id()),
+                index,
+                modeId,
+                rankModeKey,
+                // ★★★ D-032 §15.12 A（R1）：家户决定这批物理量的熟练度/经验（probe 入参），
+                //   产出/投入/劳动由同一次试算给出（本户在循环外已解析）。
+                household,
+                // ★★★ B8（缺陷 DEF-T2b-2 的同源一处）：投入那一路读**本生产日实扣量**的权威视图
+                //   （`LaborQueueBook#cycleInputUsedMilliOf`：本 tick 现扣过就读会话那一份，否则读实例）。
+                session);
         if (!LaborQueueBook.isPreservedByQueue(offer)) {
           offers.add(offer);
           queuedUnits.add(unit.id());

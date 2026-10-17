@@ -16,6 +16,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.gov.GovEfficiencyModifier;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -248,7 +249,25 @@ public final class GovZ6WorldFixture {
               io.mosire.simos.unit.change.UnitChangeSet.apply(
                   (io.mosire.simos.unit.change.UnitChangeSet) changeSet,
                   ((UnitSnapshot) base).state()));
-      default -> null;
+      // ★★★ 裁定四十八（T7）：production 的实例/进度/经验/效率/覆盖变更集也必须应用。
+      //   旧稿缺这一支 ⇒ `default -> null` ⇒ StateRunner 把 production ChangeSet **静默丢弃**
+      //   （实例 progressDays 永远停在 base 值；N22 假阴性的根源，见 §14.26.3 与 impl B12-§4.2-3）。
+      //   形制照其它模块：快照 ref 取 base、timestamp 取本 tick、载荷由 ProductionChangeSet.apply 重建。
+      case "production" ->
+          new ProductionSnapshot(
+              ref(base),
+              at,
+              io.mosire.simos.production.change.ProductionChangeSet.apply(
+                  (io.mosire.simos.production.change.ProductionChangeSet) changeSet,
+                  ((ProductionSnapshot) base).state()));
+      // ★★ 纪律（§14.26.3）：**不许**再用"未知 namespace ⇒ null"的静默丢弃兜底。
+      //   参与者的 moduleChanges 只可能来自本仓的模块 namespace；不认识的键 = 本夹具欠一支
+      //   ⇒ 当场红（否则该模块的一切跨 revision 判据都是假绿）。
+      default ->
+          throw new IllegalStateException(
+              "GovZ6WorldFixture.applyChangeSet 未覆盖的模块 namespace: "
+                  + namespace
+                  + "（少一个分支 = 静默丢弃该模块的变更集）");
     };
   }
 

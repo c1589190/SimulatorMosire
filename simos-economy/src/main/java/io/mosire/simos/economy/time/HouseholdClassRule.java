@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -21,9 +22,9 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -84,8 +85,9 @@ import java.util.Set;
  * landless_laborer}/{@code artisan}/{@code official}；旧档的 parse 行为不变（见 {@code SocialClassId}）。
  * <b>写回</b>只发生在结算关账日，且只改 {@code HouseholdEconomy.view}（见 {@code 旧结算引擎（R3a 已删除）}）。
  *
- * <p>★★ <b>R4-B.4：纯派生</b>：分类不再读 {@code Industry.slots}，也没有任何"槽位上限回退"分支；{@code Industry.slots} /
- * {@code ClassSlot} 只作为生产方式内部的角色/劳动配置，不再是 {@code HouseholdEconomy.view} 或参与率的上限来源。
+ * <p>★★ <b>R4-B.4：纯派生</b>：分类不再读 {@code IndustryDefinitionView.slots}，也没有任何"槽位上限回退"分支；{@code
+ * IndustryDefinitionView.slots} / {@code ClassSlot} 只作为生产方式内部的角色/劳动配置，不再是 {@code
+ * HouseholdEconomy.view} 或参与率的上限来源。
  */
 public final class HouseholdClassRule {
 
@@ -130,8 +132,11 @@ public final class HouseholdClassRule {
 
   /** 按可观察量给一个家户分档（纯函数；不写状态）。 */
   public static SocialClassId classify(
-      EconomyData data, HouseholdId household, Optional<ProductionLedger> ledger) {
-    return classifyDetailed(data, household, ledger).stratum();
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      HouseholdId household,
+      Optional<ProductionLedger> ledger) {
+    return classifyDetailed(data, units, household, ledger).stratum();
   }
 
   /**
@@ -141,11 +146,15 @@ public final class HouseholdClassRule {
    *     rentPaidComplete=false} 与读口说明里）
    */
   public static Classification classifyDetailed(
-      EconomyData data, HouseholdId household, Optional<ProductionLedger> ledger) {
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      HouseholdId household,
+      Optional<ProductionLedger> ledger) {
     Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(ledger, "ledger");
-    return Index.of(data).classify(household, ledger);
+    return Index.of(data, units).classify(household, ledger);
   }
 
   /** 结算侧入口：直接拿日结算的工作表分量，避免为一次分类构造整棵 {@code EconomyData}。 */
@@ -153,7 +162,7 @@ public final class HouseholdClassRule {
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, Industry> industries,
+      Map<IndustryId, IndustryDefinitionView> industries,
       Map<ProductionUnitId, ProductionRules> relations,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
@@ -170,8 +179,10 @@ public final class HouseholdClassRule {
    * <p>★ 保留为公开读口：V 阶段与上层状态机需要"制度身份"这一可观察量，而不只是最终阶层。★ <b>它不是 {@code classify}
    * 的缩写</b>：分类还要读同户的多条关系、债务与资产；这里只回答"最强制度身份是哪一档"。
    */
-  public static LaborSource laborSourceOf(EconomyData data, HouseholdId household) {
+  public static LaborSource laborSourceOf(
+      EconomyData data, Map<ProductionUnitId, ProductionProcess> units, HouseholdId household) {
     Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(household, "household");
     LaborSource result = null;
     for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
@@ -179,8 +190,8 @@ public final class HouseholdClassRule {
         continue;
       }
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      if (!data.units().containsKey(unitId)) {
-        continue; // activity 不是现存 unit（自由家户劳动）：没有可读的关系来源
+      if (!units.containsKey(unitId)) {
+        continue; // activity 不是现存实例（自由家户劳动）：没有可读的关系来源
       }
       ProductionRules relation = data.relations().get(unitId);
       if (relation == null) {
@@ -373,7 +384,7 @@ public final class HouseholdClassRule {
             continue;
           }
           // ★★ R3B.2：经营身份对应的产能从 **OwnershipStake 纯派生**（unit 的可用资产），不再读
-          //   {@code Industry.capacity} —— 实物总账只有一个来源，分类与结算不可能漂开。
+          //   {@code IndustryDefinitionView.capacity} —— 实物总账只有一个来源，分类与结算不可能漂开。
           for (Map.Entry<AssetKind, Long> usable : usableAssetsOf(unit, assetShares).entrySet()) {
             if (usable.getValue() <= 0L) {
               continue;
@@ -477,13 +488,17 @@ public final class HouseholdClassRule {
       }
     }
 
-    public static Index of(EconomyData data) {
+    public static Index of(EconomyData data, Map<ProductionUnitId, ProductionProcess> units) {
       Objects.requireNonNull(data, "data");
+      Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
       return of(
           data.assetShares(),
           data.allocations(),
-          data.units(),
-          data.industries(),
+          units,
+          // ★★★ D-032 B4（§13.14.2 裁定十五）：economy 不再持有产业定义副本 ⇒ 本形参传空表。
+          //   ★ 判据一字未变：下面 7 参重载的注释早已写明"industries 形参保留（结算/读口的公开重载不换签名），
+          //     但 Index 不再读 IndustryDefinitionView.slots" —— 它从来没读过这个值（只被 requireNonNull 检查）。
+          Map.of(),
           data.relations(),
           data.classes(),
           data.debtContracts());
@@ -493,7 +508,7 @@ public final class HouseholdClassRule {
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ProductionUnitId, ProductionProcess> units,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionRules> relations,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts) {
@@ -504,7 +519,7 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(relations, "relations");
       Objects.requireNonNull(householdEconomies, "classes");
       Objects.requireNonNull(debts, "debts");
-      // ★ B.4：industries 形参保留（结算/读口的公开重载不换签名），但 Index 不再读 Industry.slots。
+      // ★ B.4：industries 形参保留（结算/读口的公开重载不换签名），但 Index 不再读 IndustryDefinitionView.slots。
       return new Index(
           assetShares, laborCommitments, units, relations, householdEconomies, debts, null);
     }
@@ -517,7 +532,7 @@ public final class HouseholdClassRule {
         Map<AssetShareId, OwnershipStake> assetShares,
         Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ProductionUnitId, ProductionProcess> units,
-        Map<IndustryId, Industry> industries,
+        Map<IndustryId, IndustryDefinitionView> industries,
         Map<ProductionUnitId, ProductionRules> relations,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts,
@@ -530,7 +545,7 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(householdEconomies, "classes");
       Objects.requireNonNull(debts, "debts");
       Objects.requireNonNull(settlementIndex, "settlementIndex");
-      // ★ B.4：industries 形参保留（结算侧公开重载不换签名），但 Index 不再读 Industry.slots。
+      // ★ B.4：industries 形参保留（结算侧公开重载不换签名），但 Index 不再读 IndustryDefinitionView.slots。
       return new Index(
           assetShares,
           laborCommitments,
@@ -856,7 +871,7 @@ public final class HouseholdClassRule {
       } else if (share.asset() == AssetKind.TOOL || share.asset() == AssetKind.WORKSHOP) {
         directToolOrWorkshop.merge(household, share.quantity(), Math::addExact);
       }
-      if (share.kind() == OwnershipStake.RightKind.COMMUNAL && share.quantity() > 0L) {
+      if (share.kind() == AssetRightKind.COMMUNAL && share.quantity() > 0L) {
         communalRight.put(household, true);
       }
     }

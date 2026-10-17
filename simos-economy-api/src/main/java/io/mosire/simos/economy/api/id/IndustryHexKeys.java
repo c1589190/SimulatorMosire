@@ -1,6 +1,5 @@
-package io.mosire.simos.economy.model;
+package io.mosire.simos.economy.api.id;
 
-import io.mosire.simos.economy.api.id.IndustryId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -9,7 +8,7 @@ import java.util.Optional;
 
 /**
  * ★★ **"产业属于哪一格"的唯一拼写点**（聚合式经济重设计 §十）：R2a 起每一格各得一份 {@code economy} 状态，农业恒有、城市格加手工业 —— 于是 {@code
- * IndustryId} 必须携带格的坐标，而{@link Industry} 自身**没有**（也不该有）"我在哪一格"的字段（§3.1 的形状不变）。
+ * IndustryId} 必须携带格的坐标，而{@code Industry} 自身**没有**（也不该有）"我在哪一格"的字段（§3.1 的形状不变）。
  *
  * <p>★ **为什么单列一个类而不是就地拼字符串**：这份约定被**三个地方**同时读——{@code EconomySeeder}（生成 id）、 {@code
  * ApiViews.economyHex}（按格取该格的产业）、以及用例。三处各拼一次 "kind + '@' + q + '_' + r" 不会报错、只会漂移
@@ -66,7 +65,7 @@ public final class IndustryHexKeys {
    *
    * <p>只认 {@link #hexKeyOf} 与该格键**逐字相等**的 id——{@code 1_10} 与 {@code 1_1} 因此不会互相误命中。
    */
-  public static List<IndustryId> at(Map<IndustryId, Industry> industries, int q, int r) {
+  public static List<IndustryId> at(Map<IndustryId, ?> industries, int q, int r) {
     String target = hexKey(q, r);
     List<IndustryId> ids = new ArrayList<>();
     for (IndustryId id : industries.keySet()) {

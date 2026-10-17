@@ -75,7 +75,10 @@ class CrossProcessDeterminismTest {
           "ga",
           "actor",
           "gov",
-          "army");
+          "army",
+          // ★★ D-031 Z6（2026-10-16）：production/culture 两片也逐片比（checkpoint 段之外的单片读数）。
+          "production",
+          "culture");
 
   private static final Pattern ARTIFACT_LINE =
       Pattern.compile("^ARTIFACT (\\S+) sha256=([0-9a-f]{64}) len=(\\d+)$");
@@ -108,7 +111,7 @@ class CrossProcessDeterminismTest {
     Set<String> identities = distinct(runs.stream().map(ChildRun::identity).toList());
     assertThat(identities).as("子进程身份必须两两不同（pid+nanoTime）——否则比较退化成“同进程 N 次”，本护栏即恒真").hasSize(JVMS);
 
-    // ★ 被比较的字节流必须齐全：10 份产物一个不少，且 8 个模块都在。
+    // ★ 被比较的字节流必须齐全：12 份产物一个不少，且 10 个模块都在。
     for (String name : ARTIFACTS) {
       for (ChildRun run : runs) {
         assertThat(run.digests())

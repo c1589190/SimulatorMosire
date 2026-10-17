@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.production.contract.ClassSlot;
 import java.util.List;
 
 /**

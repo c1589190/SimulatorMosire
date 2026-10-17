@@ -2,8 +2,6 @@ package io.mosire.simos.economy.time;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -30,6 +28,14 @@ public final class EconomySession {
   private final EconomyData base;
   private final EconomyStateBuilder sheet;
   private final LinkedHashMap<HouseholdId, FlowRow> flows;
+
+  /**
+   * ★★ <b>D-032 U2：本会话的生产运行时只读投影</b>（可能为 null；见双参构造器）。
+   *
+   * <p>★ 生命周期 = 本会话：由组合根在**每次 Advance** 起点新建一个引擎实例并交进来（不得跨 Advance 复用； 那正是 I13"不得跨 revision
+   * 陈旧"的机读形态）。{@code sheet} 与它共用同一个引用。
+   */
+  private final io.mosire.simos.production.contract.ProductionRuntime runtime;
 
   /**
    * ★★ <b>P5：本会话的死亡按人口比例删债累加器</b>（瞬态；键 = 债务人，值 = Σ 逐笔 {@code forgive} 的本金差）。
@@ -61,23 +67,119 @@ public final class EconomySession {
   private final List<EconomyHouseholdGap> householdGaps = new ArrayList<>();
 
   /**
-   * ★★ <b>Z1：本 tick 的修正参数注入集</b>（瞬态；键 = unit id，保序 = 注入列表序）。
+   * ★★★ <b>B1（D-032 §4.3）：本 tick"现扣周期投入"的实扣量（键 = 生产实例）</b>。
    *
-   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：机制给出的值必须是<b>已持久化状态的纯函数</b>，
-   * 本批不提供持久化修正表（§5.2）。{@code EconomyDayStepper.updateProductionModifiers} 在当日结算前<b>替换</b>本集合； 结算逐
-   * tick 消费（周期末按天平均），消费后由 Z2 的结算路径 {@link #clearProductionModifiers()} 清空 —— 机制要连续影响就必须逐 tick 注入。
+   * <p>★★ <b>为什么它是瞬态而不是状态</b>：它是"这一次日结算里已经扣到多少料"的<b>过程读数</b>，一个生产日 过完就没有意义 —— 周期投入的<b>权威</b>在
+   * production 的 {@code ProductionProcess.cycleInputUsedMilli()} （由 {@code
+   * ProductionRuntime#executeDay} 的 {@code finalInputsMilli} 写）。⇒ 它<b>不进</b> {@link
+   * io.mosire.simos.economy.EconomyData}、不进变更集、不进 codec，且每 tick 开头清零 （见 {@link
+   * #clearDrawnProductionInputs()}）。
+   *
+   * <p>★★ <b>为什么必须由会话持有它</b>：现扣发生在<b>并行分区</b>里（每分区一份实例副本），而把结果交给 production
+   * 必须在<b>协调器线程</b>上做（引擎单线程独占）；会话正是那个"协调器持有、worker 不碰"的落点 （与 {@link #populationTransfers} / {@link
+   * #householdGaps} 同制）。
    */
-  private final LinkedHashMap<ProductionUnitId, ProductionEfficiencyModifier> productionModifiers =
-      new LinkedHashMap<>();
+  private final Map<
+          io.mosire.simos.economy.api.id.ProductionUnitId,
+          Map<io.mosire.simos.economy.api.id.CommodityId, Long>>
+      drawnProductionInputs = new LinkedHashMap<>();
 
-  public EconomySession(EconomyData base) {
+  /** ★ B1：清空本 tick 的现扣读数（每个生产日开头调一次 —— 不跨日累计，权威在 production）。 */
+  public void clearDrawnProductionInputs() {
+    drawnProductionInputs.clear();
+  }
+
+  /** ★ B1：记一条"这个实例本 tick 实扣到了这些料"（协调器线程；覆盖写 = 同一实例只留最后一份累计量）。 */
+  public void recordDrawnProductionInput(
+      io.mosire.simos.economy.api.id.ProductionUnitId unit,
+      Map<io.mosire.simos.economy.api.id.CommodityId, Long> drawn) {
+    java.util.Objects.requireNonNull(unit, "unit");
+    java.util.Objects.requireNonNull(drawn, "drawn");
+    if (drawn.isEmpty()) {
+      drawnProductionInputs.remove(unit);
+      return;
+    }
+    drawnProductionInputs.put(unit, new LinkedHashMap<>(drawn));
+  }
+
+  /** ★ B1：本 tick 某实例实扣到的料（缺 ⇒ 空表 = 这个实例本 tick 一根料都没扣到）。 */
+  public Map<io.mosire.simos.economy.api.id.CommodityId, Long> drawnProductionInputsOf(
+      io.mosire.simos.economy.api.id.ProductionUnitId unit) {
+    return drawnProductionInputs.getOrDefault(unit, Map.of());
+  }
+
+  // ★★ D-032（D2 直接删）：本会话原有的 `productionModifiers`（逐 tick 生产效率修正注入集）与
+  //   `productionModifiersView()/replaceProductionModifiers()/clearProductionModifiers()` 已随
+  //   "文化 → 生产效率倍率"整条通路退役（用户 U5「文化直接决定生产效率太不唯物主义了」）。
+  //   ★ 新口径：效率 = 家户熟练度经方案公式解释出的倍率，归 production（`ProductionExperienceUse` +
+  //   `ProductionEfficiency`），由 `production.contract.ProductionRuntime` 的试算/执行面提供；
+  //   economy 不再持有任何可注入的效率修正集。
+
+  // ★★★ D-032 B3（§13.13.7 第 8 条 / §13.3 第 2 条）：`EconomySession(EconomyData)` 与
+  //   `EconomySession(EconomyData, ProductionDefinitionLookup)` 两个 **runtime = null** 的旧构造器已**删除**
+  //   —— 它们只服务 `EconomySettlement.settle` / `applyPopulationChange` 两条"没有组合根、没有 production 切片"
+  //   的静态单模块入口，而那两条入口本身也随本批删除（main 里 0 个调用点）。"没有运行时"不再是合法装配形态。
+  //   ★ 定义来源也不再从 `EconomyBaseDefinitions`（读 `EconomyData.industries`）现取：唯一装配口是
+  //     下面这个三参构造器（显式 definitions + 显式 runtime）。
+
+  /**
+   * ★★★ <b>D-032 U2 的装配口：把生产运行时的只读投影线程进本会话</b>。
+   *
+   * <p>★★ <b>为什么必须有它</b>：生产实例（进度 / 周期累计劳动 / 周期累计投入）的唯一权威在 production（{@code ProductionProcess} 的类注
+   * / I1），而日结算的多个阶段（组织、分配、市场、债务容量、 迁移、收获）都要读"这一格有谁在产、经营者是谁、进度到哪"。那份读数只能来自<b>本会话的</b> {@link
+   * io.mosire.simos.production.contract.ProductionRuntime}（I13：同次 Advance 的后续阶段看本次最新候选态， 不得跨
+   * revision 陈旧）。
+   *
+   * @param runtime 本会话的生产运行时只读投影；可为 null（= 本会话不读/不写生产实例，任何实例读 fail-closed 抛）
+   */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime) {
     this.base = Objects.requireNonNull(base, "base");
-    this.sheet = new EconomyStateBuilder(base);
+    // ★★ B3：runtime 必须非 null（§13.3 第 2 条 —— 所有支持生产的有效入口显式获得合法 runtime）。
+    this.runtime =
+        Objects.requireNonNull(runtime, "runtime（D-032：生产实例的唯一权威在 production，必须显式注入合法运行时）");
+    this.sheet = new EconomyStateBuilder(base, definitions, runtime);
     this.flows = new LinkedHashMap<>(base.flows());
+  }
+
+  /**
+   * ★★ <b>本会话的生产运行时只读投影</b>（D-032 U2；B3 起<b>恒非 null</b> —— 见构造器）。
+   *
+   * <p>★ 它是 economy 侧读生产实例的<b>唯一</b>入口（{@code EconomyData.units()} 是阶段 2 的临时兼容组件）。
+   *
+   * <p>★★ <b>B12 登记：EI_EXPOSE_REP 是孤立例外，不是缺陷</b>（§14.25.3 裁定四十五第 3 条）。它不是"漏了防御性拷贝"：
+   *
+   * <ul>
+   *   <li><b>为什么不是缺陷</b>：{@code ProductionRuntime} 是组合根注入的<b>契约端口接口</b>（economy 调 production 的
+   *       唯一通道，见 I13）—— 它没有拷贝契约；拷贝/包装出一个"防御副本"就不再是同一份权威候选态，{@code beginTick} / {@code changeSet()}
+   *       的 tick 身份与本次推进的候选态会当场对不上。
+   *   <li><b>调用面</b>：economy 域内（{@code EconomyDayStepper} / {@code EconomyStateBuilder} / 各结算阶段）只读；
+   *       组合根在推进收尾调 {@code changeSet()} 汇入同一 revision。没有第三方可写入口（接口本身只读优先、变更经引擎）。
+   *   <li><b>依据</b>：§14.25.3 裁定四十五第 3 条；同文件 {@code flows()} 之上的既有同类登记（会话内就地更新的视图）。
+   * </ul>
+   *
+   * ⇒ 用下面的**具名** {@code @SuppressFBWarnings} 登记（不是静默排除、不是排除清单）。
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "孤立例外（§14.25.3 裁定四十五第 3 条）：返回的是组合根注入的契约端口接口 ProductionRuntime —— economy 读/写生产候选态的唯一通道；接口没有拷贝契约，拷贝掉就不再是同一份权威候选态（beginTick()/changeSet() 的 tick 身份与候选态会失配），调用面限于 economy 域内与组合根收尾。登记见 impl-ledger B12")
+  public io.mosire.simos.production.contract.ProductionRuntime productionRuntime() {
+    return runtime;
   }
 
   public EconomyData base() {
     return base;
+  }
+
+  /** ★★ 本会话按需创建、尚未登记的产业定义（瞬态候选态；见 {@link EconomyStateBuilder#createdIndustryDefinitions()}）。 */
+  public Map<
+          io.mosire.simos.economy.api.id.IndustryId,
+          io.mosire.simos.production.contract.IndustryDefinitionView>
+      createdIndustryDefinitions() {
+    return sheet.createdIndustryDefinitions();
   }
 
   public EconomyStateBuilder sheet() {
@@ -170,33 +272,5 @@ public final class EconomySession {
     List<EconomyHouseholdGap> drained = List.copyOf(householdGaps);
     householdGaps.clear();
     return drained;
-  }
-
-  /**
-   * ★★ Z1：本 tick 修正注入集的<b>只读视图</b>（键序 = 注入序）—— 只服务 {@code EconomyDayStepper} 的"每日一条"日志与 app/Z3
-   * 只读读数；写口只有 {@link #replaceProductionModifiers(Map)} 与 {@link #clearProductionModifiers()}。
-   */
-  public Map<ProductionUnitId, ProductionEfficiencyModifier> productionModifiersView() {
-    return java.util.Collections.unmodifiableMap(productionModifiers);
-  }
-
-  /**
-   * ★★ Z1：本 tick 修正注入集的<b>可变视图</b>（包内写口）—— 只服务 {@code EconomyDayStepper} 的替换与 Z2 结算的逐 tick
-   * 读取/日末清空。★ 与 {@link #debtWriteOffs()} 同制：不对外公开可变引用。
-   */
-  LinkedHashMap<ProductionUnitId, ProductionEfficiencyModifier> productionModifiers() {
-    return productionModifiers;
-  }
-
-  /** ★★ Z1：替换本 tick 的注入集（调用方已判重复/未知 unit；本方法只做"换成这一份"）。 */
-  void replaceProductionModifiers(
-      Map<ProductionUnitId, ProductionEfficiencyModifier> replacements) {
-    productionModifiers.clear();
-    productionModifiers.putAll(replacements);
-  }
-
-  /** ★★ Z1：当日结算消费后清空注入集（Z2 在日末调用）—— 未再注入的下一日回到 1000‰ 中性。 */
-  void clearProductionModifiers() {
-    productionModifiers.clear();
   }
 }

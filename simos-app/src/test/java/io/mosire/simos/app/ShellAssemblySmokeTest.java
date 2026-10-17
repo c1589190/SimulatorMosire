@@ -156,13 +156,25 @@ class ShellAssemblySmokeTest {
    * 未跑全量）。★ 本值 = <b>本条真跑实测</b>：红在「{@code GM 桶条数锚点（增删工具须显式改本行）Expected size: 179 but was: 180}」（批 U
    * 台账 §1 有原始输出）；★ 决策人桶 <b>61 一条不动</b>（该工具 {@code roles()} 只有 GM ⇒ 那条锚点同一次跑没红）。
    */
-  private static final int GM_BUCKET_SIZE = 180;
+  /**
+   * ★★★ <b>D-032 T6（2026-10-17）：GM 桶 180 → 181</b> —— B3（裁定十一/十二）补回方案经济关系声明的写口 {@code
+   * simos.economy.setPlanSources}（继承 {@code AbstractNarrowWriteTool} ⇒ 窄写、{@code roles()={GM}}）。
+   * 实测来源：本轮真跑红在「GM 桶条数锚点（增删工具须显式改本行）Expected size: 180 but was: 181」， 与 {@code
+   * McpServerTest}/{@code McpPortTopologyTest} 的 178 → 181、{@code ToolClassAuditAssemblyTest} 的
+   * 133/194 同一次读数（181 = 类1 133 + 共享 48）。
+   */
+  private static final int GM_BUCKET_SIZE = 181;
 
   /** ★★ 2026-10-15 用户裁定「甲」：{@code 54 → 61}（= 类2 24 + 类3 37；那 7 条补了 DM 标签的工具进本桶）。 */
   private static final int DECISION_BUCKET_SIZE = 61;
 
-  /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
-  private static final int MODULE_COUNT = 8;
+  /**
+   * 十个 codec（map / social / unit / economy / actor / ga / gov / army / production / culture）。
+   *
+   * <p>★★ D-031 Z6（2026-10-16）：{@code simos-production} / {@code simos-culture} 两片自 Z4 起进 {@code
+   * Shell} 注册面 ⇒ 8 → 10（本条按真跑读数改，不照抄报告预测）。
+   */
+  private static final int MODULE_COUNT = 10;
 
   @TempDir Path tempDir;
 
@@ -176,7 +188,7 @@ class ShellAssemblySmokeTest {
       // ★★ 判据：能执行到这一行 = 上一行 start() 没有抛 = 装配完成处的 ToolRoleAudit.requireFaces
       //   （Shell:1194）**真的跑过了**。这是本用例的核心，下面各条都是它的窄化锚点。
       assertThat(shell.registeredModuleCount())
-          .as("八个 codec 全部注册（map/social/unit/economy/actor/ga/gov/army）")
+          .as("十个 codec 全部注册（map/social/unit/economy/actor/ga/gov/army/production/culture）")
           .isEqualTo(MODULE_COUNT);
       assertThat(shell.boundGuiPort()).as("GUI 口已绑上（port=0 ⇒ OS 分配，>0）").isPositive();
       assertThat(shell.boundMcpPort()).as("MCP 口已绑上（port=0 ⇒ OS 分配，>0）").isPositive();

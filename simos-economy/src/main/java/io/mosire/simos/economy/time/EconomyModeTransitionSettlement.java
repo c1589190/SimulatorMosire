@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -16,15 +17,14 @@ import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionEnterprise.Status;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -127,16 +127,18 @@ final class EconomyModeTransitionSettlement {
    * @param classShares 阶层保留份额工作副本（新增成功户的份额）
    */
   static Outcome apply(
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
       EconomyDayView base,
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
-      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<PledgeId, Pledge> pledges,
       LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions,
       LinkedHashMap<ClassShareId, ClassShare> classShares) {
+    Objects.requireNonNull(runtime, "runtime（实例身份位改写的唯一权威口，B2b 起必填）");
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(enterprises, "organizations");
@@ -207,7 +209,32 @@ final class EconomyModeTransitionSettlement {
       // ★ 规划已全部通过：下面只落工作副本，不再做可失败判断（构造期不变量异常照常抛出，不伪装成 FAILED）。
       enterprises.put(plan.exitingOrganization.id(), plan.exitingOrganization);
       enterprises.put(plan.newOrganization.id(), plan.newOrganization);
-      units.put(plan.updatedUnit.id(), plan.updatedUnit);
+      // ★★ B2b（§13.11.4 第 4 条）：实例的 modeKey 改写**直调 production 契约口**（`reoperateInstance`），
+      //   economy 侧不再写实例工作副本（`unitsWorkCopy` 已删）。★ 放在本段其它写入之前：被拒时零部分写入。
+      io.mosire.simos.production.contract.ProductionInstanceOutcome reoperated =
+          runtime.reoperateInstance(
+              plan.updatedUnit.id(), plan.updatedUnit.operator(), plan.updatedUnit.modeKey());
+      if (reoperated
+          instanceof
+          io.mosire.simos.production.contract.ProductionInstanceOutcome.Rejected rejected) {
+        // ★ 经济侧判定"可以改"、生产侧说改不了 = 跨切片不一致 ⇒ ERROR 不降级（I15 / §13.2 ①④）。
+        EventLog.channel(LOG)
+            .error(
+                LogEvent.of(
+                    "PRODUCTION_MODE_TRANSITION_REOPERATE_REJECTED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "unit",
+                    plan.updatedUnit.id().value(),
+                    "transition",
+                    transition.id().value(),
+                    "reason",
+                    rejected.reason()));
+        throw new IllegalStateException(
+            "模式变迁改写实例身份被 production 拒绝（跨切片不一致，不降级）: unit="
+                + plan.updatedUnit.id().value()
+                + " reason="
+                + rejected.reason());
+      }
       pledges.putAll(plan.updatedPledges);
       classMemberships.putAll(plan.updatedClassMemberships);
       classShares.putAll(plan.newClassShares);
@@ -298,7 +325,7 @@ final class EconomyModeTransitionSettlement {
               + enterprise.organizer());
     }
 
-    ProductionMode toMode = base.modes().get(transition.toModeId());
+    ProductionModeDefinitionView toMode = base.modes().get(transition.toModeId());
     if (toMode == null) {
       return failed(REASON_TO_MODE_NOT_FOUND + ":" + transition.toModeId().value());
     }
@@ -429,10 +456,16 @@ final class EconomyModeTransitionSettlement {
         new ProductionProcess(
             unit.id(),
             unit.industry(),
+            // ★★ 机械修正（D-032 A 批续做）：地点是实例的**显式组件**（不再是方案 id 的派生字段）。
+            //   旧调用点写的是 ProductionLocation.ofPlan(...).orElse(null)，而新构造器**拒 null**
+            //   （ProductionProcess 的类注：缺地点 = 状态自相矛盾，不设"先空着回头补"的口子）
+            //   ⇒ 原样带过实例**自己已有的**地点（权威来源；本类型的构造器已保证它非 null）。
+            unit.location(),
             unit.operator(),
             EconomyEnterpriseSettlement.MODE_KEY_PREFIX + transition.toModeId().value(),
             unit.progressDays(),
-            unit.cycleLaborMilli(),
+            // ★★ 机械修正（D-032 A 批续做）：本周期劳动已是逐家户台账 ⇒ 原样带过台账（旧标量 cycleLaborMilli 已删）。
+            unit.cycleContributions(),
             unit.cycleInputUsedMilli());
     ProductionEnterprise exitingOrganization =
         new ProductionEnterprise(

@@ -21,6 +21,7 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.ProposalCatalog;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
+import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.time.CalendarService;
@@ -95,8 +96,8 @@ import io.mosire.simos.economy.tools.write.EconomySetEconomyPolicyTool;
 import io.mosire.simos.economy.tools.write.EconomySetGovernmentMintScaleTool;
 import io.mosire.simos.economy.tools.write.EconomySetMarketZoneLoanRateAlphaTool;
 import io.mosire.simos.economy.tools.write.EconomySetMarketZonePriceAlphaTool;
+import io.mosire.simos.economy.tools.write.EconomySetPlanSourcesTool;
 import io.mosire.simos.economy.tools.write.EconomyUpsertGovUnitTool;
-import io.mosire.simos.economy.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
@@ -210,6 +211,7 @@ import io.mosire.simos.map.tools.write.MapSetEdgeTool;
 import io.mosire.simos.map.tools.write.MapSetHexAreaTool;
 import io.mosire.simos.map.tools.write.MapSetTerrainTool;
 import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.production.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.social.tools.SocialToolPerspective;
 import io.mosire.simos.social.tools.SocialToolViews;
 import io.mosire.simos.social.tools.SocialUnitPort;
@@ -1737,7 +1739,10 @@ public final class SimosToolSource implements ToolSource {
     //   payloadJson 与 economy.Seed 的 industries[] 节点同形 + preview / apply + expectedRevision）。
     //   **只在 GM 桶**：决策人桶没有它（白名单派生自那个桶）⇒ 也不会含它；命令本身不打 {@code DmUsableCommand}
     //   ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new EconomyUpsertIndustryTool(toolWrites, toolReads));
+    //   ★★ D-032 B4（§13.14.5 第 1 条）：跨切片使用端口由**组合根在这里装配**（引用计数的 units 维读
+    //   production 的实例只读投影）——工具在构造期 requireNonNull 收下它。
+    built.add(
+        new EconomyUpsertIndustryTool(toolWrites, toolReads, new AppProductionConsumerPort()));
     // ★★ Z1c（2026-10-23 政府专属生产方式设计 §4.2/§5）：GOV 行政服务生产 unit 创建/补齐
     //   （economy.UpsertGovUnit 的窄封装：payloadJson + preview / apply + expectedRevision；一次写
     //   units + assetShares + relations，operator=hh-gov-<id>）。**只在 GM 桶**：决策人桶没有它，
@@ -1782,6 +1787,13 @@ public final class SimosToolSource implements ToolSource {
     //   用户 2026-09-25 裁定第 18 条「凡"行为"一律做成 GM 可调的预设」。缺省值与缺省中性由 EconomyPolicyKey 保证。
     //   **只在 GM 桶**（同上一行：命令不打 {@code DmUsableCommand} ⇒ 令/RegisterEffect/决策人目录三条路径排除）。
     built.add(new EconomySetEconomyPolicyTool(toolWrites, mapId));
+    // ★★ D-032 B3（裁定十一 + 裁定十二）：**方案经济关系声明**的写口（economy.SetPlanSources 的薄封装）——
+    //   候选面退役时 assetSource 的宿主搬进了 `EconomyMeta.planAssetSources` 而写面被删掉了（表恒空、借用腿不可达）；
+    //   本工具补回那条写口，并同批把 laborSource 的声明搬进 `EconomyMeta.planLaborSources`（缺键 ⇒ SELF = 旧候选缺省，
+    //   逐值不变；制度派生是提议的行为变更，另立项，不在本批）。
+    //   **只在 GM 桶**（同上一行：命令不打 {@code DmUsableCommand} ⇒ 令/RegisterEffect/决策人目录三条路径排除）；
+    //   工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS，写面只声明 economy 命名空间。
+    built.add(new EconomySetPlanSourcesTool(toolWrites, mapId));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation

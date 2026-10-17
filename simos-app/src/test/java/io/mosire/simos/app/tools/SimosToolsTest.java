@@ -94,6 +94,8 @@ import io.mosire.simos.map.tools.write.MapSetEdgeTool;
 import io.mosire.simos.map.tools.write.MapSetHexAreaTool;
 import io.mosire.simos.map.tools.write.MapSetTerrainTool;
 import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -383,9 +385,9 @@ class SimosToolsTest {
           "simos.worldgen.initialize");
 
   /**
-   * ★★ <b>economy 侧的 8 条窄写工具名</b>（B2 的市场区 3 条 + F 的运费 + W2 的逐区 α + W5-fix6 的铸币旋钮 + ★ W5.5 的逐市场利率 α
-   * + ★★ W10 的经济政策预设写口）：**只进 GM 组**，都继承 {@code AbstractNarrowWriteTool}（⇒ 窄写扫描器按 {@code
-   * tools/write} 扫得到）。
+   * ★★ <b>economy 侧的 9 条窄写工具名</b>（B2 的市场区 3 条 + F 的运费 + W2 的逐区 α + W5-fix6 的铸币旋钮 + ★ W5.5 的逐市场利率 α
+   * + ★★ W10 的经济政策预设写口 + ★★★ D-032 B3 的方案经济关系声明写口）：**只进 GM 组**，都继承 {@code
+   * AbstractNarrowWriteTool}（⇒ 窄写扫描器按 {@code tools/write} 扫得到）。
    *
    * <p>★ 工具名与命令类型**不同名**（{@code simos.economy.defineMarketZone} ↔ {@code
    * economy.DefineMarketZone}）， 故命令类型另列在 {@link #ECONOMY_ZONE_WRITE_COMMAND_TYPES}；与 {@code
@@ -406,7 +408,12 @@ class SimosToolsTest {
           "simos.economy.setMarketZoneLoanRateAlpha",
           // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 窄写
           //   （第 8 条；工具名 ≠ 命令类型 ⇒ 命令类型列在 ECONOMY_ZONE_WRITE_COMMAND_TYPES）
-          "simos.economy.setEconomyPolicy");
+          "simos.economy.setEconomyPolicy",
+          // ★★★ D-032 T6（2026-10-17；B3 裁定十一 + 裁定十二）：**方案经济关系声明**的写口（第 9 条）——
+          //   候选面退役时 `assetSource` 的宿主搬进了 `EconomyMeta.planAssetSources` 而写面被删掉
+          //   （表恒空、借用腿不可达），B3 把那条写面补回并同批把 `laborSource` 的声明搬进
+          //   `EconomyMeta.planLaborSources`。继承 `AbstractNarrowWriteTool` ⇒ 窄写扫描器扫得到。
+          "simos.economy.setPlanSources");
 
   /**
    * {@link #ECONOMY_ZONE_WRITE_NAMES} 里"工具名 ≠ 命令类型"的那几条对应的命令类型（catalog 与 handler 面认的键）：
@@ -422,7 +429,9 @@ class SimosToolsTest {
           "economy.SetGovernmentMintScale",
           "economy.SetMarketZoneLoanRateAlpha",
           // ★★ W10（2026-10-11）：政策预设写口的命令类型（工具 simos.economy.setEconomyPolicy 的固定命令）
-          "economy.SetEconomyPolicy");
+          "economy.SetEconomyPolicy",
+          // ★★★ D-032 T6（2026-10-17）：方案经济关系声明写口的命令类型（工具名 ≠ 命令类型，同上一款）
+          "economy.SetPlanSources");
 
   /** M1 的 8 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -619,6 +628,9 @@ class SimosToolsTest {
           "simos.economy.setGovernmentMintScale",
           "simos.economy.setMarketZoneLoanRateAlpha",
           "simos.economy.setMarketZonePriceAlpha",
+          // ★★★ D-032 T6（2026-10-17）：B3（裁定十一/十二）补回的**方案经济关系声明**写口
+          //   （继承 AbstractNarrowWriteTool ⇒ 真窄写；GM 桶 180 → 181、磁盘窄写类 66 → 67）。
+          "simos.economy.setPlanSources",
           "simos.gov.recordDiplomaticEvent",
           "simos.gov.setDiplomaticRelation",
           "simos.unit.adjust-composition",
@@ -652,7 +664,7 @@ class SimosToolsTest {
           "unit.UpdateCommandChain");
 
   /**
-   * 写工具全集（<b>128</b> 条 = 62 非窄写 + <b>66</b> 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES}
+   * 写工具全集（<b>129</b> 条 = 62 非窄写 + <b>67</b> 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES}
    * 里的补集。
    *
    * <p>★★ 2026-10-14 决策人互致消息：{@link #READ_TOOL_NAMES} −1（{@code simos.sd.reports} 删除）、{@link
@@ -731,7 +743,12 @@ class SimosToolsTest {
       concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES);
 
   /**
-   * catalog 预期的 <b>143</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   * catalog 预期的 <b>148</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   *
+   * <p>★★ <b>D-031 Z6（2026-10-16）</b>：{@code simos-production} / {@code simos-culture} 两个新模块的 5 条
+   * handler 进扫描面 ⇒ 143 → <b>148</b>；本表与 {@code catalogCoversEveryCommandHandlerImplementation} 的
+   * {@code hasSize(148)} 必须同轮改。★ 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★
+   * 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
    *
    * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
    * {@code catalogCoversEveryCommandHandlerImplementation} 的 {@code hasSize(141 → 142)} 必须同轮改。 ★
@@ -777,6 +794,11 @@ class SimosToolsTest {
           // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（唯一新增命令类型；不打 DmUsableCommand ⇒ 仅 GM）
           "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
+          // ★★ D-031 Z6（2026-10-16）：culture 命令（culture.* 按字典序排在 army.* 与 economy.* 之间）。
+          //   ★★★ D-032 T6（2026-10-17，用户原话「D2直接删」）：`culture.UpsertAptitudeRule` /
+          //   `culture.RemoveAptitudeRule` 随"文化 → 生产效率倍率"链（D2）**整条退役** —— Shell:1082 处的
+          //   注册与 handler 一并删除，CatalogTool:989 只留一条说明注释 ⇒ 两条从本表移除，no-op 于扫描面。
+          "culture.SetHouseholdCulture",
           "economy.AddDemand",
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelDemand",
@@ -789,7 +811,6 @@ class SimosToolsTest {
           "economy.MigrateHousehold",
           "economy.ReassignZoneHexes",
           "economy.RecordMoneyIssuance",
-          "economy.RegisterCandidate",
           "economy.RegisterGovernment",
           "economy.RegisterHousehold",
           "economy.RemoveHouseholdPeriodicAdjustment",
@@ -798,6 +819,8 @@ class SimosToolsTest {
           "economy.SetCommodityFreight",
           "economy.SetEconomyPolicy",
           "economy.SetGovServiceCommitment",
+          // ★★ D-032 B3（裁定十一 + 裁定十二）：方案经济关系声明的写口（候选面退役时被删掉的那条写面补回）。
+          "economy.SetPlanSources",
           "economy.SetGovernmentMintScale",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
@@ -815,7 +838,11 @@ class SimosToolsTest {
           "economy.UpdateDemand",
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
-          "economy.UpsertIndustry",
+          "production.UpsertIndustry",
+          "production.UpsertProductionMode",
+          "production.DeactivateProductionMode",
+          "production.Seed",
+          "production.ClearRegionDefinitions",
           "ga.CancelEffect",
           "ga.CreateDecisionMaker",
           "ga.DecideDecisionPacket",
@@ -853,6 +880,14 @@ class SimosToolsTest {
           "map.SetTerrain",
           "map.SplitRegion",
           "map.UpdateRegion",
+          // ★★ D-031 Z6（2026-10-16）：production 命令（production.* 按字典序排在 map.* 与 social.* 之间）。
+          //   ★★★ D-032 T6（2026-10-17，用户原话「D1直接删」）：`production.RegisterTechnology` /
+          //   `production.SetMastery` 随科技点抽象面（D1）**整条退役**（Shell:1079 / CatalogTool:987 只留说明注释）
+          //   ⇒ 两条从本表移除。
+          //   ★ B2c（裁定十）：`production.CreateInstance` 是**新增**命令（handler 的 TYPE 常量引用
+          //   `ProductionCommandTypes.CREATE_INSTANCE`，字面量拼写点在 contract 包）⇒ 进本表；
+          //   扫描器必须能解这条**跨类限定常量**（见 `handlerTypesFromSources`，T6 补）。
+          "production.CreateInstance",
           "social.AddHouseholdMembers",
           "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
@@ -1130,9 +1165,21 @@ class SimosToolsTest {
 
     assertThat(tool.description())
         .as("description 白名单计数与两个新 kind")
-        .contains("白名单（12）")
-        .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
-        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY);
+        // ★★ D-032 T6（2026-10-17；spec §14.23.2 裁定四十一）：main 侧 `EconomyAdjustTool` 的描述已按
+        //   实测改成「白名单（7）」——轨迹 12 → 9 → 7（B2c 退役 upsertCandidate、Z1 两个产出覆盖 kind 迁 production、
+        //   B5 两个 mode kind 迁 production）。旧锚点「白名单（12）」是 B5 之前的历史计数。
+        //   ★ 不是放宽：下面两条 `contains(SET/CLEAR_OUTPUT_QUANTITY)` 与"三个已迁出的 kind 命中即具名拒"
+        //     那一段逐条未动 —— 谁再把描述改回旧计数、或让迁移出去的 kind 静默生效，这里照样红。
+        .contains("白名单（7）")
+        //   ★★ D-032 T6：两个产出覆盖 kind 已随 `outputQuantityOverrides` **迁出 economy**（B2c/Z1）——
+        //   常量仍在（唯一用途 = 命中时给具名拒），但**不再出现在白名单描述里**：真跑实测描述含的是
+        //   "★ 已迁出五 kind（upsertCandidate / setOutputQuantity / clearOutputQuantity / …）"这一句
+        //   ⇒ 改成断该句（kind 名仍由下面 `adjustment` 属性的 description 那两条 `contains` 逐条钉着，
+        //   行为面"命中即具名拒"由 `EconomyGmAdjustmentsOutputQuantityTest` 承担）。
+        //   ★ 不是放宽：断的仍是"描述必须把这两个 kind 的点名说清楚"，且下面 schema 的 6 属性与
+        //     modifier 零命中一字未动；弱化的是**断言落点**（工具总描述 → adjustment 属性描述），命中的是同一份文案。
+        .contains("upsertCandidate")
+        .contains("白名单 12 → 9 → 7 项");
 
     @SuppressWarnings("unchecked")
     Map<String, Object> schema = tool.jsonSchema();
@@ -1147,17 +1194,20 @@ class SimosToolsTest {
     String adjustmentDescription =
         String.valueOf(((Map<String, Object>) properties.get("adjustment")).get("description"));
     assertThat(adjustmentDescription)
+        // ★★★ D-032 T6（2026-10-17）：两个产出覆盖 kind 的**点名**真落在 `adjustment` 属性的描述里
+        //   （工具总描述只写"三个 kind 命中 ⇒ 具名拒 / 白名单 12 → 9 → 7 项"）—— 故这里同时钉常量值
+        //   与"已迁出"那句话，两处都不是放宽：谁把 kind 从描述里删掉，这里当场红。
         .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
-        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY);
+        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY)
+        .contains("已迁出五 kind");
 
-    @SuppressWarnings("unchecked")
-    String parametersDescription =
-        String.valueOf(((Map<String, Object>) properties.get("parameters")).get("description"));
-    assertThat(parametersDescription)
-        .contains("{industryId, commodityId, quantity")
-        .contains("{industryId, commodityId}")
-        .contains("QUANTITY_OUT_OF_RANGE")
-        .contains("NO_OVERRIDE_TO_CLEAR");
+    // ★★★ D-032 T6（2026-10-17）：Z1 的两个产出覆盖 kind 的**载荷形状与两个具名码**
+    //   （`{industryId, commodityId, quantity…}` / `QUANTITY_OUT_OF_RANGE` / `NO_OVERRIDE_TO_CLEAR`）
+    //   随 `outputQuantityOverrides` **整体迁出 economy**（B2c 裁定八）—— 全仓 `src/main` 里这三个串
+    //   今日 **0 命中**（核验命令：`grep -rn "QUANTITY_OUT_OF_RANGE\|NO_OVERRIDE_TO_CLEAR" simos-*/src/main`
+    //   ⇒ 无输出）⇒ 那三条断言**随被测能力退役**删除（不是放宽：能力整体不在了，留着就是对着不存在的键断）。
+    //   ★ 迁移后的行为面判据在 `EconomyGmAdjustmentsOutputQuantityTest`（三个 kind 命中即具名拒、
+    //     白名单仍恰 7 项）与上面 `adjustmentDescription` 那两条 `contains`（kind 名仍被点名）。
 
     String schemaText = JSON.writeValueAsString(schema);
     assertThat(tool.description() + "\n" + schemaText)
@@ -1173,8 +1223,9 @@ class SimosToolsTest {
     assertThat(hintText)
         .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
         .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY)
-        .contains("QUANTITY_OUT_OF_RANGE")
-        .contains("NO_OVERRIDE_TO_CLEAR")
+        // ★ T6：提示必须写明这两个 kind **已迁出**、且**指路** production 的定义写面（不是静默不认）。
+        .contains("已迁出")
+        .contains("production.UpsertIndustry")
         .as("★ 负向：catalog 提示也不得给修正参数写口")
         .doesNotContain("修正参数")
         .doesNotContain("ProductionEfficiencyModifier");
@@ -1198,8 +1249,19 @@ class SimosToolsTest {
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）；"
                 + "★★ 2026-10-13 急停协议：新增 army.SetArmyContactWatch ⇒ 141 → 142（实测：本批扫 *Handler.java 的 type() 得 142）；"
                 + "★★ 2026-10-14 决策人互致消息：新增 ga.SetDecisionMakerPeer（新 handler + 新命令类型）⇒ 142 → **143**"
-                + "（★ 逐条核过它数的是**命令类型/handler 实现数**，不是工具数：本批命令 +1 而工具面净 0，两者不同源）")
-        .hasSize(143);
+                + "（★ 逐条核过它数的是**命令类型/handler 实现数**，不是工具数：本批命令 +1 而工具面净 0，两者不同源）"
+                + "；★★ D-031 Z6（2026-10-16）：{@code simos-production}/{@code simos-culture} 两个新模块的 5 条 handler 进扫描面 ⇒ 143 → **148**"
+                + "（实测来源 = 本条真跑扫 *Handler.java 的 type()；工具面净 0，仍是命令面变动）"
+                + "；★★★ D-032 T6（2026-10-17）：D1/D2 把 `production.RegisterTechnology` / `production.SetMastery` /"
+                + " `culture.UpsertAptitudeRule` / `culture.RemoveAptitudeRule` **四条命令整条退役**（用户原话"
+                + "「D1直接删」「D2直接删」），B2c/B3 又新增 `production.CreateInstance`（实例写面）与"
+                + " `economy.SetPlanSources`（方案经济关系声明）⇒ 148 → **149**"
+                + "（实测来源 = 本轮真跑扫 *Handler.java 的 type() 得 149；同一次跑的 `simos.command.catalog`"
+                + " 也是 **149** 条 type ⇒ 扫描面 == 注册面 == catalog 三处逐值一致）。"
+                + "★ 扫描器本轮补了一条**跨类限定常量**解析：`CreateInstanceHandler.TYPE ="
+                + " ProductionCommandTypes.CREATE_INSTANCE` 是类型限定名，旧扫描器只认字面量与同类常量 ⇒"
+                + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。")
+        .hasSize(149);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1258,8 +1320,11 @@ class SimosToolsTest {
                 + "（★ 实测：本条真跑红在「Expected size: 178 but was: 179」；下面那条决策人桶断言同一次跑**没红**）；"
                 + "★★ 2026-10-15 批 U（同步批 O）：批 O 的 {@code simos.command.submitBatch}（{@code roles()={GM}}、"
                 + "非窄写）⇒ GM 面 **179 → 180**，决策人面 **61 一条不动**"
-                + "（★ 实测：本条真跑红在「Expected size: 179 but was: 180」；下面那条决策人桶断言同一次跑**没红**）")
-        .hasSize(180);
+                + "（★ 实测：本条真跑红在「Expected size: 179 but was: 180」；下面那条决策人桶断言同一次跑**没红**）；"
+                + "★★★ D-032 T6（2026-10-17）：B3 补回 {@code simos.economy.setPlanSources}（窄写、{@code roles()={GM}}）"
+                + "⇒ GM 面 180 → **181**，决策人面 **61 一条不动**（★ 实测：本轮真跑红在「Expected size: 180 but was: 181」；"
+                + "决策人桶那两条断言同一次跑**没红**）")
+        .hasSize(181);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1362,11 +1427,56 @@ class SimosToolsTest {
         .hasMessageContaining("unit.NotARealCommand");
   }
 
-  /** 从 simos-unit/map/sd 的 main 源码抽 `public String type()` 的返回串（每个 *Handler.java 取首个匹配）。 */
+  /**
+   * 从各模块 main 源码抽 {@code public String type()} 的返回串（每个 {@code *Handler.java} 取首个匹配）。
+   *
+   * <p>★★★ <b>D-032 T6（2026-10-17）补一条解析腿：跨类限定常量。</b>
+   *
+   * <p><b>它挡住的失效模式（本批真实命中）</b>：B2c 新增的 {@code production.CreateInstance} 把字面量拼写点放在 <b>contract
+   * 包</b>（{@code ProductionCommandTypes.CREATE_INSTANCE}，理由见 I4/V11：economy 只能 import production 的
+   * contract 包），handler 侧写的是 {@code public static final String TYPE =
+   * io.mosire.simos.production.contract.ProductionCommandTypes.CREATE_INSTANCE;} ——
+   * 那是<b>类型限定名</b>，不是字面量、也不是同类常量。旧扫描器只认前两者 ⇒ 它**静默漏掉**这条命令 （扫描面 148 而 catalog/注册面 149），而 {@code
+   * hasSize} 那条断言只会说"扫描面比预期少 1"， 指不出是谁 —— 这正是"扫描器静默"陷阱的又一形态。
+   *
+   * <p><b>本腿做什么</b>：把 {@code <Type>.<CONST>} 解析成"在**同一个源码根集合里**按 {@code <CONST> = "字面量"}
+   * 反查"，与同类常量那条腿同口径（都要求**恰好一条**匹配；0 条或 ≥2 条都置空，由调用方的 {@code hasSize} 兜底）。 扫描面保持"只看源码、不加载
+   * class"（判据两侧仍是真源：磁盘源码 vs 运行时 catalog）。
+   */
   private static Set<String> handlerTypesFromSources() throws IOException {
     List<Path> roots = commandHandlerSourceRoots();
     Pattern typeReturn = Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*([^;]+);");
-    Pattern literalConstant = Pattern.compile("\\bString\\s+([A-Z_]+)\\s*=\\s*\"([^\"]+)\"");
+    // ★★★ D-032 T6：常量声明在 main 侧有**两种形态** ——
+    //   ① 同一行字面量（`public static final String TYPE = "economy.UpsertGovUnit";`）；
+    //   ② **跨行 + 值在别的类里**（`CreateInstanceHandler.TYPE` 写着
+    //      `= io.mosire.simos.production.contract.ProductionCommandTypes.CREATE_INSTANCE;`，
+    //      字面量拼写点在 contract 包 —— 理由是 I4/V11：economy 只能 import production 的 contract 包）。
+    //   旧扫描器只认 ① 与"同类常量" ⇒ 形态 ② 会被**静默漏掉**（扫描面 148 而注册面/catalog 149）。
+    //   ⇒ 本方法做一次**规范化**（`\s*=\s*` → `=`，只动空白）后，按下面这条**有向链**解析：
+    //      `type()` 的返回表达式 →（同类常量）→ 右值 →（`<Type>.<CONST>`）→ 全扫描面字面量表 → 类型串。
+    Pattern literalConstant = Pattern.compile("\\bString\\s+([A-Z_]+)=([^;]+);");
+    Pattern quoted = Pattern.compile("^\"([^\"]+)\"$");
+    // 全扫描面（各模块 src/main）的"常量名 → 字面量"反查表；同名冲突 ⇒ 整个名字作废（宁缺勿错）。
+    Map<String, String> constantsByName = new LinkedHashMap<>();
+    Set<String> ambiguous = new LinkedHashSet<>();
+    for (Path root : roots) {
+      try (Stream<Path> files = Files.walk(root)) {
+        for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+          Matcher constant =
+              literalConstant.matcher(Files.readString(file).replaceAll("\\s*=\\s*", "="));
+          while (constant.find()) {
+            Matcher isLiteral = quoted.matcher(constant.group(2).trim());
+            if (!isLiteral.matches()) {
+              continue; // 值不是字面量 ⇒ 不进反查表（它自己也要靠限定名解析）
+            }
+            String previous = constantsByName.putIfAbsent(constant.group(1), isLiteral.group(1));
+            if (previous != null && !previous.equals(isLiteral.group(1))) {
+              ambiguous.add(constant.group(1));
+            }
+          }
+        }
+      }
+    }
     Set<String> types = new LinkedHashSet<>();
     for (Path root : roots) {
       try (Stream<Path> files = Files.walk(root)) {
@@ -1377,17 +1487,32 @@ class SimosToolsTest {
           if (!matcher.find()) {
             continue;
           }
+          // 第一步：`type()` 的返回表达式。
           String expression = matcher.group(1).trim();
           if (expression.startsWith("\"") && expression.endsWith("\"")) {
             types.add(expression.substring(1, expression.length() - 1));
             continue;
           }
-          Matcher constant = literalConstant.matcher(source);
+          // 第二步（同类常量）：`TYPE` → 本类里 `String TYPE = <右值>;` 的右值。
+          Matcher constant = literalConstant.matcher(source.replaceAll("\\s*=\\s*", "="));
           while (constant.find()) {
-            if (constant.group(1).equals(expression)) {
-              types.add(constant.group(2));
-              break;
+            if (!constant.group(1).equals(expression)) {
+              continue;
             }
+            expression = constant.group(2).trim();
+            break;
+          }
+          Matcher direct = quoted.matcher(expression);
+          if (direct.matches()) {
+            types.add(direct.group(1));
+            continue;
+          }
+          // 第三步（跨类限定名 / 裸常量名）：`<Type>.<CONST>` 或 `CONST` → 全扫描面字面量表。
+          int dot = expression.lastIndexOf('.');
+          String simpleName = dot > 0 ? expression.substring(dot + 1) : expression;
+          String literal = ambiguous.contains(simpleName) ? null : constantsByName.get(simpleName);
+          if (literal != null) {
+            types.add(literal);
           }
         }
       }
@@ -1429,8 +1554,11 @@ class SimosToolsTest {
                 + "删 {@code SdRecordDiplomaticEventTool} / {@code SdSetDiplomaticRelationTool}（GM 面那两条实现，−2）、"
                 + "留下的 {@code RecordDiplomaticEventTool} / {@code SetDiplomaticRelationTool} 本就是窄写 ⇒ 不增 "
                 + "⇒ **实测 68 → 66**（本条真跑红在「Expected size: 68 but was: 66」）；"
-                + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(66);
+                + "；★★★ D-032 T6（2026-10-17）：B3（裁定十一/十二）补回**方案经济关系声明**的写口 "
+                + "{@code EconomySetPlanSourcesTool}（真继承基类 ⇒ 扫描器扫得到）⇒ **实测 66 → 67**"
+                + "（本轮真跑本类红在「Expected size: 66 but was: 67」）"
+                + "；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
+        .hasSize(67);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具 ∖ 外来工具。
     // ★★ 2026-10-14：外来工具（doc_*/工作区）既不是本仓窄写类、也不在磁盘扫描面里 ⇒ 必须显式排除，
@@ -1444,7 +1572,7 @@ class SimosToolsTest {
             .toList();
     assertThat(gmNarrow)
         .as(
-            "GM 窄写必须逐条等于 NARROW_WRITE_NAMES（66 条：其余 + 8 map + 8 economy + 28 unit + 15 sd + 1 peer；"
+            "GM 窄写必须逐条等于 NARROW_WRITE_NAMES（**67** 条：其余 + 8 map + **9** economy + 28 unit + 15 sd + 1 peer；★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources（真窄写）⇒ 66 → **67**（实测：本条真跑红在「unexpected elements: [\"simos.economy.setPlanSources\"]」）；"
                 + "2026-10-13 急停协议 +1 条 army 窄写。★★ 2026-10-14 起外来 10 条在派生前就排除——"
                 + "它们不在本仓源码里，不是窄写类。★★ 2026-10-14 GM⇄DM 信件批：GM 面新增的**写**只有 "
                 + "{@code simos.gm.message.send} 一条，且它是**非窄写**（不继承基类）⇒ 已登记进 NON_NARROW_WRITE_NAMES"
@@ -2217,8 +2345,11 @@ class SimosToolsTest {
                 + "（★ 实测：本条真跑红在「Expected size: 182 but was: 180」）；"
                 + "★★ 2026-10-15 批 U（同步批 O）：磁盘上 **+1 个 *Tool.java ⇒ 实测 180 → 181** —— "
                 + "{@code simos-app/.../tools/write/CommandSubmitBatchTool.java}（批 O 的 GM 薄工具，"
-                + "{@code roles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）")
-        .hasSize(181);
+                + "{@code roles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）"
+                + "；★★★ D-032 T6（2026-10-17）：B3（裁定十一/十二）在磁盘上**新增 1 个 *Tool.java** "
+                + "（{@code simos-economy/.../tools/write/EconomySetPlanSourcesTool.java}，真继承窄写基类）"
+                + "⇒ **实测 181 → 182**（本轮真跑本类红在「Expected size: 181 but was: 182」）")
+        .hasSize(182);
 
     List<String> union =
         Stream.concat(
@@ -2267,7 +2398,10 @@ class SimosToolsTest {
         domainToolsRoot("gov", "read"),
         domainToolsRoot("gov", "write"),
         domainToolsRoot("ga", "read"),
-        domainToolsRoot("ga", "write"));
+        domainToolsRoot("ga", "write"),
+        // ★★ D-031 P1：production 自维护 GM 窄工具（EconomyUpsertIndustryTool 从 economy 迁入）
+        //   ⇒ 扫描根必须跟上，否则 onDisk 掉 1、GM 桶里的 simos.economy.upsertIndustry 被误判"幽灵"。
+        domainToolsRoot("production", "write"));
   }
 
   /** 扫 {@code tools/read} + {@code tools/write} 的 {@code NAME = "…"}（M4 同源判据用）。 */
@@ -2357,7 +2491,10 @@ class SimosToolsTest {
         Paths.get("..", "simos-actor", "src", "main", "java"),
         Paths.get("..", "simos-army", "src", "main", "java"),
         Paths.get("..", "simos-gov", "src", "main", "java"),
-        Paths.get("..", "simos-ga", "src", "main", "java"));
+        Paths.get("..", "simos-ga", "src", "main", "java"),
+        // ★★ D-031 Z6（2026-10-16）：两个新模块的 handler 实现面必须也在扫描面里（不补＝新模块实现面没人守）。
+        Paths.get("..", "simos-production", "src", "main", "java"),
+        Paths.get("..", "simos-culture", "src", "main", "java"));
   }
 
   /** 夹具里那个 hex 的规范地址（{@code resolve}/{@code facets} 用）。 */
@@ -3060,12 +3197,27 @@ class SimosToolsTest {
     JsonNode body = JSON.readTree(result.message());
 
     // 同一个函数（GUI 的 /api/social/population 调的就是它）⇒ 两边的体必须逐字段相同。
+    // ★★ D-032 T1：`ApiViews.population` 新增第 3 形参 `productionUnits`（B2b 裁定六：实例权威迁 production；
+    //   原 `ProductionAptitudeAssembly.definitionLookup(state)` 也已随 D2 退役）⇒ 两份入参都从 **production 切片**
+    //   当刻现读：`instances()` 是实例投影、`ProductionData` 自己实现 `ProductionDefinitionLookup`（定义权威）。
+    //   取一次切片、两处共用（同一个 `stateAt(head)`，不重复取，也不跨 revision）。
+    io.mosire.simos.production.ProductionData productionView =
+        ((io.mosire.simos.production.ProductionSnapshot)
+                shell
+                    .queryService()
+                    .stateAt(QueryTarget.head(main()))
+                    .module("production")
+                    .orElseThrow())
+            .state();
     Map<String, Object> expected =
         ApiViews.population(
             ApiViews.socialData(shell.queryService().stateAt(QueryTarget.head(main()))),
             ApiViews.economyData(shell.queryService().stateAt(QueryTarget.head(main()))),
+            productionView.instances(),
+            productionView,
             H11,
-            T7);
+            T7,
+            io.mosire.simos.app.time.CalendarService.defaults());
     // ★ 比**文本**而不是比 JsonNode：工具面的体是 Jackson 序列化过的（小整数被读成 IntNode），而期望树是
     //   `valueToTree(Long)`（LongNode）——同一份 JSON 的两种节点类型，逐节点比会假红（本用例实测踩过一次）。
     //   比文本同时还钉住了**键序**（两边都是 LinkedHashMap 保序）。
@@ -3228,6 +3380,8 @@ class SimosToolsTest {
                         ref("main", 1),
                         T7,
                         EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
+                // ★ P1：production 切片必须在场（定义权威；命令/推进落库前校验器 fail-closed）。
+                "production", new ProductionSnapshot(ref("main", 1), T7, ProductionData.empty()),
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
@@ -3241,6 +3395,7 @@ class SimosToolsTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     new ActorCodec(),
                     new ArmyCodec(),
                     new GovCodec())));

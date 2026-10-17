@@ -223,7 +223,14 @@ public final class HouseholdUnitConsistency {
    * @param day 世界日（只进契约故障日志上下文）
    */
   public static Map<String, Long> staffHouseholdProjection(
-      EconomyData economy, SocialData social, UnitState units, long day) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      SocialData social,
+      UnitState units,
+      long day) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
@@ -234,7 +241,8 @@ public final class HouseholdUnitConsistency {
         continue;
       }
       Map<StaffRole, Long> byRole =
-          committedStaffProjection(economy, social, unit, governmentFormation, day);
+          committedStaffProjection(
+              economy, productionUnits, social, unit, governmentFormation, day);
       for (Map.Entry<StaffRole, Long> entry : byRole.entrySet()) {
         projection.put(unit.id().value() + ":" + entry.getKey().name(), entry.getValue());
       }
@@ -249,7 +257,14 @@ public final class HouseholdUnitConsistency {
    * 不一致是**预期过渡态**（Z4 的 staff 是 legacy 缓存；Z3b 起权威是 {@code GOV_SERVICE} 承诺），调用方按 INFO 聚合记录、不告警。
    */
   public static List<String> staffProjectionMismatches(
-      EconomyData economy, SocialData social, UnitState units, long day) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      SocialData social,
+      UnitState units,
+      long day) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
@@ -260,7 +275,7 @@ public final class HouseholdUnitConsistency {
         continue;
       }
       Map<StaffRole, Long> projected =
-          committedStaffProjection(economy, social, unit, formation, day);
+          committedStaffProjection(economy, productionUnits, social, unit, formation, day);
       if (!formation.staff().equals(projected)) {
         out.add(
             "unit="
@@ -279,10 +294,19 @@ public final class HouseholdUnitConsistency {
    * 聚合（聚合公式唯一在 {@link GovernmentFormation#projectedStaff}）。
    */
   private static Map<StaffRole, Long> committedStaffProjection(
-      EconomyData economy, SocialData social, Unit unit, GovernmentFormation formation, long day) {
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      SocialData social,
+      Unit unit,
+      GovernmentFormation formation,
+      long day) {
     long standardLabor = social.provisioning().standardLaborMilliHoursPerTick();
     Map<HouseholdId, Long> committed =
-        GovernmentServiceLaborBridge.committedLaborByHousehold(economy, unit.id(), day);
+        GovernmentServiceLaborBridge.committedLaborByHousehold(
+            economy, productionUnits, unit.id(), day);
     return formation.projectedStaff(
         household ->
             GovernmentServiceLaborBridge.personEquivalents(

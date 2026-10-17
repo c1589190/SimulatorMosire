@@ -77,13 +77,27 @@ public final class MilitaryPayRuleBridge {
    * 按绝对世界日判）。需要 gap 读数时走 {@link #deriveReport}。
    */
   public static List<HouseholdPeriodicAdjustment> derive(
-      UnitState units, SocialData social, EconomyData economy, long day) {
-    return deriveReport(units, social, economy, day).rules();
+      UnitState units,
+      SocialData social,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      long day) {
+    return deriveReport(units, social, economy, productionUnits, day).rules();
   }
 
   /** 与 {@link #derive} 同一份推导，附带单位/政策/gap 读数（P4b 的 DEBUG 汇总用）。返回的规则与 gap 都保序不可变。 */
   public static Report deriveReport(
-      UnitState units, SocialData social, EconomyData economy, long day) {
+      UnitState units,
+      SocialData social,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      long day) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(economy, "economy");

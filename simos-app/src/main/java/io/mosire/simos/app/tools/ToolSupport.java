@@ -120,6 +120,14 @@ public final class ToolSupport {
   public static final String ECONOMY_NAMESPACE = "economy";
 
   /**
+   * production 资源所属的命名空间（D-031 P1：定义权威迁入 production）。
+   *
+   * <p>★ 与 {@link #ECONOMY_NAMESPACE} 同款：新命名空间不加进 GM 组的逐命名空间范围（{@code Shell#gmPermissionSet}）， GM
+   * 面就会回落成"未表态"分支。
+   */
+  public static final String PRODUCTION_NAMESPACE = "production";
+
+  /**
    * actor 资源所属的命名空间（S1 阶段 2 起：{@code actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> |
    * :goods.<key>]}）。
    *
@@ -898,14 +906,24 @@ public final class ToolSupport {
    * <p>★ **R2 起还要一片 economy**（T0 的口径：{@code population} = 有批次 ⇒ 批次求和 / 无批次 ⇒ 回退旧序列； T4 的 {@code
    * labor} 块：该格各主体占用劳动 / 可用劳动 / 占用率）——两者都在同一个响应里，故经济切片与 social 一起传进来。 ★ C6a：再传世界 {@link
    * CalendarService}——{@code at} 的日期与年龄档的 tick→历法年换算同源。
+   *
+   * <p>★★ <b>B3 读路径收口（§13.13.7 第 4 条）</b>：形参表里的 {@code ProductionDefinitionLookup definitions}
+   * 现在**有真实消费者**了 —— 危机红灯（{@code CrisisMonitor}）的"相位天数 / 整周期天数"要读产业定义 （{@code
+   * cycleDays}），而产业定义的唯一权威在 production。A 批续做时曾因"下游无消费者"把它删掉，正是本轮 收口把消费者接了回来（{@code
+   * ApiViews.population} → {@code CrisisMonitor.lightsAt}）。
    */
   public static Map<String, Object> population(
       SocialData data,
       EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       HexCoord coord,
       SimosTimestamp at,
       CalendarService calendars) {
-    return ApiViews.population(data, economy, coord, at, calendars);
+    return ApiViews.population(data, economy, productionUnits, definitions, coord, at, calendars);
   }
 
   public static GameMap gameMap(SimulationState state) {
@@ -1060,6 +1078,12 @@ public final class ToolSupport {
    * ApiViews#economyOwnership}）——它同时读 economy（行侧账）与 actor（{@code HouseholdInventory}）两片，故入参是 state。
    */
   public static Map<String, Object> economyOwnership(HexCoord coord, SimulationState state) {
-    return ApiViews.economyOwnership(coord, ApiViews.economyData(state), ApiViews.actorData(state));
+    return ApiViews.economyOwnership(
+        coord,
+        ApiViews.economyData(state),
+        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
+        // ★★ D-032 B4（裁定十五）：定义来源（production.contract）显式传入 —— economy 侧的副本已删。
+        io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+        ApiViews.actorData(state));
   }
 }

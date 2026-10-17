@@ -36,6 +36,8 @@ import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -111,6 +113,7 @@ public final class GovE2eWorld implements AutoCloseable {
                 "unit", new UnitSnapshot(ref, t0, UnitState.empty()),
                 "ga", new GaSnapshot(ref, t0, GaState.empty()),
                 "economy", new EconomySnapshot(ref, t0, EconomyData.empty()),
+                "production", new ProductionSnapshot(ref, t0, ProductionData.empty()),
                 "actor", new ActorSnapshot(ref, t0, ActorData.empty()),
                 "gov", new GovSnapshot(ref, t0, GovState.empty()),
                 "army", new ArmySnapshot(ref, t0, ArmyData.empty())),
@@ -140,6 +143,7 @@ public final class GovE2eWorld implements AutoCloseable {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
+                    new io.mosire.simos.production.codec.ProductionCodec(),
                     new ActorCodec(),
                     new GovCodec(),
                     new ArmyCodec())));

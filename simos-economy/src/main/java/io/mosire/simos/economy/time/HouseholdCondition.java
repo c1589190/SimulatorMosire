@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -13,10 +14,9 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
@@ -110,8 +110,12 @@ public record HouseholdCondition(
    *     empty（"读不到"而不是 0）
    */
   public static HouseholdCondition derive(
-      EconomyData data, HouseholdId household, Optional<ProductionLedger> ledger) {
-    return derive(data, household, ledger, OptionalLong.empty());
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      HouseholdId household,
+      Optional<ProductionLedger> ledger) {
+    return derive(data, units, definitions, household, ledger, OptionalLong.empty());
   }
 
   /**
@@ -125,10 +129,14 @@ public record HouseholdCondition(
    */
   public static HouseholdCondition derive(
       EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       HouseholdId household,
       Optional<ProductionLedger> ledger,
       OptionalLong grainStockMilli) {
     Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
+    Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(ledger, "ledger");
     Objects.requireNonNull(grainStockMilli, "grainStockMilli");
@@ -166,8 +174,9 @@ public record HouseholdCondition(
         laborSold += laborCommitment.laborMilli();
       }
       // ★ E1：本户的"周期"取它供给的 unit 模板 cycleDays 的最大值（与结算侧 cycleDaysByHousehold 同一条口径）。
-      ProductionProcess unit = data.units().get(new ProductionUnitId(laborCommitment.activity()));
-      Industry industry = unit == null ? null : data.industries().get(unit.industry());
+      ProductionProcess unit = units.get(new ProductionUnitId(laborCommitment.activity()));
+      IndustryDefinitionView industry =
+          unit == null ? null : definitions.industries().get(unit.industry());
       if (industry != null) {
         cycleDays = Math.max(cycleDays, industry.cycleDays());
       }
@@ -178,7 +187,8 @@ public record HouseholdCondition(
       String hexKey =
           IndustryHexKeys.hexKey(
               householdEconomy.view().hex().q(), householdEconomy.view().hex().r());
-      for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
+      for (Map.Entry<IndustryId, IndustryDefinitionView> entry :
+          definitions.industries().entrySet()) {
         if (IndustryHexKeys.hexKeyOf(entry.getKey()).filter(hexKey::equals).isPresent()) {
           cycleDays = Math.max(cycleDays, entry.getValue().cycleDays());
         }
@@ -201,7 +211,7 @@ public record HouseholdCondition(
     OptionalLong rentPaid = OptionalLong.empty();
     OptionalLong grainCoverage =
         grainCoveragePerMille(householdEconomy, cycleDays, grainStockMilli);
-    LivelihoodStatus status = livelihoodOf(data, household, laborSold, grainCoverage);
+    LivelihoodStatus status = livelihoodOf(data, units, household, laborSold, grainCoverage);
     long stressCycles = status == LivelihoodStatus.DESTITUTE && unmetGrain > 0L ? 1L : 0L;
     return new HouseholdCondition(
         household,
@@ -254,15 +264,18 @@ public record HouseholdCondition(
    * <p>★ <b>E1：{@code DESTITUTE} 只在"无资产、无劳动卖出、无自用覆盖"时给出</b> —— 市场滞销本身不在这里判，本条也不 因为一次卖不动就降档。
    */
   private static LivelihoodStatus livelihoodOf(
-      EconomyData data, HouseholdId household, long laborSold, OptionalLong grainCoveragePerMille) {
+      EconomyData data,
+      Map<ProductionUnitId, ProductionProcess> units,
+      HouseholdId household,
+      long laborSold,
+      OptionalLong grainCoveragePerMille) {
     LaborSource source = null;
     for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
       if (!laborCommitment.household().equals(household)) {
         continue;
       }
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      ProductionRules relation =
-          data.units().containsKey(unitId) ? data.relations().get(unitId) : null;
+      ProductionRules relation = units.containsKey(unitId) ? data.relations().get(unitId) : null;
       if (relation != null) {
         source = relation.laborSource();
         if (source == LaborSource.TENANT || source == LaborSource.SERF) {

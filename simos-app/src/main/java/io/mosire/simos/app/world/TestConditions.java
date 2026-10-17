@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -541,8 +542,7 @@ public record TestConditions(
   public static AssetShareId ownedShareIdForHousehold(
       IndustryId industry, AssetKind asset, HouseholdId household, long sequence) {
     ActorRef actor = HouseholdActors.of(household);
-    return OwnershipStake.idOf(
-        industry, asset, actor, actor, OwnershipStake.RightKind.OWNED, sequence);
+    return OwnershipStake.idOf(industry, asset, actor, actor, AssetRightKind.OWNED, sequence);
   }
 
   // ── JSON 解析（fail-closed、具名）──────────────────────────────────────────────────────

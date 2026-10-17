@@ -354,6 +354,13 @@ public final class ThreePowersWorld {
     state =
         applyCommand(
             state,
+            "production.Seed",
+            new io.mosire.simos.production.spi.ProductionSeedHandler(),
+            new io.mosire.simos.production.codec.ProductionCodec(),
+            economy.productionPayload());
+    state =
+        applyCommand(
+            state,
             "economy.Seed",
             new EconomySeedHandler(),
             new EconomyCodec(),
@@ -668,9 +675,9 @@ public final class ThreePowersWorld {
   }
 
   /**
-   * 空创世状态：坐标 {@code (main, 1)}、时刻 {@link #AT}，八个命名空间切片全在场、数据为空（map 除外）。
+   * 空创世状态：坐标 {@code (main, 1)}、时刻 {@link #AT}，十个命名空间切片全在场、数据为空（map 除外）。
    *
-   * <p>★ 八片在场是硬要求：命令总线在切片缺席时响亮失败（照 {@link CorridorWorld} / {@link SmallWorld} 的先例）。
+   * <p>★ 十片在场是硬要求：命令总线在切片缺席时响亮失败（照 {@link CorridorWorld} / {@link SmallWorld} 的先例）。
    */
   private static SimulationState emptyGenesisState(GameMap map) {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
@@ -686,6 +693,9 @@ public final class ThreePowersWorld {
     // ★★ 2026-10-12 批次 3a（九片在场）：ga 切片（决策包 / 合并效果集两表）。键名写死 "ga"，与
     //   GaSnapshot.namespace() 同字面（SimulationState 构造期校验）。
     modules.put("ga", new GaSnapshot(ref, AT, GaState.empty()));
+    // ★★ D-031 Z4（十片在场）：production / culture 两个新切片的空快照（同世界 meta）。缺片时
+    //   production.*/culture.* 命令在 CommandBus 找不到命名空间 ⇒ 在此登记（统一助手，见 GenesisModuleSlices）。
+    GenesisModuleSlices.ensureEmptyProductionAndCulture(modules, ref, AT);
     return new SimulationState(new StateMeta(ref, AT), modules, InMemoryInfoSystem.empty());
   }
 

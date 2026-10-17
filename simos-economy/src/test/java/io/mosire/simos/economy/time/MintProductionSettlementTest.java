@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -15,6 +16,7 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -25,20 +27,21 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.MoneyOutput;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.testing.TestLogCapture;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ProductionLocation;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -439,7 +442,13 @@ class MintProductionSettlementTest {
   void mintingACurrencyTheGovernmentCannotIssueFailsClosed() {
     EconomyData world = mintWorld(1L, 2_000L, OptionalLong.empty(), Map.of(), COPPER);
     AccountSession accounts = accountsFor();
-    EconomyDayStepper stepper = new EconomyDayStepper(world, accounts);
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            world,
+            mintDefs(COPPER),
+            runtimeOf(mintDefs(COPPER)),
+            accounts,
+            MarketTopology.singleHex(world.marketTables(), world.marketZones()));
     try (TestLogCapture log =
         TestLogCapture.attach(EconomyLog.SETTLEMENT_LOGGER_NAME, Level.INFO)) {
       assertThatThrownBy(() -> stepper.step(1L))
@@ -493,7 +502,13 @@ class MintProductionSettlementTest {
    */
   private static Run runOneDay(EconomyData base, long day) {
     AccountSession accounts = accountsFor();
-    EconomyDayStepper stepper = new EconomyDayStepper(base, accounts);
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            base,
+            mintDefs(SILVER),
+            runtimeOf(mintDefs(SILVER)),
+            accounts,
+            MarketTopology.singleHex(base.marketTables(), base.marketZones()));
     try {
       ProductionLedger ledger = stepper.step(day);
       EconomyData data = stepper.finish();
@@ -538,7 +553,13 @@ class MintProductionSettlementTest {
           new LinkedHashMap<>(current.governments());
       governments.put(GOV, governments.get(GOV).withMintScalePerCycle(knobPerRound[round]));
       current = current.withGovernments(governments);
-      EconomyDayStepper stepper = new EconomyDayStepper(current, accounts);
+      EconomyDayStepper stepper =
+          new EconomyDayStepper(
+              current,
+              mintDefs(SILVER),
+              runtimeOf(mintDefs(SILVER)),
+              accounts,
+              MarketTopology.singleHex(current.marketTables(), current.marketZones()));
       try {
         stepper.step(day);
         current = stepper.finish();
@@ -581,6 +602,50 @@ class MintProductionSettlementTest {
    * @param preIssuances 预置的发行记录（判据③ 用它给出"上一轮印了多少"）
    * @param currency 铸币产出的币种（越权用例给它一个政府无权发行的币）
    */
+  /** 铸币产业定义（P1：定义权威在 production）。 */
+  private static IndustryDefinitionView mint(CurrencyId currency) {
+    return new IndustryDefinitionView(
+        MINT,
+        "铸币",
+        new RegimeId("government_mint"),
+        java.util.Optional.empty(),
+        1L,
+        0L, // ★ D-032 T1：新增第 6 个组件 buildDays（本夹具取中性 0，与 testing.IndustryViews 同款）
+        Map.of(AssetKind.WORKSHOP, 1L),
+        Map.of(),
+        0L,
+        LABOR_PER_UNIT,
+        Map.of(),
+        Map.of(AssetKind.WORKSHOP, Map.of(TOOL, TOOL_PER_UNIT)),
+        List.of(new ClassSlot(SocialClassId.OFFICIAL, "官府", 1000)),
+        new AllocationRule.Split(1000, 0),
+        new MoneyOutput(Map.of(currency, MINT_PER_UNIT)),
+        io.mosire.simos.production.contract.ProductionExperienceUse.NONE, // ★ D-032 T1：第 16 组件
+        List.of(), // ★ D-032 T1：第 17 组件 availability
+        java.util.Set.of(io.mosire.simos.economy.api.asset.AssetRightKind.OWNED)); // ★ 第 18 组件
+  }
+
+  private static ProductionData mintDefs(CurrencyId currency) {
+    // ★★ D-032 T5（a 桶夹具欠账）：实例的唯一权威在 production（I1）⇒ 夹具必须把 UNIT **落进权威实例表**。
+    //   旧稿只在 mintWorld(...) 里造了一个同形的 ProductionProcess 局部量却从不落表 ⇒ runtime 实例表空 ⇒
+    //   driveProductionDay 无步可执行 ⇒ 投入/产出恒 0（7 条红即此形态）。实例 id / operator / location 与
+    //   mintWorld(...) 的劳动配额 activity=UNIT.value()、份额 owner=TREASURY 同一个。
+    return ProductionData.empty().withIndustry(mint(currency)).withInstance(mintUnit());
+  }
+
+  /** 铸币 unit（与 {@link #mintWorld} 的配额/份额/经营者同一个 id 与形状）。 */
+  private static ProductionProcess mintUnit() {
+    return new ProductionProcess(
+        UNIT,
+        MINT,
+        ProductionLocation.ofPlan(MINT).orElseThrow(),
+        TREASURY,
+        MINT.value(),
+        0L,
+        Map.of(),
+        Map.of());
+  }
+
   private static EconomyData mintWorld(
       long furnaces,
       long mintScalePerCycle,
@@ -589,48 +654,25 @@ class MintProductionSettlementTest {
       CurrencyId currency) {
     Government government =
         new Government(GOV, "world", TREASURY, Set.of(SILVER), mintScalePerCycle);
-    Industry mint =
-        new Industry(
-            MINT,
-            "铸币",
-            new RegimeId("government_mint"),
-            1L,
-            Map.of(AssetKind.WORKSHOP, 1L),
-            Map.of(),
-            0L,
-            LABOR_PER_UNIT,
-            Map.of(),
-            Map.of(AssetKind.WORKSHOP, Map.of(TOOL, TOOL_PER_UNIT)),
-            List.of(new ClassSlot(SocialClassId.OFFICIAL, "官府", 1000)),
-            new AllocationRule.Split(1000, 0),
-            null,
-            0L,
-            Map.of(),
-            0L,
-            Map.of(),
-            new MoneyOutput(Map.of(currency, MINT_PER_UNIT)));
-    ProductionProcess unit =
-        new ProductionProcess(UNIT, MINT, TREASURY, MINT.value(), 0L, 0L, Map.of());
+    IndustryDefinitionView mint = mint(currency);
     HouseholdEconomy row =
         new HouseholdEconomy(GOV_HOUSEHOLD, VIEW, 0L, 100_000L, 1000, 0L, Map.of(), Map.of(), 0L);
     OwnershipStake workshops =
         new OwnershipStake(
             OwnershipStake.idOf(
-                MINT, AssetKind.WORKSHOP, TREASURY, TREASURY, OwnershipStake.RightKind.OWNED, 0L),
+                MINT, AssetKind.WORKSHOP, TREASURY, TREASURY, AssetRightKind.OWNED, 0L),
             MINT,
             AssetKind.WORKSHOP,
             TREASURY,
             TREASURY,
             furnaces,
-            OwnershipStake.RightKind.OWNED);
+            AssetRightKind.OWNED);
     HouseholdLaborCommitment commitment =
         new HouseholdLaborCommitment(
             ALLOCATION, LOT, GOV_HOUSEHOLD, TREASURY, UNIT.value(), LABOR_PER_UNIT * furnaces, 1L);
     return EconomyData.empty()
         .withMeta(Optional.of(meta(lastClosedCycle)))
         .withGovernments(Map.of(government.id(), government))
-        .withIndustries(Map.of(MINT, mint))
-        .withProcesses(Map.of(UNIT, unit))
         .withHouseholdEconomies(Map.of(GOV_HOUSEHOLD, row))
         .withOwnershipStakes(Map.of(workshops.id(), workshops))
         .withLaborCommitments(Map.of(ALLOCATION, commitment))
@@ -657,5 +699,11 @@ class MintProductionSettlementTest {
         lastClosedCycle,
         EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
         Optional.empty());
+  }
+
+  /** ★★ D-032 B2b/B3：会话/日推进器必须显式拿到 production 运行时（{@code runtime=null} 的旧构造器已删）。 */
+  private static io.mosire.simos.production.contract.ProductionRuntime runtimeOf(
+      io.mosire.simos.production.ProductionData definitions) {
+    return new io.mosire.simos.production.ProductionRuntimeEngine(definitions);
   }
 }

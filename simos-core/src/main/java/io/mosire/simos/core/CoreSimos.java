@@ -20,6 +20,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.spi.CandidateStateValidator;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.MutationGuard;
@@ -105,6 +106,9 @@ public final class CoreSimos implements AutoCloseable {
   private final List<CommandHandler> handlers = new ArrayList<>();
   private final List<TimeParticipant> participants = new ArrayList<>();
   private final List<MutationGuard> guards = new ArrayList<>();
+
+  /** ★★ D-031 P1 §9.3：候选态落库前跨切片校验器（Core 只调度，不认识领域类型）。 */
+  private final List<CandidateStateValidator> validators = new ArrayList<>();
 
   /**
    * ★★ **急停路径的 drain 钩子**（2026-10-13 急停协议，口径 3 = (A)「只把 drain 接进急停路径」）。
@@ -216,6 +220,21 @@ public final class CoreSimos implements AutoCloseable {
   public CoreSimos register(MutationGuard guard) {
     requireNotSealed();
     guards.add(Objects.requireNonNull(guard, "guard"));
+    return this;
+  }
+
+  /**
+   * ★★ <b>注册候选态落库前校验器</b>（D-031 P1 spec §9.3）。**必须在封存之前**；迭代序即调用序。
+   *
+   * <p>★ Core 只按注册序调用、把具名理由折成拒绝（零 revision、零切片变化）；<b>不认识</b>任何领域类型（铁律 4）。 无注册者 ⇒ 既有 Core 行为不变。
+   *
+   * @return {@code this}
+   * @throws IllegalStateException 已封存
+   * @throws NullPointerException {@code validator} 为 null
+   */
+  public CoreSimos register(CandidateStateValidator validator) {
+    requireNotSealed();
+    validators.add(Objects.requireNonNull(validator, "validator"));
     return this;
   }
 
@@ -375,6 +394,13 @@ public final class CoreSimos implements AutoCloseable {
     if (!timeline.branches().isEmpty()) {
       throw new IllegalStateException(
           "库非空（revisions 表已有分支），bootstrapGenesis 只能用于空库创建世界；" + "第二次创世被拒绝，绝不覆盖已有世界");
+    }
+    // ★★ D-031 P1 §9.3：创世也必须在落库前跑候选态校验（base 无前态，用 genesis 作为 base 传入；校验器只读 candidate）。
+    for (CandidateStateValidator validator : validators) {
+      Optional<String> rejection = validator.rejection(genesis, genesis);
+      if (rejection.isPresent()) {
+        throw new IllegalStateException("创世候选态校验失败（" + validator.name() + "）: " + rejection.get());
+      }
     }
     StateRef at = new StateRef(GENESIS_BRANCH, new RevisionId(1));
     timeline.appendRevision(
@@ -560,10 +586,24 @@ public final class CoreSimos implements AutoCloseable {
     this.replay = new Replay(timeline, checkpoints, codecs);
     CommandRegistry registry = new CommandRegistry(handlers);
     TimeAdvance timeAdvance =
-        new TimeAdvance(timeline, this::load, checkpoints, codecs, participants, stopDrain);
+        new TimeAdvance(
+            timeline,
+            this::load,
+            checkpoints,
+            codecs,
+            participants,
+            stopDrain,
+            List.copyOf(validators));
     this.timeAdvance = timeAdvance;
     this.bus =
-        new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards), codecs);
+        new CommandBus(
+            timeline,
+            registry,
+            timeAdvance,
+            this::load,
+            List.copyOf(guards),
+            codecs,
+            List.copyOf(validators));
     this.sealed = true;
     // ★ 2026-10-23：装配完成一条 INFO（原类只有 OPENED/CLOSED 的 DEBUG，装配实况没有一行可读）。
     LIFE.info(
@@ -577,7 +617,9 @@ public final class CoreSimos implements AutoCloseable {
             "participants",
             participants.size(),
             "guards",
-            guards.size()));
+            guards.size(),
+            "validators",
+            validators.size()));
   }
 
   private CommandBus sealedBus() {
