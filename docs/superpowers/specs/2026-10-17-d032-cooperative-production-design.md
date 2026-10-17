@@ -11,6 +11,13 @@
 > **边界**：D2 只冻结“世界必须长成什么样”。D3 的工资报价/调价/支付顺序、D4 的资产地点/占用期/统一占用（R2）仍归各自分册；D2 只定义它们的**接入点与禁止绕过边界**。**本文不实现、不编译、不跑测试、不提交、不同步、不触碰主树。**
 >
 > **当前工程结论**：C2 的首期能力是 **“有名册的合作生产”**：名册由创世/命令显式建立，单户方案由自动组织路径生成默认名册；**不在 C2 内实现自动招募、逐 tick 工资博弈或自动匹配**——这些属于 D3/W。C2 的验收不得把“自动招募/工资支付已完成”写成通过。
+>
+> **2026-10-17 U23 / 裁决列局部更正注（当前有效）**：用户 U23 三项（欠薪零息；按下一 tick 生存条件裁决不从业；抵物折价可低于 bid 且可配置）与 D3 预审裁决 A1–A5/B1–B4 直接改到本册的只有“工资岗位 vs 名册”的接入口，已就地更新，不重写整册：
+> - **`MONEY_WAGE` 角色不再强制 roster participant**；需求权威 = `ProductionWagePosting.targetLaborMilliPerDay`（执行期）/ `ProductionWageDefault`（新进入候选，按 `(plan, role, marketZone)` 读），实际 worker 由 allocations/receipt 决定（§5.2/§6.5/§7.1）。
+> - **`candidateHouseholdsOf` 按角色类型分流**：`PRODUCT_SHARE` 读 roster，`MONEY_WAGE` 读 posting/default + 本地市场区（§4.3）。
+> - **§8.2 工资预计**对 `MONEY_WAGE` 改用候选 default / 实际 posting 的 quote，**仍乘 `cycleDays`**；缺 quote ⇒ `wage-quote-missing`，**不按 0**。
+> - **D3 旧 §0.3 的五项“待同步修正”已并入本册**（§0.4 逐条登记）；两册不得各留一套。
+> - **`allowIdle` 已撤回**（U23）：本册不出现 `allowIdle`/`householdLaborChoices`；不从业资格归 D3 §2.5.1；工资债利率归 economy/D3 §6.5。
 
 ## §0 口径溯源与裁定状态（先核，避免重复问用户）
 
@@ -26,8 +33,25 @@
 | 经验增长是否按 10 人/100 人同速 | 重规划 v2 §5：唯一待定项，可由工程按 (c) 可配置、默认按参与强度归一化；“你不特别指定就按此默认走，不需要再答” | **无需用户新裁定**；D2 §9.1 固定分母为家户当日可用劳动，等价于“同参与比例同速” |
 | R2 同经营者共享资产池分配 | `2026-10-17-d032-final-independent-review.md` R2；重规划 v2 §3、Phase A/D4 | **不是用户业务裁定**；工程归 D4/A，C2 只 fail-closed 记录限制 |
 | 自动招募/工资支付/匹配 | 重规划 v2 Phase C/W；D3 未落盘 | **不属于 D2 用户裁定**；C2 不实现、不冒称通过 |
+| 欠薪零息（工资债不得继承 legacy 20‰；区分工资欠款与普通贷款） | **用户 U23**（2026-10-17，逐字见 `2026-10-17-d032-wage-idle-barter-decision.md` §7；D3 §0.1） | **已有裁定**；利率/债务结算归 economy/D3 §2.9/§6.5，D2 不写利率 |
+| 按下一 tick 生存条件裁决不从业（撤回 `allowIdle` 缺行默认） | **用户 U23**（同上） | **已有裁定**；资格/选择归 D3 §2.5.1/§4.4（`idleEligible` 与 `idleChosen` 分离）；`allowIdle`/`householdLaborChoices` 已撤回，D2 不写其规则/状态 |
+| 抵物折价可更低、可配置、明确模块边界 | **用户 U23**（同上） | **已有裁定**；策略定义归 D1 production、执行归 economy/D3 §6.4；D2 只读 quote/不复制策略 |
 
-**结论**：D2 不需要新增用户业务裁定。本分册中所有“控制方建议/工程默认”均已明确标注，用户可随时推翻；未把默认值写成用户已裁定。
+**结论**：D2 不需要新增用户业务裁定。U23 三项均为**用户已定**（不再列待裁定）。本分册中所有“控制方建议/工程默认”均已明确标注，用户可随时推翻；未把默认值写成用户已裁定。
+
+### 0.4 D3 旧 §0.3 五项最小修正的合并结果（当前有效；取代 D3 旧 §0.3）
+
+> **状态**：D3 旧 §0.3 曾把下列五项写成“待 D2 owner 同步、D3 以其为准”。2026-10-17 整合后**全部并入本册当前正文**；D3 §0.3 只留指针，不再保留独立规则正文。两册冲突时以本表指向的本册正文为准。
+
+| # | D3 旧 §0.3 修正 | 本册当前有效正文 | 合并后的口径 |
+|---|---|---|---|
+| 1 | `ProductionReceipt` 给出本次 tick 逐 `(household, role)` 实际劳动 | §6.1 | `laborContributionsMilli` 改为 `Map<ProductionParticipantKey, Long>`（本次 tick；只含 >0）；按户合计只作派生 `laborByHouseholdMilli()`；`ProductionProcess.cycleContributions` 仍按角色**周期累计**，二者同源、不互相替代 |
+| 2 | `MONEY_WAGE` 角色不被“每角色至少一个 participant”绑死 | §5.2 / §7.1 / §10.1 | `PRODUCT_SHARE` 角色必须有 participant；`MONEY_WAGE` 角色可无 participant，需求权威 = `ProductionWagePosting.targetLaborMilliPerDay`（新进入候选读 `ProductionWageDefault`）；实际 worker 由 allocations/receipt 决定；**不得伪造 placeholder，不建第二套“名册 worker”权威** |
+| 3 | `candidateHouseholdsOf` 按角色类型分流 | §4.3 | `PRODUCT_SHARE` 读 roster 的 `plannedLaborMilliPerDay > 0` participant；`MONEY_WAGE` 读 posting/default + 本地市场区 + 资格/账户规则，**不读 roster**；`laborSources` 仍只是已确认 roster 的派生摘要 |
+| 4 | §8.2 工资应收改用 posting 目标 | §8.2 | `MONEY_WAGE` 应收/应付 = `quote(候选 default / 实际 posting) × targetLaborMilliPerDay × cycleDays / 1000`（或预计可匹配劳动 × cycleDays）；**仍乘 `cycleDays`**；缺 quote ⇒ `wage-quote-missing`，不按 0；显式 0 合法 |
+| 5 | 角色资格失败整实例拒绝只适用 roster participant | §7.3 | roster 内 `PRODUCT_SHARE` participant 资格失败 ⇒ 整实例本日拒绝；`MONEY_WAGE` 自动候选不合格 ⇒ **候选 skip**（具名），无候选只形成 shortage 驱动 U20 |
+
+**组件号约束（与 D3 一致）**：本册第 32 组件 `productionRosters` 之后，D3 只新增 **33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`**；**无第 36 个**；`allowIdle`/`householdLaborChoices` 已撤回（历史项，不新增规则/状态/命令/seed/判据）。
 
 ---
 
@@ -67,7 +91,7 @@
 
 1. 一个生产实例的**真实参与名册**：哪些家户、在哪个 `ProductionRoleId`、谁是组织者、每户计划劳动、角色内权利权重/配置权重来自哪里；
 2. 名册的**持久状态 / ChangeSet / Codec / 命令 / 读口**；
-3. 一个名册候选的**按户产品份额预计所得**（含投入负担），并明确“负收益不清除”；工资义务/应收只定义**金额公式与读口**，真实报价状态与正式验收在 D3/W1（C2 对 wage 角色只做结构/缺报价拒绝，不冒称工资已结算）；
+3. 一个名册候选的**按户产品份额预计所得**（含投入负担），并明确“负收益不清除”；工资义务/应收只定义**金额公式与读口**，真实报价状态与正式验收在 D3/W2a（C2 对 wage 角色只做结构/缺报价拒绝、候选读 `ProductionWageDefault`，不冒称工资已结算）；
 4. 周期关账时的**两层分配**：先角色池，再角色内按规则拆到户；未分配余数归组织者 residual，不丢货；
 5. **角色资格**按位置检查、组织经营者从名册解析、计划级资格仍按组织者检查；
 6. **经验增长**按角色系数/基数计算，按 `(家户, 经验条)` 每 tick 只归并一次；迁移/合户复用现有经验合并口径；
@@ -158,7 +182,10 @@ D3 工资支付（货币 → 库存数量降序 → 债务）
   - `outputOwnership` 必须是 `Payee.ToActor(organizerActor)`（字段类型是 `Payee`，不是 `ActorRef`）；`ProductionRules.residualOwner` 也必须等于 organizer actor，二者不一致是契约故障；
   - `ProductionRules.operator` 必须等于 unit.operator 与 organizer actor；`inputSupplier` 只支持 `Payee.ToActor`，且必须解析到 organizer 或名册内某户；`Payee.ToCohort` 或其他形态 ⇒ `input-supplier-unsupported`。
   - 旧消费者 `DebtPartyResolver.resolveViaEnterprises`、`ModeMigrationSettlement`、`EconomyClearRegionHandler`、`ApiViews` 若读 `laborSources`，C2 继续以“名册全户派生”语义供数；不需要为纯收租户另开字段，但**不得**再由这些路径反向写 `laborSources`。
-  - `LaborQueueSettlement.candidateHouseholdsOf` **不得**把 `laborSources` 当劳动候选全集：它必须读 `ProductionRoster`，只选 `plannedLaborMilliPerDay > 0` 或在劳动角色中的 participant；纯收租/零计划劳动户不能进入自动劳动匹配。该消费面的改写归 C2，旧注释不得继续冒充。
+  - `LaborQueueSettlement.candidateHouseholdsOf` **不得**把 `laborSources` 当劳动候选全集，且必须**按角色类型分流**（D3 §0.4 #3，当前有效）：
+    - `PRODUCT_SHARE` 角色：读 `ProductionRoster`，只选该角色 `plannedLaborMilliPerDay > 0` 的 participant；纯收租/零计划劳动户不能进入自动劳动匹配；
+    - `MONEY_WAGE` 角色：**不读 roster**，由 `ProductionWagePosting`（执行期）或 `ProductionWageDefault`（新进入候选，键 `(plan, role, marketZone)`）+ 本地市场区 + 资格/账户/劳动规则产生候选；
+    - `laborSources` 始终只是“已确认 roster 全户”的派生摘要，**不得**当作工资工人的全集。该消费面的改写归 C2/W2b，旧注释不得继续冒充。
 - **旧 `CompensationRule` 产出分配路径**：对名册方案，C2 的分配只走 `RoleDistribution`；`ProductionRules.rules` 必须为空。若名册方案的 `rules` 非空，C2 具名拒绝 `legacy-compensation-rules-present`，不得“先旧规则再角色分配”双记。D3 实现工资后可以删除/替换该字段；D2 不保留旧产出规则作为兼容。
 - `ProductionSettlement` 的产出/地租/给养分腿在 C2 由角色分配替代；C2 可以保留其纯函数供其他非名册调用，但**名册方案不得调用**。这条是 C2 的删除面，不是可选项。
 - **创世迁移**：`EconomySeeder` / `RegimeRelations` 里现有的 `OUTPUT_SHARE` / `FIXED_IN_KIND_*` / `FIXED_MONEY_*` 规则必须在 C0/C3 的 seed 重写中落成角色（地主/佃农/雇农/经营者等）；C2 不保留“旧规则 + 新名册”双轨，也不承诺旧规则数值逐值保持。P1 的逐值等价只覆盖“无旧规则的单角色 plan”。逐 `RuleType` 的处置表：
@@ -169,7 +196,7 @@ D3 工资支付（货币 → 库存数量降序 → 债务）
 | `OUTPUT_SHARE`（`GROSS_OUTPUT`/`NET_AFTER_INPUTS`/`OPERATOR_SURPLUS`） | 改成 `RolePayment.PRODUCT_SHARE` 角色；`ratePerMille` → `sharePerMille`；`Weight.LABOR_AMOUNT` → `BY_RECOGNIZED_LABOR`，`Weight.NONE` → `EQUAL`，`Weight.ASSET_QUANTITY` → `BY_RIGHTS`（需有真实 owner 份额） | C0 definition + C3 seed |
 | `FIXED_IN_KIND_PER_LABOR` | **不可表示为 D1 现有角色支付形态**；C2 不迁移，seed 必须删掉或另开分册加固定实物工资类型 | C3/后续 |
 | `FIXED_IN_KIND_RENT` | **不可表示为 D1 现有角色支付形态**；改成 PRODUCT_SHARE 或另开分册 | C3/后续 |
-| `FIXED_MONEY_WAGE` | 改成 `RolePayment.MONEY_WAGE` 角色；固定额 → D3 的固定 quote（按实际劳动/周期结算） | D3/W1 |
+| `FIXED_MONEY_WAGE` | 改成 `RolePayment.MONEY_WAGE` 角色；固定额 → D3 的固定 quote（按实际劳动/周期结算） | D3/W2a |
 | `FIXED_MONEY_RENT` | D1 没有“货币地租”角色类型；改成 PRODUCT_SHARE 或另开分册 | C3/后续 |
 
 - 任何“不可表示”的旧规则出现在名册方案的 seed/创世里 ⇒ `legacy-rule-not-representable:<type>`，C3 必须显式删除/重设计，不得静默丢规则或把它塞进 `PRODUCT_SHARE`。
@@ -215,6 +242,7 @@ record ProductionParticipant(
 - `participants`：非空、保序不可变、逐项非 null；`(household, role)` 不允许重复；同一户可在多个角色出现（例如地主兼经营者），但角色条目不同。
 - `organizer`：整个名册**恰好一个 true**；组织者是名册解析出的主体，不是从 `ProductionEnterprise` 另猜一个。
 - `plannedLaborMilliPerDay`：该户在该角色上的**计划劳动/日**（毫小时/日；与 `HouseholdEconomy.laborMilli`、`HouseholdLaborCommitment.laborMilli` 同量纲），≥ 0；它是预计所得的输入，不是实际劳动权威；实际劳动只看 allocations/receipt。
+- **`MONEY_WAGE` 角色例外（U23/A3，当前有效）**：`MONEY_WAGE` 角色的需求权威**不是** roster 的 `plannedLaborMilliPerDay`，而是执行期 `ProductionWagePosting.targetLaborMilliPerDay` / 新进入候选的 `ProductionWageDefault.initialTargetLaborMilliPerDay`。名册可以完全没有 `MONEY_WAGE` participant；若 seed/命令显式写了，它只作“已确认/历史读数”，**不得**创造第二个工人集合、第二份工资或第二份 unit cap。实际 worker 一律由 allocations/receipt 决定。
 - `rightsStakes`：只在角色 `intraRoleSplit == BY_RIGHTS` 时使用；只存 `AssetShareId` 引用，不复制 `quantity`；同一份额不得被两个 participant/role 重复引用；权威数量仍从 `assetShares` 当刻读取。
 - **量纲统一（D2 工程裁定）**：`laborMilli` / `plannedLaborMilliPerDay` / `householdLaborBudgetMilli` / `HouseholdLaborCommitment.laborMilli` 一律按 **毫小时/日**；`standardLaborMilliPerCycle` 按 **毫小时/周期**；工资 quote 按 **毫货币 / 1000 毫小时（= 毫货币/小时）**；工资 = `quote × laborMilli / 1000`。现有代码注释中“千分劳动·日”的旧措辞必须在 C2 统一，不得把毫小时与千分劳动·日混算。
 - `configuredWeight`：只在 `CONFIGURED_WEIGHTS` 时使用，≥ 0；0 = 该户不参与该角色池；角色内至少一项 > 0，否则该角色池进未分配余数。其他规则必须为 0（防止“看起来配了权重但没人读”）。
@@ -317,7 +345,7 @@ record ParticipantContribution(
 - `totalLaborMilli()` 由引擎/值类型计算，不另存。
 - `ProductionReceipt.cycleContributions` 改为 `Map<ProductionParticipantKey, CycleContribution>`，`CycleContribution` 增加 `ProductionRoleId role`；同一户同角色多次出工累计，不同角色分行。
 - **实例侧也要保留角色**：`ProductionProcess.cycleContributions` 由 `Map<HouseholdId, CycleContribution>` 改为 `Map<ProductionParticipantKey, CycleContribution>`；`ProductionSnapshot`/`ProductionCodec`/`ProductionChangeSet` 同步。否则 `EconomySettlement` 按户 merge 后，后续分配/经验都拿不到 role（这是 D2 的必改点，不是只改 Request/Receipt）。
-- `ProductionReceipt.laborContributionsMilli` 可保留为“按户合计”的派生读数列，但不得成为第二权威；总经验/分配以 role 明细为准。
+- `ProductionReceipt.laborContributionsMilli` **改为 `Map<ProductionParticipantKey, Long>`（本次 tick；只含 >0 项）**，不得成为第二权威；按户合计只作派生方法 `laborByHouseholdMilli()`。总经验/分配/**W3 due** 以本次 tick 的 role 明细为准；`ProductionProcess.cycleContributions` 继续按角色**周期累计**，二者同源、不互相替代（D3 §0.4 #1，当前有效）。
 - `ProductionReceipt.experienceGrowth` 仍按 `(household, track)` 汇总；另加可审计的 `experienceGrowthLines`（household × role × track × 增量），汇总值必须逐项等于持久化 `householdExperience` 的本 tick 增量。
 
 ### 6.2 逐参与户属性事实与劳动预算
@@ -373,7 +401,7 @@ record RoleDistributionResult(
 
 ### 6.5 D2/D3 工资报价读口（只定边界，不建 D3 状态）
 
-C2 不持久化工资报价；D3 才拥有报价状态。为让 C2 编译并让 W1 插入，定义最小只读值：
+C2 不持久化工资报价；D3 才拥有报价状态。为让 C2 编译并提供 W2a/W1 的最小读口，定义最小只读值：
 
 ```java
 record ProductionWageQuote(
@@ -386,10 +414,11 @@ interface ProductionWageQuoteLookup {
 }
 ```
 
-- C2 的默认 lookup = 永远 empty；含 MONEY_WAGE 角色的候选得到 `wage-quote-missing:<role>`。
-- W1/D3 用真实持久报价实现同一 lookup；`wagePerLaborMilli` = **毫货币 / 1000 毫小时（= 毫货币/小时）**，所以工资 = `quote × laborMilli / 1000`。
-- 预计工资 = `quote.wagePerLaborMilli() × plannedLaborMilliPerDay × cycleDays / 1000`；实际工资 = `quote.wagePerLaborMilli() × 实际 role laborMilli / 1000`（不是把实际劳动再乘一遍计划劳动）。例：quote=1000（=1 货币/小时）、实际 5,000 mh（5 小时）⇒ 1,000×5,000/1,000=5,000 毫货币（= 5 货币）。该公式在 D2 只用于预计/读数，实际支付顺序/抵物/债务在 D3。
-- 不得用 `Map<role,Long>` 裸表绕过该读口，也不得把缺报价当 0。
+- C2 的默认 lookup = 永远 empty；含 MONEY_WAGE 角色的候选得到 `wage-quote-missing:<role>`。这是 **C2 边界**，不是“工资岗位已可估价”。
+- **W2a 落真实实现（A3/B1）**：执行期从 `productionWagePostings` 读；**实例存在前的候选/新进入者**从候选级 `ProductionWageDefault` 读（键 `(IndustryId plan, ProductionRoleId role, MarketZoneId zone)`，含 `initialWagePerLaborMilli`/`initialTargetLaborMilliPerDay`，D3 §2.2.1）。选中后由同一合法 Revision 创建实例并把 default 物化为 posting。`ProductionWagePosting` 仍是**执行期唯一实际报价权威**；default **不是**第二份执行报价，也不参与已存在实例的匹配/支付。
+- `wagePerLaborMilli` = **毫货币 / 1000 毫小时（= 毫货币/小时）**，所以工资 = `quote × laborMilli / 1000`。
+- **候选/采用比较窗口 = `definition.cycleDays()`（A1）**：预计工资 = `quote.wagePerLaborMilli() × plannedLaborMilliPerDay × cycleDays / 1000`（对 MONEY_WAGE 用 default/posting 的 target × cycleDays）；产品份额值、投入负担、劳动分母同窗口。**实际 W3 due 按本次 tick 实际 role laborMilli，不乘 `cycleDays`**：`quote × 实际 tick laborMilli / 1000`。例：quote=1000（=1 货币/小时）、实际 5,000 mh（5 小时）⇒ 5,000 毫货币（=5 货币）。该公式在 D2 只用于预计/读数，实际支付顺序/抵物/债务在 D3。
+- 不得用 `Map<role,Long>` 裸表绕过该读口，也不得把缺报价当 0；**缺目标**（既无 default 也无实例 posting 给 target）⇒ `wage-target-missing`，不得静默 0 当“没有岗位”。
 
 ### 6.6 Phase M 前置：`production.RebindInstanceOperator`
 
@@ -424,11 +453,11 @@ interface ProductionWageQuoteLookup {
 **名册级（每次候选 revision）**：
 
 - `unit` 存在，且 production 实例的 plan == roster.plan；
-- 角色 id 全部存在于 plan.roles；**每个定义角色至少一个 participant**（C2 的有名册合作是“已确认的周期承诺”，不是 D3 的公开岗位市场；D3/W 若需要空位/未招募，必须以 offer/shortage 表达，不得把空角色写进持久名册。可选角色应通过 plan 版本表达）；
+- 角色 id 全部存在于 plan.roles；**每个 `PRODUCT_SHARE` 定义角色至少一个 participant**（C2 的有名册合作是“已确认的周期承诺”，不是 D3 的公开岗位市场）。`MONEY_WAGE` 角色**可以没有 participant**：需求由 `ProductionWagePosting`/`ProductionWageDefault` 表达，实际 worker 由 allocations/receipt 决定；不得为工资角色伪造 placeholder household，也不得把空工资角色写进“名册 worker”权威。可选 `PRODUCT_SHARE` 角色应通过 plan 版本表达；
 - `(household, role)` 唯一；
 - 恰好一个 organizer；organizer 的 role 必须是 `PRODUCT_SHARE`；
 - `unit.operator` 必须是 organizer 的 household actor（`HouseholdActors.of(organizerHousehold)`）；非 household operator / 解析失败 ⇒ `organizer-actor-mismatch`；
-- `plannedLaborMilliPerDay`：MONEY_WAGE 或 `standardLaborPerCycle > 0` 的角色至少一名 participant > 0；纯收租/非劳动角色可为 0；
+- `plannedLaborMilliPerDay`：`PRODUCT_SHARE` 或 `standardLaborPerCycle > 0` 的非工资角色至少一名 participant > 0；纯收租/非劳动角色可为 0；`MONEY_WAGE` 角色不要求 roster participant（目标由 posting/default 校验，缺 ⇒ `wage-target-missing`）；
 - 每户名册计划劳动之和 ≤ 该户当刻 `HouseholdEconomy.laborMilli`（当日预算；同一户多个 unit/roles 必须合并检查）；超出 ⇒ `household-labor-overcommitted`；
 - `BY_RIGHTS`：C2 只支持**所有者侧**权利：每个 `rightsStake` 必须存在、`industry == plan`、`owner == HouseholdActors.of(household)`；不得跨 participant 重复引用。`operator` 侧的 use-right/租佃占用是 D4 的经营占用，不作为 C2 角色分配权重；若将来需要按 operator 侧权利分配，另立 `rightsBasis`，不在 C2 偷用 `operator` 字段；
 - `CONFIGURED_WEIGHTS`：每个 participant 的 `configuredWeight` 只在该规则下允许非零，且角色内至少一项 > 0；
@@ -447,6 +476,7 @@ interface ProductionWageQuoteLookup {
 - **角色级**：`roles[].conditions` 的每条只约束该角色参与者；同一户在两个角色时分别检查；缺 facts/经验 → 该条件不满足。
 - **执行时再查**：probe 之前的候选检查不替代 execute 的检查；`ProductionRuntimeEngine.execute` 必须在任何进度/经验/投入写入之前重查，避免“probe 拒绝后直接 execute 仍生产”（R3 的同类教训）。
 - **拒绝粒度**：`role-qualification:<roleId>:<household>:<reason>`；任何一条不满足 ⇒ 整个实例本日业务拒绝、零状态变化，不按“部分角色满足”生产。
+- **`MONEY_WAGE` 自动候选例外（D3 §0.4 #5，当前有效）**：单个家户不合格 = **候选 skip**（具名 `role-qualification:...`），**不是**整 unit 故障；无候选只形成 shortage 并驱动 U20。roster 内 `PRODUCT_SHARE` participant 的资格失败仍按上一条整实例拒绝。
 
 ---
 
@@ -460,7 +490,7 @@ interface ProductionWageQuoteLookup {
 2. 计划级资格用 organizer；角色级资格逐户检查；
 3. `probe` 入参（D1 §2.9 不变）：
    - `conditions.household = organizer`
-   - `conditions.laborMilli = Σ participant.plannedLaborMilliPerDay × definition.cycleDays`
+   - `conditions.laborMilli` = **周期窗口劳动**：`PRODUCT_SHARE` 角色取 `Σ participant.plannedLaborMilliPerDay × definition.cycleDays`；`MONEY_WAGE` 角色取 `min(posting/default.targetLaborMilliPerDay, maxAbsorbableNonLaborForRole) × definition.cycleDays`。两类**不得重复使用同一份劳动预算**；这是 A1 的候选/采用比较窗口（`cycleDays`），实际执行仍逐 tick。
    - `conditions.assets = D4 占用读口给的 unit 占用`（C2 若 D4 未接，见 §15 的 R2 限制）
    - `conditions.inputs = inputSupplier 的当刻库存（按配方键）`
    - `mastery/experience = organizer`（计划级效率/解锁主体；D2 不发明多户经验聚合公式）
@@ -474,8 +504,8 @@ interface ProductionWageQuoteLookup {
 
 ```text
 产品份额值 = 该户由 RoleDistribution 得到的逐商品份额，按本户需求/市场/可寻址需求估价
-工资应收   = Σ_{该户为 MONEY_WAGE 角色} quote(unit, role) × plannedLaborMilliPerDay × cycleDays / 1000
-工资应付   = Σ_{该户为 organizer} 同一公式（全部 MONEY_WAGE 角色）
+工资应收   = Σ_{该户为被匹配 MONEY_WAGE worker} quoteSource × expectedMatchedLaborMilliPerDay × cycleDays / 1000
+工资应付   = Σ_{该户为 organizer} quoteSource × expectedLaborMilliPerDay × cycleDays / 1000
 投入负担   = 若 relation.inputSupplier 是 Payee.ToActor 且解析到该户，则 probe.inputRequired 按本地 ask 价估值的成本；否则归 organizer；Payee.ToCohort/其他形态 ⇒ input-supplier-unsupported
 预计净额   = 产品份额值 + 工资应收 - 工资应付 - 投入负担
 ```
@@ -484,7 +514,10 @@ interface ProductionWageQuoteLookup {
 
 - **产品份额不以劳动为条件**：纯收租地主的 `plannedLabor=0` 仍拿定义份额；其份额不因“没下地”被清零。
 - **工资是组织者的支出**：U15 更正不可回退；不得把工资算成组织者收入。
-- **缺工资报价**：`wage-quote-missing:<role>`，不得按 0 报价。D3 可以报 0（U18），但“缺”与“0”必须分开。
+- **`quoteSource`（A3，当前有效）**：实例存在前，候选/新进入者读候选级 `ProductionWageDefault`（键 `(plan, role, marketZone)`，D3 §2.2.1）；执行期读 `ProductionWagePosting`。`ProductionWagePosting` 是执行期**唯一实际报价权威**，default 不是第二份执行报价。
+- **窗口（A1）**：以上工资应收/应付都是**周期累计**（`× cycleDays`），与产品份额值、投入负担、劳动分母同窗口；实际 W3 due 按每 tick 实际劳动，**不乘 `cycleDays`**。
+- **劳动分母（A1）**：`PRODUCT_SHARE` 角色的预计劳动仍用 `plannedLaborMilliPerDay × cycleDays`；`MONEY_WAGE` 角色用 `targetLaborMilliPerDay × cycleDays`（或预计可匹配劳动 × cycleDays）。两类**同一周期窗口**，不得重复使用同一份劳动预算。
+- **缺工资报价/缺目标**：`wage-quote-missing:<role>` / `wage-target-missing:<role>`，不得按 0 报价。D3 可以报 0（U18），但“缺”与“0”必须分开。
 - **负净额保留（工程默认，落实 U18/U19）**：预计所得表必须保留 `negative=true` 的行，禁止像旧 `LaborQueueBook` 那样预过滤非正收益。D2 不做自动选择，故负数只影响读数和后续 D3 选择，不在 C2 被删除；用户未逐字指定过滤算法。
 - **需求不预留**：市场可寻址需求是预测，不因候选而扣减；同一商品多户预计卖出可能高估，实际市场结算仍是权威。D2 不建“预期需求配额”第二账。
 - **估值复用**：产品/投入估值必须复用 `ExpectedProfitBook` 现有的“自用+可售、缺价记 0 并标缺价、投入按 ask”口径，提取为唯一纯 helper；不得在 D2 新写第二套价格公式。
@@ -508,7 +541,7 @@ interface ProductionWageQuoteLookup {
 
 ### 8.4 工资/资产的分册边界
 
-- **D3**：报价状态、U20 调价、劳动匹配、U21 现金→库存数量降序→债务、欠薪不影响择业。D2 只定义 `quote(unit, role)` 的读口与金额公式；C2 遇到无报价的 MONEY_WAGE 角色返回 `wage-quote-missing`，不得假装已支付。D3/W3 支付路径落盘前，C2 对任何含 MONEY_WAGE 角色的名册执行返回 `wage-settlement-not-implemented:<role>`，不得只发产品份额而把工资静默留空。
+- **D3**：报价状态（33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`）、U20 调价、劳动匹配、下一 tick 生存条件不从业（U23，`idleEligible` 资格与 `idleChosen` 选择分离，D3 §2.5.1/§4.4）、U21 现金→库存数量降序→债务、欠薪零息与“不影响择业”。D2 只定义 quote 读口与金额公式；C2 遇到无报价的 `MONEY_WAGE` 角色返回 `wage-quote-missing`、缺目标返回 `wage-target-missing`，不得假装已支付。**W2b 独立阶段**（W3 未接）对真实 `settleOneDayInto` 必须在任何抽料/劳动写回/进度/经验/实际劳动写入**之前**整 tick 拒绝 `wage-settlement-not-implemented`（D3 §4.7/§7.2），不得只发产品份额而把工资静默留空；W3 接通后改为按实例业务拒绝。
 - **D4/A**：`assetOccupancy` 必须来自统一占用分配；C2 不得回读“整池复制”的 `ProductionProcessBook.usableAssets` 作为最终占用。D2 只定义输入形状 `Map<ProductionUnitId, Map<AssetKind, Long>>`（由 app/D4 装配的 `AssetOccupancyLookup` 提供，缺失 ⇒ `asset-occupancy-unavailable`）。在 D4 未接时，C2 对同一 `(plan, operator)` 的多个实例、或共享同一 `AssetShareId` 的多实例，具名拒绝 `asset-scope-shared:awaiting-D4`；单实例路径可继续，且 C2 验收不得声称 R2 已关闭。
 - **现有 `usableAssets` 的定位**：它只可作为 D4 未接时的**单实例临时适配器**来源；必须在 `AssetOccupancyLookup` 实现内集中标注 `awaiting-D4`，不得在 `ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement` 各写一份。多实例/共享份额一律走拒绝路径。
 
@@ -591,6 +624,7 @@ configured-weight-invalid:<role>:<household>
 plan-qualification:<reason>
 role-qualification:<role>:<household>:<reason>
 wage-quote-missing:<role>
+wage-target-missing:<role>
 wage-settlement-not-implemented:<role>
 management-labor-missing:<role>:<household>
 input-supplier-unsupported
@@ -661,7 +695,7 @@ seed-roster-missing:<unit>
 | P5 | `EQUAL` / `CONFIGURED_WEIGHTS` | 最大余数、稳定破平；权重全 0 ⇒ 角色池进 unallocated 归 organizer |
 | P6 | `UNALLOCATED` 与 `TO_LAST_ROLE` | 份额 400/400/100、net=1000：前者 residual=100，后者最后 PRODUCT_SHARE 角色=200；两种都逐商品 `loss+shares+residual=gross` 守恒 |
 | P7a | MONEY_WAGE 角色的**C2 结构边界** | share 必须 0；缺 quote ⇒ `wage-quote-missing`；D3 支付路径未接 ⇒ `wage-settlement-not-implemented`；不得只分产品不记工资 |
-| P7b | MONEY_WAGE 的预计所得（**W1**，不是 C2 的正式验收） | C2 只用 fixture quote 做算术自证；真实报价状态/选择/支付属于 D3/W1，C2 交账不得写“工资已完成” |
+| P7b | MONEY_WAGE 的预计所得（**W2a+W1**，不是 C2 的正式验收） | C2 只用 fixture quote 做算术自证；真实报价状态/选择/支付属于 D3/W2a+W1，C2 交账不得写“工资已完成” |
 | P8 | 负净额 | 保留 `negative=true`，不被 D2 过滤；无“必须不亏本”闸（工程默认，不是用户逐字裁定） |
 | P9 | 角色资格 | 某角色某户缺 literacy/经验 ⇒ `role-qualification:...`，零产出/零经验/零消耗 |
 | P10 | 组织者解析 | 0 个/2 个 organizer、operator 不匹配、非 household ⇒ 具名拒绝 |
@@ -730,7 +764,7 @@ seed-roster-missing:<unit>
 
 1. **本文只写设计**：未改业务/测试、未编译、未跑 Maven/仿真/门禁，未提交/同步/推送。
 2. **自动招募/匹配未做**：C2 的名册由 seed/命令/单户默认生成；U19 的逐 tick 报价博弈、零工资并列、闲置选择在 D3/W。D2 不声称这些已实现。
-3. **D3 工资支付未做**：C2 只做预计金额与读口；`wage-quote-missing`、`wage-settlement-not-implemented` 是已知边界。D3 落盘前，含 MONEY_WAGE 角色的名册不得执行、不得以“已支付”验收。
+3. **D3 工资支付未做**：C2 只做预计金额与读口；`wage-quote-missing`、`wage-target-missing`、`wage-settlement-not-implemented` 是已知边界。W2b 独立阶段对真实 `settleOneDayInto` 必须整 tick fail-closed（任何抽料/写回之前）；W3 落盘前，含 `MONEY_WAGE` 角色的名册不得执行、不得以“已支付”验收。
 4. **D4/R2 未关闭**：C2 不替代 D4；共享资产多实例必须 fail-closed 或明确标注限制，不能在 C2 宣称 R2 已修。
 5. **旧 `CompensationRule` 清理**：C2 只禁用名册方案的旧 rules，D3 再决定删除/替换字段；本文不把旧规则删除写成已完成。
 6. **expected-demand 不预留**：同一商品多户预计卖出可能高估；这是预测与市场结算的已登记边界，不是 D2 的隐藏保证。
@@ -760,4 +794,4 @@ tools/mvn-lock.sh -pl simos-economy -am test
 tools/gate.sh full
 ```
 
-**本文落盘时的状态**：侧线工作树基线 `0128b0cc`；本文件为新增未跟踪文档；未提交、未同步主树。设计是否通过评审、C2 是否可派单，仍以控制方复核和 C4 证据为准。
+**本文落盘时的状态**：D2 初稿基线 `0128b0cc`。**2026-10-17 U23 / 裁决列整合**：在侧线工作树 HEAD `5f517492` 上局部更新本册（§0.4 与相关段落），仍未提交、未同步主树、未改业务/测试。设计是否通过评审、C2 是否可派单，仍以控制方复核和 C4 证据为准。

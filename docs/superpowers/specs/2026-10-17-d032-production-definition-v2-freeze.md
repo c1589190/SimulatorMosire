@@ -6,6 +6,12 @@
 > **边界（审核已定）**：经验归一化 = **可配置工程默认**（不得写成用户唯一公式）；角色产品份额 = **直接产品份额**（不以劳动为条件，U15）；工资 = 地主报价+逐 tick 调价+直接结算（U17–U21，D3）；资产 = 现有权益/占用上表达（不另建土地账，D4）；R2 仍具名未修。
 >
 > **2026-10-17 D2 局部更正注**：后续 `docs/superpowers/specs/2026-10-17-d032-cooperative-production-design.md` §5.1 把 `ProductionRoleId` 的落点改为 `simos-economy-api`（否则 `HouseholdLaborCommitment` 无法携带角色而不形成 Maven 环）；§7.1 补充 `MONEY_WAGE ⇒ share=0`、`PRODUCT_SHARE ⇒ share>0` 的交叉校验；§9.1 固定 `NORMALIZED_PARTICIPATION` 的实际公式为 `laborMilli × 1000 / householdLaborBudgetMilli`（不以人口或 `standardLaborMilliPerCycle` 作经验分母；后者 0 仍表示未定）；§8.3 明确 `UNALLOCATED` = 不进入角色池、但为守恒归 organizer residual，不是无主池；§6 扩展执行请求的逐参与户属性/劳动预算/管理劳动输入；并统一 `laborMilli`/`standardLaborMilliPerCycle`/`householdLaborBudgetMilli` 为**毫小时**口径（旧“千分劳动·日”注释作废）。D1 其余冻结形状不变；C0 落形时以 D2 这些条目为准。
+>
+> **2026-10-17 U23 / 裁决列局部更正注**：用户 U23（欠薪零息；按下一 tick 生存条件裁决不从业；抵物折价可低于 bid 且可配置）与 D3 预审裁决列 A1–A5/B1–B4 对 D1 的**唯一形状影响**是 `RolePayment.MONEY_WAGE` 必须携带可配置抵物折价策略；已就地补在 §2.4，并同步 §6/§8。本注**不删除**上面的历史冻结内容，只标注当前有效口径：
+> - **抵物折价策略归 D1/production 定义面**（§2.4 `BarterDiscountPolicy`：参考价仅 `LOCAL_BID`/`LOCAL_ASK` + 折价系数，可 <1）；**执行/估值归 economy/D3 §6.4**；production 不读市场/钱包。
+> - **工资债利率不在本册**：归 economy/D3（U23 已定 0‰，不是工程默认）。
+> - **`allowIdle` 已撤回**：本册不写 `allowIdle`、不写 `householdLaborChoices`、不写“缺行默认 true/false”；不从业资格见 D3 §2.5.1。
+> - 其余 D1 冻结形状（角色/份额/经验/资格/升级/`AssetKind`/载荷）**不变**。
 
 ## §1 目标与总不变量
 
@@ -55,10 +61,31 @@ INTRA_ROLE_SPLIT: BY_RECOGNIZED_LABOR | BY_RIGHTS | EQUAL | CONFIGURED_WEIGHTS
 
 ### 2.4 `RolePayment`（新，sealed）
 ```
-PRODUCT_SHARE                      // 从可分配实物池按 2.2 份额取得（佃农/地主等）
-MONEY_WAGE { currency = LOCAL_MARKET_AREA }  // 雇农：工资义务按实际认可劳动 × 当期报价，当地市场区货币计价（U15/U16/U21；报价/结算在 economy，D3）
+PRODUCT_SHARE
+    // 从可分配实物池按 2.2 份额取得（佃农/地主等）
+
+MONEY_WAGE {
+    currency = LOCAL_MARKET_AREA,     // 当地市场区货币（U15/U16/U21；报价/结算在 economy，D3）
+    barterDiscount: BarterDiscountPolicy   // U23：可配置抵物折价策略（见下）
+}
 ```
-支付介质/抵物顺序是用户已定（U21：先对应货币 → 可支付活动库存按数量降序 → 成债），**定义面不重复配置顺序**；定义只声明"这个角色是工资形态还是产品份额形态"。
+
+```java
+record BarterDiscountPolicy(
+    BarterReferencePrice referencePrice,   // 参考价类型：LOCAL_BID（默认）| LOCAL_ASK；只有这两种
+    long discountPerMille)                 // 折价系数；0..1000+，可 <1000（即 <1）
+```
+
+**契约语义（U23 用户已定 + 控制方形状细化）**：
+- **参考价类型只有 `LOCAL_BID` / `LOCAL_ASK` 两种**，分别映射现有 `MarketTable.hasPrice` + `bidPriceOf` / `askPriceOf`；不新增“最后成交价”或其他市场事实/状态。
+- 抵物单位折价 = **当地所选参考价格 × `discountPerMille` / 1000**；系数允许小于 1000（如 500 = 参考价五折），**不得把 1 写死**。
+- **production 只声明规则/纯配置**（参考价仅 `LOCAL_BID`/`LOCAL_ASK` + 系数）：不读市场、不读钱包、不读他户状态；**economy 读当地市场价并执行估值/抵付**（D3 §6.4）。production 不因此产生对 economy 实现的反向依赖。
+- **单一来源**：策略只存在于方案定义；economy 不得保存第二份可独立修改的折价配置，也不得在 economy 侧另定一个默认策略。
+- 付款顺序仍是用户已定的 U21（对应货币 → 可支付活动库存按数量降序 → 剩余成债）；**定义面不重复配置顺序**，只声明“工资形态 + 抵物折价策略”。
+- 缺价、折价后为 0、缺必要币种事实 ⇒ 该商品**不可用于本次抵付**，剩余债务保留（D3 §6.3/§6.4）。
+- 默认工程值（可配置、**非用户已定**）：`referencePrice=LOCAL_BID`、`discountPerMille=1000`（= 现行 bid ×1 行为）；U23 只要求“可更低、可配置”，具体数值由 seed/命令给。
+- 校验：`referencePrice` 非 null、`discountPerMille ≥ 0`；未知枚举/负系数 ⇒ 解析期具名拒绝（不得静默按 1000）。
+- 本册**不写**工资债利率（归 economy/D3：U23 已定 0‰）；`allowIdle` / `householdLaborChoices` **已撤回**，本册不写其规则、状态或判据。
 
 ### 2.5 `ExperienceGrowth`（新，production.contract）
 ```
@@ -98,12 +125,16 @@ record ExperienceGrowth(
 roles: [ { id, name, socialClass?, sharePerMille, intraRoleSplit, standardLaborMilliPerCycle,
            experienceGrowth?: { track, basis, coefficientPerMille, maxPerTickValue?, countsManagement? },
            conditions?: [ ...现有 availability 条件的 JSON 形制... ],
-           payment: "product_share" | "money_wage" } ],
+           payment: "product_share"
+                  | { kind: "money_wage", currency?: "LOCAL_MARKET_AREA",
+                      barterDiscount?: { referencePrice?: "local_bid" | "local_ask",
+                                         discountPerMille?: 1000 } } } ],
 roleShareRemainderRule?: "unallocated" | "to_last_role",
 upgradesTo?: [ "planId", ... ],
 mode?: "modeId",
 ```
 - 缺省：`roles` 缺省 ⇒ **单角色**（id=`operator`，name="经营者"，sharePerMille=1000，intraRoleSplit=EQUAL，payment=product_share，growth 缺省、conditions 空）= 与今天单户方案逐值等价的行为（D-I10 同版本内自洽，旧 JSON 仍需补 roles 或按本缺省解析——**本批允许缺省兼容"单户旧载荷"**，因为这是同一版本内的"未配置角色"形态，不是旧档迁移）。
+- `payment.money_wage.barterDiscount` 缺省 = `{ referencePrice: local_bid, discountPerMille: 1000 }`（= 现行 bid×1 行为）；给负系数/未知参考价 ⇒ 解析期具名拒绝，不得静默按 1000。
 - 未知键/未知角色引用/份额合计 >1000/重复 id ⇒ 解析期具名拒绝。
 - `mode`/`upgradesTo` 只校验非空文本；跨定义引用完整性在使用处 fail-closed（定义可先于被引用方案存在）。
 - `AssetKind` 词表解析：未知值拒绝；`TOOL` 出现即具名拒（"已退役"）。
@@ -150,8 +181,9 @@ mode?: "modeId",
 4. 每角色 `experienceGrowth` 按配置增长到同一 track（不同系数 ⇒ 不同增量）；`countsManagement` 事实缺省 ⇒ 不计。
 5. `AssetKind` 新词表贯通播种/份额/配方/往返；`TOOL` 出现具名拒。
 6. `registerPlan` 同 id 同值幂等、不同值冲突具名拒；economy 侧无第二定义写口（扫描）。
+7. **U23 抵物折价策略**：`RolePayment.MONEY_WAGE.barterDiscount` 随定义往返（`referencePrice`/`discountPerMille` 逐字段）；`referencePrice=LOCAL_BID` 与 `LOCAL_ASK` 都合法且可读；`discountPerMille=500` 合法；缺省 `LOCAL_BID/1000` 与现行 bid×1 行为逐值一致；production 侧不出现市场/钱包读取。
 
-**负向（改坏⇒红⇒还原⇒md5）**：删往返字段⇒往返红；角色份额合计>1000⇒构造红；未知角色条件引用⇒解析红；`TOOL` 旧值⇒解析红；同角色多户各领整份⇒分配判据红；复用旧 `Map<HouseholdId,Long>` 入参⇒编译/契约红。
+**负向（改坏⇒红⇒还原⇒md5）**：删往返字段⇒往返红；角色份额合计>1000⇒构造红；未知角色条件引用⇒解析红；`TOOL` 旧值⇒解析红；同角色多户各领整份⇒分配判据红；复用旧 `Map<HouseholdId,Long>` 入参⇒编译/契约红；`discountPerMille<0` 或未知 `BarterReferencePrice` 未拒⇒解析红；新增第三种参考价类型或引用不存在的市场读法⇒文档/契约红；production 读市场/钱包或 economy 另存第二份折价策略⇒模块边界判据红；把工资债利率写进 D1⇒文档验收红。
 
 ## §7 用户原话附录（逐字，2026-10-17，摘自设计原稿 D-032）
 
@@ -176,6 +208,7 @@ mode?: "modeId",
 ## §8 未定/后续（不在 D1）
 
 - 分配执行细则（可分配池边界、毛产/费用后池、跨商品处理、余数归属）→ **D2**；工资报价/调价/匹配/结算 → **D3**；资产地点/占用期/统一分配/R2 → **D4**。
+- **抵物折价策略形状**归本册 §2.4（production 定义面，参考价仅 `LOCAL_BID`/`LOCAL_ASK`）；**折价执行/估值**与**工资债利率**归 economy/D3（§6.4/§6.5）。D1 不写利率；`allowIdle`/`householdLaborChoices` 已撤回，D1 不写其规则、状态或判据。
 - `upgradesTo` 的行为语义（采用引导/UI/统计）→ D2/后续；C0 只登记与往返。
 - `mode` 链接的行为语义（迁移/阶层结构解析）→ D2。
 - 经验归一化分母的最终选择 → D2 工程默认（本分册 §5 已给可配置默认）。
