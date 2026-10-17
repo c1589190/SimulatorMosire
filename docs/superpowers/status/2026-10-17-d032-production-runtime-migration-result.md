@@ -464,3 +464,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **变异**：lookup 静默 empty 变异⇒`D4LookupReadoutTest` 红；还原 sha256 `eddf0620…` 一致后绿；生产 diff 清零。D4-T3 4 组更早变异证据仍有效。
 - **结论边界**：**D4-T targeted 判据 + R2 旧路径清零目标已关闭**；未跑全仓 `clean verify`/`tools/gate.sh`、未跑真实世界仿真，仍留 W5/最终门禁。
 - **下一步**：W3（工资支付/抵物/成债：`WageSettlement`/readout、`TransferReason.WAGE_PAYMENT`、`wageArrearsDefault`/`DebtSource`/`DebtContract.source`、普通贷款/迁移/seed source、U21 先钱后库存数量降序、同日债排除、D4 lookup/precheck）；只编译 economy/app，不写/不跑测试、不提交。
+
+## 三十二、2026-10-17 23:xx W3 工资支付/抵物/债检查点
+
+> **性质**：W3 生产代码已实现并编译/格式检查通过；未跑测试，测试编译面待 W5 迁移。
+
+- **提交**：`10856d86 feat(economy)!: W3 工资支付/抵物/成债、DebtSource与0‰工资债`（已推送）。
+- **结算链**：`settleOneDayInto → driveProductionDay → WageSettlement.settle → 写 carry → capitalizeArrears → 市场轮/repayDebts`；名册 `MONEY_WAGE` 实际劳动义务，payer 地点预检先于 lookup；先货币、后库存数量降序抵物、余款 `WAGE_ARREARS` 0‰；`WageSettlementReadout` 构造期校验 `due=paidMoney+barterValue+arrears`；同日新工资债 id 在 `repayDebts` 排除。
+- **DebtSource**：economy-api 新增 `WAGE_ARREARS/RENT_ARREARS/ORDINARY_LOAN/LEGACY_UNKNOWN`；`DebtContract.source`/`DebtContractBook` 同 id source 拒 `debt-source-mismatch`；`wageArrearsDefault()` 0‰；普通贷款/市场延期/铸币/迁移/合户 source 映射；`TransferReason.WAGE_PAYMENT`。
+- **边界**：`ProductionSettlement` 旧非名册 FIXED_MONEY_WAGE 仍保留、不与名册双付；`capitalizeArrears(SUBSISTENCE/OTHER)` 按 `debt-source-missing` fail-closed；W3 在 `EconomySettlement` 直接用 D4-I `WagePayableInventoryLookupImpl` 同一实现，未新增 app 注入。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；spotless `-pl simos-economy,simos-app -am` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知阻塞**：app `EconomySeeder.debtContractNode` 仍未写 `source`，非空债务 seed 会被 `debt-source-missing` 拒；测试因 `DebtContract.source`/`DebtContractBook.upsert` 新签名需 W5 迁移；旧 B2 断言需复核。
+- **下一步**：W4（tick/Social：`PopulationEconomyTimeParticipant`/`EconomyDayStepper`/`EconomySettlement.step` 调用顺序、Social 下一 tick 投影/失败语义、`WageSettlementReadout` app 只读、app debt seed source=ORDINARY_LOAN）；只编译 app，不写/不跑测试、不提交。随后 W5 全量测试/门禁。
