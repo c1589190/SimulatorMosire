@@ -19,6 +19,8 @@
 > - **D3 旧 §0.3 的五项“待同步修正”已并入本册**（§0.4 逐条登记）；两册不得各留一套。
 > - **`allowIdle` 已撤回**（U23）：本册不出现 `allowIdle`/`householdLaborChoices`；不从业资格归 D3 §2.5.1；工资债利率归 economy/D3 §6.5。
 >
+> **2026-10-17 第三次定点修正注（N-04/N-08，当前有效）**：§8.2 明确 D2 周期预计不得直接当 D3 下一 tick 生存输入；§13 写死共享 economy 文件 owner 交接顺序 `C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。
+>
 > **2026-10-17 D1–D4 独立复核局部修正注（R-02/R-03/R-06/R-09，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：§1 补 U22/U23 原话；D2-I2 改为“每个 `PRODUCT_SHARE` 角色至少一个 participant，`MONEY_WAGE` 可无 participant”；§0.4 的组件号约束改为“D2/D3 只新增 32–35，D4 后续 36/37”，不再有“无第 36”的绝对禁令；§13 增列 C0-A 的 `AssetKind` 词表与旧引用写面。旧文字保留为历史 provenance。
 
 ## §0 口径溯源与裁定状态（先核，避免重复问用户）
@@ -524,6 +526,7 @@ interface ProductionWageQuoteLookup {
 - **工资是组织者的支出**：U15 更正不可回退；不得把工资算成组织者收入。
 - **`quoteSource`（A3，当前有效）**：实例存在前，候选/新进入者读候选级 `ProductionWageDefault`（键 `(plan, role, marketZone)`，D3 §2.2.1）；执行期读 `ProductionWagePosting`。`ProductionWagePosting` 是执行期**唯一实际报价权威**，default 不是第二份执行报价。
 - **窗口（A1）**：以上工资应收/应付都是**周期累计**（`× cycleDays`），与产品份额值、投入负担、劳动分母同窗口；实际 W3 due 按每 tick 实际劳动，**不乘 `cycleDays`**。
+- **生存预测时间口径（N-04）**：本节的周期预计值**不是** D3 `SurvivalOutlook` 的下一 tick 可交付量。W2b/D3 adapter 必须把产品份额/工资按实际交付时点换算；周期末才分配的 product share 必须标为 `incomeAvailableAtTick=cycleEnd`，在 `cycleEnd > nextTick` 时覆盖为 0，不得把整季份额直接当下一 tick 口粮。
 - **劳动分母（A1）**：`PRODUCT_SHARE` 角色的预计劳动仍用 `plannedLaborMilliPerDay × cycleDays`；`MONEY_WAGE` 角色用 `targetLaborMilliPerDay × cycleDays`（或预计可匹配劳动 × cycleDays）。两类**同一周期窗口**，不得重复使用同一份劳动预算。
 - **缺工资报价/缺目标**：`wage-quote-missing:<role>` / `wage-target-missing:<role>`，不得按 0 报价。D3 可以报 0（U18），但“缺”与“0”必须分开。
 - **负净额保留（工程默认，落实 U18/U19）**：预计所得表必须保留 `negative=true` 的行，禁止像旧 `LaborQueueBook` 那样预过滤非正收益。D2 不做自动选择，故负数只影响读数和后续 D3 选择，不在 C2 被删除；用户未逐字指定过滤算法。
@@ -717,6 +720,7 @@ seed-roster-missing:<unit>
 | P18 | 日志 | INFO/DEBUG/TRACE 各至少一条可断言事件；拒绝有具名 reason |
 | P19 | 毫小时量纲 | `1 小时 = 1000 毫小时`；`plannedLaborMilliPerDay=1000` 表示 1 小时/日；`standardLaborMilliPerCycle=1000` 表示 1 小时/周期；任一字段按“千分劳动”解释 ⇒ 红 |
 | P20 | `MONEY_WAGE` 空 participant | `PRODUCT_SHARE` 角色无 participant ⇒ `role-unfilled:<role>`；`MONEY_WAGE` 角色无 participant 但 posting/default target 完整 ⇒ 合法，不伪造 placeholder；缺 target ⇒ `wage-target-missing:<role>` |
+| P21 | 周期预计 vs 下一 tick（N-04） | D2 的 `产品份额/工资 × cycleDays` 只能进周期候选净额；D3 SurvivalOutlook 只接收 `incomeAvailableAtTick <= nextTick` 的可交付量。整季 1000/期末交付、下一 tick 需求 10 ⇒ 生存覆盖 0（另有同 tick 10 时只计 10），不得把 1000 当下一 tick 口粮 |
 
 ### 12.2 负向/变异判据（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 一致）
 
@@ -742,6 +746,7 @@ seed-roster-missing:<unit>
 | 多实例共享资产仍放行 | D4 未接时必须 `asset-scope-shared:awaiting-D4` |
 | 把 `MONEY_WAGE` 空 participant 当 `role-unfilled`，或为它伪造 placeholder | P20 |
 | 把 `standardLaborMilliPerCycle`/`laborMilli` 按“千分劳动”而非毫小时解释 | P19 |
+| 把 D2 周期产品份额/工资预计直接塞入 D3 下一 tick SurvivalOutlook | P21 |
 
 ### 12.3 数值例（C4 用）
 
@@ -769,7 +774,9 @@ seed-roster-missing:<unit>
 | **M0（组织者合户前置）** | `simos-production/.../spi/RebindInstanceOperatorHandler.java`（新增）；production `ProductionProcess` 写口；economy 同批 `ProductionEnterprise`/`ProductionRules`/roster/asset operator 更新 | 只在周期边界；C2 首期不实现，不冒充已支持 |
 | **D3 / D4 后续** | 各自分册另行派单 | 在 D3/D4 落盘前，C2 不得以“临时公式”实现工资/资产分配 |
 
-**跨模块顺序**：**C0-A（`AssetKind` 词表与全部 main 旧引用扫描）→ C0（ID/契约）** → C1（production 编译过）→ C2（economy 编译过）→ C3（装配）→ C4（测试/门禁）。同一文件同一时刻一个 owner；C0-A/C0/C1/C2 不得并行改同一 `Production`/`Economy`/`app` 文件；`EconomySeeder.java` 的后续 location 写面归 D4-I，必须等 C0-A/C3 交账并停手后再串行。
+**跨模块顺序**：**C0-A（`AssetKind` 词表与全部 main 旧引用扫描）→ C0（ID/契约）** → C1（production 编译过）→ C2（economy 编译过）→ C3（装配）→ C4（测试/门禁）。
+
+**共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。C1/C3 只处理各自 production/app 文件，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。同一文件同一时刻一个 writer；`EconomySeeder.java` 的后续 location 写面归 D4-I，必须等 C0-A/C3 交账并停手后再串行。
 
 ---
 

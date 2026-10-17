@@ -201,5 +201,22 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
   - R-16：`WagePayableInventoryLookup.java` 唯一新增/实现 owner = D4-I；W3 只消费已编译读口；批次 D4-I→D4-T→W3。
   - R-17：D1 末尾补未实现/未编译/未验证声明。
   - R-18：replan Phase W 标旧顺序并被 W2a→W1→W2b→W3→W4→W5 局部取代；status 组件号更正。
+- **共享 economy 文件 owner 交接顺序（N-08）**：`C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。
 - **未做/未验证**：R-01..R-18 的修正仍只是设计文字；未实现、未编译、未跑测试/仿真/门禁，未验证任何数值例；未修 R2；`WagePayableInventoryLookup`/`DebtSource`/D4 occupancy 均未落形。
 - **下一步**：对修正后的 D1–D4 做独立复评；通过后才派 D4-I（唯一写代码 owner，只编译）→ D4-T（独立测试）→ W3；任何提交/同步按另行授权。
+
+## 十四、2026-10-17 第二次复核 N-01..N-09 定点修正记录
+
+> **性质**：只改 D1/D2/D3/D4、D3 裁决文件、replan 与本 status；未改代码/测试，未跑 Maven/测试/仿真/门禁，未提交/推送/同步主树。
+
+- **复核输入**：`docs/superpowers/reports/2026-10-17-d032-d1-d4-design-rereview.md`（N-01..N-09；R-01..R-18 多数关闭/部分关闭）。
+- **N-01**：D4 `InventoryReservation` overcommit 改为 payer×commodity **全地点** ACTIVE 预留 + frozen ≤ `AccountSession` 余额；lookup 扣除该 payer 全部地点的 ACTIVE 预留，location 仅作结算/预算分组；D3 §6.9 同步；P18c/P38b 正负判据。
+- **N-02**：新增共享 `WagePayerLocationPrecheck`（W2a 唯一实现）；W1/W2b/W3 在 lookup/候选成本/匹配/支付前按 payer 聚合，>1 settlement location 时 W1/W2b 候选不可行/skip、W3 整组拒绝，均不 lookup；P39b/P26 判据。
+- **N-03**：D4 要求 `OwnershipStakeBook.ShareTuple` 纳入 `ProductionLocation`；Move/split/rebuild/transfer 使用 `source.location()`，跨地点不合并；源码核对 `OwnershipStakeBook.java:247-252,371-374,486-489`；P24b/负向判据。
+- **N-04**：`LivelihoodAlternative` 增加 `incomeAvailableAtTick`；`expected*` 只表示该 tick 可交付量，不表示周期累计；SurvivalOutlook 只计 `incomeAvailableAtTick <= nextTickNeed.forTick` 的量；D2 §8.2 明确周期预计不得直接当下一 tick 口粮；P21/P49 判据。
+- **N-05**：`DebtSource` 写入点/owner 补全：普通贷款/市场延期/铸币 = `ORDINARY_LOAN`；迁移/合户逐值保留 source；seed/codec/ChangeSet 显式 source；`LEGACY_UNKNOWN` 不冒充工资债；P29b/负向判据。
+- **N-06（P2）**：D3 删除“D4 正文仍未完成/本次不修改 replan”旧句，改为当前现状：D4 已落盘、replan 已同步、lookup 未实现。
+- **N-07（P2）**：D1 U14/U15 blockquote 去控制方括注，原文逐字保留；解释移到引文外的控制方说明。
+- **N-08（P2）**：共享 economy 文件 owner 交接顺序写死为 `C0/C0-A → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；C1/C3 不插入共享 economy 文件；C2/W2a/W2b/D4-I 不并行改同一 economy 文件。
+- **N-09（P2）**：`SurvivalOutlookRequest.maxCombinations`（工程默认 4096，可配置，>0）限制确定性 DFS 枚举；超限 `survival-combination-limit` fail-closed，不返回截断 best/idleEligible；P50/负向判据。
+- **未做/未验证**：仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何 N 判据；未提交/推送/同步主树。
