@@ -413,3 +413,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：app `-DskipTests compile -am` rc=0；spotless app rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **已知边界**：`ParticipantAttributeLookup` 仍 Unavailable（无真实 Social 属性源）；wage default 无逐格输出（plan×zone 候选事实）；W3 未接；旧 R2 guard 保留；测试命令数量/JSON 键需 D4-T/W5。
 - **下一步**：D4-T（独立测试 owner：OwnershipStake location/share id/merge、AssetOccupancyBook 单/多实例与释放、R2 原复现、InventoryReservation overcommit、Lookup revision/empty、app readout；允许改测试，不改生产代码；跑 targeted tests；报告 BLOCKED/实际红）。
+
+## 二十八、2026-10-17 23:xx C4a economy 测试迁移与工资复合 key bugfix
+
+> **性质**：测试迁移 + 一个真实生产 bugfix；D4-T 新判据尚未完成，D4/R2 仍未声明关闭。
+
+- **C4a 测试迁移提交**：`6b86dc68 test(economy): C4a 迁移 37 组件/location/participant/role 测试并恢复 test-compile`（已推送）。
+  - `test-compile -pl simos-economy -am` rc=0（初始 24 文件/79 错误 → 0）。
+  - 26 类 / **240 tests / 0F / 0E / 1 skipped**；`EconomyRoundTripTest 7/0/0/0`、`R2SharedAssetScopeTest 7/0/0/1`、`UnifiedBudgetNoDoubleBookingTest 4/0/0/0`、`ProductionProbeSelectionR1Test 6/0/0/0`。
+  - 旧 R2 P5 `sharedScopeUnitsAreRejectedBeforeAnyProductionWrite` 已标 `@Disabled("D4-T 待重写")`，旧 `asset-scope-shared` 不再作为新多实例路径唯一结果；D4-T 必须重写。
+- **生产 bugfix 提交**：`817d0112 fix(economy): 工资三个复合key改为长度前缀可逆编码`（已推送）。
+  - 发现：`HouseholdId` 合法值可含 `|`，`WageCarryKey` 裸 `|` 格式不可逆；`WageDefaultKey`/`WagePostingKey` 同族。
+  - 修复：三 key 统一长度前缀规范串；`WageKeyWireFormat` 同包 helper；含 `|`/`:` roundtrip 证据；economy/app compile、spotless 绿。
+- **D4-T 现状**：BLOCKED 的旧测试编译面已解除，但 D4 新判据（location/allocator/R2/inventory/lookup/readout）尚未写/未跑；D4-T 必须重新执行，不能引用 C4a 的绿灯冒充 D4 通过。
+- **下一步**：D4-T2（独立测试 owner）新增/运行 D4 判据与变异自证；随后按结果决定是否 D4-T 通过、删除旧 `asset-scope-shared:awaiting-D4`、进入 W3。
