@@ -19,7 +19,9 @@
 > - **D3 旧 §0.3 的五项“待同步修正”已并入本册**（§0.4 逐条登记）；两册不得各留一套。
 > - **`allowIdle` 已撤回**（U23）：本册不出现 `allowIdle`/`householdLaborChoices`；不从业资格归 D3 §2.5.1；工资债利率归 economy/D3 §6.5。
 >
-> **2026-10-17 第三次定点修正注（N-04/N-08，当前有效）**：§8.2 明确 D2 周期预计不得直接当 D3 下一 tick 生存输入；§13 写死共享 economy 文件 owner 交接顺序 `C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。
+> **2026-10-17 F-05/F-06 定点修正注（当前有效）**：D4-C 只读接口先于 C2；C2=32、W2a=33/34、W2b=35、D4-I=36/37；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。D4 P18d 补跨地点 overcommit 反向判据。
+>
+> **2026-10-17 第三次定点修正注（N-04/N-08，当前有效）**：§8.2 明确 D2 周期预计不得直接当 D3 下一 tick 生存输入；§13 写死共享 economy 文件 owner 交接顺序 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。
 >
 > **2026-10-17 D1–D4 独立复核局部修正注（R-02/R-03/R-06/R-09，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：§1 补 U22/U23 原话；D2-I2 改为“每个 `PRODUCT_SHARE` 角色至少一个 participant，`MONEY_WAGE` 可无 participant”；§0.4 的组件号约束改为“D2/D3 只新增 32–35，D4 后续 36/37”，不再有“无第 36”的绝对禁令；§13 增列 C0-A 的 `AssetKind` 词表与旧引用写面。旧文字保留为历史 provenance。
 
@@ -774,15 +776,16 @@ seed-roster-missing:<unit>
 | **C0（D1 落形）** | `simos-economy-api/.../api/production/ProductionRoleId.java`（新增）；`simos-production/.../contract/`（角色/份额/经验/支付/条件/`RoleDistribution`）；D1 文档的局部更正注 | 不改 economy 实现、不改 app、不做名册状态；**不拥有 `AssetKind`**（见 C0-A） |
 | **C0-A（`AssetKind` 词表与旧引用，D1 §2.7；先于 C0）** | 写面 = `simos-actor-api/.../asset/AssetKind.java`（删 `TOOL`、加 `SMALL_TOOL`/`LARGE_TOOL`）+ `rg -l 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 命中的**全部 main 文件**（含 `simos-production` 载荷/seed、`simos-economy` 的 `MerchantTradeTemplate`/`MerchantCapacity`/`ModeMigration*`/`EconomySettlement`/`HouseholdClassRule`/`EconomyPayloads`/`EconomyGovUnitUpserts`、`simos-app/.../EconomySeeder`、`simos-util/EconomyVocabulary` 等；以扫描清单为准，不靠记忆补漏） | 只做词表与直接旧引用替换，不改分配/占用行为；不得保留别名/兼容位；**测试断言归 C4**（C0-A 不写/不跑测试）；交 `rg -n 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 清零清单，以及 `SMALL_TOOL`/`LARGE_TOOL` 各自 seed→state→codec→apply 往返证据；不拥有 `ProductionRoleId`/角色契约（归 C0） |
 | **C1（production 角色执行）** | `simos-production/src/main/java/.../ProductionData.java`、`ProductionRuntimeEngine.java`、`ProductionExperience.java`、`ProductionProcess.java`、`ProductionSnapshot.java`、`codec/ProductionCodec.java`、`change/ProductionChangeSet.java`；`ProductionExecutionRequest/DayRequest/Receipt/CycleContribution`；`RoleDistribution` | 不写 economy 名册/账户；不实现工资支付/资产分配 |
+| **D4-C（只读 lookup 接口，F-05；先于 C2）** | `simos-economy/.../time/WagePayableInventoryLookup.java`（只读接口；地点用 `production.contract.ProductionLocation`）；必要时 `time/AssetOccupancyLookup.java` 等最小读口 | **只新增接口，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
 | **C2（economy 名册/分配）** | `simos-economy-api/.../api/labor/HouseholdLaborCommitment.java`（加 role/改 id）；`simos-economy/src/main/java/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；`model/ProductionRoster*`、`model/ProductionWageQuote.java`（最小读值，D3 可扩展）、`model/RegimeRelations.java`（旧规则删除/映射）；`spi/EconomySetProductionRosterHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`time/EconomyEnterpriseSettlement.java`、`EconomyEntrySettlement.java`、`EconomySettlement.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`time/ProductionOutputNetting.java`（新增，毛产→net 的唯一拼写点）、`ProductionSettlement` 的调用面、`LaborQueueSettlement.java`（劳动候选面）；`EconomyReferenceValidation.java` | 不 import production 实现；不改 POM/enforcer；不实现 D3 工资支付/D4 资产占用；不改 app |
 | **C3（app 装配/创世/读口）** | `simos-app/.../Shell.java`、`AppProductionConsumerPort.java`、`world/*Seeder`、`world/GenesisModuleSlices`、工具/Catalog 载荷提示、只读视图 | 不复制 economy 分配公式；不新增空推进器；不改测试断言 |
 | **C4（独立测试 owner）** | `simos-production/src/test/**`、`simos-economy/src/test/**`、`simos-app/src/test/**`、门禁守卫清单 | 实现 owner 不写/不跑测试；测试按 §12 判据，不按实现反推 |
 | **M0（组织者合户前置）** | `simos-production/.../spi/RebindInstanceOperatorHandler.java`（新增）；production `ProductionProcess` 写口；economy 同批 `ProductionEnterprise`/`ProductionRules`/roster/asset operator 更新 | 只在周期边界；C2 首期不实现，不冒充已支持 |
 | **D3 / D4 后续** | 各自分册另行派单 | 在 D3/D4 落盘前，C2 不得以“临时公式”实现工资/资产分配 |
 
-**跨模块顺序**：**C0-A（`AssetKind` 词表与全部 main 旧引用扫描）→ C0（ID/契约）** → C1（production 编译过）→ C2（economy 编译过）→ C3（装配）→ C4（测试/门禁）。
+**共享 economy 文件顺序（F-05）**：C0-A（`AssetKind` 词表与全部 main 旧引用扫描）→ C0（ID/契约）→ C1（production 编译过）→ **D4-C（只读 lookup 接口）→ C2（32）→ W2a（33/34）→ W1 → W2b（35）→ D4-I（36/37 + lookup 实现）→ D4-T → W3**。C3（app 装配）只碰 app/只读视图文件，可按自身依赖推进，但不得插入共享 economy 文件写面；C4 测试在对应实现 owner 交账后执行。D4-C 只新增接口，不落 `EconomyData`。
 
-**共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。C1/C3 只处理各自 production/app 文件，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。同一文件同一时刻一个 writer；`EconomySeeder.java` 的后续 location 写面归 D4-I，必须等 C0-A/C3 交账并停手后再串行。
+**共享 economy 文件 owner 交接顺序（F-05，当前有效）**：`C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。D4-C 只冻结只读接口；C2 落 32，W2a 落 33/34，W2b 落 35，D4-I 落 36/37；D4-T 在 D4-I 后看最终 37 组件；W3 最后。C1/C3 只处理各自 production/app 文件，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`。同一文件同一时刻一个 writer；`EconomySeeder.java` 的后续 location 写面归 D4-I，必须等 C0-A/C3 交账并停手后再串行。
 
 ---
 

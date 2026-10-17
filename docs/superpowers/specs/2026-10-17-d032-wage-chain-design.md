@@ -13,6 +13,8 @@
 >
 > **边界**：D3 只冻结工资报价状态、U20 调价、劳动匹配/闲置、工资前置、直付/抵物/成债、tick 时序与验收判据。D4/Phase A 的资产地点/占用期/统一占用（R2）仍归 D4；生产定义、角色经验、产品份额归 D1/D2/production。**2026-10-17 整合轮只统一 D1/D2/D3 设计正文；不改 status/R2/Java/XML/POM/测试，不触碰主树、不提交。**
 >
+> **2026-10-17 F-05/F-06 定点修正注（当前有效）**：D4-C 先冻结 `WagePayableInventoryLookup` 只读接口、D4-I 后实现 36/37 与 lookup；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；D4 增加 P18d 跨地点 overcommit 反向判据。以下旧 N/R 注仅作历史。
+>
 > **2026-10-17 第三次定点修正注（N-01/N-02/N-04/N-05/N-06/N-08/N-09，当前有效）**：lookup 对 payer×commodity **全地点**扣预留；W1/W2b/W3 共享 `WagePayerLocationPrecheck`；`LivelihoodAlternative.incomeAvailableAtTick` 与 `maxCombinations` 时间/组合上限；`DebtSource` 全写入点/迁移/seed/codec owner；删除“D4 未完成/不改 replan”旧句；共享 economy 文件交接顺序与 N-08。以下旧 R 修正注仅作历史。
 >
 > **2026-10-17 D1–D4 独立复核局部修正注（R-03/R-04/R-05/R-07/R-11/R-16，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：组件号只声明 D2/D3 新增 32–35，D4 后续 36/37；§2.5.1 增补逐需求行覆盖算法与收入去重；§6.2/§6.9 改为 payer 级先聚合、跨 settlement location 整组拒绝；§2.9.1 增加可持久 `DebtSource` 与旧工资债 0‰ 收口；§9.1 明确 W3 只消费 D4-I 的 `WagePayableInventoryLookup`、不新增/不实现该文件。旧正文保留为历史 provenance。
@@ -1197,7 +1199,7 @@ interface WagePayableInventoryLookup {
 - **`Optional.empty()` 的 W3 行为**：**货币腿仍可按 U21 先付**；**库存腿全部跳过**，记 `wage-inventory-scope-unavailable`；剩余 due 成债。不得回退账户原始余额。
 - **payer 级地点预检先于 lookup**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；snapshot 必须包含 payer 现有 unit/roster/posting 地点 ∪ 候选/本次地点。合并后 >1 settlement location ⇒ W3 整组 `wage-payer-location-unsupported`，W1/W2b 候选不可行/skip，**均不调用 lookup、不逐 location 复用、不做部分支付**（B4/N-02/F-01）。通过预检的单地点组只调用一次 lookup，作为该组义务的共享库存预算快照；lookup 内部仍扣除该 payer 全部地点的 ACTIVE 预留（N-01）。
 - **账户权威**：lookup 读取的 payer 商品余额/冻结必须来自 **`AccountSession` 的户级账户快照**（`AccountSession` 是货币/商品余额与冻结的权威读面）；`HouseholdInventory` 只是 actor 侧存储表示，D3 不得直接按地点拆一份 `HouseholdInventory` 当第二本库存。`settlementLocation` 不能改变户级余额的扣减基数。
-- **权威归属（R-16）**：读口由 **D4-I 唯一新增/实现**；W3 只消费 D4-I 已编译的读口，**不新增、不实现 `WagePayableInventoryLookup.java`**，不写回、不复制第二套减法。D4 未接时 D3 只写接口契约，不冒充 D4 已实现。
+- **接口/实现归属（F-05，取代 R-16 的单批表述）**：`WagePayableInventoryLookup` 的**只读接口契约**由 **D4-C** 新增/冻结（不落 EconomyData 状态）；**唯一实现**由 **D4-I** 在 36/37 同批提供。W1/W2b/W3 只消费 D4-C 接口；D4-I 提供实现，D4-T 后 W3 才运行；不得新增第二套接口/临时空实现，不写回、不复制第二套减法。
 - 预计/排队与执行使用同一读口（D4 规则）；W1/W2b 不自行扫份额/库存，也不另写第二套可支付量公式。W1/W2b 在调用读口前必须先执行 §6.9.1 的 payer 级地点预检。
 
 ### 6.9.1 `WagePayerLocationPrecheck`（W1/W2b/W3 共享，N-02）
@@ -1548,26 +1550,27 @@ debt-source-mismatch
 
 > 只列方向与禁止面；具体类/方法拆分由实现 owner 在实现架构账本中定。测试统一最后由 W5 独立测试 owner 写/跑。
 >
-> **批次顺序（B1，当前有效）**：**W2a（候选 default + posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick 时序/Social 反馈）→ W5（独立测试）**。**重规划 Phase W 的旧 `W1→W2` 顺序已由本局部更正取代**；replan 已在 2026-10-17 修正轮局部同步，历史旧句仅作 provenance。
+> **批次顺序（B1，当前有效）**：**W2a（候选 default + posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick 时序/Social 反馈）→ W5（独立测试）**。D4-C（只读 lookup 接口）先于 C2；D4-I（36/37 + lookup 实现）在 W2b 后、D4-T 前；W3 最后运行（F-05 共享 economy 顺序见下）。**重规划 Phase W 的旧 `W1→W2` 顺序已由本局部更正取代**；replan 已在 2026-10-17 修正轮局部同步，历史旧句仅作 provenance。
 >
 > **命名兼容**：本册其它节若仍写“W2”，按本表理解为 **W2a**（default/posting/quote 读口）或 **W2b**（角色级匹配/idle/U20），以该处描述的内容为准。
 >
-> **共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
+> **共享 economy 文件 owner 交接顺序（F-05，当前有效）**：`C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。D4-C 只冻结只读 lookup 接口；C2 落 32，W2a 落 33/34，W2b 落 35，D4-I 落 36/37；D4-T 在 D4-I 后看到最终 37 组件；W3 最后。C1/C3 只处理各自 production/app 面，不插入共享 economy 文件交接；C2/W2a/W2b/D4-C/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
 
 | 批次 | 可写方向 | 禁止/边界 |
 |---|---|---|
+| **D4-C（只读 lookup 接口，F-05；先于 C2）** | `simos-economy/.../time/WagePayableInventoryLookup.java`（只读接口契约，地点 `production.contract.ProductionLocation`）；必要时 `time/AssetOccupancyLookup.java` 等最小读口 | **只新增接口，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
 | **W2a（候选 default + posting/quote 读口 + `WagePayerLocationPrecheck`）** | `simos-economy/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`；`codec/EconomyCodec.java`；新增 `model/ProductionWageDefault.java`、`WageDefaultKey.java`、`ProductionWagePosting.java`、`WagePostingKey.java`、`ProductionWageDefaultLookup.java`、`ProductionWageQuote.java`、`ProductionWageQuoteLookup.java`；`spi/EconomySetProductionWageDefaultHandler.java`、`EconomySetProductionWagePostingHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`EconomyReferenceValidation.java`；新增 `time/ProductionWageBook.java`（default/posting 读口）；新增并唯一实现 `time/WagePayerLocationPrecheck.java`（§6.9.1 纯函数，供 W1/W2b/W3 共享） | **不实现**匹配/idle/U20（W2b）、支付/抵物/债（W3）；`householdLaborChoices`/`allowIdle` 已撤回，不新增对应状态/命令/seed；不写测试。W1 依赖本批的真实读口，C2 的永远 empty lookup **不得**被当作候选能力完成 |
-| **W1（工资前置估值）** | `simos-economy/.../time/ExpectedProfitBook.java`（`expectedWageCostMilli`/`wageProspect`/理由词）；W1 所需只读 helper | 只基于 W2a 的真实 default/posting 读口和 `WagePayerLocationPrecheck`；>1 settlement location 的 payer 候选不可行，不 lookup；不改 `LaborQueueBook` 排序/过滤；不实现支付/抵物/债；不写测试 |
-| **W2b（角色级匹配/idle/U20）** | `simos-economy/.../EconomyData.java` 补第 35 `wageCarryRemainders`、`EconomyDayView`/`EconomyBoundaryView`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；新增 `WageCarryKey.java`；`time/ProductionWageBook.java`（carry/U20）；新增 `time/SurvivalOutlook.java`/`SurvivalOutlookEvaluator.java` 及其只读入参值类型（§2.5.1）；新增 `time/NextTickIncomeProjection.java`（N-04/F-04，唯一 owner）；`model/EconomyPolicyKey.java`（`SURVIVAL_IDLE_POLICY` 策略键）；`time/LaborQueueBook.java`、`ActivitySelector.java`（仅复用/必要可见性）、`LaborQueueSettlement.java`（角色级 offer、`IdleOption`、生存资格接入）；`EconomyReferenceValidation.java` | **B2**：W3 未启用时真实 `settleOneDayInto` 在任何抽料/写回/进度/经验/实际劳动之前整 tick `wage-settlement-not-implemented`；**只消费 W2a 的 `WagePayerLocationPrecheck`，>1 settlement location 的候选 skip 且不 lookup**；匹配只在只读/dry-run 验证；不实现 W3 支付；不跨区自动招募；不写产品份额分配；不改 app；不写测试；`SurvivalOutlook` 纯只读；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态 |
-| **W3（支付/抵物/债，含 N-05 debt source 写面）** | `simos-economy/.../time/EconomySettlement.java`（工资结算、同日排除、`capitalizeArrears` WAGE/RENT source 映射）、新增 `time/WageSettlement.java`/`WageSettlementReadout`、`ProductionSettlement.java` 旧 wage 调用面、`TransferReason.java`（`WAGE_PAYMENT`）、`DebtTerms.java`（`wageArrearsDefault()`）、`simos-economy-api/.../api/debt/DebtSource.java`（新增）、`model/DebtContract.java`（加 source）、`time/DebtContractBook.java`（source 入参与不合并）、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`/债务表往返；**普通贷款/迁移/seed 写入点**：`UnitBorrowHandler.java`、`MoneyMarketSettlement.java`、`MarketSettlement.java`、`MintSettlement.java`、`ModeMigrationSettlement.java`、`LotMigrationBook.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`（各自按 §2.9.1 映射） | **只消费 D4-I 已编译的 `WagePayableInventoryLookup`**；不新增/不实现 `WagePayableInventoryLookup.java`；不修 R2/资产占用（D4）；**不二次扣减**库存（B3）；W1/W2b/W3 共享 `WagePayerLocationPrecheck`，payer 级地点预检先于 lookup；普通贷款 `ORDINARY_LOAN`、迁移保 source、seed 显式 source；不改 AssetKind/POM/XML；不写测试；不直接改账户 Map；与 W2a/W2b/D4-I 共享 economy 文件时严格按 N-08 顺序串行 |
+| **W1（工资前置估值）** | `simos-economy/.../time/ExpectedProfitBook.java`（`expectedWageCostMilli`/`wageProspect`/理由词）；W1 所需只读 helper | 只基于 W2a 的真实 default/posting 读口、D4-C 的 `WagePayableInventoryLookup` 接口和 `WagePayerLocationPrecheck`；>1 settlement location 的 payer 候选不可行，不 lookup；不改 `LaborQueueBook` 排序/过滤；不实现支付/抵物/债；不写测试 |
+| **W2b（角色级匹配/idle/U20）** | `simos-economy/.../EconomyData.java` 补第 35 `wageCarryRemainders`、`EconomyDayView`/`EconomyBoundaryView`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；新增 `WageCarryKey.java`；`time/ProductionWageBook.java`（carry/U20）；新增 `time/SurvivalOutlook.java`/`SurvivalOutlookEvaluator.java` 及其只读入参值类型（§2.5.1）；新增 `time/NextTickIncomeProjection.java`（N-04/F-04，唯一 owner）；`model/EconomyPolicyKey.java`（`SURVIVAL_IDLE_POLICY` 策略键）；`time/LaborQueueBook.java`、`ActivitySelector.java`（仅复用/必要可见性）、`LaborQueueSettlement.java`（角色级 offer、`IdleOption`、生存资格接入）；`EconomyReferenceValidation.java` | **B2**：W3 未启用时真实 `settleOneDayInto` 在任何抽料/写回/进度/经验/实际劳动之前整 tick `wage-settlement-not-implemented`；**只消费 D4-C 的 `WagePayableInventoryLookup` 接口和 W2a 的 `WagePayerLocationPrecheck`，>1 settlement location 的候选 skip 且不 lookup**；匹配只在只读/dry-run 验证；不实现 W3 支付；不跨区自动招募；不写产品份额分配；不改 app；不写测试；`SurvivalOutlook` 纯只读；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态 |
+| **W3（支付/抵物/债，含 N-05 debt source 写面）** | `simos-economy/.../time/EconomySettlement.java`（工资结算、同日排除、`capitalizeArrears` WAGE/RENT source 映射）、新增 `time/WageSettlement.java`/`WageSettlementReadout`、`ProductionSettlement.java` 旧 wage 调用面、`TransferReason.java`（`WAGE_PAYMENT`）、`DebtTerms.java`（`wageArrearsDefault()`）、`simos-economy-api/.../api/debt/DebtSource.java`（新增）、`model/DebtContract.java`（加 source）、`time/DebtContractBook.java`（source 入参与不合并）、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`/债务表往返；**普通贷款/迁移/seed 写入点**：`UnitBorrowHandler.java`、`MoneyMarketSettlement.java`、`MarketSettlement.java`、`MintSettlement.java`、`ModeMigrationSettlement.java`、`LotMigrationBook.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`（各自按 §2.9.1 映射） | **只消费 D4-C 的 `WagePayableInventoryLookup` 接口 + D4-I 的实现**；不新增/不实现接口或实现；不修 R2/资产占用（D4）；**不二次扣减**库存（B3）；W1/W2b/W3 共享 `WagePayerLocationPrecheck`，payer 级地点预检先于 lookup；普通贷款 `ORDINARY_LOAN`、迁移保 source、seed 显式 source；不改 AssetKind/POM/XML；不写测试；不直接改账户 Map；**W3 运行必须在 D4-I/D4-T 之后**，与 W2a/W2b/D4-I 共享 economy 文件时严格按 F-05 顺序串行 |
 | **W4（tick/Social）** | `simos-app/.../PopulationEconomyTimeParticipant.java`（tick 时序/Social 回写接线）、`EconomyDayStepper.java`/`EconomySettlement.step` 的调用顺序、只读 app 读口 | 不在 app 实现生存判定/报价/匹配/支付/折价公式；不复制 economy 逻辑；不写测试 |
 | **W5（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`、`simos-production/src/test/**`、门禁守卫清单 | 按 §8 判据与 §8.6 数值例写测；含负向/变异；不由实现 owner 写/跑测试 |
 
 ### 9.2 文件所有权红线
 
-- 同一文件同一时刻一个 owner；W2a/W1/W2b/W3/W4 不得并行改同一文件。
+- 同一文件同一时刻一个 owner；W2a/W1/W2b/W3/W4、D4-C、D4-I 不得并行改同一文件；D4-C 只写接口，D4-I 在 W2b 后写 36/37 + lookup 实现。
 - 本整合轮已把 D3 对 D2 的最小修正并入 **D2 §0.4**；W 实现 owner 不得再反向改写 D2 规则，D3 不再保留第二套规则正文。`allowIdle`/`householdLaborChoices` 已撤回，不恢复其状态/命令/seed/判据；第 35 组件只能是 `wageCarryRemainders`。
-- 不改 `pom.xml`/XML/enforcer；不新增模块依赖（`ProductionRoleId` 按 D2 放 `simos-economy-api`；`WagePayableInventoryLookup` 的地点只读使用既有 `simos-production` contract 的 `ProductionLocation`）。**`WagePayableInventoryLookup.java` 的唯一新增/实现 owner = D4-I；W3 只消费其已编译读口，不新增/不实现该文件**；批次顺序 D4-I→D4-T→W3。
+- 不改 `pom.xml`/XML/enforcer；不新增模块依赖（`ProductionRoleId` 按 D2 放 `simos-economy-api`；`WagePayableInventoryLookup` 的地点只读使用既有 `simos-production` contract 的 `ProductionLocation`）。**`WagePayableInventoryLookup.java` 的只读接口 owner = D4-C；唯一实现 owner = D4-I；W1/W2b/W3 只消费 D4-C 接口，W3 运行在 D4-I/D4-T 之后**；批次顺序 `D4-C→C2→W2a→W1→W2b→D4-I→D4-T→W3`。
 - 不写/不改测试（W5 除外）；不跑 `test`/`verify`（W5/门禁 owner 除外）。
 - 不 `git add/commit/stash/checkout/merge/push`；不碰主树。
 - 不把“D3 设计已落盘”写成“工资链已实现”。
@@ -1584,7 +1587,7 @@ debt-source-mismatch
 8. **多角色 unit cap 的角色 id 优先序是工程默认**：不声称公平；可另行设计。
 9. **`ProductionReceipt` 本次 tick participant 明细未落形**：最小修正已并入 **D2 §6.1**；C1/实现 owner 仍需落形与编译验证，D3 不把设计当编译通过。
 10. **测试证据为零**：§8 判据全部没有运行记录；W5 完成后才可写“通过”。
-11. **D4/可支付库存未实现**：§6.9 只是 D3 的读取契约；D4 设计已落盘但 `WagePayableInventoryLookup` 仍 **未实现**，其唯一新增/实现 owner = **D4-I**，W3 只消费已编译读口，不新增/不实现 `WagePayableInventoryLookup.java`。地点形参固定为已有的 `production.contract.ProductionLocation`。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
+11. **D4/可支付库存未实现**：§6.9 只是 D3 的读取契约；D4 设计已落盘但 `WagePayableInventoryLookup` 仍 **未实现**。接口契约 owner = **D4-C**（只读接口），唯一实现 owner = **D4-I**（36/37 同批）；W1/W2b/W3 只消费接口，W3 在 D4-T 后运行。地点形参固定为已有的 `production.contract.ProductionLocation`。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
 12. **A1/A2/A3/A4/B3/B4 未实现**：本文只统一设计口径，没有改代码；所有正负判据待 W5 独立测试 owner 运行。
 13. **SurvivalOutlook 的 O9–O11 未实现**：Social 下一 tick 需求投影适配、当地可达购买价/供给事实装配、既有债务/不可用权益快照都需 W2b/D4 提供只读来源；缺来源时按 §2.5.1 具名失败或保守不折算，不伪造数值口径。
 

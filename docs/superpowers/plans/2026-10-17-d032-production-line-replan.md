@@ -83,11 +83,11 @@
 
 **当前有效**：W2a（候选 default + posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick/Social 反馈）→ W5（独立测试）。
 
-> **共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。C1/C3 只处理各自 production/app 文件，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
+> **共享 economy 文件 owner 交接顺序（N-08，当前有效）**：`C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。C1/C3 只处理各自 production/app 文件，不插入共享 economy 文件交接；C2/W2a/W2b/D4-I 不得并行改同一 `EconomyData`/`EconomyChangeSet`/`EconomyCodec`/`ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement`；同一文件同一时刻一个 writer。
 
 ### Phase A：资产与占用实现（C/D4 后；R2 在此关闭）
 
-> **F-02 批次注记（当前有效）**：D4-I（含 `WagePayableInventoryLookup` 唯一实现）必须在 W2a/W1/W2b 之前完成；共享 economy 文件顺序见 Phase W 的 `C0/C0-A → C2 → D4-I → D4-T → W2a → W1 → W2b → W3`。W1/W2b 不得各自造临时 lookup 接口或空实现。
+> **F-05 批次注记（当前有效，取代 F-02）**：D4-C 只冻结 `WagePayableInventoryLookup` 只读接口，必须先于 C2；D4-I 在 W2b 之后落 36/37 并实现 lookup，D4-T 在 D4-I 后看最终 37 组件，W3 最后。共享 economy 文件顺序 = `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。旧 F-02 的“D4-I 先于 W2a/W1/W2b”仅作历史、已作废；W1/W2b 不得各自造临时 lookup 接口或空实现。
 
 A1 资产账扩展（作用域/使用量/占用时段；不另建土地账）→ A2 统一占用分配/回填/跨周期锁定、替换整池复制 → A3 I8 全腿测试（同方案多实例、同地点多实例、多地点经营者、释放回填）。
 
