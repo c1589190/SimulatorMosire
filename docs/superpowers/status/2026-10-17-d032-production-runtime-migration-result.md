@@ -132,3 +132,19 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **当前 git status**：2 个已跟踪文档修改（D1 更正注、本 status）+ 2 个未跟踪设计书（D2、D3）。无 Java/XML/POM/测试改动。
 - **下一步**：先请用户审 D3 设计/工程默认；D2/D3 接受且用户授权提交/同步后，才可按 C0→C1→C2→W 顺序派实现。**当前不派 W1–W5 代码单**：C 批尚未实现，且设计书未提交/未获提交授权。
 - **本次未做/未验证**：只写文档；没有编译、测试、门禁、仿真；没有证明工资链可实现或判据已通过。
+
+## 十、2026-10-17 20:40 R2 最小修复实现、独立测试与提交检查点
+
+> **性质**：U22“先修 bug”执行记录；R2 已做最小 fail-closed 收口，仍未完整关闭多实例真实分配。
+
+- **文档检查点**：commit `2ca37052`（D2/D3/U22-U23 裁决/R2 最小设计入账，已推送）。
+- **R2 约束设计**：`docs/superpowers/specs/2026-10-17-d032-r2-shared-asset-minimal-design.md`。最小口径：单 unit scope 沿用整池；同 `(industry, operator)` scope >1 unit ⇒ 每 unit allocation 空、scope 汇总进 `unallocated`、每 unit 具名 `asset-scope-shared:awaiting-D4`；不伪造等分，完整 D4 实占/占用期/释放后置。
+- **R2-I 实现**：commit `3eaa0474`（已推送）。新增 `AssetBudgetBook`；`SettlementIndex` 只算一次 `AssetBudget`；`ProductionProcessBook`/`LaborQueueBook`/`ExpectedProfitBook`/`EconomySettlement.driveProductionDay`/`EconomyEnterpriseSettlement`/`EconomyEntrySettlement`/`MarketDemandBook`/`DebtCapacityBook`/`HouseholdClassRule`/app 读口消费同一结果。economy/app `-DskipTests compile` rc=0；spotless check 绿。
+- **R2-T 独立测试**：commit `9e35a11f`（已推送）。测试台账 `.superpowers/sdd/2026-10-17-d032-r2-minimal/test/`（本机忽略，不进 git）。
+  - targeted：economy R2+Unified+N23 13/0/0；app R2 readout 2/0/0；
+  - 模块：economy **405/0/0**；app **1014/0/0/7** + 前端 **412/412**；
+  - 变异自证 5 组：整池复制回 unit、只修 SettlementIndex/ExpectedProfitBook 仍扫份额、执行在 progress 后拒绝、单实例误清零、unallocated 静默丢弃——均改坏即红、还原 md5 一致、重跑绿；
+  - 原 R2 复现 `100 → 两个实例各 100 = 200` 已变为：两 unit allocation 空、`unallocated=100`、均具名拒绝、Σ规模=0；`OwnershipStake` 一字不改。
+  - 未发现生产代码 bug；唯一全量失败是 `N23` 源码行号漂移，已按既定测试载体同步，消息与判据未放宽。
+- **仍未关闭/未验证**：多实例真实实例/地点占用、占用期、释放、统一预算仍归 D4/A；R2 只证明“不再整池复制”，不写成完整关闭。未跑 `clean verify`/`tools/gate.sh`；app 7 条 skip 为既有；未做真实世界/18Lvt 多实例长周期；未逐消费者分别做独立变异（由 P4/P5 同源断言与台账覆盖）。
+- **下一步**：处理 D3/D2 设计债（A1–A5、B1–B4、U23 三项更新），再完成 D4 正文与 D1–D4 统一；之后独立复核、终局门禁、C0 派单。提交/推送按小分支检查点继续，主树仍未合并/同步。
