@@ -3,6 +3,8 @@
 > **性质**：控制方对 `2026-10-17-d032-d3-integration-precheck.md` 的独立复核与**工程裁决**。只写设计结论，不实现、不派实现单、不跑 Maven/测试/仿真、不提交、不修 R2。
 > **输入**：预审报告、D1/D2/D3、重规划 v2、当前侧线源码；实查基线 `0128b0cc`。
 > **效力**：本文的“裁决”均为控制方工程裁定，不是用户玩法裁定；不新增工资/分配玩法审批。若与用户原话冲突，必须按 `AGENTS.md` §一.8.1 停下上报。
+>
+> **2026-10-17 U23 取代标记（当前有效）**：用户 U23 已关闭本文件 §5.1 的三项待拍板（欠薪 0‰；按下一 tick 生存条件裁决不从业；抵物折价可配置且可更低）。因此：U-D3-1 已由 U23 定为 **0‰**；**U-D3-2 `allowIdle` 缺行默认** 与 **U-D3-3 固定 bid 折价** 均为**历史/已关闭**，不得作为有效实现口径。有效设计只保留 D3 §2.5.1/§4.4（`idleEligible`/`idleChosen`）与 §6.4/§6.5（`BarterDiscountPolicy`/工资债），以及 `2026-10-17-d032-wage-idle-barter-decision.md`。本文历史正文不删，仅作 provenance；凡出现 `allowIdle=true/false` 或“固定 bid”的旧建议，一律按 U23 已撤回/已取代读。
 
 ## §1 复核结论
 
@@ -15,7 +17,7 @@
 | 编号 | 预审主张 | 独立复核证据 | 裁决 | 统一后的设计口径 | 落点/验收 |
 |---|---|---|---|---|---|
 | A1 | 周期产出估价与日工资成本未对齐 | D2 `cooperative-production-design.md:463` 的 probe 劳动为 `plannedLaborMilliPerDay × cycleDays`；`:477` 工资也乘 `cycleDays`。D3 `wage-chain-design.md:617-622` 的 `expectedWageCost` 只乘 posting 日目标，`:637-643` 的 worker income 也只按日。 | **确认，D3 必须修** | 区分两个窗口：① **候选/采用比较窗口 = `definition.cycleDays()`**，产品份额、投入、工资应收/应付、劳动分母全部用周期累计；② **每 tick 匹配窗口 = 当前 tick 劳动**，用于 W2 角色 offer/实际 due。D3 的雇主 `expectedWageCost` 必须 `× cycleDays`；D2 §8.2 的按户预计工资保留 `× cycleDays`；实际 W3 due 仍按本次 tick，不得乘 `cycleDays`。 | D3 §5.1/§5.2/§5.4；D2 §8.2 保持同窗口；验收：cycle=100、日雇 1 小时、单价 2 ⇒ 候选用工工资 200；实际每 tick due=2。 |
-| A2 | idle 按当前文字可能进不了队列 | D3 `:525-527` 把 `Offer.queueable()` 收成 `maxAbsorbableLaborMilli > 0`；`:533-542` 又给 idle `maxAbsorbableLaborMilli=0`。现有 `LaborQueueBook.java:147-150` 的 `queueable()` 要求 `maxAbsorbableLaborMilli > 0`，`:499-515` 的 `plan()` 对 `maxAbsorbable<=0` 只记 `IDLE_MAX_ABSORBABLE_ZERO` 并继续处理后续 offer；`LaborQueueSettlement.java:314-317` 只把非 preserved 的 production offer 放进队列。 | **确认，D3 必须修** | idle **不是生产 Offer**，而是独立控制候选 `IdleOption`（或 `Plan.idleChosen` 分支）。它不经过 `queueable()/maxAbsorbable` 过滤；在排序中 `yieldScaled=0`，正收益工作先做，零/负收益工作后 idle 胜；一旦 idle 胜出，停止给后续更低 yield 的工作授予劳动，但不取消 GOV_SERVICE/既有不排队配额。`allowIdle=false` 时不加入 idle。不能只靠 `"idle:" < "unit:"` 字符串保证全链路。 | D3 §4.3/§4.4；`LaborQueueBook`/`LaborQueueSettlement` 的 W2 实现面；验收：allowIdle=true 且只有零薪无补偿岗位 ⇒ `allocated=0`、`idle=budget`、`IDLE_CHOSEN`；有正收益工作时先分配工作、余下劳动再 idle；GOV_SERVICE 不被取消。 |
+| A2 **（历史：U23 已取代其 allowIdle 判据；当前有效见 D3 §2.5.1/§4.4）** | idle 按当前文字可能进不了队列 | D3 `:525-527` 把 `Offer.queueable()` 收成 `maxAbsorbableLaborMilli > 0`；`:533-542` 又给 idle `maxAbsorbableLaborMilli=0`。现有 `LaborQueueBook.java:147-150` 的 `queueable()` 要求 `maxAbsorbableLaborMilli > 0`，`:499-515` 的 `plan()` 对 `maxAbsorbable<=0` 只记 `IDLE_MAX_ABSORBABLE_ZERO` 并继续处理后续 offer；`LaborQueueSettlement.java:314-317` 只把非 preserved 的 production offer 放进队列。 | **确认，D3 必须修** | idle **不是生产 Offer**，而是独立控制候选 `IdleOption`（或 `Plan.idleChosen` 分支）。它不经过 `queueable()/maxAbsorbable` 过滤；在排序中 `yieldScaled=0`，正收益工作先做，零/负收益工作后 idle 胜；一旦 idle 胜出，停止给后续更低 yield 的工作授予劳动，但不取消 GOV_SERVICE/既有不排队配额。`allowIdle=false` 时不加入 idle。不能只靠 `"idle:" < "unit:"` 字符串保证全链路。 | D3 §4.3/§4.4；`LaborQueueBook`/`LaborQueueSettlement` 的 W2 实现面；验收：allowIdle=true 且只有零薪无补偿岗位 ⇒ `allocated=0`、`idle=budget`、`IDLE_CHOSEN`；有正收益工作时先分配工作、余下劳动再 idle；GOV_SERVICE 不被取消。 |
 | A3 | 新进入经营家户的候选报价入口没有闭环 | D3 `:192` 的 `WagePostingKey` 是 unit+role；`:233-235` 的读口只按 unit+role；`:338` 要求 `SetProductionWagePosting` 的 unit 已存在；`:340` 初始 quote 只准显式；`:368` seed 也先确保实例存在；`:218` 的 `GENERATED` 没有定义选业前来源；`:630` 缺 quote 的候选不可估价。D2 的候选/选业在实例创建之前。 | **确认，D3 必须修** | 新增**候选级工资默认**，不依赖 unit：`ProductionWageDefault`（economy 持久表，键 = `(IndustryId plan, ProductionRoleId role, MarketZoneId zone)`），至少含 `initialWagePerLaborMilli` 与 `initialTargetLaborMilliPerDay`。候选估价读 default；选中后在同一合法 Revision 创建实例 + `ProductionWagePosting`（从 default 物化）；未选候选零实例/零 posting 残留。`ProductionWagePosting` 仍是执行期唯一实际报价权威；default 不是第二份执行报价，只是准入初始化策略。缺 default 且无实例 posting ⇒ `wage-quote-missing`，不得静默 0；缺目标 ⇒ `wage-target-missing`。 | D3 §2.2/§2.3/§2.7/§2.8/§5；D2 候选/采用路径；验收：未创建实例的候选能读到 default quote/target；选中后同批建实例+posting 成功；未选中不写任何 posting；失败不留半个实例/posting。 |
 | A4 | 降价延迟公式与手算例不一致 | D3 `:445` 写 `satisfiedStreak >= decreaseDelayTicks` 就开始降价；`:984` 的手算例写 `decreaseDelayTicks=2`、`streak=2` 时仍不降。 | **确认，D3 文/式/例三处必须统一** | 采用“**满 delay 的下一 tick 才首次降价**”：条件改为 `satisfiedStreak > decreaseDelayTicks`；降价率仍为 `initial + (satisfiedStreak - decreaseDelayTicks) × accel`，封顶 cap。这样 `delay=2, streak=2` 不降；`streak=3` 首次降（rate=initial+accel）；`streak=4` 与现手算例 `rate=20` 相容。 | D3 §3.4/§3.6/§8.6 例 3；新增 `streak=3` 首次降价断言；负向：把 `>` 改回 `>=` 应红。 |
 | A5 | 工资产出池表述可能误禁地主已到账库存 | D3 `:654` 写“雇主自己的产品份额不能当工资池”，但 U16/U21 要求真实到账的可支付活动库存参与抵付；D3 `:651-656` 未区分“预计/未到账份额”和“已入账库存”。 | **确认，措辞必须收窄** | 禁止的是：① 尚未到账/预计的产品份额不能当作可用现金；② 其他 participant 的份额不能拿来付地主工资；③ 再生产权益/已投入资料不能抵。**不禁止**：已经按 D2 分配到 organizer 账户、且经 D4 可支付库存读口确认属于活动库存的本人产出。来源是本人产品不改变它作为活动库存的支付资格。 | D3 §5.3/§6.3；W1/W3 验收：预计未到账份额不得计入工资支付能力；已到账且可支付的本人粮按 U21 参与抵物；他户份额/权益不得抵。 |
@@ -42,11 +44,13 @@
 
 ### 5.1 真正会影响真实世界行为、建议在 W3 冻结前由用户拍板的项
 
+> **状态（U23 后，当前有效）**：本节整节是 U23 前的历史建议，不删原文；三项均已由 U23 关闭。U-D3-1 是用户已定 0‰；U-D3-2/U-D3-3 是已撤回/已取代建议，不得再问用户，也不得作为有效 seed/命令/判据。
+
 | # | 项 | 现有口径/事实 | 控制方建议 | 若不特别指定 |
 |---|---|---|---|---|
-| U-D3-1 | 工资欠薪是否计息 | U16/U21 只说“不足成债”，未说利率；现有 `EconomySettlement.capitalizeArrears` 对旧 `FIXED_MONEY_WAGE` 欠款使用 `DebtTerms.legacyDefault()` 的 **20‰/周期**；D3 目前写的是 0‰ 工程默认。 | **0‰**：欠薪是未付工资，不是双方约定的生息贷款；若要计息应显式配置。 | 按 0‰ 工程默认推进，不阻塞 D3/D4 设计；旧路径的 20‰ 需后续按此裁决修正。 |
-| U-D3-2 | `allowIdle` 缺行默认值 | U19 只要求“增加允许不从业的设定”，未说新世界默认 true/false；D3 现写缺行默认 true。 | **true**：新世界默认允许闲置；需要强制从业的户由 seed/命令显式 false。 | 按 true 工程默认推进；该值可逐户覆盖。 |
-| U-D3-3 | 抵物估值用 bid/ask/其他 | U21 只钉死“库存数量从多到少”，未钉死折价尺；D3 现写当地 `bidPriceOf`。 | **bid**：按工人能实际卖出的价格保守折算，避免用 ask 高估支付物。 | 按 bid 工程默认推进；缺价/0 价仍必须 skip 并保留债务。 |
+| U-D3-1 **（U23 已定：0‰）** | 工资欠薪是否计息 | U16/U21 只说“不足成债”，未说利率；现有 `EconomySettlement.capitalizeArrears` 对旧 `FIXED_MONEY_WAGE` 欠款使用 `DebtTerms.legacyDefault()` 的 **20‰/周期**；D3 目前写的是 0‰ 工程默认。 | **0‰**：欠薪是未付工资，不是双方约定的生息贷款；若要计息应显式配置。 | 按 0‰ 工程默认推进，不阻塞 D3/D4 设计；旧路径的 20‰ 需后续按此裁决修正。 |
+| U-D3-2 **（历史/已关闭：U23 撤回 allowIdle）** | `allowIdle` 缺行默认值 | U19 只要求“增加允许不从业的设定”，未说新世界默认 true/false；D3 现写缺行默认 true。 | **true**：新世界默认允许闲置；需要强制从业的户由 seed/命令显式 false。 | 按 true 工程默认推进；该值可逐户覆盖。 |
+| U-D3-3 **（历史/已关闭：U23 改为可配置折价，不再固定 bid）** | 抵物估值用 bid/ask/其他 | U21 只钉死“库存数量从多到少”，未钉死折价尺；D3 现写当地 `bidPriceOf`。 | **bid**：按工人能实际卖出的价格保守折算，避免用 ask 高估支付物。 | 按 bid 工程默认推进；缺价/0 价仍必须 skip 并保留债务。 |
 
 以上三项都不是当前 R2 代码 bug 修复的前置；可以等 W3 冻结前再定，未定期间不得把工程默认写成用户裁定。
 

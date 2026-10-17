@@ -3,7 +3,7 @@
 > **性质**：约束设计书的 **D2 分册**，对应重规划 `2026-10-17-d032-production-line-replan.md` §4 Phase D 的 D2。它冻结“多家户、多角色合作生产”在 **economy 侧的真实参与名册、按户预计所得、角色两层分配、资格主体、迁移/合户经验** 上的形状与边界；**不是实现派单书**，也不启动 C2/C3/C4。
 >
 > **效力与输入（从高到低）**：
-> 1. 用户设计原稿 D-032/U13–U21（逐字，§1 全文照录）——最高权威；
+> 1. 用户设计原稿 D-032/U13–U23（逐字，§1 全文照录；U22 为执行优先级、U23 为工资链三项裁决）——最高权威；
 > 2. D1 共享生产定义形状冻结：`docs/superpowers/specs/2026-10-17-d032-production-definition-v2-freeze.md`（2026-10-17）；
 > 3. 重规划 v2 与复核：`docs/superpowers/plans/2026-10-17-d032-production-line-replan.md`、`docs/superpowers/reports/2026-10-17-d032-production-line-replan-v2-review.md`（2026-10-17）；
 > 4. 当前代码事实（§3 全部回代码核过，行号为本文落盘时侧线工作树实测）。
@@ -18,6 +18,8 @@
 > - **§8.2 工资预计**对 `MONEY_WAGE` 改用候选 default / 实际 posting 的 quote，**仍乘 `cycleDays`**；缺 quote ⇒ `wage-quote-missing`，**不按 0**。
 > - **D3 旧 §0.3 的五项“待同步修正”已并入本册**（§0.4 逐条登记）；两册不得各留一套。
 > - **`allowIdle` 已撤回**（U23）：本册不出现 `allowIdle`/`householdLaborChoices`；不从业资格归 D3 §2.5.1；工资债利率归 economy/D3 §6.5。
+>
+> **2026-10-17 D1–D4 独立复核局部修正注（R-02/R-03/R-06/R-09，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：§1 补 U22/U23 原话；D2-I2 改为“每个 `PRODUCT_SHARE` 角色至少一个 participant，`MONEY_WAGE` 可无 participant”；§0.4 的组件号约束改为“D2/D3 只新增 32–35，D4 后续 36/37”，不再有“无第 36”的绝对禁令；§13 增列 C0-A 的 `AssetKind` 词表与旧引用写面。旧文字保留为历史 provenance。
 
 ## §0 口径溯源与裁定状态（先核，避免重复问用户）
 
@@ -51,7 +53,7 @@
 | 4 | §8.2 工资应收改用 posting 目标 | §8.2 | `MONEY_WAGE` 应收/应付 = `quote(候选 default / 实际 posting) × targetLaborMilliPerDay × cycleDays / 1000`（或预计可匹配劳动 × cycleDays）；**仍乘 `cycleDays`**；缺 quote ⇒ `wage-quote-missing`，不按 0；显式 0 合法 |
 | 5 | 角色资格失败整实例拒绝只适用 roster participant | §7.3 | roster 内 `PRODUCT_SHARE` participant 资格失败 ⇒ 整实例本日拒绝；`MONEY_WAGE` 自动候选不合格 ⇒ **候选 skip**（具名），无候选只形成 shortage 驱动 U20 |
 
-**组件号约束（与 D3 一致）**：本册第 32 组件 `productionRosters` 之后，D3 只新增 **33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`**；**无第 36 个**；`allowIdle`/`householdLaborChoices` 已撤回（历史项，不新增规则/状态/命令/seed/判据）。
+**组件号约束（与 D3/D4 一致，当前有效）**：31 为当前基线；本册新增第 32 组件 `productionRosters`；D3 只新增 **33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`**；D4 后续新增 **36 `assetOccupancies` / 37 `inventoryReservations`**。因此 **D2/D3 不新增 36，但“36”不是永久禁用**，且 36 不得让给已撤回的 `allowIdle`/`householdLaborChoices`。`allowIdle`/`householdLaborChoices` 已撤回（历史项，不新增规则/状态/命令/seed/判据）。
 
 ---
 
@@ -78,10 +80,16 @@
 
 > **U21**：「1 不影响 2 不允许，地主优先给钱，没钱了再按库存最多的东西抵」
 
+> **U22**：「我决定先修bug」
+
+> **U23**：「1 肯定不计 2 任何家户只要条件允许（从事任何可从事的生产方式都没法换取下一tick的生存所需）都可以被裁决为不从业 3 折价可以更低一些，总之是可配置项，注意明确模块边界」
+
 控制方说明（非用户原话）：
 - U15 更正：工资是**地主/雇主的支出义务**，不是地主的收入；地主的产品份额不以下地劳动为条件。
 - U16/U21 的支付顺序与“库存最多”均按原文：先对应货币 → 可支付活动库存按**数量**从多到少 → 剩余成债；再生产权益/已投入资料不在可支付库存中。
 - U18/U19 允许劳动户选择零/负收益工作，也允许不从业；不得预过滤所有非正收益项，不得虚构免费闲置。该动态工资博弈的实现归 D3/W，D2 只保留“负收益不得被 D2 的预计所得逻辑过滤”的口径。
+- U22 只决定**执行优先级**（先修现有 R2 bug），不是对工资三项的裁定，也不授权提交/同步。
+- U23 三项均为用户已定：U23-a 工资欠款 0‰；U23-b 按下一 tick 生存条件裁决不从业（撤回 per-household `allowIdle` 缺行默认）；U23-c 抵物折价可配置且可低于 bid。D2 只采用其名册/工资边界，不重定义利率/折价公式。
 
 ---
 
@@ -124,7 +132,7 @@
 | 经验合户已按“来源∪目标、缺行=0、人口加权、永久解锁”实现 | `simos-production/src/main/java/io/mosire/simos/production/ProductionData.java:426-485` | D2 直接复用，不新写第二套合户公式 |
 | 旧产出分配仍是 `ProductionRules` + `CompensationRule` + `ProductionSettlement.settle` | `simos-economy-api/src/main/java/io/mosire/simos/economy/api/relation/ProductionRules.java:89-95`、`CompensationRule.java:60-69`、`simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java:109-254` | 两套产出分配并存会双记；C2 必须明确旧 `rules` 不再作为名册方案的产出分配权威 |
 | 资产份额 `OwnershipStake` 已有 `industry/owner/operator/quantity/kind`，但无地点/占用期 | `simos-economy/src/main/java/io/mosire/simos/economy/model/OwnershipStake.java:35-42` | D2 的 `BY_RIGHTS` 只引用份额、不复制数量；地点/占用期归 D4 |
-| D1 冻结的 `ProductionRoleId` 写在 `production.contract`，但 `HouseholdLaborCommitment` 在 `economy-api`，后者不能依赖 production | `docs/superpowers/specs/2026-10-17-d032-production-definition-v2-freeze.md` §2.1；`simos-economy-api/pom.xml` 依赖面 | **必须把稳定角色 ID 放到 `economy-api`**，否则为携带角色会形成 Maven 环（见 §5.1） |
+| D1 **旧稿曾**把 `ProductionRoleId` 写在 `production.contract`（当前 D1 §2.1 已改为 `simos-economy-api`）；`HouseholdLaborCommitment` 在 `economy-api`，后者不能依赖 production | `docs/superpowers/specs/2026-10-17-d032-production-definition-v2-freeze.md` §2.1；`simos-economy-api/pom.xml` 依赖面 | **必须把稳定角色 ID 放到 `economy-api`**，否则为携带角色会形成 Maven 环（见 §5.1） |
 | 当前 `ProductionSettlement` 仍从 `ProductionRules.rules` 读取产出/工资/地租规则 | `simos-economy/src/main/java/io/mosire/simos/economy/time/ProductionSettlement.java:245-254`；`RegimeRelations.java:583-683` | C2 若同时保留旧规则会与角色份额双分；D2 规定名册方案 `rules` 必须为空，D3 再接管货币工资 |
 
 ---
@@ -207,7 +215,7 @@ D3 工资支付（货币 → 库存数量降序 → 债务）
 
 ### 5.1 `ProductionRoleId` 的位置（D2 对 D1 的必要修正）
 
-D1 §2.1 把 `ProductionRoleId` 放在 `production.contract`。D2 发现 `HouseholdLaborCommitment` 在 `simos-economy-api`，而 `simos-economy-api` **不能依赖** production（`production → economy-api` 已是既有边，反向会成环）。故 C0 落形前必须做一处局部修正：
+D1 **旧稿曾**把 `ProductionRoleId` 放在 `production.contract`（当前 D1 §2.1 已改为 `simos-economy-api`）。D2 发现 `HouseholdLaborCommitment` 在 `simos-economy-api`，而 `simos-economy-api` **不能依赖** production（`production → economy-api` 已是既有边，反向会成环）。故 C0 落形前必须做这一处局部修正（历史说明保留）：
 
 - 新稳定 ID：`io.mosire.simos.economy.api.production.ProductionRoleId`（`simos-economy-api`），形如非空白字符串包装，构造期拒绝空白；为地址/配额 id 安全，角色 id 也不得含 `.`（与 `OwnershipStake.idOf` 同款约束）；
 - `production.contract.ProductionRoleDefinition`、`RoleDistribution` 等从 economy-api import 该 ID；
@@ -290,7 +298,7 @@ record ProductionParticipant(
 - **整表替换**：`unit` 的旧名册整体替换；`participants: []` = 清除该 unit 名册（等价 `withoutProductionRoster`）；不做 patch 语义，避免“少传一个角色 = 静默保留旧人”。
 - `plan` 不由载荷给，由当前 production 实例读出；载荷给 plan 只会制造第二拼写点，故不接受。
 - 命令类型字面量：`economy.SetProductionRoster`；GM-only；不进 DM 权限面。
-- 业务拒绝（INFO、零变更）：`unit-unknown`、`roster-locked`、`role-unknown`、`organizer-missing`、`organizer-multiple`、`role-unfilled`、`participant-duplicate`、`rights-not-owned`、`planned-labor-negative`、`configured-weight-invalid` 等；具体稳定词表见 §11。
+- 业务拒绝（INFO、零变更）：`unit-unknown`、`roster-locked`、`role-unknown`、`organizer-missing`、`organizer-multiple`、`role-unfilled`（**仅 `PRODUCT_SHARE` 角色无 participant**）、`participant-duplicate`、`rights-not-owned`、`planned-labor-negative`、`configured-weight-invalid` 等；`MONEY_WAGE` 角色空 participant 不是 `role-unfilled`，缺 target 归 `wage-target-missing`。具体稳定词表见 §11。
 - 成功：`HandlerOutcome.Applied(EconomyChangeSet)`，记录 INFO（unit、plan、participants、roles、organizer、replaced=true）。
 - **单户自动名册**：`EconomyEnterpriseSettlement` / `EconomyEntrySettlement` 创建**单角色且 `ProductionRules.rules` 为空**的 plan 的 unit 时，先算该户 `remaining = household.laborMilli − Σ现有名册.plannedLaborMilliPerDay`；仅当 `remaining > 0`，同批写入一条默认名册：organizer、`role = plan.roles.get(0).id()`（D1 默认单角色时即 `operator`）、`plannedLaborMilliPerDay = min(remaining, 若 standardLabor>0 则 standardLabor/cycleDays 否则 remaining)`、rightsStakes 空、configuredWeight 0。多角色 plan、已有旧规则、或 `remaining <= 0` ⇒ 不做自动名册，记录具名 shortage `roster-required`；不得按角色各建一份组织。该规则允许同一户有多个 unit，只要计划劳动总和仍在预算内。
 - `production.CreateInstance` 的 GM 组合调用：多角色 plan 必须与 `economy.SetProductionRoster` 在同一 `submitBatch` 原子批内；只建实例不建名册 = 后续执行 `roster-missing`，不得半成功。
@@ -658,7 +666,7 @@ seed-roster-missing:<unit>
 ## §11 不变量清单（D2-I）
 
 1. **D2-I1 名册唯一**：每个 unit 至多一条 `ProductionRoster`，键 == `unit`；名册是参与角色/计划劳动的唯一权威。
-2. **D2-I2 角色完整**：`plan.roles` 每个角色至少一个 participant；名册不得含未知角色。
+2. **D2-I2 角色完整**：`plan.roles` 中**每个 `PRODUCT_SHARE` 角色至少一个 participant**；`MONEY_WAGE` 角色**可以没有 participant**，其需求由 `ProductionWagePosting`（执行期）/`ProductionWageDefault`（新进入候选）表达，实际 worker 由 allocations/receipt 决定。名册不得含未知角色；不得为工资角色伪造 placeholder household。
 3. **D2-I3 组织者唯一**：整份名册恰好一个 organizer；organizer 角色为 `PRODUCT_SHARE`；unit.operator / enterprise.organizer / relation.operator 均为 organizer household actor。
 4. **D2-I4 份额合法**：角色份额合计 ≤ 1000；`MONEY_WAGE ⇒ share=0`；`PRODUCT_SHARE ⇒ share>0`；至少一个 product-share 角色。
 5. **D2-I5 直接份额**：角色产品份额不以下地/实际劳动为条件；劳动只影响角色内 `BY_RECOGNIZED_LABOR` 拆分与经验。
@@ -707,6 +715,8 @@ seed-roster-missing:<unit>
 | P16 | 旧规则禁用 | 名册方案 `ProductionRules.rules` 非空 ⇒ 具名拒绝，不双分 |
 | P17 | 全局预算 | 同户多个名册 planned labor 超预算 ⇒ `household-labor-overcommitted` |
 | P18 | 日志 | INFO/DEBUG/TRACE 各至少一条可断言事件；拒绝有具名 reason |
+| P19 | 毫小时量纲 | `1 小时 = 1000 毫小时`；`plannedLaborMilliPerDay=1000` 表示 1 小时/日；`standardLaborMilliPerCycle=1000` 表示 1 小时/周期；任一字段按“千分劳动”解释 ⇒ 红 |
+| P20 | `MONEY_WAGE` 空 participant | `PRODUCT_SHARE` 角色无 participant ⇒ `role-unfilled:<role>`；`MONEY_WAGE` 角色无 participant 但 posting/default target 完整 ⇒ 合法，不伪造 placeholder；缺 target ⇒ `wage-target-missing:<role>` |
 
 ### 12.2 负向/变异判据（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 一致）
 
@@ -730,6 +740,8 @@ seed-roster-missing:<unit>
 | 名册方案仍调用旧 `ProductionSettlement` | P16 |
 | 全局预算只查单 unit | P17 |
 | 多实例共享资产仍放行 | D4 未接时必须 `asset-scope-shared:awaiting-D4` |
+| 把 `MONEY_WAGE` 空 participant 当 `role-unfilled`，或为它伪造 placeholder | P20 |
+| 把 `standardLaborMilliPerCycle`/`laborMilli` 按“千分劳动”而非毫小时解释 | P19 |
 
 ### 12.3 数值例（C4 用）
 
@@ -748,7 +760,8 @@ seed-roster-missing:<unit>
 
 | 批次 | owner 可写 | 禁止/边界 |
 |---|---|---|
-| **C0（D1 落形）** | `simos-economy-api/.../api/production/ProductionRoleId.java`（新增）；`simos-production/.../contract/`（角色/份额/经验/支付/条件/`RoleDistribution`）；D1 文档的局部更正注 | 不改 economy 实现、不改 app、不做名册状态 |
+| **C0（D1 落形）** | `simos-economy-api/.../api/production/ProductionRoleId.java`（新增）；`simos-production/.../contract/`（角色/份额/经验/支付/条件/`RoleDistribution`）；D1 文档的局部更正注 | 不改 economy 实现、不改 app、不做名册状态；**不拥有 `AssetKind`**（见 C0-A） |
+| **C0-A（`AssetKind` 词表与旧引用，D1 §2.7；先于 C0）** | 写面 = `simos-actor-api/.../asset/AssetKind.java`（删 `TOOL`、加 `SMALL_TOOL`/`LARGE_TOOL`）+ `rg -l 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 命中的**全部 main 文件**（含 `simos-production` 载荷/seed、`simos-economy` 的 `MerchantTradeTemplate`/`MerchantCapacity`/`ModeMigration*`/`EconomySettlement`/`HouseholdClassRule`/`EconomyPayloads`/`EconomyGovUnitUpserts`、`simos-app/.../EconomySeeder`、`simos-util/EconomyVocabulary` 等；以扫描清单为准，不靠记忆补漏） | 只做词表与直接旧引用替换，不改分配/占用行为；不得保留别名/兼容位；**测试断言归 C4**（C0-A 不写/不跑测试）；交 `rg -n 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 清零清单，以及 `SMALL_TOOL`/`LARGE_TOOL` 各自 seed→state→codec→apply 往返证据；不拥有 `ProductionRoleId`/角色契约（归 C0） |
 | **C1（production 角色执行）** | `simos-production/src/main/java/.../ProductionData.java`、`ProductionRuntimeEngine.java`、`ProductionExperience.java`、`ProductionProcess.java`、`ProductionSnapshot.java`、`codec/ProductionCodec.java`、`change/ProductionChangeSet.java`；`ProductionExecutionRequest/DayRequest/Receipt/CycleContribution`；`RoleDistribution` | 不写 economy 名册/账户；不实现工资支付/资产分配 |
 | **C2（economy 名册/分配）** | `simos-economy-api/.../api/labor/HouseholdLaborCommitment.java`（加 role/改 id）；`simos-economy/src/main/java/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；`model/ProductionRoster*`、`model/ProductionWageQuote.java`（最小读值，D3 可扩展）、`model/RegimeRelations.java`（旧规则删除/映射）；`spi/EconomySetProductionRosterHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`time/EconomyEnterpriseSettlement.java`、`EconomyEntrySettlement.java`、`EconomySettlement.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`time/ProductionOutputNetting.java`（新增，毛产→net 的唯一拼写点）、`ProductionSettlement` 的调用面、`LaborQueueSettlement.java`（劳动候选面）；`EconomyReferenceValidation.java` | 不 import production 实现；不改 POM/enforcer；不实现 D3 工资支付/D4 资产占用；不改 app |
 | **C3（app 装配/创世/读口）** | `simos-app/.../Shell.java`、`AppProductionConsumerPort.java`、`world/*Seeder`、`world/GenesisModuleSlices`、工具/Catalog 载荷提示、只读视图 | 不复制 economy 分配公式；不新增空推进器；不改测试断言 |
@@ -756,7 +769,7 @@ seed-roster-missing:<unit>
 | **M0（组织者合户前置）** | `simos-production/.../spi/RebindInstanceOperatorHandler.java`（新增）；production `ProductionProcess` 写口；economy 同批 `ProductionEnterprise`/`ProductionRules`/roster/asset operator 更新 | 只在周期边界；C2 首期不实现，不冒充已支持 |
 | **D3 / D4 后续** | 各自分册另行派单 | 在 D3/D4 落盘前，C2 不得以“临时公式”实现工资/资产分配 |
 
-**跨模块顺序**：C0（ID/契约）→ C1（production 编译过）→ C2（economy 编译过）→ C3（装配）→ C4（测试/门禁）。同一文件同一时刻一个 owner；C0/C1/C2 不得并行改同一 `Production`/`Economy` 文件。
+**跨模块顺序**：**C0-A（`AssetKind` 词表与全部 main 旧引用扫描）→ C0（ID/契约）** → C1（production 编译过）→ C2（economy 编译过）→ C3（装配）→ C4（测试/门禁）。同一文件同一时刻一个 owner；C0-A/C0/C1/C2 不得并行改同一 `Production`/`Economy`/`app` 文件；`EconomySeeder.java` 的后续 location 写面归 D4-I，必须等 C0-A/C3 交账并停手后再串行。
 
 ---
 

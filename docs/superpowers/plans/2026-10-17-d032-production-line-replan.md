@@ -2,7 +2,7 @@
 
 > **修订原因**：`docs/superpowers/reports/2026-10-17-d032-production-line-replan-review.md`（独立审核，不通过冻结）指出 v1 的 Q2/Q5 复活了已被取代的分配/工资公式、资产旧建议被提升为待确认玩法、C/G 写面与 C/A 验收依赖冲突、F3 范围含未修的 R2、现状状态过期。**v2 按审核意见修订**；v1 中相应条目作废，不另行留旧问。
 > **性质**：控制方的**重规划**（先写什么、按什么次序写、哪些是工程决定）。**不是**约束设计书、**不是**派单书。
-> **输入（按效力从高到低）**：① `docs/superpowers/specs/2026-10-02-architecture-design-source.md` 的 **D-032/U13–U21、D-033**（用户原话 + 效力区分）；② 用户已确认专文：`wage-settlement-simplification-decision.md` §1、`tick-wage-feedback-proposal.md` §11（最新裁定）；③ 待/曾提案（`cooperative-production-proposal.md`、`distribution-wage-offer-proposal.md`、`preselection-wage-feasibility-analysis.md`、`employer-posted-wage-redesign.md`）——**只在未被取代的范围内作参考**；④ 在飞修复 `2026-10-17-d032-final-independent-review.md`（R1–R6）与设计书 §15。
+> **输入（按效力从高到低）**：① `docs/superpowers/specs/2026-10-02-architecture-design-source.md` 的 **D-032/U13–U23、D-033**（用户原话 + 效力区分；U22 为执行优先级、U23 为工资三项裁决）；② 用户已确认专文：`wage-settlement-simplification-decision.md` §1、`tick-wage-feedback-proposal.md` §11（最新裁定）；③ 待/曾提案（`cooperative-production-proposal.md`、`distribution-wage-offer-proposal.md`、`preselection-wage-feasibility-analysis.md`、`employer-posted-wage-redesign.md`）——**只在未被取代的范围内作参考**；④ 在飞修复 `2026-10-17-d032-final-independent-review.md`（R1–R6）与设计书 §15。
 
 ## §1 基础口径（v2：只用仍有效的裁定，不把作废公式列回待裁定）
 
@@ -77,7 +77,11 @@
 
 ### Phase W：工资链实现（C 后；W1 复用 F2 probe 入口）
 
-W1 工资费用前置候选收益 → W2 报价状态/U20 调价/劳动匹配/闲置 → W3 直付/抵物/成债/权益排除/共享付款预算 → W4 tick 时序与 Social 反馈 → W5 测试。
+> **2026-10-17 R-18 局部更正（当前有效）**：D3 §9.1 已把旧 `W1→W2` 顺序局部取代为 **W2a（候选 default + posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick/Social 反馈）→ W5（独立测试）**。旧顺序保留为历史，不得作为派单依据；W5 仍是独立测试 owner。
+
+~~旧：W1 工资费用前置候选收益 → W2 报价状态/U20 调价/劳动匹配/闲置 → W3 直付/抵物/成债/权益排除/共享付款预算 → W4 tick 时序与 Social 反馈 → W5 测试。~~
+
+**当前有效**：W2a（候选 default + posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick/Social 反馈）→ W5（独立测试）。
 
 ### Phase A：资产与占用实现（C/D4 后；R2 在此关闭）
 

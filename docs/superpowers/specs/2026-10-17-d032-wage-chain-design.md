@@ -12,6 +12,8 @@
 > 5. 当前代码事实（§1 全部回代码核过，行号为本文落盘时侧线工作树 `0128b0cc` 实测）。
 >
 > **边界**：D3 只冻结工资报价状态、U20 调价、劳动匹配/闲置、工资前置、直付/抵物/成债、tick 时序与验收判据。D4/Phase A 的资产地点/占用期/统一占用（R2）仍归 D4；生产定义、角色经验、产品份额归 D1/D2/production。**2026-10-17 整合轮只统一 D1/D2/D3 设计正文；不改 status/R2/Java/XML/POM/测试，不触碰主树、不提交。**
+>
+> **2026-10-17 D1–D4 独立复核局部修正注（R-03/R-04/R-05/R-07/R-11/R-16，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：组件号只声明 D2/D3 新增 32–35，D4 后续 36/37；§2.5.1 增补逐需求行覆盖算法与收入去重；§6.2/§6.9 改为 payer 级先聚合、跨 settlement location 整组拒绝；§2.9.1 增加可持久 `DebtSource` 与旧工资债 0‰ 收口；§9.1 明确 W3 只消费 D4-I 的 `WagePayableInventoryLookup`、不新增/不实现该文件。旧正文保留为历史 provenance。
 
 ## §0 口径溯源与状态
 
@@ -72,7 +74,7 @@
 | E3 | U20 调价公式、动量上限、最小步长、降价延迟/加速均为**可配置参数**；§3.6 给建议值 | U20 只定方向，未指定初值/系数；建议值待仿真标定 |
 | E4 | ~~抵物估值固定用当地 `MarketTable.bidPriceOf`（卖方限价）~~ **★ 已被 U23 取代（§6.4 + D1 `BarterDiscountPolicy`）**：参考价类型仅 `LOCAL_BID`/`LOCAL_ASK`，折价系数可配置且可 <1，不再固定 bid×1；仍不是 1:1、不是任意价 | U23 只要求“可更低、可配置”；具体参考价/系数由生产方式定义 |
 | E5 | 工资债 `DebtTerms.wageArrearsDefault()`：**0‰ 利率** + 现有 `AFTER_REPAYMENT_ON_CLOSE`/`AVAILABLE_SURPLUS_SHARE`/`NOT_ALLOWED`/`MARK_DEFAULTED`，期限空 | **★ 已被 U23 取代：0‰ 是用户已定，不是工程默认**（§2.9/§6.5）；本金/偿还规则不变；普通贷款不受影响 |
-| E6 | 同一付款人（organizer household）跨 unit/role/worker **共享一份货币+库存预算** | 防止同一笔余额/库存被两条义务各付一次 |
+| E6 | **当前有效（R-05）**：同一付款人在**同一 settlement location** 内跨 unit/role/worker 共享一份货币+库存预算；同一 payer 出现 >1 settlement location 时整组 `wage-payer-location-unsupported`，不做部分支付 | 防止同一笔户级余额/库存被两条义务各付一次；户级 `AccountSession` 不允许按地点各读一份 |
 | E7 | ~~`allowIdle` 缺行默认 **true**~~ **★ 已被 U23 撤回（§2.5）**：不再有 `allowIdle` 状态/命令/seed；改由“下一 tick 生存条件资格”决定是否可裁决不从业 | 用户 U23 已定资格条件，不是缺行布尔默认 |
 | E8 | ~~idle 排序靠 `idle:` < `unit:` 字符串~~ **★ 已被裁决 A2 取代（§4.4）**：idle 是独立控制候选 `IdleOption`/`Plan.idleChosen`，不经过 `queueable()/maxAbsorbable` 过滤；正收益工作先做，零/负收益无补偿工作后 idle 胜；不靠字符串/Map 序 | 若某“零工资”工作有额外可计价收益，其 yield 必须 >0 才会排在 idle 前 |
 | E9 | 自动招募（MONEY_WAGE 角色）首期**只限本地市场区**（同 `MarketZoneId`） | W2 最小可行；跨区走既有迁移机制，不在 W2 自动招募 |
@@ -127,10 +129,10 @@
 | 8 | 工资池（A5） | 禁止未到账/预计份额、他户份额、再生产权益抵工资；**已按 D2 分配到 organizer 账户且经 D4 可支付库存读口确认属于活动库存的本人产出仍按 U21 参与抵物** | §5.3、§6.3 |
 | 9 | 工资债零息（U23-a） | 所有未支付工资形成的欠薪债务利率 = 0；不得继承 legacy 20‰；区分工资欠款与普通贷款；旧工资欠款也不再生息 | §2.9、§6.5 |
 | 10 | 可支付库存读口（B3） | 唯一 `WagePayableInventoryLookup`（`ActorRef payer` + `production.contract.ProductionLocation` → 已扣完冻结/占用/权益/已投入资料的最终可支付量）；W3 不二次扣减；D4 未接 ⇒ 货币先付、库存腿跳过并记 `wage-inventory-scope-unavailable`，余额成债 | §6.9、§6.3 |
-| 11 | 同 payer×location（B4） | W3 首期只允许同一 payer × 同一 settlement location 共享库存预算；同一 organizer 跨 location 另立；跨格具名 `wage-payer-location-unsupported` | §6.2、§6.6 |
+| 11 | payer 级地点（B4/R-05） | W3 在任何支付/lookup 前按 payer 聚合；同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，零部分支付；仅单地点组共享一份库存预算；账户权威是 `AccountSession` 户级账 | §6.2、§6.6、§6.9 |
 | 12 | W2/W3 中间态（B2） | W2b 独立阶段，`EconomySettlement.settleOneDayInto` 在任何抽料/劳动写回/进度/经验/实际劳动写入之前全 tick 预检；有 MONEY_WAGE 角色而 W3 未启用 ⇒ 整 tick `wage-settlement-not-implemented`，零半状态 | §4.7、§7.2 |
 | 13 | 批次顺序（B1） | W2a（default+posting/quote 读口）→ W1（工资前置估值）→ W2b（角色级匹配/idle/U20）→ W3（支付/抵物/债）→ W4（tick/Social）→ W5（独立测试） | §9.1 |
-| 14 | 组件号 | 32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`；无第 36 个；`householdLaborChoices`/`allowIdle` 已撤回（历史项，不列组件） | §2.6 |
+| 14 | 组件号 | 31 基线；32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`；**D2/D3 只新增 32–35，D4 后续 36 `assetOccupancies` / 37 `inventoryReservations`；不把 36 让给 `allowIdle`/`householdLaborChoices`**（两者已撤回，历史项，不列组件） | §2.6 |
 | 15 | 模块边界 | production 定规则/配置；economy 判定/估值/结算；Social 生存/劳动/人口；账户原所有者落账；app/Core 只编排 | §2.11 |
 
 **关键数值判据（A1）**：`cycle=100`、日雇 1 小时（1000 mh/日）、单价 2 货币/小时 ⇒ 候选周期劳动 `100,000 mh`、候选工资 `200 货币`（`quote=2000 毫货币/小时`）；实际每 tick due = `2000×1000/1000 = 2000 毫货币 = 2 货币`，**不乘 cycleDays**。
@@ -186,7 +188,7 @@
 | 23 | `simos-production/src/main/java/io/mosire/simos/production/contract/CycleContribution.java:50-51` | `CycleContribution(household, laborMilli, efficiencyWeightedLaborMilli)` 无 role | D2 加 role；D3 仍要求另有本次 tick 的 participant 明细 |
 | 24 | `simos-production/src/main/java/io/mosire/simos/production/contract/ProductionDayRequest.java:68-75`、`ProductionExecutionRequest.java:44-51` | 执行请求/日步的 `laborContributionsMilli` 是 `Map<HouseholdId, Long>` | D2 改为 `List<ParticipantContribution>`；W1/W2b 的匹配结果必须能落到角色分配 |
 | 25 | `simos-economy-api/src/main/java/io/mosire/simos/economy/api/labor/HouseholdLaborCommitment.java:52-60,149-162` | `activity` 是 unit id；id 为 `alloc-<unit>-<group>-<household>`，无 role | D2 加 `productionRole` 并改 id；D3 的逐角色分配依赖它 |
-| 26 | `simos-economy/src/main/java/io/mosire/simos/economy/EconomyData.java:310-397` | 当前 **31 个 record 组件**（逐行计数；历史注释里的 40 是旧编号） | D2 加第 32 `productionRosters`；D3 加第 **33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`**（§2.6）；无第 36 个；`householdLaborChoices`/`allowIdle` 已撤回（历史项，不新增） |
+| 26 | `simos-economy/src/main/java/io/mosire/simos/economy/EconomyData.java:310-397` | 当前 **31 个 record 组件**（逐行计数；历史注释里的 40 是旧编号） | D2 加第 32 `productionRosters`；D3 加第 **33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`**（§2.6）；D4 后续新增 36/37；D2/D3 不新增 36，但 36 不是永久禁用；`householdLaborChoices`/`allowIdle` 已撤回（历史项，不新增） |
 | 27 | 同上 `:818-890` | `allocations` 构造期检查：键=id、家户存在、`Σ PRODUCTION ≤ max(0, 时间预算 − min(Σ GOV_SERVICE, 预算))` | W2 写回 allocations 后仍受此不变量；同一户多角色总劳动不得超预算 |
 | 28 | `simos-app/src/main/java/io/mosire/simos/app/time/PopulationEconomyTimeParticipant.java:652` | 日循环 `for (day = from+1; day <= to; day++)` | W4 的插入点必须在这条循环内 |
 | 29 | 同上 `:664-668` | ① Social 投影：`updateComposition`、`recomputeLaborBudgets`、`updateNaturalNeeds` | 工资匹配前的劳动预算来自 Social 投影 |
@@ -403,8 +405,8 @@ record SubsistenceNeedLine(
     long requiredQuantityMilli) {}
 
 record SurvivalResourceFacts(
-    Map<CommodityId, Long> usableInventoryMilli,
-    Map<CurrencyId, Long> spendableMoneyMilli) {}
+    Map<CommodityId, Long> usableInventoryMilli,   // 当前已入库、且已扣除不可用/预留的库存
+    Map<CurrencyId, Long> spendableMoneyMilli) {}  // 当前可花货币；不得与预计收入重复
 
 record LivelihoodAlternativeId(String value) {}   // 稳定、非空白、在同一请求内唯一
 record ResourceClaimKey(String value) {}           // 稳定资源/占用键；只用于组合内互斥
@@ -413,17 +415,17 @@ record LivelihoodAlternative(
     LivelihoodAlternativeId id,
     long laborMilli,
     Set<ResourceClaimKey> resourceClaims,          // 同一资源只能被一个选中方式占用
-    Map<CurrencyId, Long> expectedMoneyIncomeMilli,
-    Map<CommodityId, Long> expectedInKindMilli,
-    Map<CommodityId, Long> expectedProductShareMilli) {}
+    Map<CurrencyId, Long> expectedMoneyIncomeMilli, // 尚未到账的货币收入；按币种加入购买预算
+    Map<CommodityId, Long> expectedInKindMilli,      // 尚未入库的实物收入
+    Map<CommodityId, Long> expectedProductShareMilli) {} // 尚未入库的产品份额实物；不得先折成钱
 
 record LocalReachabilityFacts(Map<CommodityId, LocalCommodityReachability> byCommodity) {}
 
 record LocalCommodityReachability(
     CurrencyId currency,
     boolean reachable,
-    long purchasePriceMilli,                       // 买方可达价；不是 1:1 代换
-    long reachableSupplyMilli) {}
+    long purchasePriceMilli,                       // 毫货币/商品单位；不是 1:1 代换
+    long reachableSupplyMilli) {}                  // 可达供给（毫商品单位）
 
 record DebtClaimFact(
     DebtContractId debt,
@@ -435,9 +437,18 @@ record ExistingClaims(
     List<DebtClaimFact> debts,                     // 只读事实，不当作收入/免费资源
     Set<ResourceClaimKey> unavailableResourceClaims) {}
 
+record SurvivalCoverageLine(
+    long requiredQuantityMilli,
+    long fromInventoryMilli,
+    long fromExpectedInKindMilli,
+    long fromExpectedProductShareMilli,
+    long fromMoneyMilli,
+    long coveredQuantityMilli) {}                   // 来源拆分；covered 必须等于四项来源之和且 ≤ required
+
 record SurvivalCoverage(
     Map<SubsistenceNeedKey, Long> coveredQuantityMilli,
     Map<SubsistenceNeedKey, Long> coveragePerMille,
+    Map<SubsistenceNeedKey, SurvivalCoverageLine> provenance, // 逐需求行来源，供去重/守恒断言
     long bottleneckCoveragePerMille) {}             // 逐需求行覆盖率的最小值
 
 record SurvivalShortfall(
@@ -459,6 +470,19 @@ enum SurvivalOutlookReason {
 }
 ```
 
+#### 2.5.1.1 逐需求行覆盖算法（当前有效，R-04）
+
+> 目的：把 `expectedMoneyIncomeMilli` / `expectedInKindMilli` / `expectedProductShareMilli` 真正接入 coverage，且任何一份库存/收入/劳动预算只计一次。以下顺序是**唯一拼写点**，实现不得另写第二套。
+
+1. **选组合**：先枚举满足 §2.5.1 第 4 条（劳动预算、资源 claim 两两不相交）的替代子集；空子集也合法。未被选中的替代收入一律不进入任何池。
+2. **建当前库存池**：`inventoryLeft = copy(usableInventoryMilli)`。它已是“当前可用”，不得再把 `existingClaims` 当免费库存，也不得把预计收入并进当前库存。
+3. **建预计实物池**：只从被选中的替代收集 `expectedInKindMilli` 与 `expectedProductShareMilli`，二者表示**尚未入库**的增量。同一替代内同一 `CommodityId` 不得同时出现在两个 map（同一实物两处拼写）⇒ ERROR `survival-income-double-count`；若同一商品有多个合法来源，调用方必须先合并为一个值。`expected*` 若已实际入库/已转出，必须在入口前从 map 删除；evaluator 不从 `usableInventoryMilli` 生成或回填 `expected*`。
+4. **逐需求行先实物**：按 `SubsistenceNeedKey.value` 稳定升序处理每个 `SubsistenceNeedLine`。每行先取 `inventoryLeft[c]`，再取预计实物池（先 `expectedInKindMilli`，后 `expectedProductShareMilli`，仅因确定性；两者互斥），逐次扣减；已入库的同一单位不得再出现在预计池。`requiredQuantityMilli==0` 直接记 1000 覆盖。
+5. **再货币**：只对仍 `short > 0` 的需求行做货币腿。先按币种建 `moneyBudget = spendableMoneyMilli + Σ selected.expectedMoneyIncomeMilli`（每个替代/每种币种只加一次）；货币池不得重复使用。仅当 `localFacts.byCommodity[c]` 明确 `reachable=true && purchasePriceMilli>0 && reachableSupplyMilli>0` 时才折算；可用供给也要逐次扣减。`affordableQ = floor(moneyBudget[currency] × 1000 / purchasePriceMilli)`，`qPay = min(short, affordableQ, supplyLeft[c])`，`cost = ceil(qPay × purchasePriceMilli / 1000)`，再扣 `moneyBudget[currency] -= cost`、`supplyLeft[c] -= qPay`。缺价/不可达/0 价/0 供给 ⇒ 该行货币腿不覆盖，不得当 0 或 1:1。
+6. **覆盖率与来源**：`covered = fromInventory + fromExpectedInKind + fromExpectedProductShare + fromMoney`（每项已被 `short` 截断，故恒 `covered ≤ required`）；`provenance` 逐行记录四项来源且 `covered == 四项之和`。`coveragePerMille = required==0 ? 1000 : floor(covered × 1000 / required)`（`covered ≤ required` 故 ≤1000）；`bottleneckCoveragePerMille` 取各行最小值。
+7. **去重/已实现边界**：同一商品单位只能被一条需求行、一个来源使用一次；同一劳动/资源预算不得进入两个替代；`expectedMoneyIncomeMilli` 只加预算、不直接算作已买到实物；预计产品份额只作实物池、不得先按价格折成货币；`existingClaims.debts` 不是收入；`unavailableResourceClaims` 不是库存；账户实际已入库/已转出的数量由当前库存与 reservation 反映，不得再由 `expected*` 重算。
+8. **预测不是到手**：上述 coverage 只是下一 tick 可达性预测；实际未收到钱粮时，消费/饱食/劳动能力后果仍按 Social 实际链发生。evaluator 只填 `idleEligible` 与 reason，不填 `idleChosen`、不写状态。
+
 **口径（必须逐条写进实现/测试）：**
 
 1. **需求口径**：Social 给的是逐需求行（商品/营养组）的下一 tick 实物数量；economy 先按需求行算物理覆盖，不把不同商品直接相加成一个“钱数”。`requiredQuantityMilli==0` 的需求行按 1000 覆盖处理；负数拒绝。若 Social 表达可替代的营养组，必须由 Social 给出组键/映射；economy 不自行发明营养换算或替代关系。
@@ -478,7 +502,7 @@ enum SurvivalOutlookReason {
 
 ### 2.6 `EconomyData` / ChangeSet / Codec / Snapshot / 读口 / 命令 / Seed
 
-在 D2 第 32 个组件 `productionRosters` 之后新增**三个且仅三个**组件（与 D2 §0.4 一致；无第 36 个；`householdLaborChoices`/`allowIdle` 已撤回，不新增）：
+在 D2 第 32 个组件 `productionRosters` 之后新增**三个且仅三个**组件（与 D2 §0.4 一致）：**D3 只占 33–35；D4 后续新增 36/37；36 不得让给已撤回的 `householdLaborChoices`/`allowIdle`，但也不是永久禁用**：“无第 36 个”只描述 D2/D3 的写面，不是全库绝对禁令。
 
 | 组件号 | 名称 | 类型 | 说明 |
 |---|---|---|---|
@@ -588,9 +612,37 @@ DebtTerms.wageArrearsDefault() = new DebtTerms(
 - 工资债单位 = `DebtUnit.Money(currency)`；不得用 `DebtUnit.Commodity` 记货币工资欠款。
 - 不得套 `DebtTerms.legacyDefault()`（20‰）；若实现拿到不支持/不一致的 terms ⇒ `wage-debt-terms-unsupported`，fail-closed。
 - 同日新债的排除机制见 §6.5；`capitalizeArrears` 不得再对 W3 的工资债做一次资本化。
-- **区分工资欠款与普通贷款（U23 用户已定）**：零息只适用于“由未支付工资形成的欠薪债务”；普通借贷仍按各自 `DebtTerms`。工资债必须有可识别来源（专用 `TransferReason.WAGE_PAYMENT` / 专用 `DebtTerms.wageArrearsDefault()` / 工资结算单）；不得把普通贷款一并改零息，也不得让旧工资欠款继续按 legacy 20‰ 生息。
-- **旧工资欠款也不再生息**：新链产生的工资债一律 `wageArrearsDefault()`；旧路径遗留的工资欠款在 W3 接管时必须迁到/按 0‰ 处理，不得因“历史合同”继续 20‰。
+- **区分工资欠款与普通贷款（U23 用户已定 + R-11）**：零息只适用于 `DebtSource.WAGE_ARREARS`；工资债必须同时有 `WAGE_ARREARS` 来源与 `wageArrearsDefault()`，普通借贷保留各自 `DebtTerms` 并写 `ORDINARY_LOAN`。仅凭 `TransferReason.WAGE_PAYMENT` 或 terms 不能替代来源字段；不得把普通贷款一并改零息。
+- **旧工资欠款也不再生息**：新链产生的工资债一律 `WAGE_ARREARS + wageArrearsDefault()`；同一版本内 `capitalizeArrears` 遇到 `Arrear.Kind.WAGE` 即写 `WAGE_ARREARS + 0‰`。无来源旧债不猜测（Alpha 重建），`LEGACY_UNKNOWN` 不冒充工资债。
 - **不得用 legacy 20‰ 冒充“工资债默认”**：`DebtTerms.legacyDefault()` 只服务普通贷款；工资债套用它 ⇒ `wage-debt-terms-unsupported`。
+
+#### 2.9.1 债务来源 `DebtSource`（R-11，当前有效）
+
+> **现状**：`DebtContract` 当前只有 `(debtor, creditor, unit, terms, principal, openedDay, lastInterestDay, dueCycle, status)`，没有“工资欠款 vs 普通贷款”的可持久来源；旧 `capitalizeArrears` 对所有 `Arrear.Kind` 都取 `DebtTerms.legacyDefault()`（20‰）。仅靠 terms 不能可靠识别工资债（普通贷款也可能是 0‰），因此增加来源字段。
+
+```java
+// simos-economy-api/.../api/debt/DebtSource.java
+enum DebtSource {
+  WAGE_ARREARS,   // 未付工资形成；利率必须 0‰
+  RENT_ARREARS,   // 生产结算的欠租；保留既有条款，不是工资
+  ORDINARY_LOAN,  // 普通借贷；保留各自原 terms
+  LEGACY_UNKNOWN  // 仅历史/诊断；不得据此冒充工资债或自动改 0‰
+}
+
+// DebtContract 新增可持久组件（位置在 terms 后；所有 withX/构造点逐值保留）
+record DebtContract(..., DebtTerms terms, DebtSource source, long principal, ...) {}
+```
+
+- **持久面**：`source` 进 `debtContracts` 表值、`EconomyChangeSet` 的债务表 diff、`EconomyCodec`、snapshot 与往返守卫；`apply(changeSet, base)` 必须逐字段重建 source。旧档按 Alpha **重建**，不写迁移/键归一；读不到 source 的新版本档 fail-closed `debt-source-missing`，**不猜测**。
+- **身份与合并**：`DebtContractId.idOf(debtor, creditor, unit, terms)` 的既有四元组不变；`source` 是合同值字段但不是 id 新段。`DebtContractBook.upsert` 增加 source 入参：同 id 已有合同且 source 不同 ⇒ 具名 `debt-source-mismatch` fail-closed，不得把工资债和普通贷款静默并成一条。
+- **写入映射（当前版本统一打 source）**：
+  - W3 未付工资成债 ⇒ `DebtSource.WAGE_ARREARS` + `DebtTerms.wageArrearsDefault()`（0‰）；
+  - `capitalizeArrears` 的 `ProductionLedger.Arrear.Kind.WAGE` ⇒ `WAGE_ARREARS` + `wageArrearsDefault()`（0‰），**旧工资路径在本版本内即停止 20‰**；
+  - `Arrear.Kind.RENT` ⇒ `RENT_ARREARS` + 既有 `legacyDefault()`（20‰）——不是工资，不误改；
+  - `UnitBorrowHandler`/市场延期支付/铸币等普通借贷 ⇒ `ORDINARY_LOAN` + 各自原 terms，**不因 U23 改利率**；
+  - `LEGACY_UNKNOWN` 只可出现在历史/诊断读面；当前写路径不得新写；不得自动套 `wageArrearsDefault()`，也不得把未知来源当普通贷款去覆盖原 terms。
+- **`wageArrearsDefault()`** 仍是唯一工资债工厂（0‰），但**必须同时有 `WAGE_ARREARS` 来源**才能证明它是工资债；只有 terms 匹配不足以判定。
+- **旧工资欠款迁移口径**：Alpha 不兼容旧档，重建世界；同一版本内旧 `FIXED_MONEY_WAGE` 路径若仍进入 `capitalizeArrears`，其 `Arrear.Kind.WAGE` 已按上一条走 0‰。没有来源的旧债务不猜测、不冒充工资债；用户若要求保留旧档再另立迁移 spec。
 
 ### 2.10 `economy.SetProductionWageDefault` / `economy.Seed.wageDefaults`
 
@@ -834,7 +886,7 @@ MONEY_WAGE 角色的自动候选必须同时满足：
 
 **能做的**：
 
-- W2a 负责持久化 33 `productionWageDefaults` / 34 `productionWagePostings` 与 quote/default 读口；W2b 负责持久化 35 `wageCarryRemainders`；`householdLaborChoices`/`allowIdle` 已撤回，无第 36 组件；
+- W2a 负责持久化 33 `productionWageDefaults` / 34 `productionWagePostings` 与 quote/default 读口；W2b 负责持久化 35 `wageCarryRemainders`；D4 后续新增 36 `assetOccupancies` / 37 `inventoryReservations`；`householdLaborChoices`/`allowIdle` 已撤回，36 不得让给它们；D2/D3 不新增 36 不等于全库禁止 36；
 - 读取/校验 quote，执行 U20 调价（只写下一 tick）；
 - 角色级 offer + `IdleOption` 独立控制候选 + 去除非正收益过滤；
 - 按家户预算、角色目标、unit cap 写回 allocations；
@@ -953,14 +1005,15 @@ carryAfter = num % 1000
 
 - **付款人 = organizer household**（D2 唯一 organizer）；不得从 `ProductionEnterprise` 另猜，不得由 cohort 虚拟收款。
 - 同一 organizer 跨 unit/role/worker 的义务按 `(unit, role, household)` 规范 id 升序处理。
-- **B4 首期限定**：W3 首期只允许**同一 payer × 同一 settlement location（`ProductionLocation`）** 的工资义务共享**库存**预算；同一 organizer 在多个不同 settlement location 的 unit 各自另立库存预算，**不得跨格拿别处库存抵付**，跨格场景具名 `wage-payer-location-unsupported`（不静默合并、不静默放弃）。
-- **货币腿**：同一户仍是一个户级钱包（`AccountSession` 户级账户）；共享与扣减必须按 location 逐笔记录，**不得用同一笔钱重复付**；同一 `(payer, location)` 内共享，不同 location 之间不得重复使用同一余额读数。
+- **B4 首期前置（当前有效，R-05）**：W3 在任何支付、库存查询或债务写入**之前**，先按 **payer** 聚合本次 tick 的全部工资义务；若同一 payer 出现 **>1 个不同 settlement location**，整组具名业务拒绝 `wage-payer-location-unsupported`，**不做任何部分支付、不调用 lookup、不写新债、不改 carry**。不得按 location 分别继续，也不得把一个地点当作“主地点”吞掉其他义务。
+- **唯一地点才可结算**：通过上述预检的 payer 只有一个 settlement location；该组调用一次 §6.9 lookup，作为该组共享库存预算。不得跨格合并库存，也不得用 A 格库存抵 B 格工资。
+- **货币腿（户级账户）**：货币余额/冻结的权威是 `AccountSession` 的**户级账户**，不是 `HouseholdInventory` 直接结构；W3 只读 `AccountSession` 快照并按稳定义务序逐笔扣减，**不得用同一笔钱重复付**。同一 payer 多地点情形已在预检整组拒绝，故不会出现两个地点各读一份户级余额再支付。
 - 义务表先算全部 due，再按稳定序逐条支付；后续义务看到的是前面已扣减后的共享预算。
 - 同一 worker 的多个义务可以合并成一条转移（若实现方便），但 readout 必须按 `(unit, role, household)` 拆分；不得合并到无法归因。
 
 ### 6.3 支付顺序（U21）
 
-对每个付款人的共享预算，逐义务按以下顺序：
+对通过 payer 级地点预检的唯一 `(payer, settlementLocation)` 组，逐义务按以下顺序：
 
 1. **当地对应货币**：
    - 可用量 = 该币种 `余额 − 冻结`（不含其他币种；不发钞、不透支、发行人也不因工资缺口铸币）。
@@ -1024,8 +1077,8 @@ paidValue = floor(qPay × unitValue / 1000)         // 毫货币；≤ remaining
 
 ### 6.5 工资债条款与同日排除
 
-- 新建工资债：`DebtUnit.Money(currency)` + `DebtTerms.wageArrearsDefault()`（**0‰，U23 用户已定**）；`openedDay=day`；`dueCycle=当前周期+1`（工程默认 O8）。
-- 多 unit/role/worker 同币种工资债合并：`DebtContractBook.upsert` 同 `(debtor, creditor, DebtUnit.Money(currency), terms)` 会累加本金。
+- 新建工资债：`DebtUnit.Money(currency)` + `DebtTerms.wageArrearsDefault()`（**0‰，U23 用户已定**）+ `DebtSource.WAGE_ARREARS`（R-11）；`openedDay=day`；`dueCycle=当前周期+1`（工程默认 O8）。
+- 多 unit/role/worker 同币种工资债合并：`DebtContractBook.upsert` 同 `(debtor, creditor, DebtUnit.Money(currency), terms)` 且 **source 相同**才累加本金；source 不同 ⇒ `debt-source-mismatch` fail-closed。
 - **同日不双付**（E12）：
   - W3 在当日返回 `WageSettlementResult.newWageDebtIds`（transient day-local `Set<DebtContractId>`）。
   - 同日 `repayDebts` 在构造 `owed` 列表时排除这些 id；若本会选中则记 INFO `wage-debt-same-day-repay-blocked`（worker、creditor、debt id、amount）。
@@ -1033,15 +1086,15 @@ paidValue = floor(qPay × unitValue / 1000)         // 毫货币；≤ remaining
   - `capitalizeArrears` 不得对 W3 工资债再资本化（W3 直接 upsert，不把 wage arrear 塞进旧 `ProductionLedger.Arrear`）。
 - 工资债本金 = 未付差额；抵物已付部分已从 dueRemaining 扣掉，不得再次减本金。`DebtContractBook.upsert` 要求本金增量 >0，`arrears=0` 时不得调用。
 - `wage-debt-terms-unsupported`：terms/币种/单位不符合 `wageArrearsDefault()` 时 fail-closed。
-- **区分工资欠款与普通贷款（U23 用户已定）**：0‰ 只适用于“由未支付工资形成的欠薪债务”；普通借贷继续按各自 `DebtTerms`，不得被一并改零息。工资债必须有可识别来源（`WAGE_PAYMENT` / `wageArrearsDefault()` / 工资结算单）。
-- **旧工资欠款也不再生息**：W3 接管时旧路径遗留的工资欠款必须按 0‰ 处理或迁到 `wageArrearsDefault()`，**不得因“历史合同”继续 legacy 20‰**。
+- **区分工资欠款与普通贷款（U23 用户已定 + R-11）**：0‰ 只适用于 `DebtSource.WAGE_ARREARS`；普通借贷继续按各自 `DebtTerms` 并写 `ORDINARY_LOAN`，不得被一并改零息。工资债必须有可持久来源字段（§2.9.1），仅 `WAGE_PAYMENT`/terms 不足以判定。
+- **旧工资欠款也不再生息**：同一版本内 `capitalizeArrears` 的 `Arrear.Kind.WAGE` 必须写 `WAGE_ARREARS + wageArrearsDefault()`（0‰）；`RENT` 保留 20‰ 旧条款；无来源旧债不猜测（Alpha 重建）。
 - **库存读口不可用**：库存腿跳过后剩余全部成债（`wage-inventory-scope-unavailable`），债务本金 = 未付差额；不得把不可用库存记成已付。
 
 ### 6.6 转移、原因与账户写口
 
 - 新增 `TransferReason.WAGE_PAYMENT("wage_payment")`；不得复用 `RELATION_PAYMENT` 冒充工资（读账要能分开工资 vs 分成/地租）。
 - 一条 `Transfer` 可同时带货币腿与商品腿；`from=organizer actor`、`to=worker household actor`、`location=unit 的 ProductionLocation`；`from != to`（organizer 自雇已在匹配阶段排除）。
-- **B4**：同一 organizer 不同 settlement location 的工资义务在 W3 首期**不得合并为同一库存预算**；跨格具名 `wage-payer-location-unsupported`。货币腿仍是同一户钱包，但按 location 逐笔记录，不得用同一笔钱重复付。
+- **B4（当前有效，R-05）**：W3 首期在支付/查询前按 payer 聚合义务；同一 payer 有 >1 个 settlement location ⇒ 整组 `wage-payer-location-unsupported`，零支付/零 lookup/零新债/零 carry 变化，不做部分支付。货币腿仍是 `AccountSession` 户级钱包，但绝不允许在多个 location 组各读一份同一余额。
 - 所有账户落账只经：
   - `AccountSession.commit(Collection<? extends OrderedAccountIntent>)`（唯一批提交），或
   - `EconomySettlement.applyTransfer(...)`（唯一转移写口）。
@@ -1096,9 +1149,11 @@ interface WagePayableInventoryLookup {
 - **结算地点类型使用已有的 `io.mosire.simos.production.contract.ProductionLocation`**（D1/A 批已存在；`ProductionProcess.location()` 的权威地点类型）。不新增临时地点值类型或 economy-api 的重复值类型；D3 可依赖 production 的只读 contract 包（模块边界表允许）。
 - 输入 **payer + settlement location**；返回该付款人在该结算地点**最终可支付**的逐商品数量（毫商品单位）。
 - 返回量必须**已经扣完**：冻结、生产占用、再生产权益/已投入资料（由 D4/权益与占用所有者唯一权威计算）。**W3 不再做第二次减法**，也**不得回退**到“账户余额即全部可支付”。
-- `Optional.empty()` = D4 未接 / 读口不可用 / 该地点没有权威事实。W3 行为：**货币腿仍可按 U21 先付**；**库存腿全部跳过**，记 `wage-inventory-scope-unavailable`；剩余 due 成债。
-- 同一 `(payer, settlementLocation)` 只调用一次，作为该组义务的**共享库存预算快照**；同一 organizer 不同 location 分别调用，**不得跨格复用**（B4）。
-- 权威归属：读口由 **D4/权益与占用所有者**提供；D3/economy 只消费，不实现、不写回。D4 未接时 D3 只写接口契约，不冒充 D4 已实现。
+- **`Optional.empty()` 条件（写死，R-05）**：仅当 ① D4 lookup 尚未接线/明确 disabled；② payer 无法解析为已登记家户账户（`AccountSession` 无该户）；③ 实现明确不可用。**不得**因商品余额为 0、没有 ACTIVE 预留、没有该商品或该 place 暂无商品而返回 empty——这些是可用读口的空 `Map`。location 为 `null`/`UNSPECIFIED`/非法格式时不进入 lookup，按 `asset-location-missing` fail-closed。
+- **`Optional.empty()` 的 W3 行为**：**货币腿仍可按 U21 先付**；**库存腿全部跳过**，记 `wage-inventory-scope-unavailable`；剩余 due 成债。不得回退账户原始余额。
+- **payer 级地点预检先于 lookup**：同一 `(payer, settlementLocation)` 只调用一次，作为该组义务的**共享库存预算快照**；同一 payer 有不同 location 的工资义务 ⇒ §6.2 已整组 `wage-payer-location-unsupported`，**不逐 location 调用、不跨格复用、不做部分支付**（B4）。
+- **账户权威**：lookup 读取的 payer 商品余额/冻结必须来自 **`AccountSession` 的户级账户快照**（`AccountSession` 是货币/商品余额与冻结的权威读面）；`HouseholdInventory` 只是 actor 侧存储表示，D3 不得直接按地点拆一份 `HouseholdInventory` 当第二本库存。
+- **权威归属（R-16）**：读口由 **D4-I 唯一新增/实现**；W3 只消费 D4-I 已编译的读口，**不新增、不实现 `WagePayableInventoryLookup.java`**，不写回、不复制第二套减法。D4 未接时 D3 只写接口契约，不冒充 D4 已实现。
 - 预计/排队与执行使用同一读口（D4 规则）；W1/W2b 不自行扫份额/库存，也不另写第二套可支付量公式。
 
 ## §7 tick 时序
@@ -1221,7 +1276,7 @@ survival-market-facts-missing
 - `wage-target-missing`：缺目标（既无候选 default 也无实例 posting 给 `targetLaborMilliPerDay`）；不得静默 0 当“没有岗位”。
 - `wage-barter-discount-zero:<commodity>`：`BarterDiscountPolicy` 折后单位价值 ≤ 0；该商品不可用于本次抵付，剩余债务保留。
 - `wage-inventory-scope-unavailable`：D4/`WagePayableInventoryLookup` 未接或不可用；货币仍可先付，库存腿全部跳过，剩余成债；**不得回退“账户余额即全部可支付”**。
-- `wage-payer-location-unsupported`：同一 organizer 跨 settlement location 的库存预算合并/跨格抵付；W3 首期具名拒绝。
+- `wage-payer-location-unsupported`：同一 payer 本次 tick 的工资义务出现 >1 个 settlement location；W3 在 lookup/支付前整组具名拒绝，零部分支付、零新债、零 carry 变化；不得跨格合并或跨格抵付。
 - `no-feasible-livelihood` / `subsistence-shortfall`：`SurvivalOutlook` 的生存资格结果（无任何可行方式 / 有可行方式但整户合计仍不足生存）；evaluator 只置 `idleEligible=true`，**不自动**置 `idleChosen`；`idleChosen` 由 §4.4 的 `SURVIVAL_IDLE_POLICY` 决定（默认策略对可自由分配劳动置 `IDLE_CHOSEN`）；不抛空集合最大值。
 
 ### 8.2 日志
@@ -1236,7 +1291,7 @@ survival-market-facts-missing
 
 1. **D3-I1 报价锁定**：本 tick 匹配/结算只读本 tick quote 快照；U20/命令改价只影响后续 tick；已发生 due 不追溯。
 2. **D3-I2 三数守恒**：逐义务 `due = paidMoney + Σ paidBarterValue + arrears`；不得超付、不得重复减本金。
-3. **D3-I3 共享预算（B4）**：同一 `(payer, ProductionLocation settlementLocation)` 的工资义务只有一份**库存**预算；同一 organizer 跨 location 各自另立，**不得跨格拿库存**；货币腿是同一户钱包但按 location 逐笔记录，不得用同一笔钱重复付。
+3. **D3-I3 共享预算（B4/R-05）**：W3 在任何支付/lookup 前先按 payer 聚合；同一 payer 有 >1 个 `production.contract.ProductionLocation` 的工资义务 ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付。通过预检的 payer 只有一个地点，其该组义务只有一份**库存**预算；货币腿是 `AccountSession` 同一户钱包，逐笔扣减，不得双付。
 4. **D3-I4 库存不双付/冻结不越（B3）**：`WagePayableInventoryLookup` 的形参地点类型必须是已有 `production.contract.ProductionLocation`；库存可用量**只来自**该读口的已扣完结果；W3 不再二次减冻结/占用/权益；D4 未接 ⇒ 库存腿跳过并记 `wage-inventory-scope-unavailable`、余款成债；不得回退“账户余额即全部可支付”；不得用再生产权益抵工资。
 5. **D3-I5 缺 quote ≠ 0**：`Optional.empty()` 与显式 0 分开；缺 quote 不得生成 0 工资/0 债务。
 6. **D3-I6 欠薪不影响择业**：W1/W2b 不读历史欠薪/兑付率/黑名单/信用折扣作为候选输入。
@@ -1257,8 +1312,8 @@ survival-market-facts-missing
 21. **D3-I21 idle 独立候选（A2）**：`IdleOption` 不经过 `queueable()`/`maxAbsorbable>0`；`idleEligible=true` 且策略=`PREFER_IDLE_WHEN_SUBSISTENCE_UNMET`（默认）时可自由分配劳动记 `IDLE_CHOSEN`；策略=`BEST_EFFORT_WORK` 时正收益工作先选，只有零/负收益且无可计价补偿的工作可被 idle 胜过；idle 胜出不取消 GOV_SERVICE/既有不排队配额。`IDLE_FOREGONE_POSITIVE` 是默认策略下被放弃正收益候选的读数，不是静默丢弃。
 22. **D3-I22 候选 default 闭环（A3）**：新进入候选读 `ProductionWageDefault`；选中后同一合法 Revision 建实例 + posting；未选候选零实例/零 posting；default 不是第二份执行报价；缺 default 且无 posting ⇒ `wage-quote-missing`，缺目标 ⇒ `wage-target-missing`。
 23. **D3-I23 折价可配置（U23-c）**：`BarterDiscountPolicy` 单一来源、参考价类型**仅 `LOCAL_BID`/`LOCAL_ASK`** + 系数可 <1；economy 唯一 helper 先 `hasPrice` 再选 `bidPriceOf`/`askPriceOf`；折后 0/缺价/缺币种 ⇒ 该商品 skip 且保留剩余债务；排序仍按可用数量降序，不按价值。
-24. **D3-I24 工资债零息（U23-a）**：工资债 0‰，区分工资欠款与普通贷款；旧工资欠款不再生息；不得套 legacy 20‰。
-25. **D3-I25 同 payer×location 预算（B4）**：同一 organizer 跨 location 的工资义务不得共享库存预算；跨格具名 `wage-payer-location-unsupported`；地点类型统一 `production.contract.ProductionLocation`。
+24. **D3-I24 工资债零息与来源（U23-a/R-11）**：工资债同时带 `DebtSource.WAGE_ARREARS` + `wageArrearsDefault()` 0‰；普通贷款带 `ORDINARY_LOAN` 并保原 terms；`capitalizeArrears(WAGE)` 写 `WAGE_ARREARS` 0‰；旧工资欠款不再生息；不得套 legacy 20‰；source 进 codec/ChangeSet 往返。
+25. **D3-I25 payer 级地点闭合（B4/R-05）**：W3 在任何支付/lookup/新债前先按 payer 聚合；同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，零部分支付、零 lookup；库存余额的账户权威是 `AccountSession` 户级账户，地点类型统一 `production.contract.ProductionLocation`；同一账户、两地、一份库存不得双付。
 26. **D3-I26 生存预测只读（U23-b）**：`SurvivalOutlookEvaluator.evaluate` 是纯只读函数，输入/输出/组合确定性/空集合具名原因/缺价不可达不折算/预测不抵实收均按 §2.5.1；不写状态；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态。
 
 ### 8.4 正向验收判据
@@ -1293,7 +1348,7 @@ survival-market-facts-missing
 | P26 | 目标/改价不追溯 | 改 target/quote 后，已完成 tick 的 due/readout 不变；下一 tick 生效 |
 | P27 | 确定性 | 同输入同输出；稳定序；无随机/时钟/UUID |
 | P28 | 日志 | INFO/DEBUG/TRACE 各至少一条可断言事件；拒绝有具名 reason |
-| P29 | **U23-a 工资债零息** | 未付工资成债 ⇒ `wageArrearsDefault()` 0‰；同额普通贷款仍按原 terms；旧工资欠款迁 0‰ 后本金不再增长 |
+| P29 | **U23-a 工资债零息 + 来源分离（R-11）** | 未付工资成债 ⇒ `DebtSource.WAGE_ARREARS` + `wageArrearsDefault()` 0‰；同额普通贷款 ⇒ `ORDINARY_LOAN` 保持原 terms（20‰ 例仍 102）；`capitalizeArrears(WAGE)` 写 `WAGE_ARREARS` 0‰，旧工资债本金不再增长；`LEGACY_UNKNOWN` 不冒充工资债；同四元组不同 source ⇒ `debt-source-mismatch`；source 经 codec/往返逐值保留 |
 | P30 | **U23-b 默认生存不足可裁决不从业** | 每 tick 所需 10、整户所有可行组合合计最好 1 ⇒ `subsistence-shortfall` + `idleEligible=true`；默认 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET` ⇒ `idleChosen=true`/`IDLE_CHOSEN`，正收益候选只进 `IDLE_FOREGONE_POSITIVE` 读数、不授予劳动；仍消耗生活物资，无工资/经验/免费食物；不限流民/无产者 |
 | P30b | **U23-b 最佳努力策略不强制闲置** | 同上输入，策略=`BEST_EFFORT_WORK` ⇒ `idleEligible=true`，正收益所得 1 可被选中 ⇒ `idleChosen=false` 且保留缺口读数；若没有正收益工作被选中，零/负收益工作才可被 idle 击败并记 `IDLE_CHOSEN` |
 | P31 | **U23-b 组合可达时不强制闲置** | 整户可行组合合计可达生存 ⇒ `idleEligible=false`；正收益工作先做，剩余劳动按 `idleChosen`/`UNALLOCATED_LABOR` 显式落 readout，不得断言一律 `IDLE_CHOSEN` |
@@ -1304,9 +1359,16 @@ survival-market-facts-missing
 | P36 | **A2 idle 独立候选与策略** | `IdleOption` 不经 `queueable()/maxAbsorbable`；`idleEligible=true` 时，默认策略 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET` ⇒ 可自由分配剩余劳动 `IDLE_CHOSEN`，正收益候选进 `IDLE_FOREGONE_POSITIVE`；`BEST_EFFORT_WORK` 策略下正收益先工作 → `idleChosen=false`，零/负收益无补偿且无正收益工作被选中时才 `IDLE_CHOSEN`；GOV_SERVICE 保留 |
 | P37 | **B2 W2b 整 tick 预检** | W2b 真实 `settleOneDayInto` 遇 MONEY_WAGE 且 W3 未启用 ⇒ 整 tick `wage-settlement-not-implemented`；allocations/进度/经验/实际劳动零写入；dry-run 可读匹配 |
 | P38 | **B3 可支付库存读口** | `WagePayableInventoryLookup.payableInventory(ActorRef, production.contract.ProductionLocation)`；D4 lookup 不可用 ⇒ 货币先付、库存腿跳过 + `wage-inventory-scope-unavailable`、余款成债；可用 ⇒ 每份只扣一次，权益/占用为零可付 |
-| P39 | **B4 同 payer×location** | 同 organizer 两 location 不共享库存腿；跨格具名 `wage-payer-location-unsupported`，不静默合并 |
+| P39 | **B4 payer 级地点预检（R-05）** | 同一 payer 两 location ⇒ 在 lookup/支付前整组 `wage-payer-location-unsupported`，零部分支付、零 lookup、零新债、零 carry 变化；同账户、两地、一份库存不得被双付；通过预检的单地点组只调用一次 lookup，共享预算 |
 | P40 | **A5 工资池收窄** | 预计/未到账份额不计入支付能力；已到账且经 lookup 确认的本人粮按 U21 参与抵物；他户份额/权益不得抵 |
 | P41 | **SurvivalOutlook 纯只读契约** | 缺 Social 下一 tick 需求 ⇒ ERROR `survival-need-missing`；组合不重复劳动/资源；空可行不判最大值；缺价/不可达不作 0 或 1:1；返回 `idleEligible` 与具名 reason，不写 `idleChosen`；调用前后状态零变化 |
+| P42 | **R-04 收入接入 coverage：0/10 与 1/10** | 需求 10、当前库存 0；预计货币收入 10、当地可达价 1、供给 ≥10 ⇒ `coverage=1000‰`、`idleEligible=false`；同例预计收入改成 1 ⇒ `coverage=100‰`、`subsistence-shortfall`、`idleEligible=true`；`provenance.fromMoney` 分别=10/1 |
+| P43 | **R-04 组合可达与同预算不重复** | 需求 10；两份替代各得 5，劳动之和 ≤ 预算且资源 claim 不相交 ⇒ `coverage=1000‰`、`idleEligible=false`；若两份都占用同一 `ResourceClaimKey` 或同一小时预算 ⇒ 不得相加，最好仍 5 ⇒ `idleEligible=true` |
+| P44 | **R-04 预计实物/产品份额接入与来源守恒** | 需求 10；当前库存 6、预计实物 4、货币 0 ⇒ `coverage=1000‰`、`idleEligible=false`；`provenance` 的 `fromInventory=6`、`fromExpectedInKind=4`、其余 0；预计产品份额同额路径同样可覆盖且 `fromExpectedProductShare` 单列 |
+| P45 | **R-04 已入库去重** | 收获/工资已实际入账后，调用方必须把同量从 `expected*` 移除；夹具：当前库存 10、预计池空 ⇒ `fromInventory=10`、`fromExpected*=0`；若实现把库存再灌入预计池/重复相加，P44/P45 的来源守恒红 |
+| P46 | **R-04 缺价/不可达/0 价** | 需求 10、当前库存 4、预计货币 10，但 `localFacts.byCommodity[c]` 缺行/`reachable=false`/`purchasePriceMilli=0`/`reachableSupplyMilli=0` ⇒ `coverage=400‰`、`idleEligible=true`，不得按 0 元或 1:1 记满 |
+| P47 | **R-04 同商品双拼写** | 同一替代同一商品同时出现在 `expectedInKindMilli` 与 `expectedProductShareMilli` ⇒ ERROR `survival-income-double-count`，不得相加 |
+| P48 | **量纲口径（R-07）** | `1 小时 = 1000 毫小时`；`laborMilli=1000` 即 1 小时；`standardLaborMilliPerCycle=1000` 即 1 小时/周期；`quote=2000` 表示 2000 毫货币/小时 = 2 货币/小时；工资 = `quote × laborMilli / 1000`（laborMilli 为毫小时）。任一按“千分劳动”解释 ⇒ 红 |
 
 ### 8.5 负向/变异判据（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 一致）
 
@@ -1334,6 +1396,10 @@ survival-market-facts-missing
 | `WagePayableInventoryLookup` 用悬空/另造的地点类型而非 `production.contract.ProductionLocation` | P38/文档验收 |
 | 同日新工资债被还款轮再付 | P21 |
 | 工资债套 20‰ legacy terms | P22 |
+| 工资债只改 terms、不写 `DebtSource.WAGE_ARREARS`；或普通贷款因 U23 被改 0‰ | P29 |
+| 把 `LEGACY_UNKNOWN` 来源当工资债自动 0‰ | P29 |
+| 同一合同 id 不同 source 静默合并 | P29 |
+| `DebtSource` 漏进 codec/ChangeSet 往返 | P29 |
 | 复用 `RELATION_PAYMENT` 冒充工资 | P23 |
 | 直接改 `householdGoods`/`householdMoney` | P24 |
 | 用欠薪历史/兑付率影响择业 | P25 |
@@ -1359,9 +1425,16 @@ survival-market-facts-missing
 | W3 二次扣减冻结/占用/权益 | P38 |
 | D4 不可用时回退“账户余额即全部可支付” | P38 |
 | 同一 organizer 跨 location 共享库存预算 | P39 |
+| 同一 payer 多地点时逐 location 继续支付/查询（部分支付） | P39 |
+| 用 `HouseholdInventory` 或账户原始余额按地点另造第二本库存 | P38/P39 |
+| 把“余额为 0/无预留/无该商品”当 `Optional.empty()` 而不是空 `Map` | P38 |
 | 把他户份额或再生产权益计入工资池 | P40 |
 | 一律禁止已到账本人产出抵物（A5 过收窄） | P40 |
-| SurvivalOutlook 重复计库存/实物收入、重复用劳动/资源预算 | P41/P30/P31 |
+| SurvivalOutlook 重复计库存/实物收入、重复用劳动/资源预算 | P41/P42–P47/P30/P31 |
+| 把 `expectedMoneyIncomeMilli` 只放进输出却不接入购买预算 | P42 |
+| 把预计产品份额先按价格折成货币，或把同一商品同时计入 in-kind/product-share | P44/P47 |
+| 缺价/不可达/0 价按 0 或 1:1 覆盖 | P46 |
+| 已入库数量又出现在 `expected*` 被再加一次 | P44/P45 |
 | 空可行集合求最大值、把缺 Social 需求当无需求、缺价/不可达当 0 或 1:1 | P41 |
 | 生存预测写入状态或由 evaluator 暗设 `idleChosen` | P41/P30 |
 
@@ -1378,9 +1451,9 @@ survival-market-facts-missing
 9. **A1 周期窗口**：`cycle=100`、日雇 1 小时（1000 mh/日）、单价 2 货币/小时（`quote=2000`）⇒ 候选周期劳动 100,000 mh、候选工资 `200,000 毫货币=200 货币`；实际每 tick 劳动 1000 mh ⇒ `due=2000×1000/1000=2000 毫货币=2 货币`。候选只扣 2 ⇒ 红。
 10. **U23-b 生存资格与选择**：生存所需 10；只有一份可行工作、每 tick 最好所得 1 ⇒ `SurvivalOutlook` 返回 `subsistence-shortfall` + `idleEligible=true`。默认策略 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET` ⇒ 可自由分配劳动 `IDLE_CHOSEN`，正收益候选记 `IDLE_FOREGONE_POSITIVE`；`BEST_EFFORT_WORK` 策略 ⇒ 正收益所得 1 可被选中、`idleChosen=false` 并保留缺口读数。若另一份副业可兼做且合计 10 ⇒ 组合可达，`idleEligible=false`；若两份副业都只能吃同一份 1 小时预算、各报 1 ⇒ **不得**相加成 2（同一预算不得重复使用），且评估要返回具名原因/空集合处理，不得对空集合求最大值。
 11. **U23-c 折价**：`ref=10`、`discountPerMille=500` ⇒ `unitValue=5`；`due=100` ⇒ `qWanted=floor(100×1000/5)=20,000` 毫商品；系数 1000 时只需 10,000。`ref` 只能由 `LOCAL_BID→bidPriceOf` 或 `LOCAL_ASK→askPriceOf` 取得（先 `hasPrice`）；同额工资折价更低 ⇒ 需要更多实物；折后 0 ⇒ skip 留债。
-12. **U23-a 零息**：工资债本金 100、`wageArrearsDefault()` 0‰ ⇒ 下一周期仍 100；同额普通贷款按 20‰ ⇒ 102；旧工资欠款 100 被 W3 接管后仍 100，不再增长。把工资债按 20‰ 记 ⇒ 红；把普通贷款也改 0‰ ⇒ 红。
+12. **U23-a 零息与来源（R-11）**：工资债本金 100、source=`WAGE_ARREARS`、`wageArrearsDefault()` 0‰ ⇒ 下一周期仍 100；同额普通贷款 source=`ORDINARY_LOAN`、20‰ ⇒ 102；`capitalizeArrears(WAGE)` 产生 `WAGE_ARREARS`+0‰，`capitalizeArrears(RENT)` 产生 `RENT_ARREARS`+旧 20‰；`LEGACY_UNKNOWN` 不被自动改成 0‰。同 id/source 不同 ⇒ `debt-source-mismatch`；把工资债按 20‰ 记、把普通贷款也改 0‰、或漏 source 往返 ⇒ 红。
 13. **A3 候选 default**：未建实例时读到 `ProductionWageDefault(plan=farm, role=hired-hand, zone=z, wage=1000, target=5000)` ⇒ 候选可估价；选中后同一 Revision 建实例 + `ProductionWagePosting`；未选候选**无实例/无 posting**。缺 default 且无 posting ⇒ `wage-quote-missing`；缺 target ⇒ `wage-target-missing`。
-14. **B3/B4 库存与地点**：`due=10`、现金 4、`WagePayableInventoryLookup` 返回 empty ⇒ 付 4、库存腿跳过、记 `wage-inventory-scope-unavailable`、arrears=6；不得用账户余额 100 当可支付库存。同一 organizer 在 location A/B 各一 unit ⇒ 两份库存预算；跨格共享或跨格抵付 ⇒ `wage-payer-location-unsupported`，红。
+14. **B3/B4 库存与地点（R-05）**：`due=10`、现金 4、`WagePayableInventoryLookup` 返回 empty ⇒ 付 4、库存腿跳过、记 `wage-inventory-scope-unavailable`、arrears=6；不得用账户余额 100 当可支付库存。同一 payer 在 location A/B 各有一笔义务 ⇒ **支付/lookup 前整组** `wage-payer-location-unsupported`，A/B 都不发生支付/查询/新债/carry 变化；不得按地点各读一次户级余额。若只有 A 一个地点且账户一份库存，则 A 组只调用一次 lookup。
 
 ## §9 文件所有权 / W1–W5 / 未做
 
@@ -1397,7 +1470,7 @@ survival-market-facts-missing
 | **W2a（候选 default + posting/quote 读口）** | `simos-economy/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`；`codec/EconomyCodec.java`；新增 `model/ProductionWageDefault.java`、`WageDefaultKey.java`、`ProductionWagePosting.java`、`WagePostingKey.java`、`ProductionWageDefaultLookup.java`、`ProductionWageQuote.java`、`ProductionWageQuoteLookup.java`；`spi/EconomySetProductionWageDefaultHandler.java`、`EconomySetProductionWagePostingHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`EconomyReferenceValidation.java`；新增 `time/ProductionWageBook.java`（default/posting 读口） | **不实现**匹配/idle/U20（W2b）、支付/抵物/债（W3）；`householdLaborChoices`/`allowIdle` 已撤回，不新增对应状态/命令/seed；不写测试。W1 依赖本批的真实读口，C2 的永远 empty lookup **不得**被当作候选能力完成 |
 | **W1（工资前置估值）** | `simos-economy/.../time/ExpectedProfitBook.java`（`expectedWageCostMilli`/`wageProspect`/理由词）；W1 所需只读 helper | 只基于 W2a 的真实 default/posting 读口；不改 `LaborQueueBook` 排序/过滤；不实现支付/抵物/债；不写测试 |
 | **W2b（角色级匹配/idle/U20）** | `simos-economy/.../EconomyData.java` 补第 35 `wageCarryRemainders`、`EconomyDayView`/`EconomyBoundaryView`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；新增 `WageCarryKey.java`；`time/ProductionWageBook.java`（carry/U20）；新增 `time/SurvivalOutlook.java`/`SurvivalOutlookEvaluator.java` 及其只读入参值类型（§2.5.1）；`model/EconomyPolicyKey.java`（`SURVIVAL_IDLE_POLICY` 策略键）；`time/LaborQueueBook.java`、`ActivitySelector.java`（仅复用/必要可见性）、`LaborQueueSettlement.java`（角色级 offer、`IdleOption`、生存资格接入）；`EconomyReferenceValidation.java` | **B2**：W3 未启用时真实 `settleOneDayInto` 在任何抽料/写回/进度/经验/实际劳动之前整 tick `wage-settlement-not-implemented`；匹配只在只读/dry-run 验证；不实现 W3 支付；不跨区自动招募；不写产品份额分配；不改 app；不写测试；`SurvivalOutlook` 纯只读；`allowIdle`/`householdLaborChoices` 已撤回，不新增对应状态 |
-| **W3（支付/抵物/债）** | `simos-economy/.../time/EconomySettlement.java`（插工资结算、同日排除）、新增 `time/WageSettlement.java`/`WageSettlementReadout`、`ProductionSettlement.java` 的旧 wage 调用面（只删/替换名册路径）、`TransferReason.java`（新增 `WAGE_PAYMENT`）、`DebtTerms.java`（新增 `wageArrearsDefault()`）、`DebtContractBook` 如仅需读口不改语义；新增/消费 `time/WagePayableInventoryLookup.java`（§6.9，地点形参固定为 `io.mosire.simos.production.contract.ProductionLocation`；D4/权益所有者实现，D3 只读依赖 production contract） | 不修 R2/资产占用（D4）；**不二次扣减**库存（B3）；D4 不可用只记 `wage-inventory-scope-unavailable`；同 payer×location 共享、跨格拒（B4）；不新增/复制地点值类型；不碰 POM/XML；不写测试；不直接改账户 Map |
+| **W3（支付/抵物/债）** | `simos-economy/.../time/EconomySettlement.java`（插工资结算、同日排除、`capitalizeArrears` 的 WAGE/RENT source 映射）、新增 `time/WageSettlement.java`/`WageSettlementReadout`、`ProductionSettlement.java` 的旧 wage 调用面（只删/替换名册路径）、`TransferReason.java`（新增 `WAGE_PAYMENT`）、`DebtTerms.java`（新增 `wageArrearsDefault()`）、`simos-economy-api/.../api/debt/DebtSource.java`（新增）、`model/DebtContract.java`（加 source）、`time/DebtContractBook.java`（source 入参与不合并）、`EconomyCodec.java`/债务表往返，以及普通贷款写入点（`UnitBorrowHandler`/`MarketSettlement`/`MintSettlement` 等，统一写 `ORDINARY_LOAN`） | **只消费 D4-I 已编译的 `WagePayableInventoryLookup`**；不新增/不实现 `WagePayableInventoryLookup.java`，不复制第二套减法；不修 R2/资产占用（D4）；**不二次扣减**库存（B3）；D4 不可用只记 `wage-inventory-scope-unavailable`；payer 级地点预检先于 lookup，跨地点整组拒（B4/R-05）；不新增/复制地点值类型；不碰 POM/XML；不写测试；不直接改账户 Map |
 | **W4（tick/Social）** | `simos-app/.../PopulationEconomyTimeParticipant.java`（tick 时序/Social 回写接线）、`EconomyDayStepper.java`/`EconomySettlement.step` 的调用顺序、只读 app 读口 | 不在 app 实现生存判定/报价/匹配/支付/折价公式；不复制 economy 逻辑；不写测试 |
 | **W5（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`、`simos-production/src/test/**`、门禁守卫清单 | 按 §8 判据与 §8.6 数值例写测；含负向/变异；不由实现 owner 写/跑测试 |
 
@@ -1405,7 +1478,7 @@ survival-market-facts-missing
 
 - 同一文件同一时刻一个 owner；W2a/W1/W2b/W3/W4 不得并行改同一文件。
 - 本整合轮已把 D3 对 D2 的最小修正并入 **D2 §0.4**；W 实现 owner 不得再反向改写 D2 规则，D3 不再保留第二套规则正文。`allowIdle`/`householdLaborChoices` 已撤回，不恢复其状态/命令/seed/判据；第 35 组件只能是 `wageCarryRemainders`。
-- 不改 `pom.xml`/XML/enforcer；不新增模块依赖（`ProductionRoleId` 按 D2 放 `simos-economy-api`；`WagePayableInventoryLookup` 的地点只读使用既有 `simos-production` contract 的 `ProductionLocation`）。
+- 不改 `pom.xml`/XML/enforcer；不新增模块依赖（`ProductionRoleId` 按 D2 放 `simos-economy-api`；`WagePayableInventoryLookup` 的地点只读使用既有 `simos-production` contract 的 `ProductionLocation`）。**`WagePayableInventoryLookup.java` 的唯一新增/实现 owner = D4-I；W3 只消费其已编译读口，不新增/不实现该文件**；批次顺序 D4-I→D4-T→W3。
 - 不写/不改测试（W5 除外）；不跑 `test`/`verify`（W5/门禁 owner 除外）。
 - 不 `git add/commit/stash/checkout/merge/push`；不碰主树。
 - 不把“D3 设计已落盘”写成“工资链已实现”。
@@ -1422,7 +1495,7 @@ survival-market-facts-missing
 8. **多角色 unit cap 的角色 id 优先序是工程默认**：不声称公平；可另行设计。
 9. **`ProductionReceipt` 本次 tick participant 明细未落形**：最小修正已并入 **D2 §6.1**；C1/实现 owner 仍需落形与编译验证，D3 不把设计当编译通过。
 10. **测试证据为零**：§8 判据全部没有运行记录；W5 完成后才可写“通过”。
-11. **D4/可支付库存未实现**：§6.9 只是 D3 的读取契约；`WagePayableInventoryLookup` 由 D4/权益所有者实现，地点形参固定为已有的 `production.contract.ProductionLocation`，D4 正文未完成。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
+11. **D4/可支付库存未实现**：§6.9 只是 D3 的读取契约；D4 设计已落盘但 `WagePayableInventoryLookup` 仍 **未实现**，其唯一新增/实现 owner = **D4-I**，W3 只消费已编译读口，不新增/不实现 `WagePayableInventoryLookup.java`。地点形参固定为已有的 `production.contract.ProductionLocation`。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
 12. **A1/A2/A3/A4/B3/B4 未实现**：本文只统一设计口径，没有改代码；所有正负判据待 W5 独立测试 owner 运行。
 13. **SurvivalOutlook 的 O9–O11 未实现**：Social 下一 tick 需求投影适配、当地可达购买价/供给事实装配、既有债务/不可用权益快照都需 W2b/D4 提供只读来源；缺来源时按 §2.5.1 具名失败或保守不折算，不伪造数值口径。
 

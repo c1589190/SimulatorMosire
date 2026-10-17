@@ -1,12 +1,14 @@
 # D-032 D4 资产与占用完整设计（2026-10-17）
 
-> **性质**：D4 的**约束设计书**。只冻结“世界必须长成什么样”，不写生产代码、不写测试、不改 D1/D2/D3/R2/status/decision/precheck/adjudication，不跑 Maven，不提交、不推送、不触碰主树。实施由后续 D4-I（唯一写代码 owner，只编译、不测试）和 D4-T（独立测试 owner）分两批完成。
+> **性质**：D4 的**约束设计书**。只冻结“世界必须长成什么样”，不写生产代码、不写测试、不跑 Maven，不提交、不推送、不触碰主树。实施由后续 D4-I（唯一写代码 owner，只编译、不测试）和 D4-T（独立测试 owner）分两批完成。**历史落盘声明**：初版 D4-D0 未改 D1/D2/D3/R2/status/decision/precheck/adjudication；2026-10-17 复核修正轮按 R-01..R-18 另行局部修改了 D1/D2/D3、D3 裁决文件、重规划与 status（仍仅设计/计划/状态文档，见 §12.1）。
 >
 > **工作树基线**：`/home/cna/SimulatorMosire/.claude/worktrees/parallel-side-module`，开工 HEAD `b6f694dd`，开工 `git status --porcelain=v1` 为空。本文只新增本文件。
 >
 > **权威输入**：`AGENTS.md`；`docs/agents/02-一-并发.md` §一.8、§一.8.1、§一.10、§一.12；`2026-10-17-d032-wage-idle-barter-decision.md`；`2026-10-17-d032-wage-chain-design.md`（D3 §2.11、§6.9、B3/B4）；`2026-10-17-d032-r2-shared-asset-minimal-design.md`；`2026-10-17-d032-final-independent-review.md` R2；`2026-10-17-d032-d3-integration-precheck.md` §5；`2026-10-17-d032-d3-precheck-adjudication.md` B3/B4；以及本文件 §2 逐条回核的当前源码。
 >
 > **效力与边界**：本文中的“**用户已定**”只逐字来自用户原话；“**工程默认**”均是控制方为落实用户口径而冻结的接口/分配/失败语义，不是新玩法裁定，也不是用户已经选过参数。D4 不重开独立土地账，不把再生产权益变成活动库存，不新增工资、价格、利率、折价或土地制度玩法。
+>
+> **2026-10-17 D1–D4 独立复核局部修正注（R-01/R-05/R-08/R-10/R-15/R-16，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：`AssetKind` 只用 `SMALL_TOOL`/`LARGE_TOOL`，二者分别定义 horizon，`TOOL` 输入具名拒；W3 在 lookup/支付前按 payer 聚合，跨 settlement location 整组拒绝；`AccountSession` 是账户余额/冻结权威；`OwnershipStake.location` 的构造/seed 入口在 D4-I 全部列明；`requestedScale` 默认 1 只留“已存在单实例且无请求”兼容路径；location 采用规范 `<q>_<r>` 格式；`WagePayableInventoryLookup.java` 唯一新增/实现 owner = D4-I，W3 只消费。旧正文保留为历史 provenance。
 
 ## §1 用户原话附录（逐字，2026-10-17）
 
@@ -55,7 +57,7 @@
 | 多个实例争同一份资产时按请求量比例分配、整数最大余数破平 | **工程默认（D4-E3）** | §5.4；不改成“先到先得”或“平均主义”，除非用户另行裁定 |
 | 单实例仍拿其作用域内的整份资产 | **工程默认（D4-E4），同时是向后兼容判据** | §5.4；与 R2 最小设计 P1 逐值一致 |
 | 唯一可支付库存读口的输出已扣冻结、活动占用/预留和权益排除量 | **工程默认（D4-E5）** | §7；W3 不再二次减法 |
-| 同一 `(payer, settlement location)` 一份库存预算；跨格不合并 | **工程默认（D4-E6）；B3/B4 工程裁决** | §7.4；跨格具名 `wage-payer-location-unsupported` |
+| W3 先按 payer 聚合；同一 payer >1 settlement location 整组拒绝，单地点组一份库存预算 | **工程默认（D4-E6）；B3/B4/R-05 工程裁决** | §7.3/§7.4；整组 `wage-payer-location-unsupported`，不做部分支付 |
 | 具体数值、策略载荷、日志级别、UI 呈现、资产跨格搬迁未来是否支持 | **开放/不在 D4 首期** | §12；不阻塞 D4-I 的资产/占用与 lookup；不把未定项伪装成用户已定 |
 
 **不得新增的玩法裁定**：D4 不决定租金、分成、工资、价格、折价系数、利率或阶层规则；这些仍由已落盘的 production/economy 定义与 D3 消费。D4 的比例分配只是“同一资产在多个实例之间的工程预算规则”，它不改变任何资产的所有权、经营者、权利性质或数量。
@@ -82,8 +84,8 @@
 | 14 | `simos-economy/src/main/java/io/mosire/simos/economy/time/DebtCapacityBook.java:313-330` | 债务容量入口已有“与日结算共用同一份 AssetBudget”的重载 | D4 的资产预算必须继续供债务容量读；不能因 R2 收口让债务容量另扫份额 |
 | 15 | `simos-economy/src/main/java/io/mosire/simos/economy/time/MarketDemandBook.java:235-236` | 需求簿已用 `AssetBudgetBook.allocate(units, shares)` 计算引致投入需求 | D4 改分配器后，需求簿也必须读同一份 D4 预算；否则队列/需求/执行三套口径 |
 | 16 | `simos-economy/src/main/java/io/mosire/simos/economy/time/AccountSession.java:45-52`、`:74-88`、`:143-155` | 账户活表只有商品余额、货币余额、商品冻结、货币冻结；账户主体是家户；没有“生产占用/库存预留”表，也没有 location 级库存 | W3 的 `WagePayableInventoryLookup` 不能只看 `goods − frozen` 就冒充“已扣占用/权益”；D4 必须提供权威排除量 |
-| 17 | `simos-actor/src/main/java/io/mosire/simos/actor/model/AvailableStock.java:14`、`:60-62` | 全仓唯一可支配库存算法 = 余额 − 冻结；文档明确它**只减冻结**，必要生产投入/生活保留是决策层算式，不能塞进 `frozen` | D4 lookup 可复用该减法，但必须再减 D4 的库存预留；不得把资产权益塞进 actor 冻结 |
-| 18 | `simos-actor/src/main/java/io/mosire/simos/actor/model/HouseholdInventory.java:61-70`、`:98-107` | `frozen` 只表达“已明确的占用（挂单/承诺交付）”；必要生产投入不是 `frozen` | D4 的 `InventoryReservation` 是独立占用事实，不是第二本余额；W3 不得把它与冻结重复扣 |
+| 17 | `simos-actor/src/main/java/io/mosire/simos/actor/model/AvailableStock.java:14`、`:60-62` | 全仓唯一可支配库存算法 = 余额 − 冻结；文档明确它**只减冻结**，必要生产投入/生活保留是决策层算式，不能塞进 `frozen` | D4 lookup 通过 `AccountSession` 读同一余额/冻结，再减 D4 的库存预留；不得把资产权益塞进 actor 冻结 |
+| 18 | `simos-actor/src/main/java/io/mosire/simos/actor/model/HouseholdInventory.java:61-70`、`:98-107` | `frozen` 只表达“已明确的占用（挂单/承诺交付）”；必要生产投入不是 `frozen`。`HouseholdInventory` 是 actor 侧存储表示；economy 侧权威读面是 `AccountSession` 户级账户 | D4 的 `InventoryReservation` 是独立占用事实，不是第二本余额；D4/W3 通过 `AccountSession` 读余额/冻结，不直接拆 `HouseholdInventory` 建地点账；W3 不得把预留与冻结重复扣 |
 | 19 | `simos-economy/src/main/java/io/mosire/simos/economy/EconomyData.java:310-390` | 当前经济状态没有资产占用/库存预留组件；资产份额是第 12 个组件 `assetShares` | D4 必须把这些事实加入 economy 状态、ChangeSet、codec，并守铁律 5 往返 |
 | 20 | `simos-economy/src/main/java/io/mosire/simos/economy/change/EconomyChangeSet.java:130-180` | 变更集逐组件对应 `EconomyData`；当前没有占用/预留组件 | 新增状态必须同步新增 `FieldDelta`、`between`、`apply`、`isEmpty` 与 roundtrip 面 |
 | 21 | `simos-economy/src/main/java/io/mosire/simos/economy/EconomyReferenceValidation.java:127-135` | 生产实例地点为 `UNSPECIFIED` 时，已具名拒绝；实例地点有语义 | D4 份额、请求、授予、lookup 也必须对地点做同款具名拒绝 |
@@ -158,7 +160,8 @@ public record OwnershipStake(
 冻结语义：
 
 - `location` 是该实物份额实际所在的格；必须使用已有的 `io.mosire.simos.production.contract.ProductionLocation`，不新建地点值类型。
-- 构造期拒绝 `null` 与 `UNSPECIFIED`；读到 `UNSPECIFIED` 的一切资产/占用读点具名 fail-closed。
+- **业务格键格式（R-15）**：`value` 必须是规范 `<q>_<r>`，`q`/`r` 为十进制整数，且 `value.equals(IndustryHexKeys.hexKey(q,r))`（不得有前导 0、正号或 `-0`；`foo`、`1`、`1_`、`a_b` 都非法）。该规则与 `IndustryUpserts` 的现有一格式守卫同形；economy 入口可复用同一 helper 或落同一纯校验，但不得放宽到“非空白即可”。非法/缺失/`UNSPECIFIED` ⇒ `asset-location-missing`（契约入口 ERROR，业务入口 INFO 拒绝）。
+- 构造期拒绝 `null`、`UNSPECIFIED` 与非法 `<q>_<r>`；读到 `UNSPECIFIED` 的一切资产/占用读点具名 fail-closed。
 - `idOf(...)` 的唯一拼写点必须加入 `location`，保证同一 `(industry, asset, owner, operator, kind)` 在两个地点的份额不会得到同一个 id。建议新拼写形如：
   `share-<industry>-<asset>-<owner.kind>-<owner.id>-<operator.kind>-<operator.id>-<kind>-<location.value>-<sequence>`。
 - 既有 `AssetShareId` 是 opaque；Alpha 不兼容旧档，旧 id 不重算、不迁移。新世界从创世重新播种。
@@ -180,7 +183,19 @@ public record OwnershipStake(
 }
 ```
 
-所有资产份额写入口（seed、GM adjust、`TransferOwnershipStake`、`OwnershipStakeBook` 的 Move/merge/rebuild、clear region）都必须显式携带 `location`；`TransferOwnershipStake` 不改变原份额地点，只改 owner/operator/kind/quantity。D4 首期不支持“把同一份额从 A 格搬到 B 格”的命令；若出现该请求，具名拒 `asset-relocation-unsupported`，不得静默改 location。
+所有资产份额写入口（seed、GM adjust、`TransferOwnershipStake`、`OwnershipStakeBook` 的 Move/merge/rebuild、`EconomyGovUnitUpserts`、`EconomyEntrySettlement`、`EconomySettlement`、`EconomyPayloads`、clear region）都必须显式携带 `location`；`TransferOwnershipStake` 不改变原份额地点，只改 owner/operator/kind/quantity。**所有权与批次（R-08）**：D4-I 是以下全部构造/seed 入口的唯一 owner，并逐一列出/修改：`OwnershipStakeBook` 的两处 `new OwnershipStake`、`EconomyGovUnitUpserts` 的新建份额、`EconomyPayloads.addOwnershipStake`、`EconomyEntrySettlement`、`EconomySettlement` 的份额构造，以及 `simos-app/.../EconomySeeder.ownershipStakeNode`/其调用点（JSON seed 必须带 `location`）。不拆 D4-S；D4-I 同时持 `simos-app/.../EconomySeeder.java` 的 seed 适配写面，保证“一文件一 owner”。任何 `new OwnershipStake(...)` 漏 `location` ⇒ 编译红；任何 seed 载荷漏 `location` ⇒ 创世 `asset-location-missing` 判据红。D4 首期不支持“把同一份额从 A 格搬到 B 格”的命令；若出现该请求，具名拒 `asset-relocation-unsupported`，不得静默改 location。
+
+| 构造/seed 入口（R-08） | `location` 的唯一来源 |
+|---|---|
+| `OwnershipStakeBook` Move/split/merge/rebuild 新建目标份额 | 沿用源份额 `source.location()`；Move/Rebuild 不得改地点（搬迁另立 spec） |
+| `EconomyGovUnitUpserts` 新建 OWNED 份额 | 该 intent/unit 的已落定 `ProductionLocation`；无法取得 ⇒ `asset-location-missing`，不得从 `industry` 或 `operator` 猜 |
+| `EconomyPayloads.addOwnershipStake` | 载荷必填 `location`；按规范 `<q>_<r>` 解析并校验，非法 ⇒ `asset-location-missing` |
+| `EconomyEntrySettlement` 新建份额 | 创建请求/方案已落定的 unit 地点；`UNSPECIFIED`/缺失 ⇒ fail-closed |
+| `EconomySettlement` 份额迁移/重建构造 | 源份额 `location()` 或同批 unit 地点；不得复制到另一地点 |
+| `EconomySeeder.ownershipStakeNode` 及其调用点 | 生成该 seed 条目的 plan/hex 对应格键；每条 `assetShares` 必须写入 `location`，无默认/空值 |
+| app 只读视图 | 只读，不构造 `OwnershipStake` |
+
+> **创世/编译判据**：D4-I 编译前用 `rg -n 'new OwnershipStake' simos-economy/src/main simos-app/src/main` 逐点核对 location；创世 world 必须能读回每条 seed 的 location，且任何缺失/非法地点在写入前 `asset-location-missing`。D4-I 不拥有 `AssetKind` 词表（归 C0-A），但必须消费 C0-A 的冻结值。
 
 ### 4.3 占用事实：`AssetOccupancyGrant`
 
@@ -243,10 +258,10 @@ public record InventoryReservation(
 ) {}
 ```
 
-- 它只是**商品库存的占用声明**，不是账户余额、不是冻结、不是第二本库存账；余额真相仍在 actor 的 `HouseholdInventory.balances/money`。
-- 创建时必须校验：同一 `(payer, location, commodity)` 的 ACTIVE 预留总量 + 账户 `frozenGoods` ≤ 账户余额；否则契约故障 `inventory-reservation-overcommitted`，不得静默截断。
+- 它只是**商品库存的占用声明**，不是账户余额、不是冻结、不是第二本库存账；**账户权威是 `AccountSession` 的户级商品/货币余额与冻结**（`HouseholdInventory` 是 actor 侧存储表示，D4 通过 `AccountSession` 读，不另建地点级余额账）。
+- 创建时必须校验：同一 `(payer, location, commodity)` 的 ACTIVE 预留总量 + `AccountSession` 的 `frozenGoods` ≤ 该户账户余额；否则契约故障 `inventory-reservation-overcommitted`，不得静默截断。
 - 已实际转出/消耗的投入，应由账户变更集扣减余额，并同时把对应 `InventoryReservation` 置 `RELEASED`；不得同时保留“余额已减 + 预留仍 ACTIVE”的双重扣除。
-- 未转出的生产投入/再生产资料才用 ACTIVE 预留表达；`OwnershipStake` 的 LAND/CATTLE/TOOL 等不是 `CommodityId`，不会进入 W3 的返回商品表，也不需要从商品余额里再减一遍。
+- 未转出的生产投入/再生产资料才用 ACTIVE 预留表达；`OwnershipStake` 的 LAND/CATTLE/SMALL_TOOL/LARGE_TOOL 等不是 `CommodityId`，不会进入 W3 的返回商品表，也不需要从商品余额里再减一遍。
 - 若未来某生产方式把“再生产权益”映射成商品，必须由 D4 明确建 `InventoryReservation`，不得在 W3 写一个按商品名猜测的排除表。
 
 `InventoryReservation` 的生命周期由**生产投入承诺/实际转出**驱动，不由资产占用分配器顺手创建：
@@ -254,7 +269,7 @@ public record InventoryReservation(
 1. 当生产承诺使用某商品、但该商品尚未从 payer 账户实际转出时，建立 ACTIVE 预留（数量 ≤ 账户可用量），让 W3 同 revision 的工资结算不能重复使用这笔商品；
 2. 当实际转出/消费在同一 revision 落账时，账户余额由 actor 所有者扣减，同时把该预留置 `RELEASED`；二者恰好只扣一次；
 3. 生产取消/批次失败 ⇒ 释放预留，余额未动，W3 或后续用途可重新使用；
-4. 同一 `(payer, location, commodity)` 的 ACTIVE 预留总和 + `frozenGoods` 不得超过余额；否则 ERROR `inventory-reservation-overcommitted`，不得静默 `max(0)`。
+4. 同一 `(payer, location, commodity)` 的 ACTIVE 预留总和 + `AccountSession.frozenGoods` 不得超过该户账户余额；否则 ERROR `inventory-reservation-overcommitted`，不得静默 `max(0)`。
 
 ### 4.5 占用持续期、续占与释放
 
@@ -268,7 +283,8 @@ public record InventoryReservation(
 | `CATTLE` | `CYCLE` | 同上 | 牲畜是跨周期的生产条件；本设计不引入牲畜玩法 |
 | `WORKSHOP` | `CYCLE` | 同上 | 工坊能力按周期保留 |
 | `MACHINE` | `CYCLE` | 同上 | 机器能力按周期保留 |
-| `TOOL` | `TICK` | `[today, today + 1)` | 工具按实际生产时段占用；空转日可释放，次日重新请求 |
+| `SMALL_TOOL` | `TICK` | `[today, today + 1)` | 小型农具/手工具按实际生产时段占用；空转日可释放，次日重新请求 |
+| `LARGE_TOOL` | `CYCLE` | `[cycleStart, cycleStart + plan.cycleDays)` | 大型农具/设备是跨周期生产条件；首期按周期保留，避免每天被抢走（工程默认，可配置） |
 | `SHIP` | `TICK` | `[today, today + 1)` | 船只按实际航次/生产时段占用；不凭空跨格移动 |
 
 规则：
@@ -369,11 +385,11 @@ record AssetOccupancyScope(
 
 - `requestedScale` 是调用方在进入 D4 分配前给出的、**非资产通道**的计划规模。可由现有非资产约束派生：
   `min(floor(可用劳动预算 / laborPerUnit), floor(可用投入库存 / inputPerUnit))`；
-  两个通道都缺失时取 `1`；任一通道明确为 0 ⇒ `requestedScale=0`。
+  任一通道明确为 0 ⇒ `requestedScale=0`。
+- **默认 1 的唯一适用范围（R-10）**：`requestedScale=1` 只能作为“该 scope 内已存在单实例且调用方没有请求”这一**向后兼容路径内部**、旧调用面必须给一个数字占位时的回退值；它**不得生成请求表、不得把整池授予缩成 `1×capacityPerUnit`**。该路径的实际授予仍走 §5.4 第 2 步整池兼容；若调用方必须显式给请求，则不存在默认。候选/新实例、多实例 scope 一律不得默认 `1`/整池：必须由选业阶段给出显式 `requestedScale`，缺失 ⇒ `asset-occupancy-request-missing:<unit>`；既有实例无法给出请求且有多个 unit 也同样拒绝。
 - 逐资产：`requestedQuantity[k] = requestedScale × plan.capacityPerUnit[k]`；使用 `Math.multiplyExact`，溢出是契约故障 `asset-occupancy-quantity-overflow`。
-- `requestedQuantity` 只保留正值；0/负值项不进入请求表（负值本身是坏数据）。
+- `requestedQuantity` 只保留正值；0/负值项不进入请求表（负值本身是坏数据）。显式 `requestedScale=0` 表示本 tick 不请求资产，不是“缺请求”。
 - 对既有实例，`requestedScale` 还必须受当前周期已实际投入/劳动上限约束；不得用 `probe.assetRequired` 或 `ProductionProcessBook.usableAssets` 反推。
-- 候选/新实例在创建前使用其选业阶段给出的目标规模；若调用方无法提供，D4 返回 `asset-occupancy-request-missing:<unit>`，不得默认 1 或默认整池。
 - 请求表按 `(unitId, assetKind, fromTick, toTickExclusive)` 稳定排序，重复 key 合并为一条；同一 unit 对同一 asset kind 不得有两条不同请求版本。
 - **单实例兼容例外**：若该 scope 内只有一个**已存在的** unit，为保持单实例逐值不变，允许请求表为空，由 §5.4 第 2 步授予整池；候选/新实例仍必须提供请求量，不得借用该例外。
 
@@ -390,7 +406,7 @@ record AssetOccupancyScope(
    - `share.quantity > 0`。
 2. `owner` 不参与池化键；同一 operator 可以同时使用自有/租佃/公共份额，所有者差异由既有关系规则计租/分账，不在 D4 重分配。
 3. 同一 scope 的 supply = 全部匹配份额的 `quantity` 之和。份额 id 按 `AssetShareId.value` 升序做确定性兜底。
-4. 若生产实例/份额 `location` 为 `UNSPECIFIED` 或缺失 ⇒ `asset-location-missing`；若请求地点没有任何匹配份额 ⇒ `asset-location-scope-missing:<location>`，不得跨格借用其他地点份额。
+4. 若生产实例/份额 `location` 为 `UNSPECIFIED`、缺失或**不符合规范 `<q>_<r>`**（如 `foo`）⇒ `asset-location-missing`；若请求地点没有任何匹配份额 ⇒ `asset-location-scope-missing:<location>`，不得跨格借用其他地点份额。
 5. 若 `plan.acceptedRightKinds` 为空或没有任何匹配权益 ⇒ `asset-right-kind-missing:<industry>`，该 unit 不可产。
 6. 多地点、多实例的 `ProductionUnitId` 必须在创建请求中显式稳定且唯一；`ProductionUnitId.idOf(industry, operator)` 只适用于“该经营者在全世界只有一个该 plan 实例”的语境。出现同键两个实例 ⇒ 构造期 `production-unit-id-collision`，D4 不得用“后写覆盖”或“按地点自动补 id”掩盖。
 
@@ -399,7 +415,7 @@ record AssetOccupancyScope(
 对每个 scope 执行：
 
 1. **先认已占**：读取与 `[fromTick,toTickExclusive)` 重叠且 `status=ACTIVE` 的 grant；逐份校验 share/unit/operator/location/kind 一致。已占量计入 `committed`，从 supply 中扣除，不允许被后到请求抢走。
-2. **单实例不变式**：若该 scope 内只有一个有效 unit（请求或既有 ACTIVE grant 的并集只有一个 unit），该 unit 得到**整个 supply**；若已有 ACTIVE 少于 supply，则新增差额 grant；若没有请求但 unit 存在，也保留整池（与 R2 最小设计 P1 逐值一致）。
+2. **单实例不变式**：若该 scope 内只有一个有效 unit（请求或既有 ACTIVE grant 的并集只有一个 unit），该 unit 得到**整个 supply**；若已有 ACTIVE 少于 supply，则新增差额 grant；若没有请求但该 unit **已存在**，也保留整池（与 R2 最小设计 P1 逐值一致）。**候选/新实例不得进入本步的“无请求保留整池”**：它们必须先在 §5.2 给出显式 `requestedScale`，否则已返回 `asset-occupancy-request-missing:<unit>`。
 3. **多实例需求**：若 scope 内 ≥2 个 unit：
    - 每个 unit 的本次需求 `d_i = max(0, requestedQuantity_i − 已属该 unit 且与目标区间重叠的 ACTIVE quantity)`；
    - `S = supply − Σ ACTIVE`（剩余可用）；
@@ -530,9 +546,11 @@ interface WagePayableInventoryLookup {
 
 - **输入**：`payer`（付款人 actor；工资链中为 organizer 家户）与 `settlementLocation`（既有 `production.contract.ProductionLocation`）。
 - **输出**：该付款人在该结算地点**最终可支付**的逐商品数量（毫商品单位），按 `CommodityId.value` 升序冻结为不可变表；只保留 `>0` 的项，缺项 = 0。
-- **`Optional.empty()`**：D4 lookup 未接、该地点没有权威事实、payer 无已登记家户账户、location 为 `UNSPECIFIED`，或实现明确不可用。**不是“余额为 0”**。
+- **`Optional.empty()`（R-05，写死）**：仅当 ① D4 lookup 尚未接线/明确 disabled；② payer 无法解析为已登记家户账户（`AccountSession` 无该户）；或 ③ 实现明确不可用。**不是“余额为 0”**。商品余额为 0、没有 ACTIVE `InventoryReservation`、没有某商品或该地点当前无货 ⇒ 返回**空 `Map`**。location 为 `null`/`UNSPECIFIED`/非法 `<q>_<r>` ⇒ 不进入 lookup，按 `asset-location-missing` fail-closed。
 - **空 `Map`**：读口可用，但该 payer×location 没有任何可支付商品（与 `Optional.empty()` 严格区分）。
-- **W3 不二次扣减（库存腿）**：W3 只能把该返回值当作共享库存预算；不得再用 `AccountSession` 的**商品**余额、`frozenGoods`、`OwnershipStake` 或 `cycleInputUsedMilli` 对库存腿做第二次减法。货币腿仍按 D3 直接用账户 `money − frozenMoney`，不受本条影响。
+- **payer 级地点预检由 W3 负责**：D4 lookup 不负责把同一 payer 的多地点义务合并或拆分；W3 若发现同一 payer >1 个 settlement location，必须在任何 lookup/支付前整组拒绝 `wage-payer-location-unsupported`。
+- **W3 不二次扣减（库存腿）**：W3 只能把该返回值当作共享库存预算；不得再用 `AccountSession` 的**商品**余额、`frozenGoods`、`OwnershipStake` 或 `cycleInputUsedMilli` 对库存腿做第二次减法。货币腿仍按 D3 直接用 `AccountSession` 的 `money − frozenMoney`，不受本条影响。
+- **唯一实现 owner（R-16）**：`WagePayableInventoryLookup.java` 由 **D4-I 唯一新增/实现**；W3 只消费 D4-I 已编译的读口，不新增/不实现该文件，不复制第二套库存减法。批次 D4-I→D4-T→W3。
 - **W3 不重定价**：lookup 只回答数量；零价/缺价/抵物折价由 W3 的 D3 §6.4 处理，D4 不内置价格。
 
 ### 7.2 权威实现算法
@@ -540,9 +558,12 @@ interface WagePayableInventoryLookup {
 对每个 `(payer, settlementLocation)`：
 
 ```text
-account = actor 账本中 payer 对应的家户账户
-if account 不存在 / payer 不是家户 / location 未落定:
+// 账户权威：AccountSession 的户级账户快照（不是 HouseholdInventory 直接结构）
+account = AccountSession.snapshot().householdAccount(payer)
+if lookup disabled / account 不存在 / payer 不是已登记家户:
     return Optional.empty()
+if settlementLocation 为 null / UNSPECIFIED / 非法 <q>_<r>:
+    fail-closed asset-location-missing   // 不进入余额查询
 
 for commodity c:
     balance = account.goods.getOrDefault(c, 0)
@@ -557,20 +578,23 @@ for commodity c:
     if frozen + reserved > balance:
         throw 契约故障 inventory-reservation-overcommitted（ERROR，不降级）
     payable[c] = balance − frozen − reserved
-    只返回 payable[c] > 0 的项
+    只返回 payable[c] > 0 的项；全部为 0/无商品 ⇒ 空 Map（不是 Optional.empty）
 ```
 
-- **冻结**由 actor 账户所有者的 `frozenGoods` 提供；D4 不复制冻结表。
+> **同账户、两地、一份库存（R-05）**：`AccountSession` 是**户级**余额/冻结，没有地点级独立库存；因此同一 payer 若同时有两个 settlement location 的工资义务，不能各调一次 lookup 后各自花同一份余额。W3 必须在 lookup 前按 payer 聚合；>1 location ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付。D4 不实现跨地点合并，也不实现“按地点切账户余额”。
+
+- **冻结**由 actor 账户所有者的 `AccountSession.frozenGoods` 提供；D4 不复制冻结表，也不直接读 `HouseholdInventory` 造第二本账。
 - **活动占用/预留**由 D4 `InventoryReservation` 提供；D4 不复制余额。
-- **权益/再生产资料**：`OwnershipStake` 是资产权益账，不是商品库存；LAND/CATTLE/TOOL 等 `AssetKind` 不会出现在返回 map 中。D4 不需要、也不允许把 `OwnershipStake.quantity` 当成 `CommodityId` 商品；若某商品确实被用于再生产，必须由 `InventoryReservation` 表达并从余额中扣除。
+- **权益/再生产资料**：`OwnershipStake` 是资产权益账，不是商品库存；LAND/CATTLE/SMALL_TOOL/LARGE_TOOL 等 `AssetKind` 不会出现在返回 map 中。D4 不需要、也不允许把 `OwnershipStake.quantity` 当成 `CommodityId` 商品；若某商品确实被用于再生产，必须由 `InventoryReservation` 表达并从余额中扣除。**`TOOL` 不是当前 `AssetKind`；任何 payload/命令出现 `TOOL` ⇒ 具名 `asset-kind-retired:TOOL`，不得解析成任一新值。**
 - **已投入资料**：`ProductionProcess.cycleInputUsedMilli` / 实际已转出的投入是“已消费”记录，不是账户余额；若账户余额已在同一 revision 扣除，W3 不再减一次。只有仍留在账户、尚未转出的投入才以 ACTIVE `InventoryReservation` 存在。
 - **不得**引入不存在的“最后成交价”或其他未落盘市场事实；D4 lookup 不读市场价格、不读 `MarketTable`，估值留给 W3/D3 §6.4。
 - 读口是纯读：不写账户、不写占用、不改变 `revision`、不产生 intent。
 
 ### 7.3 W3 消费顺序
 
-W3 对每个 `(payer, settlementLocation)` 的工资义务组：
+W3 对本次 tick 的全部工资义务先按 payer 聚合，再做地点预检；只有通过预检的**唯一** `(payer, settlementLocation)` 组才进入以下步骤：
 
+0. **payer 级地点预检（R-05）**：同一 payer >1 个 settlement location ⇒ 整组 `wage-payer-location-unsupported`，零支付/零 lookup/零新债/零 carry 变化，不做部分支付；不得逐地点继续；
 1. 在支付前**恰好调用一次** `payableInventory(payer, location)`，把返回表作为该组共享库存预算快照；
 2. 先按 U21 支付对应货币：`min(dueRemaining, account.money − account.frozenMoney)`；货币腿仍由 W3/actor 账户所有者落账；
 3. 货币不足时，按 D3 §6.3 的**初始可用数量降序、同量 `CommodityId` 升序**处理商品；每个商品的数量只能从 lookup 快照扣一次，W3 不再从账户余额或 `frozenGoods` 另减；
@@ -580,10 +604,9 @@ W3 对每个 `(payer, settlementLocation)` 的工资义务组：
 
 ### 7.4 同 payer × location 预算（B4）
 
-- W3 首期只允许**同一 payer × 同一 settlement location** 的工资义务共享一份库存预算；同一 `(payer, location)` 只调用一次 lookup。
-- 同一 organizer 的多个 unit 若位于不同 location，必须按 location 各自成组；**不得**把两个 location 的库存合并，也不得用 A 格库存抵 B 格工资。
-- 如果实现把同一付款人的跨 location 义务合成一个预算、或拿别处库存抵付 ⇒ 具名拒绝 `wage-payer-location-unsupported`，不静默合并、不静默放弃。
-- 货币腿是同一户钱包；即便同一户在不同 location 有义务，也必须逐 location 记录扣减，不得用同一余额读数重复付。D4 不改变这一 D3 规则。
+- **首期唯一合法形态（R-05）**：同一 `(payer, settlementLocation)` 的工资义务共享一份库存预算；该组只调用一次 lookup。W3 在支付/lookup 前按 **payer** 聚合全部工资义务；同一 payer 有 >1 个不同 settlement location ⇒ **整组**具名 `wage-payer-location-unsupported`，零支付/零 lookup/零新债/零 carry 变化，不做部分支付。
+- **不得跨格合并/抵付**：不得把两个 location 的库存合并，也不得用 A 格库存抵 B 格工资。
+- **账户权威**：`AccountSession` 是户级余额/冻结的唯一读面；同一户在不同 location 的义务不得各读一份同一余额后重复付。首期用整组拒绝消除该风险。
 - 工资义务的稳定序仍由 D3 负责：`(unit, role, household)` 升序；D4 只提供库存预算。
 
 ### 7.5 W3/资产失败词表
@@ -591,13 +614,14 @@ W3 对每个 `(payer, settlementLocation)` 的工资义务组：
 | 词 | 级别 | 语义 |
 |---|---|---|
 | `wage-inventory-scope-unavailable` | INFO（D3 非失败标记） | D4 lookup 未接/不可用；货币腿仍可付，库存腿全部跳过，余款成债；不得回退整账户余额 |
-| `wage-payer-location-unsupported` | INFO/业务拒绝 | 同一 organizer 跨 settlement location 合并库存预算或跨格抵付；首期具名拒绝 |
+| `wage-payer-location-unsupported` | INFO/业务拒绝 | 同一 payer 本次 tick 的工资义务出现 >1 个 settlement location；W3 在任何 lookup/支付前整组拒绝，零部分支付/零新债/零 carry 变化 |
+| `asset-kind-retired:TOOL` | INFO/解析拒绝 | 已退役 `TOOL` 输入；不得静默映射为 `SMALL_TOOL`/`LARGE_TOOL` |
 | `wage-barter-price-missing:<commodity>` | INFO skip | W3 缺价/0 价；该商品不抵付，债务不消失 |
 | `wage-barter-discount-zero:<commodity>` | INFO skip | 折后单位价值 ≤0；该商品不抵付 |
 | `inventory-reservation-overcommitted` | ERROR | 冻结+活动预留 > 账面余额；契约故障，拒绝整个候选 revision |
 | `asset-occupancy-unavailable` | INFO/业务拒绝 | 需要 D4 预算但读口不可用；不得退回整池扫描 |
 | `asset-occupancy-overlap:<share>:<unit>` | INFO/业务拒绝 | 同一份额、同一时段出现重叠占用请求/授予 |
-| `asset-location-missing` | INFO/业务拒绝或 ERROR（契约入口） | 份额/实例/请求地点缺失或为 `UNSPECIFIED` |
+| `asset-location-missing` | INFO/业务拒绝或 ERROR（契约入口） | 份额/实例/请求地点缺失、为 `UNSPECIFIED`，或不是规范 `<q>_<r>`（如 `foo`）；不得进入 allocation/lookup |
 | `asset-location-scope-missing:<location>` | INFO/业务拒绝 | 该地点没有匹配的实物份额；不跨格借用 |
 | `asset-short:<kind>` | INFO/业务拒绝 | 该作用域有供给但本次请求拿不到正授予 |
 | `asset-occupancy-request-missing:<unit>` | INFO/业务拒绝 | 无法给出非资产请求量；不默认 1/整池 |
@@ -659,7 +683,7 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 **D4 首期不新增玩家玩法命令**。占用生命周期由既有生产创建/执行/关账/取消与统一分配驱动：
 
 - 内部写口：`AssetOccupancyBook.allocate(...)` 产出 `grantsToWrite`/`grantsToRelease`，经 economy 的 `EconomyChangeSet` 提交；`InventoryReservation` 由生产投入承诺/实际转出的同一 revision 写入或释放（可落在一个 economy 内部 `InventoryReservationBook`，但它不是资产分配器）；
-- 资产份额写口：既有 `OwnershipStakeBook` / `EconomyTransferOwnershipStake` / seed / GM adjust，统一要求 `location`；D4 不另开资产数量写口；
+- 资产份额写口：既有 `OwnershipStakeBook` / `EconomyGovUnitUpserts` / `EconomyTransferOwnershipStake` / `EconomyEntrySettlement` / seed / GM adjust，统一要求 `location`；D4 不另开资产数量写口；
 - 内部读口：`AssetOccupancyLookup`（unit/scope 的 allocations、committed、unallocated、rejections、releases）；
 - W3 读口：`WagePayableInventoryLookup`（§7）；
 - app 只读：展示 per-unit allocations、per-scope available/occupied/unallocated、released 和 rejection，不自己扫份额/账户重算。
@@ -677,17 +701,17 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 ## §9 不变量（D4-I）
 
 1. **D4-I1 唯一数量真相**：`OwnershipStake.quantity` 是资产数量唯一权威；`AssetOccupancyGrant` / `InventoryReservation` 只是引用/预留，任何求和都不得生成新的资产总量。
-2. **D4-I2 地点闭合**：任何生产占用必须同时满足 `share.location == unit.location == request.location`；缺地点或 `UNSPECIFIED` 一律 fail-closed，禁止跨格借用。
+2. **D4-I2 地点闭合**：任何生产占用必须同时满足 `share.location == unit.location == request.location`；地点必须是规范 `<q>_<r>`；缺地点、非法格式或 `UNSPECIFIED` 一律 fail-closed `asset-location-missing`，禁止跨格借用。
 3. **D4-I3 同份额不超占**：同一份额在任何时段的全部 ACTIVE grant 数量之和 ≤ `share.quantity`；同一 scope/时段不得存在重叠的冲突授予。
-4. **D4-I4 单实例不变**：某个 scope 只有一个有效 unit 时，其分配量逐值等于该 scope 的实有量；不得因引入 D4 把单实例资产清零或缩水。
+4. **D4-I4 单实例不变**：某个 scope 只有一个**已存在** unit 且没有请求时，其分配量逐值等于该 scope 的实有量；候选/新实例不得借用该兼容例外，缺显式 `requestedScale` ⇒ `asset-occupancy-request-missing:<unit>`，不得默认 1/整池。
 5. **D4-I5 多实例整数守恒**：每个 scope/asset kind 恒有 `committed + newGrant + unallocated == available`；比例分配用整数最大余数，Σ授予 ≤ 实有。
 6. **D4-I6 时域锁定**：`CYCLE` 授予在其区间内不被后到实例抢走；`TICK` 授予只在 `[today,today+1)` 生效；到期/取消必须释放并回填。
 7. **D4-I7 同源**：试算、预计利润、劳动排队、执行、债务容量、需求簿、app 读口都读同一份 `AssetOccupancyBudget`；不得有第二个资产分配器。
 8. **D4-I8 统一预算（沿用既有 I8）**：同一份劳动/资产/库存不得被两个方案或两个实例重复占用；被缩减/释放的资源必须继续参与后续分配。
 9. **D4-I9 全腿原子**：同一候选的资产授予、劳动、投入、账户转移、生产进度/经验与产出必须在同一 Revision；任一腿失败不得留下半状态（沿用既有 I11）。
 10. **D4-I10 权益不入库存**：产权/使用权/再生产资料不是活动商品库存；W3 的返回表不得出现 `OwnershipStake` 的资产种类，`OwnershipStake` 也不得被扣成负数。
-11. **D4-I11 W3 不二次扣减**：库存可支付量只来自 `WagePayableInventoryLookup` 的已扣完结果；W3 不得再减冻结/占用/权益，不得回退整账户余额。
-12. **D4-I12 同 payer×location**：同一 `(payer, settlementLocation)` 只有一份库存预算；跨 location 不得合并/抵付，具名 `wage-payer-location-unsupported`。
+11. **D4-I11 W3 不二次扣减**：库存可支付量只来自 D4-I 实现的 `WagePayableInventoryLookup` 已扣完结果；W3 只消费、不新增/不实现该文件；W3 不得再减冻结/占用/权益，不得回退整账户余额。
+12. **D4-I12 payer 级地点闭合**：W3 在任何 lookup/支付前按 payer 聚合；同一 payer >1 个 settlement location 时整组 `wage-payer-location-unsupported`，零部分支付/零 lookup/零新债/零 carry 变化；单地点组一份库存预算；`AccountSession` 户级一份余额不得被两地各读一次。
 13. **D4-I13 确定性**：全部遍历按稳定 id/规范序；无随机/时钟/UUID；同输入得到同 allocations/unallocated/rejections/ChangeSet。
 14. **D4-I14 往返**：`OwnershipStake.location`、grant、reservation 全部进 ChangeSet/codec；`apply(changeSet, base)` 逐字段重建 target；不兼容旧档。
 15. **D4-I15 失败不降级**：业务拒绝 INFO 具名；契约/跨切片故障 ERROR，整候选 revision 拒绝；共享 scope 不得静默回退整池。
@@ -710,19 +734,24 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 | P7 | 同地点、一个 share 100，A/B 各请求 80 | 50/50；unallocated=0；Σ=100（整数最大余数） |
 | P8 | `CYCLE`（cycleDays=3）A 已占 LAND=100 `[0,3)`，t=1 出现 B | A 仍得 100；B 得 0/`asset-short:LAND`；不得在周期中途抢走 A |
 | P9 | t=3，A 周期结束释放 | A 的 grant `RELEASED`；`unallocated` 增加 100；B 在 `[3,6)` 可获 100 |
-| P10 | `TOOL=2`，A 在 `[0,1)` 占用 1，B 在 `[0,1)` 占用 1 | 两条 grant 各 1；ΣTOOL=2；无重叠超占 |
-| P11 | `TOOL` A 只在 day0 用、B 只在 day1 用 | day0 A grant 1；day1 A 释放后 B grant 1；互不重叠 |
+| P10 | `SMALL_TOOL=2`，A 在 `[0,1)` 占用 1，B 在 `[0,1)` 占用 1 | 两条 grant 各 1；ΣSMALL_TOOL=2；无重叠超占；horizon=TICK |
+| P11 | `SMALL_TOOL` A 只在 day0 用、B 只在 day1 用 | day0 A grant 1；day1 A 释放后 B grant 1；互不重叠（TICK） |
+| P11b | `LARGE_TOOL` A 在 `[0,cycleDays)` 占用 1，B 在 day1 请求 | A 保持；B 得 0/`asset-short:LARGE_TOOL`；周期结束释放后 B 可在下一周期请求（horizon=CYCLE） |
 | P12 | 释放/回填 | 释放 receipt 数量 = grant 数量；下一预算的 `unallocated` 立即包含该数量；不修改 `OwnershipStake.quantity` |
 | P13 | `WagePayableInventoryLookup`：余额 1000、冻结 200、活动预留 300 | 返回商品 500；`OwnershipStake.LAND` 不出现；`cycleInputUsedMilli` 不二次扣 |
 | P14 | W3：due=10、货币=4、lookup 返回 grain=6、折后单位价值=1 | 付 4 货币 + 6 粮，arrears=0；三数守恒 10=4+6+0 |
 | P15 | W3：due=10、货币=4、lookup 可用但 grain 缺价/0 价 | 付 4；grain 跳过并记 `wage-barter-price-missing:grain`；arrears=6 |
 | P16 | W3：due=10、货币=4、lookup 返回 `Optional.empty()` | 付 4，库存腿跳过，记 `wage-inventory-scope-unavailable`，arrears=6；不得用账户余额 1000 抵 6 |
 | P17 | W3：同一 payer×location 两笔各 due=6、lookup 返回 grain=10 | 第一笔 6、第二笔 4、第二笔 arrears=2；只调用一次 lookup，共享预算不重复 |
-| P18 | W3：同一 organizer 两 location 各自预算 | 每个 location 各自 lookup；不得跨格用同一笔库存；若合并则 `wage-payer-location-unsupported` |
+| P18 | W3：同一 payer 两 location（R-05） | 在 lookup/支付前整组 `wage-payer-location-unsupported`；零部分支付、零 lookup、零新债、零 carry 变化；不得按 location 各读一份户级余额 |
+| P18b | 同账户、两地、一份库存不得双付 | `AccountSession` 只有一份 `grain=1000`，payer 在 A/B 各有 due；预检必须在 lookup 前整组拒绝，**两个地点都不调用 lookup**、实际支付=0、无新债；若实现逐地点 lookup 或把同一 1000 各算一次 ⇒ P18b 红 |
 | P19 | 预计/实际同源 | 同一 revision 的 probe 与 execute 的 `assetOccupancy` 逐单位、逐 kind 相等；实际产出差异只能由最终劳动/投入/效率解释 |
 | P20 | I8 全腿 | 资产 grant、劳动、投入、账户/产出、进度/经验同一 revision；故意让一条腿失败 ⇒ 该候选零残留，释放的资产立即回填 |
-| P21 | 确定性与往返 | 同输入运行两次 allocations/unallocated/rejections/ChangeSet 规范序逐值相同；`apply(between(base,target),base)==target`，codec 写出再读回逐字段相等 |
+| P21 | 确定性与往返 | 同输入运行两次 allocations/unallocated/rejections/ChangeSet 规范序逐值相同；`apply(between(base,target),base)==target`，codec 写出再读回逐字段相等；`SMALL_TOOL` 与 `LARGE_TOOL` **各自**经 payload→state→codec→apply 往返相等；`TOOL` 输入 ⇒ `asset-kind-retired:TOOL`；任一新值缺 horizon ⇒ `asset-occupancy-horizon-unsupported:<kind>` |
 | P22 | 原 R2 复现 | `owned=100` 时两实例实占合计 ≤100；显示值和实际 execution 都不能出现 200；单实例仍 100 |
+| P23 | `requestedScale` 默认边界（R-10） | 已存在单实例、无请求 ⇒ §5.4 第 2 步整池兼容；候选/新实例显式 `requestedScale=2`、`capacityPerUnit=10` ⇒ 请求 20；候选/新实例无显式 scale ⇒ `asset-occupancy-request-missing:<unit>`，不得默认 1、不得整池 |
+| P24 | `OwnershipStake.location` 全入口（R-08） | `rg -n 'new OwnershipStake' simos-economy/src/main simos-app/src/main` 的每个构造点都带 location；`EconomySeeder` 每条 `assetShares` seed 都带合法 location；编译通过且创世不出现 `asset-location-missing`；漏一入口 ⇒ 红 |
+| P25 | location 格式（R-15） | `foo`、`1`、`1_`、`a_b`、`01_2`、`+1_2`、`-0_1` 均 ⇒ `asset-location-missing`；`0_0`/`-3_2` 合法；非法值不得进入 allocation/lookup |
 
 ### 10.2 负向 / 变异判据
 
@@ -730,10 +759,15 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 |---|---|
 | 把 `(industry,operator)` 整池复制回每个 unit | P2/P3/P22 |
 | 忽略 `share.location`、允许不同地点共用同一份额 | P4/P5 |
-| 允许同一 share 两个重叠 ACTIVE grant | P3/P8/P10 |
+| 允许同一 share 两个重叠 ACTIVE grant | P3/P8/P10/P11b |
+| 把 `SMALL_TOOL`/`LARGE_TOOL` 都套同一 horizon（或漏掉任一 kind 的 horizon） | P10/P11/P11b/§10.4 |
+| 接受已退役 `TOOL` 或把 `TOOL` 静默映射成 `SMALL_TOOL`/`LARGE_TOOL` | P21/文档验收 |
 | 用平均值 50/50 代替请求量比例（在请求 40/60 时） | P6 |
 | 单实例被 D4 清零或只给请求量 | P1 |
 | 用 `probe.assetRequired` 反推 `requestedScale` | P19/确定性 |
+| 候选/新实例缺 `requestedScale` 时默认 1 或整池 | P23 |
+| 非法地点 `foo` 被当合法，或直接进 lookup 才失败 | P25 |
+| `OwnershipStake` 任一构造点/seed 入口漏 `location` | P24/编译扫描 |
 | 到期不释放 / 释放不回填 | P8/P9/P12 |
 | 执行前不检查 grant，progress/经验先写后拒绝 | P20 |
 | 共享 scope 静默回退整池扫描 | P19/P22 |
@@ -837,6 +871,7 @@ A 的 progress/经验/投入/账户与 B 的 grant 同 revision；若 B 任一�
 - **缺价**：lookup 不读市场、不因缺价返回 empty；W3 跳过该商品，余款成债。
 - **不可用**：lookup 返回 `Optional.empty()`，W3 不调用账户余额兜底；货币腿仍可付，余款成债。
 - **I8 全腿**：资产 grant、劳动分配、原料抽取、账户转移、生产进度/经验/产出必须同 revision；负向注入任一腿失败，所有腿零残留；缩量释放量必须被后续候选重新使用，不能“留在空缺”。
+- **`AssetKind`/location 交付扫描（R-01/R-08/R-15）**：D4-I 编译前必须交 `rg -n 'AssetKind\.TOOL|"TOOL"' simos-*/src/main`（应仅文档/拒绝词，不含词表常量）与 `rg -n 'new OwnershipStake' simos-economy/src/main simos-app/src/main`（每点带 location）清单；`EconomySeeder` 的 `assetShares` 每条 seed 都带规范 location；`SMALL_TOOL`/`LARGE_TOOL` 两个 horizon 都有配置且各自往返。缺一项 = D4-I 未完成。
 
 ## §11 文件所有权与 D4 批次
 
@@ -845,12 +880,14 @@ A 的 progress/经验/投入/账户与 B 的 grant 同 revision；若 B 任一�
 | 批次 | owner 可写 | 禁止/边界 |
 |---|---|---|
 | **D4-D0** | 本文（控制方） | 只写设计；不改 D1/D2/D3/status/R2 设计/decision/precheck/adjudication；不写代码/测试；不跑 Maven |
-| **D4-I（economy/资产占用，唯一写代码 owner）** | `simos-economy/src/main/java/io/mosire/simos/economy/model/OwnershipStake.java`；新增 economy 的 `AssetOccupancyGrant/Id/Status`、`InventoryReservation/Id/Status`、`AssetOccupancyBook`、`WagePayableInventoryLookup`；`EconomyData.java`、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`、`spi/EconomyPayloads.java`、`EconomySeedHandler.java`、`EconomyReferenceValidation.java`；`time/SettlementIndex.java`、`ProductionProcessBook.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`EconomySettlement.java`、`DebtCapacityBook.java`、`MarketDemandBook.java`、`EconomyEnterpriseSettlement.java`、`HouseholdClassRule.java`、`EconomyEntrySettlement.java`；必要时 app 只读视图适配 | **只编译，不写/不跑测试**；不修 D3/W3 支付公式；不改 POM/XML/enforcer/模块边界；不改 `ProductionProcess`/`ProductionLocation` 等 production 共享定义（如确需改，先停手报控制方）；不直接改 actor Map；不新增独立土地账；不把 grant 当资产数量；不提交/同步 |
+| **D4-I（economy/资产占用，唯一写代码 owner）** | `simos-economy/src/main/java/io/mosire/simos/economy/model/OwnershipStake.java`；`time/OwnershipStakeBook.java`（两处 `new OwnershipStake`）；`spi/EconomyGovUnitUpserts.java`；`spi/EconomyPayloads.java`（`addOwnershipStake` 的 location 载荷/解析）；`time/EconomyEntrySettlement.java`；`time/EconomySettlement.java`（份额构造点）；`simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java`（`ownershipStakeNode` 及其全部调用点，seed 必须带 location）；新增 economy 的 `AssetOccupancyGrant/Id/Status`、`InventoryReservation/Id/Status`、`AssetOccupancyBook`、**`WagePayableInventoryLookup`（唯一新增/实现 owner）**；`EconomyData.java`、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`、`EconomySeedHandler.java`、`EconomyReferenceValidation.java`；`time/SettlementIndex.java`、`ProductionProcessBook.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`DebtCapacityBook.java`、`MarketDemandBook.java`、`EconomyEnterpriseSettlement.java`、`HouseholdClassRule.java`；必要时 app 只读视图适配 | **只编译，不写/不跑测试**；不修 D3/W3 支付公式；不改 POM/XML/enforcer/模块边界；不改 `ProductionProcess`/`ProductionLocation` 等 production 共享定义（如确需改，先停手报控制方）；**不改 `AssetKind`（词表归 C0-A）**；不直接改 actor Map；不新增独立土地账；不把 grant 当资产数量；不提交/同步；必须逐点改完 `OwnershipStake` 构造/seed 入口，漏一入口即编译/创世红 |
 | **D4-T（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`（如 D4-I 未改 production 契约，则无需 production 测试）；D4 证据/台账 | 按 §10 判据写测试，不按实现反推；不改 `src/main/**`（变异自证必须先声明/还原并 md5 对照）；不改 D1-D4 设计正文；不由实现 owner 写/跑 |
-| **W3（后续）** | 只消费 D4 的 `WagePayableInventoryLookup` 与既有 D3 契约；在 D4-I 编译通过后串行开始 | 不实现第二套库存减法；不跨格合并预算；不改 D4 占用/grant 文件；W3 的支付/抵物/债务公式仍按 D3/U23 |
+| **W3（后续）** | **只消费 D4-I 已编译的 `WagePayableInventoryLookup` 读口**与既有 D3 契约；在 D4-I/D4-T 后串行开始 | **不新增/不实现 `WagePayableInventoryLookup.java`**；不实现第二套库存减法；W3 在 lookup/支付前按 payer 聚合，同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付；不改 D4 占用/grant 文件；W3 的支付/抵物/债务公式仍按 D3/U23 |
 | **R2 关闭** | D4-T 结果 + 控制方复核 | 只有在 §6.2 全部门通过后，才可删除 `asset-scope-shared:awaiting-D4` 并声明 R2 完整修复；D4-D0 本身不关闭 R2 |
 
 **批次顺序**：D4-D0（本文）→ D4-I（economy 编译通过）→ D4-T（独立测试，含原 R2 复现）→ 控制方复核 → 才允许 W3 接入与 R2 关闭。D4-I 不并行碰 D3/W3 文件；W3 不并行碰 D4 状态文件。
+
+> **`EconomySeeder.java` 的串行边界**：该文件会出现在 C0-A（仅 `AssetKind` seed 字面量）、C3（名册/装配）与 D4-I（`OwnershipStake` seed 的 `location`）三个不同批次，但**绝不允许并行**；每次只允许当前批次 owner 按列明字段改，前一 owner 交账并停手后下一 owner 才可开工。C0-A 不写 location，D4-I 不重写名册/装配语义。
 
 ## §12 未做 / 未验证 / 开放项
 
@@ -860,7 +897,7 @@ A 的 progress/经验/投入/账户与 B 的 grant 同 revision；若 B 任一�
 - **没有跑 Maven、没有跑测试、没有跑仿真、没有跑门禁**。
 - 没有修 R2 完整功能；当前 R2 仍只是“共享 scope fail-closed”的最小实现，不能写“R2 已关闭”。
 - 没有实现 `WagePayableInventoryLookup`；D3 §6.9 仍只是契约，不是可调用实现。
-- 没有修改 D1/D2/D3/status/R2 设计/decision/precheck/adjudication；没有提交、推送、stash、checkout、merge、同步，也没有触碰主树。
+- D4-D0 最初落盘时没有修改 D1/D2/D3/status/R2 设计/decision/precheck/adjudication；**2026-10-17 D1–D4 复核修正轮另行局部修改了 D1/D2/D3、D3 裁决文件、重规划与 status（仅设计/计划/状态文档），仍没有改 R2 最小设计/decision/precheck 历史事实**；没有提交、推送、stash、checkout、merge、同步，也没有触碰主树。
 - 没有新增任何用户玩法裁定；本文所有比例/时限/接口/failure word 均为工程默认或工程契约。
 
 ### 12.2 开放但不阻塞 D4-I 的工程项

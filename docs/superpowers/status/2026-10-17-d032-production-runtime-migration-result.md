@@ -122,7 +122,7 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 
 > **性质**：本段是 D3 设计交付记录；未改业务/测试、未编译、未跑门禁、未提交/同步。
 
-- **新增设计书**：`docs/superpowers/specs/2026-10-17-d032-wage-chain-design.md`（1052 行，未跟踪）。内容覆盖 U15–U21 逐字原话、工资 posting/quote/进位余数/allowIdle 状态、U20 非对称调价、角色级劳动匹配与 idle、W1 工资前置、U21 直付/抵物/成债、tick 时序、失败词表、不变量、正向/负向判据与 W1–W5 文件所有权。
+- **新增设计书**：`docs/superpowers/specs/2026-10-17-d032-wage-chain-design.md`（1052 行，未跟踪）。内容覆盖 U15–U21 逐字原话、工资 posting/quote/进位余数、allowIdle 状态（历史：该状态已由 U23 撤回）、U20 非对称调价、角色级劳动匹配与 idle、W1 工资前置、U21 直付/抵物/成债、tick 时序、失败词表、不变量、正向/负向判据与 W1–W5 文件所有权。
 - **用户原话核对**：U15–U21 与 D2 §1 逐字比对一致；U13/U14 不在 D3 范围，未重复收录。
 - **D3 对 D2 的最小修正**（D3 文档 §0.3；未直接改 D2）：回执需逐 tick 逐 `(household, role)` 实际劳动；MONEY_WAGE 角色改用 posting 表达需求、不强制 roster participant；`candidateHouseholdsOf` 按角色类型分流；D2 §8.2 工资预计改用 posting target；W2 自动候选资格失败是 skip、roster 内 PRODUCT_SHARE 资格失败仍整实例拒绝。
 - **控制方复核结论**：设计结构完整，未发现与用户原话/五条铁律/模块边界的直接冲突；以下实现前置项需在 W1/W2/W3 派单前由 D3 局部补充或由派单书明确：
@@ -159,7 +159,7 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **B1–B4**：批次重排 W2a→W1→W2b→W3→W4→W5；W2b 未接 W3 时在任何抽料/写回/进度/经验/实际劳动前全 tick fail-closed；W3 唯一 `WagePayableInventoryLookup`（地点用 `production.contract.ProductionLocation`），D4 未接时库存腿跳过并成债；同 payer×location 预算，跨格 `wage-payer-location-unsupported`。
 - **U23-b 选择细化（控制方工程默认，用户可推翻）**：新增 `EconomyPolicyKey.SURVIVAL_IDLE_POLICY`，默认 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET`（1）使 `idleEligible=true` 有实际 `IDLE_CHOSEN` 路径；`BEST_EFFORT_WORK`（0）允许正收益工作即使不足生存仍被选中。该键不是 per-household `allowIdle`，不恢复 `householdLaborChoices`；默认值不冒充用户裁定。
 - **SurvivalOutlook 纯只读契约**：D3 §2.5.1 定义输入/输出、逐需求行覆盖、库存/收入去重、同劳动/资源预算组合、空集合具名原因、缺价/不可达不折算、预测不抵实际消费；O9（Social 下一 tick 需求投影）、O10（可达购买价/供给/币种事实）、O11（既有债务/不可用权益快照）仍为开放工程项。
-- **组件号**：32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`；无第 36 个；D1/D2/D3 一致。
+- **组件号（R-18 当前更正；由 D3 §9.1 / D4 §8.2 局部取代旧记录）**：31 基线；32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders` / 36 `assetOccupancies` / 37 `inventoryReservations`。D2/D3 只新增 32–35，D4 后续 36/37；“D2/D3 无第 36 个”只描述当时写面，不是全库禁令；36 不得让给已撤回的 `allowIdle`/`householdLaborChoices`。
 - **原话核对**：U15–U21 D2/D3 逐字相同；U22/U23 与 architecture source/decision doc 逐字匹配。`git diff --check` 通过；无 `LOCAL_LAST_TRADE`/`referencePriceOf`/`SettlementLocationRef` 残留。
 - **未做/未验证**：所有 P/负向判据仍只是设计判据；D4 正文未完成；未实现工资链/生存判定/抵物；R2 多实例真实分配仍归 D4/A；未跑 `clean verify`/`tools/gate.sh`。下一步：D4 正文与 D1–D4 统一，再独立复核、提交检查点、C0 派单。
 
@@ -176,3 +176,30 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **用户原话**：U8/U16/U21/U22/U23 逐字收录并核对；U23 的零息/生存不从业/折价边界仅作输入，D4 不重定义。
 - **未做/未验证**：全部 P1–P22/负向/数值例仍只是设计判据；R2 完整功能未实现；`WagePayableInventoryLookup` 未实现；未跑 Maven/测试/仿真/门禁。下一步：D4-I 单 owner 实现（只编译）→ D4-T 独立测试 → 控制方复核；之后 W3 串行接入，R2 关闭须 D4-T 证据。
 - **AGENTS 索引**已补 D2/D3/D4/D3 裁决列条目；本轮未改任何代码或测试。
+
+## 十三、2026-10-17 D1–D4 独立复核修正记录（侧线工作树）
+
+> **性质**：只改 D1/D2/D3/D4 设计、D3 裁决文件历史标记、重规划局部更正与本状态记录；未写/改 Java/XML/POM/测试，未跑 Maven/测试/仿真/门禁，未提交/推送/同步主树。
+
+- **复核输入**：`docs/superpowers/reports/2026-10-17-d032-d1-d4-design-review.md`（P1=12 / P2=6，R-01..R-18）。
+- **当前组件号（唯一口径）**：31 基线 → 32 `productionRosters` → 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders` → 36 `assetOccupancies` / 37 `inventoryReservations`；D2/D3 只新增 32–35，D4 后续 36/37。
+- **已修要点**：
+  - R-01：D4 的 `AssetKind` 统一 `SMALL_TOOL`/`LARGE_TOOL`；前者 TICK、后者 CYCLE；`TOOL` 输入具名拒；两值各自往返判据。
+  - R-02：D2-I2 改为 `PRODUCT_SHARE` 角色必须有 participant，`MONEY_WAGE` 可无 participant（目标由 posting/default 表达）。
+  - R-03：D2/D3/status 的“无第 36”改为“D2/D3 只新增 32–35，D4 后 36/37”。
+  - R-04：D3 §2.5.1 增加逐需求行覆盖算法，接入预计货币/实物/产品份额并明确去重顺序与来源 provenance。
+  - R-05：W3 在 lookup/支付前按 payer 聚合，>1 settlement location 整组 `wage-payer-location-unsupported`，零部分支付；`AccountSession` 为户级账户权威。
+  - R-06：D1/D2 原话附录补 U22/U23，input 改为 U13–U23。
+  - R-07：D1/D2/D3 统一毫小时口径（1 小时 = 1000 毫小时）。
+  - R-08：D4-I 明列全部 `OwnershipStake` 构造/seed 入口与 location 来源，app `EconomySeeder` 也在 D4-I 写面。
+  - R-09：D2 增加 C0-A owner，负责 `AssetKind.java` 与旧 `TOOL` 引用扫描；测试归 C4。
+  - R-10：`requestedScale` 默认 1 只留“已存在单实例且无请求”兼容路径，候选/新实例缺显式规模即拒。
+  - R-11：D3 增加可持久 `DebtSource`（WAGE_ARREARS/RENT_ARREARS/ORDINARY_LOAN/LEGACY_UNKNOWN），`capitalizeArrears(WAGE)` 写 0‰，普通贷款保原 terms。
+  - R-12：裁决文件头部加 U23 取代标记，U-D3-2/U-D3-3 标历史/关闭，原文不删。
+  - R-13/R-14：D1 `ProductionRoleId` 当前包名改 `simos-economy-api`；`UNALLOCATED` 归 organizer residual 并补 400/400/100。
+  - R-15：D4 location 规范 `<q>_<r>`，非法 `foo` ⇒ `asset-location-missing`。
+  - R-16：`WagePayableInventoryLookup.java` 唯一新增/实现 owner = D4-I；W3 只消费已编译读口；批次 D4-I→D4-T→W3。
+  - R-17：D1 末尾补未实现/未编译/未验证声明。
+  - R-18：replan Phase W 标旧顺序并被 W2a→W1→W2b→W3→W4→W5 局部取代；status 组件号更正。
+- **未做/未验证**：R-01..R-18 的修正仍只是设计文字；未实现、未编译、未跑测试/仿真/门禁，未验证任何数值例；未修 R2；`WagePayableInventoryLookup`/`DebtSource`/D4 occupancy 均未落形。
+- **下一步**：对修正后的 D1–D4 做独立复评；通过后才派 D4-I（唯一写代码 owner，只编译）→ D4-T（独立测试）→ W3；任何提交/同步按另行授权。
