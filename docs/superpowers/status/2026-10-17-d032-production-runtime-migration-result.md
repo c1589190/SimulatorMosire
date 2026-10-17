@@ -375,3 +375,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界**：`EconomyCodec` 旧 capacity 合成路径用 `ProductionLocation.ofPlan(industry)`（历史旧档；新写面均显式 location）；D4-Ib 才实现 36/37 grant/reservation、AssetOccupancyBook、真实 Asset/Wage lookup、R2 分配。
 - **测试影响**：大量旧 `OwnershipStake`/`AssetShareId.idOf` 构造、seed JSON、golden 需 W5 迁移；未写/未跑测试。
 - **下一步**：D4-Ib（AssetOccupancyGrant/InventoryReservation/AssetOccupancyBook、EconomyData 36/37、`AssetOccupancyLookupImpl`/`WagePayableInventoryLookupImpl`、R2 消费同源/旧路径 guard；D4-T 前不删除 `asset-scope-shared:awaiting-D4` 证据）；只编译 economy/app，不写/不跑测试、不提交。
+
+## 二十五、2026-10-17 22:xx D4-Ib1 占用/预留状态与lookup检查点
+
+> **性质**：D4-Ib1 生产代码已实现并编译/格式检查通过；未接消费者/R2，未跑测试。
+
+- **提交**：`42c290a1 feat(economy)!: D4-Ib1 EconomyData 36/37、占用分配器、预留与真实 lookup`（已推送）。
+- **状态**：`EconomyData` 36 `assetOccupancies`、37 `inventoryReservations`；ChangeSet/Codec/DayView/BoundaryView/StateBuilder/seed/payload/clear 全接；无 38。
+- **类型/算法**：`AssetOccupancyGrant`/`InventoryReservation` 及 ID/status；`AssetOccupancyBook` 先认 ACTIVE、单实例整池、多实例整数最大余数、稳定拆 grant、释放回填、不动物权 quantity；`InventoryReservationBook` payer×commodity 全地点 overcommit；确定性 id。
+- **lookup**：`AssetOccupancyLookupImpl` revision/mismatch/空 Map/空 Optional；`WagePayableInventoryLookupImpl` AccountSnapshot + 全地点 ACTIVE 预留扣减，不二次扣减；新增最小 `AccountInventorySnapshotLookup` provider（app 装配留 D4-Ib2）。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；spotless `-pl simos-economy,simos-app -am` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：未实现 `AssetOccupancyHorizonPolicy`/`AssetOccupancyView`；`AssetOccupancyAllocation/Rejection` 为 unit×assetKind 派生；清区直接移除占用/预留（不生成悬空 RELEASED 行）；消费者未接新 allocator/lookup，R2 未关闭，`asset-scope-shared:awaiting-D4` 保留。
+- **测试影响**：`EconomyRoundTripTest` 31→37 组件、直接 `new EconomyData(...)` 缺 2 参；D4-T 统一迁移/验证；未写/未跑测试。
+- **下一步**：D4-Ib2a（economy 消费者统一：`SettlementIndex`/`ProductionProcessBook`/`EconomySettlement`/`ExpectedProfitBook`/`LaborQueueBook`/`DebtCapacityBook`/`MarketDemandBook`/`HouseholdClassRule` 共用 `AssetOccupancyBook`/`AssetOccupancyLookup`；AssetOccupancyHorizonPolicy/View；R2 新路径与旧 guard；D4-T 前不删除旧证据）；只编译 economy/app，不写/不跑测试、不提交。
