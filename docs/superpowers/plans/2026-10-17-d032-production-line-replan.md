@@ -87,7 +87,7 @@
 
 ### Phase A：资产与占用实现（C/D4 后；R2 在此关闭）
 
-> **F-05/F-07/F-08 批次注记（当前有效，取代 F-02）**：D4-C 只冻结必选 `WagePayableInventoryLookup` + `AssetOccupancyLookup` 只读接口（含 `AssetOccupancySnapshot` 精确签名与 `UnavailableAssetOccupancyLookup` 适配器），必须先于 C2；D4-I 在 W2b 之后落 36/37 并实现真实 lookup，D4-T 在 D4-I 后看最终 37 组件，W3 最后。共享 economy 文件顺序 = `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。旧 F-02 的“D4-I 先于 W2a/W1/W2b”仅作历史、已作废；W1/W2b 不得各自造临时接口或回退旧 `usableAssets`。
+> **F-05/F-07/F-08/F-09/F-10 批次注记（当前有效，取代 F-02）**：D4-C 只冻结必选 `WagePayableInventoryLookup` + `AssetOccupancyLookup` 只读接口（`AssetOccupancySnapshot` 带现有 `RevisionId`；`occupancyOf(unit, expectedRevision, from, to)`；`UnavailableAssetOccupancyLookup`/`UnavailableWagePayableInventoryLookup` 两个 fail-closed 适配器），必须先于 C2；D4-I 在 W2b 之后落 36/37 并实现真实 lookup，D4-T 在 D4-I 后看最终 37 组件，W3 最后。共享 economy 文件顺序 = `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。W1/W2b 的 wage empty 记 `wage-inventory-scope-unavailable`、asset empty 记 `asset-occupancy-unavailable`，不得混用；不得各自造临时接口或回退旧 `usableAssets`/账户余额。
 
 A1 资产账扩展（作用域/使用量/占用时段；不另建土地账）→ A2 统一占用分配/回填/跨周期锁定、替换整池复制 → A3 I8 全腿测试（同方案多实例、同地点多实例、多地点经营者、释放回填）。
 

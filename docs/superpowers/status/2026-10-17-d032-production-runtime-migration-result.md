@@ -221,7 +221,7 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **N-09（P2）**：`SurvivalOutlookRequest.maxCombinations`（工程默认 4096，可配置，>0）限制确定性 DFS 枚举；超限 `survival-combination-limit` fail-closed，不返回截断 best/idleEligible；P50/负向判据。
 - **未做/未验证**：仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何 N 判据；未提交/推送/同步主树。
 
-## 十五、2026-10-17 终局复核 F-01..F-08 定点修正记录
+## 十五、2026-10-17 终局复核 F-01..F-10 定点修正记录
 
 > **性质**：只改 D1/D2/D3/D4、replan 与本 status；未改代码/测试，未跑 Maven/测试/仿真/门禁，未提交/推送/同步主树。
 
@@ -230,6 +230,7 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **F-05（当前有效）**：D4-C 只冻结必选 `WagePayableInventoryLookup` + `AssetOccupancyLookup` 只读接口，先于 C2；C2 落 32、W2a 落 33/34、W2b 落 35、D4-I 落 36/37 并实现真实 lookup、D4-T 后 W3。共享 economy 文件顺序 = `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；旧 F-02 顺序作废。
 - **F-06**：D4 P18d 覆盖 A/B 各 600、户级余额 1000 的跨地点 overcommit：第二次创建/合并 ACTIVE 预留必须 `inventory-reservation-overcommitted`，零新增/零状态、不截断；同步负向表与例 J。
 - **F-07/F-08（当前有效）**：`AssetOccupancyLookup` 与 `WagePayableInventoryLookup` 并列为 D4-C 必选只读接口；冻结 `AssetOccupancySnapshot`/`occupancyOf(unit, from, to)` 精确签名与 `UnavailableAssetOccupancyLookup` fail-closed 适配器；D4-I 唯一真实实现；C2 只用 `allocation` 填 probe/execution，empty ⇒ `asset-occupancy-unavailable`/零产出，空 Map ⇒ 合法 0，mismatch ⇒ `asset-occupancy-snapshot-mismatch`，旧 `usableAssets` 回退 ⇒ 红。
+- **F-09/F-10（当前有效）**：`AssetOccupancySnapshot` 带现有 `io.mosire.simos.util.state.RevisionId`；`occupancyOf(unit, expectedRevision, fromTick, toTickExclusive)`；`snapshot.revision != expectedRevision` 或 unit/location/interval mismatch ⇒ ERROR `asset-occupancy-snapshot-mismatch`。D4-C 同时提供 `UnavailableWagePayableInventoryLookup`（empty）与 `UnavailableAssetOccupancyLookup`；W1/W2b 的 wage empty 记 `wage-inventory-scope-unavailable`、asset empty 记 `asset-occupancy-unavailable`，不得混用/回退账户余额；D4-I 唯一真实实现，D4-T 验证 C2/W1/W2b 只依赖 D4-C 接口。
 - **F-03**：D3-I3/I25 改为 W1/W2b/W3 共用 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；W1/W2b 候选不可行/skip、W3 整组 `wage-payer-location-unsupported`，均零 lookup/零部分支付/零新债/零 carry 变化。
 - **F-04**：新增 W2b 唯一 pure `NextTickIncomeProjection`（`time/NextTickIncomeProjection.java`）：输入 D2 cycle `Prospect`/候选 + `nextTick` + cycleStart/End + locked quote/target + 下一 tick 劳动计划，输出下一 tick 可交付 `expected*` 与 `incomeAvailableAtTick`。cycleEnd > nextTick 的 product share 本 tick 为 0；cycleEnd <= nextTick 才可计。缺 cycle 边界/quote/target/劳动计划 ⇒ `survival-income-projection-missing`/`survival-income-timing-unknown` fail-closed；D2 §8.2/P23、D3 §2.5.1.0/P51 同步。
 - **未做/未验证**：F-01..F-04 仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何判据；未提交/推送/同步主树。

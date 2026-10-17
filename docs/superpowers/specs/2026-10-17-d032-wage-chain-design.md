@@ -13,7 +13,7 @@
 >
 > **边界**：D3 只冻结工资报价状态、U20 调价、劳动匹配/闲置、工资前置、直付/抵物/成债、tick 时序与验收判据。D4/Phase A 的资产地点/占用期/统一占用（R2）仍归 D4；生产定义、角色经验、产品份额归 D1/D2/production。**2026-10-17 整合轮只统一 D1/D2/D3 设计正文；不改 status/R2/Java/XML/POM/测试，不触碰主树、不提交。**
 >
-> **2026-10-17 F-05/F-06/F-07/F-08 定点修正注（当前有效）**：D4-C 先冻结必选 `WagePayableInventoryLookup` + `AssetOccupancyLookup` 只读接口（含精确签名/fail-closed 适配器），D4-I 后实现 36/37 与真实 lookup；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；D4 增加 P18d 跨地点 overcommit 反向判据。以下旧 N/R 注仅作历史。
+> **2026-10-17 F-05/F-06/F-07/F-08/F-09/F-10 定点修正注（当前有效）**：D4-C 先冻结必选 `WagePayableInventoryLookup` + `AssetOccupancyLookup` 只读接口（含精确签名/fail-closed 适配器），D4-I 后实现 36/37 与真实 lookup；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`；D4 增加 P18d 跨地点 overcommit 反向判据。以下旧 N/R 注仅作历史。
 >
 > **2026-10-17 第三次定点修正注（N-01/N-02/N-04/N-05/N-06/N-08/N-09，当前有效）**：lookup 对 payer×commodity **全地点**扣预留；W1/W2b/W3 共享 `WagePayerLocationPrecheck`；`LivelihoodAlternative.incomeAvailableAtTick` 与 `maxCombinations` 时间/组合上限；`DebtSource` 全写入点/迁移/seed/codec owner；删除“D4 未完成/不改 replan”旧句；共享 economy 文件交接顺序与 N-08。以下旧 R 修正注仅作历史。
 >
@@ -1197,6 +1197,7 @@ interface WagePayableInventoryLookup {
 - 返回量必须**已经扣完**：`AccountSession` 户级冻结、**该 payer 全部地点**的 ACTIVE 生产占用（`InventoryReservation`）、再生产权益/已投入资料（由 D4/权益与占用所有者唯一权威计算）。**W1/W2b/W3 不再做第二次减法**，也**不得回退**到“账户余额即全部可支付”。
 - **`Optional.empty()` 条件（写死，R-05）**：仅当 ① D4 lookup 尚未接线/明确 disabled；② payer 无法解析为已登记家户账户（`AccountSession` 无该户）；③ 实现明确不可用。**不得**因商品余额为 0、没有 ACTIVE 预留、没有该商品或该 place 暂无商品而返回 empty——这些是可用读口的空 `Map`。location 为 `null`/`UNSPECIFIED`/非法格式时不进入 lookup，按 `asset-location-missing` fail-closed。
 - **`Optional.empty()` 的 W3 行为**：**货币腿仍可按 U21 先付**；**库存腿全部跳过**，记 `wage-inventory-scope-unavailable`；剩余 due 成债。不得回退账户原始余额。
+- **D4-C fail-closed 适配器（F-10）**：D4-C 除 `UnavailableAssetOccupancyLookup` 外同时提供 `UnavailableWagePayableInventoryLookup`（返回 `Optional.empty()`）。W1/W2b 在 D4-I 前只可注入该适配器：不得自造实现、不得回退账户余额、不得把 empty 当 0。W1/W2b 的 wage lookup empty ⇒ 具名 `wage-inventory-scope-unavailable`；需要库存/抵物可行性的候选不可行/skip，不能被当作“可支付库存 0”或“已付清”。`AssetOccupancyLookup` empty 必须用 `asset-occupancy-unavailable`，两类词不得混用；W3 的 empty 行为仍为货币先付、库存腿跳过、余款成债。
 - **payer 级地点预检先于 lookup**：W1/W2b/W3 共享 §6.9.1 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；snapshot 必须包含 payer 现有 unit/roster/posting 地点 ∪ 候选/本次地点。合并后 >1 settlement location ⇒ W3 整组 `wage-payer-location-unsupported`，W1/W2b 候选不可行/skip，**均不调用 lookup、不逐 location 复用、不做部分支付**（B4/N-02/F-01）。通过预检的单地点组只调用一次 lookup，作为该组义务的共享库存预算快照；lookup 内部仍扣除该 payer 全部地点的 ACTIVE 预留（N-01）。
 - **账户权威**：lookup 读取的 payer 商品余额/冻结必须来自 **`AccountSession` 的户级账户快照**（`AccountSession` 是货币/商品余额与冻结的权威读面）；`HouseholdInventory` 只是 actor 侧存储表示，D3 不得直接按地点拆一份 `HouseholdInventory` 当第二本库存。`settlementLocation` 不能改变户级余额的扣减基数。
 - **接口/实现归属（F-05，取代 R-16 的单批表述）**：`WagePayableInventoryLookup` 的**只读接口契约**由 **D4-C** 新增/冻结（不落 EconomyData 状态）；**唯一实现**由 **D4-I** 在 36/37 同批提供。W1/W2b/W3 只消费 D4-C 接口；D4-I 提供实现，D4-T 后 W3 才运行；不得新增第二套接口/临时空实现，不写回、不复制第二套减法。
@@ -1435,6 +1436,7 @@ debt-source-mismatch
 | P37 | **B2 W2b 整 tick 预检** | W2b 真实 `settleOneDayInto` 遇 MONEY_WAGE 且 W3 未启用 ⇒ 整 tick `wage-settlement-not-implemented`；allocations/进度/经验/实际劳动零写入；dry-run 可读匹配 |
 | P38 | **B3 可支付库存读口** | `WagePayableInventoryLookup.payableInventory(ActorRef, production.contract.ProductionLocation)`；D4 lookup 不可用 ⇒ 货币先付、库存腿跳过 + `wage-inventory-scope-unavailable`、余款成债；可用 ⇒ 每份只扣一次，权益/占用为零可付 |
 | P38b | **全地点 ACTIVE 预留扣除（N-01）** | `grain=1000`、冻结 0、B 地点有 ACTIVE 预留 300、A 是唯一 W3 地点且只有工资义务 ⇒ `lookup(A)` 返回 `grain=700`；只扣 A 地点预留 ⇒ P38b 红；支付/成债不得超过 700 |
+| P38c | **D4-C wage lookup fail-closed（F-10）** | W1/W2b 注入 `UnavailableWagePayableInventoryLookup` ⇒ `Optional.empty()` 具名 `wage-inventory-scope-unavailable`，不得自造实现/回退账户余额/当 0；需库存/抵物的候选不可行/skip；D4-I 后由 `WagePayableInventoryLookupImpl` 替换；asset empty 用 `asset-occupancy-unavailable` 不混用 |
 | P39 | **B4 payer 级地点预检（R-05）** | 同一 payer 两 location ⇒ W1/W2b 候选不可行/skip、W3 在 lookup/支付前整组 `wage-payer-location-unsupported`，均零部分支付、零 lookup、零新债、零 carry 变化；同账户、两地、一份库存不得被双付；通过预检的单地点组只调用一次 lookup，共享预算 |
 | P39b | **W1/W2b 共用预检（N-02/F-01）** | 同一 payer 已有 unit A（location A）+ candidate B（location B）：W1/W2b 必须用完整 `WagePayerLocationSnapshot` 在候选阶段 fail/skip，不能只看到 B 而通过，也不能先按 location 各 lookup 一次；W1 不计算工资成本、W2b 不进入排序/allocations；W2a 的 `WagePayerLocationPrecheck` 是 W1/W2b/W3 唯一实现 |
 | P40 | **A5 工资池收窄** | 预计/未到账份额不计入支付能力；已到账且经 lookup 确认的本人粮按 U21 参与抵物；他户份额/权益不得抵 |
@@ -1508,6 +1510,8 @@ debt-source-mismatch
 | D4 不可用时回退“账户余额即全部可支付” | P38 |
 | 同一 organizer 跨 location 共享库存预算 | P39 |
 | lookup 只扣当前 location 的 ACTIVE 预留，漏其他地点 | P38b |
+| W1/W2b 在 lookup empty 时回退账户余额或把 empty 当 0 | P38c |
+| wage lookup empty 与 asset occupancy empty 的词混用 | P38c |
 | 同一 payer 多地点时逐 location 继续支付/查询（部分支付） | P39 |
 | 用 `HouseholdInventory` 或账户原始余额按地点另造第二本库存 | P38/P39 |
 | 把“余额为 0/无预留/无该商品”当 `Optional.empty()` 而不是空 `Map` | P38 |
@@ -1558,7 +1562,7 @@ debt-source-mismatch
 
 | 批次 | 可写方向 | 禁止/边界 |
 |---|---|---|
-| **D4-C（只读接口，F-05/F-07/F-08；先于 C2）** | **必选**：`simos-economy/.../time/WagePayableInventoryLookup.java`、`simos-economy/.../time/AssetOccupancyLookup.java`（含 `AssetOccupancySnapshot` 精确签名）、`simos-economy/.../time/UnavailableAssetOccupancyLookup.java`（fail-closed 返回 empty）；必要时最小读口 | **只新增接口/无状态适配器，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
+| **D4-C（只读接口，F-05/F-07/F-08/F-09/F-10；先于 C2）** | **必选**：`simos-economy/.../time/WagePayableInventoryLookup.java`、`simos-economy/.../time/AssetOccupancyLookup.java`（含 `AssetOccupancySnapshot.revision` 与 `occupancyOf(unit, expectedRevision, from, to)` 精确签名）、`simos-economy/.../time/UnavailableAssetOccupancyLookup.java`、`simos-economy/.../time/UnavailableWagePayableInventoryLookup.java`（均 fail-closed 返回 empty）；必要时最小读口 | **只新增接口/无状态适配器，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
 | **D4-I（真实 lookup 实现 + 36/37）** | `WagePayableInventoryLookup`/`AssetOccupancyLookup` 的唯一真实实现（如 `WagePayableInventoryLookupImpl`/`AssetOccupancyLookupImpl`）、`EconomyData` 第 36/37 组件、D4 占用/预留状态 | 在 W2b 后、D4-T 前；不改 D4-C 接口签名，不新增第二套读口；只编译，不写/不跑测试 |
 | **W2a（候选 default + posting/quote 读口 + `WagePayerLocationPrecheck`）** | `simos-economy/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`；`codec/EconomyCodec.java`；新增 `model/ProductionWageDefault.java`、`WageDefaultKey.java`、`ProductionWagePosting.java`、`WagePostingKey.java`、`ProductionWageDefaultLookup.java`、`ProductionWageQuote.java`、`ProductionWageQuoteLookup.java`；`spi/EconomySetProductionWageDefaultHandler.java`、`EconomySetProductionWagePostingHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`EconomyReferenceValidation.java`；新增 `time/ProductionWageBook.java`（default/posting 读口）；新增并唯一实现 `time/WagePayerLocationPrecheck.java`（§6.9.1 纯函数，供 W1/W2b/W3 共享） | **不实现**匹配/idle/U20（W2b）、支付/抵物/债（W3）；`householdLaborChoices`/`allowIdle` 已撤回，不新增对应状态/命令/seed；不写测试。W1 依赖本批的真实读口，C2 的永远 empty lookup **不得**被当作候选能力完成 |
 | **W1（工资前置估值）** | `simos-economy/.../time/ExpectedProfitBook.java`（`expectedWageCostMilli`/`wageProspect`/理由词）；W1 所需只读 helper | 只基于 W2a 的真实 default/posting 读口、D4-C 的 `WagePayableInventoryLookup`/`AssetOccupancyLookup` 接口和 `WagePayerLocationPrecheck`；>1 settlement location 的 payer 候选不可行，不 lookup；不改 `LaborQueueBook` 排序/过滤；不实现支付/抵物/债；不写测试 |
@@ -1588,7 +1592,7 @@ debt-source-mismatch
 8. **多角色 unit cap 的角色 id 优先序是工程默认**：不声称公平；可另行设计。
 9. **`ProductionReceipt` 本次 tick participant 明细未落形**：最小修正已并入 **D2 §6.1**；C1/实现 owner 仍需落形与编译验证，D3 不把设计当编译通过。
 10. **测试证据为零**：§8 判据全部没有运行记录；W5 完成后才可写“通过”。
-11. **D4 读口未实现**：§6.9 只是 D3 的读取契约；D4 设计已落盘但 `WagePayableInventoryLookup` 与 `AssetOccupancyLookup` 仍 **未实现**。两者接口契约 owner = **D4-C**（只读接口；`AssetOccupancyLookup` 含 `AssetOccupancySnapshot` 与 `UnavailableAssetOccupancyLookup`），唯一真实实现 owner = **D4-I**（36/37 同批）；W1/W2b/W3 只消费 D4-C 接口，W3 在 D4-T 后运行。地点形参固定为已有的 `production.contract.ProductionLocation`。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
+11. **D4 读口未实现**：§6.9 只是 D3 的读取契约；D4 设计已落盘但 `WagePayableInventoryLookup`/`AssetOccupancyLookup` 仍 **未实现**。接口契约 owner = **D4-C**（只读接口；含 `AssetOccupancySnapshot.revision`、`UnavailableAssetOccupancyLookup`、`UnavailableWagePayableInventoryLookup`），唯一真实实现 owner = **D4-I**（36/37 同批）；W1/W2b/W3 只消费 D4-C 接口，W3 在 D4-T 后运行。地点形参固定为已有的 `production.contract.ProductionLocation`。W1/W2b 的 wage empty 具名 `wage-inventory-scope-unavailable`，asset empty 具名 `asset-occupancy-unavailable`，不得混用。`asset-scope-shared:awaiting-D4` 是 R2 最小边界，不是 D4 完整关闭。
 12. **A1/A2/A3/A4/B3/B4 未实现**：本文只统一设计口径，没有改代码；所有正负判据待 W5 独立测试 owner 运行。
 13. **SurvivalOutlook 的 O9–O11 未实现**：Social 下一 tick 需求投影适配、当地可达购买价/供给事实装配、既有债务/不可用权益快照都需 W2b/D4 提供只读来源；缺来源时按 §2.5.1 具名失败或保守不折算，不伪造数值口径。
 
