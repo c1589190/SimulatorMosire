@@ -89,13 +89,13 @@ import java.util.Optional;
  * <p>★★ <b>每个 GOV 的固定命令序</b>（同一 GOV 内顺序不可换；两级按中央 → 省）：
  *
  * <pre>
- * economy.UpsertIndustry（office@<seated hex>，空输出 + TOOL 产能锚）
+ * economy.UpsertIndustry（office@<seated hex>，空输出 + SMALL_TOOL 产能锚）
  * → unit.CreateUnit → social.CreateHousehold(hh-gov-<id>, UNIT) → actor.EnsureHouseholdAccount
  * → unit.SetGovFormation（staff={POST:2}、OfficePolicy 默认）
  * → economy.RegisterGovernment
  * → unit.SetJurisdiction（本级省级辖区：中央=capital-province / 省=small-world）
  * → [省] unit.SetTaxRate(100‰)（中央不发：新 region 从 0 起 ⇒ 初始 0‰，要不要征由中央自定/后续工具改）
- * → economy.UpsertGovUnit（office unit + TOOL 份额 + 空规则关系）
+ * → economy.UpsertGovUnit（office unit + SMALL_TOOL 份额 + 空规则关系）
  * → social.CreateHousehold(hh-unit:<id>, UNIT) → social.TransferHouseholdMembers（2 名成年男性）
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
  * → unit.AssignGovPost（POST / tier-3：两维各 50%）
@@ -178,7 +178,7 @@ public final class GovWorldBootstrap {
   /** office 产业模板的制度键（与 {@code economy.UpsertGovUnit} 的默认 modeKey 同字面，语义自洽）。 */
   public static final String OFFICE_REGIME = "gov_service";
 
-  /** office 产业模板的产能锚（1 件 TOOL / 单位规模）；{@code economy.UpsertGovUnit} 的 assets 必须逐 kind 覆盖它。 */
+  /** office 产业模板的产能锚（1 件 SMALL_TOOL / 单位规模）；{@code economy.UpsertGovUnit} 的 assets 必须逐 kind 覆盖它。 */
   public static final long OFFICE_ASSET_PER_UNIT = 1L;
 
   /** 省对 {@code small-world}（18 格省级辖区）的长期税率（‰；run setup 口径）。中央初始 0‰，不用本常量。 */
@@ -675,7 +675,7 @@ public final class GovWorldBootstrap {
     payload.put(
         "skill", io.mosire.simos.production.contract.ProductionSkillKeys.ADMINISTRATION.value());
     payload.put("cycleDays", OFFICE_CYCLE_DAYS);
-    payload.put("capacityPerUnit", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
+    payload.put("capacityPerUnit", Map.of(AssetKind.SMALL_TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("dailyInputPerUnit", new LinkedHashMap<>());
     payload.put("dailyLaborPerUnit", 0L);
     payload.put("laborPerUnit", OFFICE_LABOR_PER_UNIT);
@@ -812,7 +812,7 @@ public final class GovWorldBootstrap {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("govUnitId", spec.govId());
     payload.put("industryId", officeIndustryId);
-    payload.put("assets", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
+    payload.put("assets", Map.of(AssetKind.SMALL_TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("reason", reason);
     return ToolSupport.json(payload);
   }

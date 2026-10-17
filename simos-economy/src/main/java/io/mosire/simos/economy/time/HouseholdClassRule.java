@@ -56,12 +56,12 @@ import java.util.Set;
  *      · 净雇工（{@code netLaborSold < 0}）⇒ RICH_PEASANT；
  *      · 自耕/净劳动平衡（{@code netLaborSold == 0}）⇒ 债务压力高 ⇒ POOR_PEASANT，否则 MIDDLE_PEASANT；
  *      · 净卖劳动 ⇒ 地少（≤ 自耕阈值）或债务压力高 ⇒ POOR_PEASANT，否则 MIDDLE_PEASANT；
- *    无 LAND 但有 TOOL/WORKSHOP（直接持有或本户是该关系的 operator/inputSupplier/residualOwner）⇒ ARTISAN；
+ *    无 LAND 但有 SMALL_TOOL/WORKSHOP（直接持有或本户是该关系的 operator/inputSupplier/residualOwner）⇒ ARTISAN；
  *    其它直接权利/经营身份（CATTLE 等尚未启用的资产）⇒ 无债 MIDDLE_PEASANT、有债 POOR_PEASANT。
  * ② 无直接权利时看 {@link ProductionRules} 与 {@code HouseholdLaborCommitment}：
  *    · 地租受方只作 LANDLORD 的辅助证据（结构上有租规则 + 净不卖劳动），不再被折成"家户自有土地"；
  *    · 本户是某产业的 operator/inputSupplier/residualOwner 时，即使份额登记在经营者 actor 名下，也按该身份给
- *      LAND/TOOL 那一档的 rich/middle/poor（不得因"权利不在本户名下"直接判 landless）；
+ *      LAND/SMALL_TOOL 那一档的 rich/middle/poor（不得因"权利不在本户名下"直接判 landless）；
  *    · 纯劳动供给按 laborSource 判：
  *        TENANT  ⇒ 有投入/产出占有且债务不高 ⇒ MIDDLE_PEASANT，否则 POOR_PEASANT；
  *        SERF    ⇒ POOR_PEASANT（依附农）；
@@ -380,7 +380,7 @@ public final class HouseholdClassRule {
 
       // ②a 经营身份对应的技术产能：即使 OwnershipStake 的 owner/operator 是经营者
       // actor，operator/inputSupplier/residualOwner
-      //    的 LAND / TOOL / WORKSHOP 也要算进该家户的分类资产（计划 §S3.4 "不得因权利不在本户名下直接判 landless"）。
+      //    的 LAND / SMALL_TOOL / WORKSHOP 也要算进该家户的分类资产（计划 §S3.4 "不得因权利不在本户名下直接判 landless"）。
       for (Map.Entry<HouseholdId, Set<ProductionUnitId>> entry : operatedActivities.entrySet()) {
         for (ProductionUnitId activity : entry.getValue()) {
           ProductionProcess unit = units.get(activity);
@@ -395,7 +395,8 @@ public final class HouseholdClassRule {
             }
             if (usable.getKey() == AssetKind.LAND) {
               operatedLandMilliMu.merge(entry.getKey(), usable.getValue(), Math::addExact);
-            } else if (usable.getKey() == AssetKind.TOOL || usable.getKey() == AssetKind.WORKSHOP) {
+            } else if (usable.getKey() == AssetKind.SMALL_TOOL
+                || usable.getKey() == AssetKind.WORKSHOP) {
               operatedToolOrWorkshop.merge(entry.getKey(), usable.getValue(), Math::addExact);
             }
           }
@@ -723,7 +724,7 @@ public final class HouseholdClassRule {
         stratum = SocialClassId.OFFICIAL;
         reason = "official:communalRight;netLaborSoldMilli=" + netLaborSold + ";" + evidence;
       } else if (directRights > 0L || !operatedActivitiesOrEmpty(household).isEmpty()) {
-        // 其它尚未启用的资产（CATTLE/MACHINE/SHIP）或没有可计产能的经营身份：有资产事实，但无法套 LAND/TOOL 档。
+        // 其它尚未启用的资产（CATTLE/MACHINE/SHIP）或没有可计产能的经营身份：有资产事实，但无法套 LAND/SMALL_TOOL 档。
         if (debtStressed || netLaborSold > 0L) {
           stratum = SocialClassId.POOR_PEASANT;
           reason =
@@ -862,7 +863,7 @@ public final class HouseholdClassRule {
      * 把一条 OwnershipStake 的资产事实记到某个家户名下（owner 与 operator 都调用它；同一家户同一份只调一次）。
      *
      * <p>★ 判据与旧实现逐字对应，只把 {@code holder/activity} 换成 {@code owner|operator/industry}：
-     * 数量进资产基数、产业进直接/控制活动、LAND/TOOL/WORKSHOP 分类累计、COMMUNAL 记名。
+     * 数量进资产基数、产业进直接/控制活动、LAND/SMALL_TOOL/WORKSHOP 分类累计、COMMUNAL 记名。
      */
     private void mergeDirectShare(HouseholdId household, OwnershipStake share) {
       directRightQuantity.merge(household, share.quantity(), Math::addExact);
@@ -875,7 +876,7 @@ public final class HouseholdClassRule {
       controlledActivities(household).addAll(matching);
       if (share.asset() == AssetKind.LAND) {
         directLandMilliMu.merge(household, share.quantity(), Math::addExact);
-      } else if (share.asset() == AssetKind.TOOL || share.asset() == AssetKind.WORKSHOP) {
+      } else if (share.asset() == AssetKind.SMALL_TOOL || share.asset() == AssetKind.WORKSHOP) {
         directToolOrWorkshop.merge(household, share.quantity(), Math::addExact);
       }
       if (share.kind() == AssetRightKind.COMMUNAL && share.quantity() > 0L) {

@@ -44,7 +44,7 @@ import java.util.Objects;
  * <pre>{@code
  * {"govUnitId":"u-central",          // 必填非空白；家户 = hh-gov-<govUnitId>（GovernmentHouseholds.of）
  *  "industryId":"office@0_0",        // 必填；必须已存在且 base kind = office（office / office_v2…）
- *  "assets":{"TOOL":1},              // 必填对象；逐值 ≥ 0；至少覆盖 capacityPerUnit 的 1 单位规模；键必须是该 recipe 的锚
+ *  "assets":{"SMALL_TOOL":1},              // 必填对象；逐值 ≥ 0；至少覆盖 capacityPerUnit 的 1 单位规模；键必须是该 recipe 的锚
  *  "modeKey":"gov_service",          // 可选；缺省 = gov_service（稳定键，ProductionProcess.modeKey）
  *  "reason":"gm:..."}                // 必填非空白（审计；不进状态）
  * }</pre>

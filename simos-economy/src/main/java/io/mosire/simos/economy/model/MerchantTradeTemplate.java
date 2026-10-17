@@ -40,7 +40,7 @@ import java.util.Map;
  * name              = 贸易
  * regime            = merchant                  （{@link RegimeOperators#MERCHANT}；BY_REGIME 不登记它 ⇒ 经营主体必须显式给）
  * cycleDays         = 120                       （与农业/手工业同周期）
- * capacityPerUnit   = {TOOL: 120}               （★ W7-fix2：120 毫工具作业资本 / 1 单位规模 —— 牲口已退出配方；120 = 12,000 ÷ 100 ⇒ 城市格规模锚**保持 100 单位**）
+ * capacityPerUnit   = {SMALL_TOOL: 120}               （★ W7-fix2：120 毫工具作业资本 / 1 单位规模 —— 牲口已退出配方；120 = 12,000 ÷ 100 ⇒ 城市格规模锚**保持 100 单位**）
  * dailyInputPerUnit = {}  dailyLaborPerUnit = 0
  * laborPerUnit      = 1000
  * outputPerUnit     = {haul: 1}                 （A1：跑商产出**运输服务**，不再是一具"收获当场 return"的空壳）
@@ -62,7 +62,7 @@ import java.util.Map;
  *                       缺哪一项就报哪个具名理由 no-labor / no-tool-input）
  * 运力派生量            逐值仍是既有算式：{@link MerchantCapacity#capacityMilliOf}(劳动投入, 工具)
  *                       （{@code MerchantCapacityPool.providerCapacityMilli}，本批未改）
- * 规模锚（生产层）      本模板的 {@code capacityPerUnit = {TOOL: TOOL_PER_UNIT}}（= 120 毫工具/单位规模）—— 作业资本那一维 =
+ * 规模锚（生产层）      本模板的 {@code capacityPerUnit = {SMALL_TOOL: TOOL_PER_UNIT}}（= 120 毫工具/单位规模）—— 作业资本那一维 =
  *                       **工具**，不再有任何 {@code CATTLE} 字段（不留"没人读的字段"，§一.11）；取值使城市格规模锚**保持 100 单位**（W7-fix2）
  * 周期投入              {@code tool: 100 毫/规模·周期}（数值一字未改，只是外层分路键由 CATTLE 改成 tool）
  *                       ★★ 与上一行**不是同一个量**：120 = 每 1 单位规模**压住**的作业资本（存量），100 = 每 1 单位规模每周期**烧掉**的（流量），
@@ -72,7 +72,8 @@ import java.util.Map;
  * ★ 逐条后果已记进实现账本（`.superpowers/sdd/2026-10-11-w7-haul-and-merchants/impl-ledger.md` 的 W7-fix /
  * W7-fix2 节）： ① {@code CATTLE} 在本模板里**一个字段都不剩**；② 创世播种不再为 {@code trade} 播 CATTLE 份额（那会变成没人读的孤儿份额）；
  * ③ 本格 {@code trade} unit 的规模锚那一**维**从"牲口头数"变成"工具作业资本量" —— ★★ W7-fix2 起锚**值**仍 = 100 单位规模（120
- * 毫工具/单位 × 100 单位 = 12,000 毫工具禀赋）⇒ 相对 W7 前**数值行为不变**，变的只是"压住规模的那一维资产种类"（{@code CATTLE → TOOL}）。
+ * 毫工具/单位 × 100 单位 = 12,000 毫工具禀赋）⇒ 相对 W7 前**数值行为不变**，变的只是"压住规模的那一维资产种类"（{@code CATTLE →
+ * SMALL_TOOL}）。
  *
  * <p>★ <b>本类无状态、不写任何东西</b>：{@link #industry(HexCoord)} 与 {@link #industryId(HexCoord)} 都是纯函数 ——
  * 决策层（{@code ExpectedProfitBook} 的预估）可以直接拿它算"若我在这一格开一间商号会怎样"，而<b>不落任何状态</b>； 只有迁移执行（{@code
@@ -119,9 +120,9 @@ public final class MerchantTradeTemplate {
    * <p>★★ <b>W7-fix2（2026-10-11，控制方裁定 E2 改判）：取值 = 120 毫工具 / 单位规模，使城市格规模锚保持既有的 100 单位</b>：
    *
    * <pre>
-   * {@code capacityPerUnit   = {TOOL: TOOL_PER_UNIT}} = {TOOL: 120}   ← 每 1 单位规模**压住**的作业资本（存量 / 资本占用）
+   * {@code capacityPerUnit   = {SMALL_TOOL: TOOL_PER_UNIT}} = {SMALL_TOOL: 120}   ← 每 1 单位规模**压住**的作业资本（存量 / 资本占用）
    * {@code cycleInputPerUnit = {tool: 100}}                           ← 每 1 单位规模每周期**烧掉**的工具（流量）
-   * 创世作业资本（{@code EconomySeeder} 的 trade {@code capacity} = {TOOL: 12,000} 毫工具）
+   * 创世作业资本（{@code EconomySeeder} 的 trade {@code capacity} = {SMALL_TOOL: 12,000} 毫工具）
    * ⇒ 规模 = ⌊12,000 ÷ 120⌋ = **100 单位**（= W7 的 CATTLE 锚逐值：{@code {CATTLE: 1} × 100 头}）
    * </pre>
    *
@@ -132,7 +133,7 @@ public final class MerchantTradeTemplate {
    *
    * <p>★★ <b>它取代了什么</b>：W7 的 {@code CATTLE_PER_UNIT}（{@code {CATTLE: 1}}，"1 头畜力 / 1 单位运力"）。用户裁定
    * v3.28 §7 取消牲口要求（原话「**能不能先把牲口要求取消掉啊？目前是在跑测试，算作工具需求得了**」）⇒ 本模板的投入口径 = **劳动 + 工具**，作业资本那一维随之落到
-   * {@code TOOL}（§一.11：模板里**一个 CATTLE 字段都不留**）。
+   * {@code SMALL_TOOL}（§一.11：模板里**一个 CATTLE 字段都不留**）。
    *
    * <p>★★ <b>量纲（★ 本批最容易读错的一处）</b>：本仓商品账一律以**毫**计（{@code EconomyVocabulary.MILLI_PER_COMMODITY_UNIT}
    * = 1000；{@code OwnershipStake.quantity()} 同制）⇒ 本常量读作 "<b>每 1 单位规模压 120 毫工具作业资本</b>"。
@@ -190,10 +191,11 @@ public final class MerchantTradeTemplate {
    * AssetKind} 是跑商的作业资本"的调用方（如 {@code ModeMigrationPolicy} 的随迁携带量算式）读这里，**不许**各自写死一个 {@code
    * AssetKind}。
    *
-   * <p>★ 返回 {@code {TOOL}}（W7-fix 起）；返值是内容相同的纯函数（同一份数组 → 同一份不可变列表），可安全反复调用。
+   * <p>★ 返回 {@code {SMALL_TOOL}}（W7-fix 起；D-032 C0-A 把旧 {@code TOOL} 落到 {@code
+   * SMALL_TOOL}）；返值是内容相同的纯函数（同一份数组 → 同一份不可变列表），可安全反复调用。
    */
   public static List<AssetKind> capacityKinds() {
-    return List.of(AssetKind.TOOL);
+    return List.of(AssetKind.SMALL_TOOL);
   }
 
   /**
@@ -216,7 +218,7 @@ public final class MerchantTradeTemplate {
     Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit = new LinkedHashMap<>();
     // ★★ W7-fix：外层分路键随作业资本维度一起改成 tool（{@code Industry.inputPerUnit()} 把各层摊平成
     //   {商品 → 毫}，故**内层**值侧口径一字未改：仍是 tool: 100 毫/规模·周期）。
-    cycleInputPerUnit.put(AssetKind.TOOL, toolPerCycle);
+    cycleInputPerUnit.put(AssetKind.SMALL_TOOL, toolPerCycle);
     return new IndustryDefinitionView(
         industryId(hex),
         DISPLAY_NAME,

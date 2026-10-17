@@ -150,7 +150,7 @@ public final class EconomyAdjustTool implements SimosTool {
                 + " classStructureId?(位置不属于任何结构时必填)}；"
                 + "upsertProductionRelation={activity(=unit id), operator?(须与 unit.operator 一致), inputSupplier?{actor|household|cohort},"
                 + " rules?[CompensationRule], residualOwner?, laborSource?(SELF|FAMILY|TENANT|SERF|WAGE)}；"
-                + "upsertAssetRule={modeId, assetKind(LAND|CATTLE|TOOL|WORKSHOP|MACHINE|SHIP), id?(须=派生值),"
+                + "upsertAssetRule={modeId, assetKind(LAND|CATTLE|SMALL_TOOL|LARGE_TOOL|WORKSHOP|MACHINE|SHIP), id?(须=派生值),"
                 + " isCoreMeans?, pledgeable?, liquidationPriority?(≥0), rentRule?, transferRule?；新建后四字段必填 (rentRule 可空)}；"
                 + "upsertProductionOrganization={id?, modeId, classPositionId, unitId?, organizer{kind,id}, laborSources?[household],"
                 + " assetSources?[shareId], inputSources?[recipient], outputOwnership{actor|household|cohort}, relationTemplateRef?,"

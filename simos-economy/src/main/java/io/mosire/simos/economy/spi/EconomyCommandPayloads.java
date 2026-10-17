@@ -402,10 +402,9 @@ final class EconomyCommandPayloads {
 
   private static AssetKind parseAssetKind(String command, String text) {
     try {
-      return AssetKind.valueOf(text);
+      return AssetKind.parse(text);
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          command + " 的资产种类未知: " + text + "；合法值: " + java.util.Arrays.toString(AssetKind.values()));
+      throw new IllegalArgumentException(command + " 的资产种类非法: " + text + "；" + e.getMessage(), e);
     }
   }
 

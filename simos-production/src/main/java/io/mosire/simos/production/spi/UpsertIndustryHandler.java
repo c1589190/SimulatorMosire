@@ -18,7 +18,7 @@ import org.slf4j.Logger;
  *
  * <pre>{@code
  * {"id":"office@0_0", "name":"衙署", "regime":"government_office", "skill":"government",
- *  "cycleDays":30, "capacityPerUnit":{"TOOL":1}, "dailyInputPerUnit":{}, "dailyLaborPerUnit":0,
+ *  "cycleDays":30, "capacityPerUnit":{"SMALL_TOOL":1}, "dailyInputPerUnit":{}, "dailyLaborPerUnit":0,
  *  "laborPerUnit":16000, "outputPerUnit":{}, "moneyOutputPerUnit":{}, "cycleInputPerUnit":{},
  *  "slots":[{"id":"...","name":"...","laborParticipationPerMille":1000}],
  *  "allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500}}

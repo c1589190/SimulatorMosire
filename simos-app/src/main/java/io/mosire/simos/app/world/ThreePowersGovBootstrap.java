@@ -83,14 +83,14 @@ import java.util.Set;
  * <p>★★ <b>每个 GOV 的固定命令序（同一 GOV 内顺序不可换；与 {@code GovWorldBootstrap} 逐条一致）</b>：
  *
  * <pre>
- * economy.UpsertIndustry（office@<座位格>，空输出 + TOOL 产能锚）
+ * economy.UpsertIndustry（office@<座位格>，空输出 + SMALL_TOOL 产能锚）
  * → unit.CreateUnit → social.CreateHousehold(hh-gov-<id>, UNIT) → actor.EnsureHouseholdAccount
  * → unit.SetGovFormation（staff={POST:2}、OfficePolicy 默认）
  * → economy.RegisterGovernment（{@code issuable} 只在"既有币种"时显式声明，见 {@link GovSpec#declaredIssuable()}）
  * → [本 GOV 发行新币时] economy.DefineCurrency（币种进词表 + <币>-specie 进工具表 + 本 GOV 成为发行人）
  * → unit.SetJurisdiction（本级辖区：本 GOV 那一个行政区）
  * → production.CreateInstance（★ B10：office 生产实例，身份四字段 = economy.UpsertGovUnit 的期望；次序不可换）
- * → economy.UpsertGovUnit（office unit + TOOL 份额 + 空规则关系）
+ * → economy.UpsertGovUnit（office unit + SMALL_TOOL 份额 + 空规则关系）
  * → social.CreateHousehold(hh-unit:<id>, UNIT) → social.TransferHouseholdMembers（2 名成年男性）
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
  * → unit.AssignGovPost（POST / tier-3：两维各 50%）→ economy.SetHouseholdLabor（= Social 投影劳动）
@@ -138,7 +138,7 @@ public final class ThreePowersGovBootstrap {
   /** office 产业模板的制度键（与 {@code economy.UpsertGovUnit} 的默认 modeKey 同字面，语义自洽）。 */
   public static final String OFFICE_REGIME = "gov_service";
 
-  /** office 产业模板的产能锚（1 件 TOOL / 单位规模）；{@code economy.UpsertGovUnit} 的 assets 必须逐 kind 覆盖它。 */
+  /** office 产业模板的产能锚（1 件 SMALL_TOOL / 单位规模）；{@code economy.UpsertGovUnit} 的 assets 必须逐 kind 覆盖它。 */
   public static final long OFFICE_ASSET_PER_UNIT = 1L;
 
   /** 国库初始粮（毫粮 / GOV）：与 {@code GovWorldBootstrap} 同值（≈ 2000 余天的现行俸禄+工资需求）。 */
@@ -848,7 +848,7 @@ public final class ThreePowersGovBootstrap {
     payload.put(
         "skill", io.mosire.simos.production.contract.ProductionSkillKeys.ADMINISTRATION.value());
     payload.put("cycleDays", OFFICE_CYCLE_DAYS);
-    payload.put("capacityPerUnit", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
+    payload.put("capacityPerUnit", Map.of(AssetKind.SMALL_TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("dailyInputPerUnit", new LinkedHashMap<>());
     payload.put("dailyLaborPerUnit", 0L);
     payload.put("laborPerUnit", OFFICE_LABOR_PER_UNIT);
@@ -989,7 +989,7 @@ public final class ThreePowersGovBootstrap {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("govUnitId", spec.govId());
     payload.put("industryId", officeIndustryId);
-    payload.put("assets", Map.of(AssetKind.TOOL.name(), OFFICE_ASSET_PER_UNIT));
+    payload.put("assets", Map.of(AssetKind.SMALL_TOOL.name(), OFFICE_ASSET_PER_UNIT));
     payload.put("reason", reason);
     return ToolSupport.json(payload);
   }

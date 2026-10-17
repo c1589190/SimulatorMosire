@@ -293,8 +293,8 @@ public final class EconomySettlement {
    * ★★ **收获时的饲料消耗**（千分数）：**0‰**。
    *
    * <p>★★ **为 0 是因为 v1 不做耕牛，不是漏掉了**（用户 2026-09-25：「耕牛系统觉得复杂现阶段就别做」；v2 spec §3.1 明写「故 {@code
-   * AssetKind.CATTLE/TOOL/WORKSHOP/MACHINE/SHIP} v1 保持声明但不启用」）：没有牲口就没有饲料口径， 本常量先**存在但取值 0**，V7
-   * 参数目录落地后由参数表供给（届时耕牛一起做，这个数才有依据）。 有一条用例把它钉住（{@code
+   * AssetKind.CATTLE/SMALL_TOOL/LARGE_TOOL/WORKSHOP/MACHINE/SHIP} v1 保持声明但不启用」）：没有牲口就没有饲料口径，
+   * 本常量先**存在但取值 0**，V7 参数目录落地后由参数表供给（届时耕牛一起做，这个数才有依据）。 有一条用例把它钉住（{@code
    * EconomySettlementTest.productionLossSplitsIntoFeedAndDepreciation}）。
    */
   public static final int FEED_PER_MILLE = 0;
@@ -2063,7 +2063,7 @@ public final class EconomySettlement {
     // ★★ M-A1：逐 hex 运力池（派生量，一轮一份、不落状态）—— 成员 = 该格"选了跑商"的家户（主业或副业含 merchant
     //   生产方式的位置，J-A）；运力 = f(劳动投入, 工具可投入量)（见 MerchantCapacity）。
     //   ★ 位置 = 生产/欠租阶段之后、市场装配之前：它必须在撮合时可用，且必须读**当刻**的劳动与商品账（每轮重算、不累积）。
-    //   ★ 工具维读会话商品账（tool 商品；V-22：不动 AssetKind.TOOL 产权份额）。
+    //   ★ 工具维读会话商品账（tool 商品；V-22：不动 AssetKind.SMALL_TOOL 产权份额）。
     // ★★★ A3（2026-10-10）：原来的"运力报价表"（{@code CapacityQuote}/{@code CapacityQuoteBook}，逐户自报价簿）
     //   **已整族退役** —— 限价改为**纯派生量**（{@code MerchantCapacityPool.askPerMilleOf}：派生承运成本 × 规模档
     //   + 具名固定"上门"附加费），服务成市 lane 上的钱由**市场牌价**定（{@code MarketTable.prices[haul]}，见 A2）。
@@ -5505,7 +5505,7 @@ public final class EconomySettlement {
    *   <li>★ <b>它按 rowSharesOf 分摊</b>（"该行想要多少"），而那正是本批要消灭的口径 —— 留着它，本批的改动就只改了一半；
    *   <li>★★ <b>它会跨主体抢料（实测）</b>：把"第一层不够就从同格别人那里补"接进本步之后，真档出现 —— 织机（农村家户的账， 自己缸里 18,600,000）按"整个产业的
    *       740 台"去取料 ⇒ 缺口 3,600,000 ⇒ **把城里作坊自己的 2,100,000 纤维取走** ⇒ 作坊缺纤维 ⇒ 规模 0 ⇒ **工具产量 0**（{@code
-   *       EconomyRealScaleClothTest} 实测：{@code heldByOperator(CRAFT, TOOL)} 由 169,750 掉到
+   *       EconomyRealScaleClothTest} 实测：{@code heldByOperator(CRAFT, SMALL_TOOL)} 由 169,750 掉到
    *       <b>0</b>）。⇒ "谁出料"已经由 relation 说了，取料就<b>只从那个主体的账上取</b>；跨主体的余缺调剂是**市场** 的活（H4 的同格池），不是本步的活。
    * </ol>
    *

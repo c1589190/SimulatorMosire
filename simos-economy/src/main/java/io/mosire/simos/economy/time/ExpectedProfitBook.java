@@ -776,7 +776,7 @@ public final class ExpectedProfitBook {
     if (householdEconomy.participationAdjustedLaborMilli() <= 0L) {
       return "NO_MERCHANT_CAPACITY:no-labor";
     }
-    // ② 工具维：手上**可投入**的工具（商品账口径；V-22 冻结：不动 AssetKind.TOOL 产权份额）。
+    // ② 工具维：手上**可投入**的工具（商品账口径；V-22 冻结：不动 AssetKind.SMALL_TOOL 产权份额）。
     //    ★ 只判"有没有"（> 0），不判多少 —— 量级由 providerCapacityMilli 与市场轮决定（不在这里造第二套标定）。
     long toolMilli =
         accounts
@@ -837,7 +837,7 @@ public final class ExpectedProfitBook {
     //
     //   ★★ W7-fix：门槛不再是"自备 CATTLE"，而是上面那条"劳动 + 工具"（用户裁定）⇒ 非城市格的家户
     //     **凭劳动 + 工具就能跑商**，这正是"跑商自己长出来"这条通道被打通的那一步。
-    //     ★ 作业资本那一维（capacityPerUnit）已随模板改成 TOOL ⇒ 执行期 `planAssetMoves` 要的是**工具**份额，
+    //     ★ 作业资本那一维（capacityPerUnit）已随模板改成 SMALL_TOOL ⇒ 执行期 `planAssetMoves` 要的是**工具**份额，
     //       它是可移动资产（随迁携带，D-023 §4），不再要求非城市格有牲口。
     //
     //   ★ 估算用的模板 = {@link MerchantTradeTemplate#industry(HexCoord)}（**纯函数、不落状态**）—— 它与迁移执行

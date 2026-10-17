@@ -23,7 +23,7 @@ import org.slf4j.Logger;
  * <pre>{@code
  * {"govUnitId":"u-central",          // 必填；家户 = hh-gov-<govUnitId>
  *  "industryId":"office@0_0",        // 必填；必须已存在且 base kind = office（office / office_v2…）
- *  "assets":{"TOOL":1},              // 必填；至少覆盖 recipe capacityPerUnit 的 1 单位规模
+ *  "assets":{"SMALL_TOOL":1},              // 必填；至少覆盖 recipe capacityPerUnit 的 1 单位规模
  *  "modeKey":"gov_service",          // 可选；缺省 gov_service（稳定键）
  *  "reason":"gm:..."}                // 必填非空白（审计；不进状态）
  * }</pre>

@@ -816,10 +816,10 @@ public record TestConditions(
 
   private static AssetKind parseAssetKind(String text, String where) {
     try {
-      return AssetKind.valueOf(text);
+      return AssetKind.parse(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
-          "test-condition: " + where + " 不是合法的 AssetKind: " + text, e);
+          "test-condition: " + where + " 不是合法的 AssetKind: " + text + "；" + e.getMessage(), e);
     }
   }
 

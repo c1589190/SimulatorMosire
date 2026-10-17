@@ -82,7 +82,7 @@ import java.util.Set;
  *   ④ 债务逐合同走 DebtContractBook.reduce/upsert（唯一写口）；计划金额全部分摊，绝不静默丢债。
  *      ★★ D3：**债权人恰是迁入目标**的那部分 ⇒ 按自债显式净额（同 {@code DebtPartyResolver} 口径），
  *      不落合同、不留在源户；INFO 事件 + 当天 ledger 具名读数，净值不变、金额可见
- *   ⑤ 资产随迁（D-023）：源户自有资产按**逐笔迁移人口比例**随迁 —— 可移动资产（TOOL/SHIP/CATTLE/MACHINE）
+ *   ⑤ 资产随迁（D-023）：源户自有资产按**逐笔迁移人口比例**随迁 —— 可移动资产（SMALL_TOOL/LARGE_TOOL/SHIP/CATTLE/MACHINE）
  *      同 hex 同产业直接拆份额、跨 hex 在目标产业的同 AssetKind 下重建；不可移动资产（LAND/WORKSHOP）同 hex 可换主人，
  *      跨 hex 留原户并记具名读数。绝不再走"整户消亡时把资产全给最后目标"的旧路
  *   ⑥ 源户**计划**人口归零：钱/债必须为 0；组织/unit/关系/劳动配额照旧退役；**始终保留 0 人口壳行**
@@ -261,7 +261,7 @@ public final class ModeMigrationSettlement {
                   created.regime().value(),
                   "cycleDays",
                   created.cycleDays(),
-                  // ★ W7-fix：作业资本那一维从 CATTLE 换成 TOOL（字段名随之改名，§一.11 不留旧名）——
+                  // ★ W7-fix：作业资本那一维从 CATTLE 换成 SMALL_TOOL（字段名随之改名，§一.11 不留旧名）——
                   //   读的是模板的 capacityPerUnit（键集与每单位量都只有模板一处拼写）。
                   "toolPerUnitMilli",
                   created
@@ -1865,7 +1865,7 @@ public final class ModeMigrationSettlement {
    *
    * <pre>
    * 同 hex（同产业）：OwnershipStakeBook.apply 拆出目标户份额（owner/operator 见 transferOperator/transferRightKind）
-   * 跨 hex + 可移动（TOOL/SHIP/CATTLE/MACHINE）：目标 hex 里第一个 capacityPerUnit 含该 AssetKind 的产业下
+   * 跨 hex + 可移动（SMALL_TOOL/LARGE_TOOL/SHIP/CATTLE/MACHINE）：目标 hex 里第一个 capacityPerUnit 含该 AssetKind 的产业下
    *                                        OwnershipStakeBook.rebuild 新建同量份额；无承载产业 ⇒ 留原户并具名
    * 跨 hex + 不可移动（LAND/WORKSHOP）：不传送，留原户并具名
    * 已出租给他组织 / 有 ACTIVE 质押：本批不越权搬，留原户并具名
@@ -1978,14 +1978,14 @@ public final class ModeMigrationSettlement {
   }
 
   /**
-   * 可移动资产判据（D-023：TOOL/SHIP/CATTLE/MACHINE 随人走；LAND/WORKSHOP 不跨 hex）。
+   * 可移动资产判据（D-023：SMALL_TOOL/LARGE_TOOL/SHIP/CATTLE/MACHINE 随人走；LAND/WORKSHOP 不跨 hex）。
    *
    * <p>★ <b>W9（2026-10-11）：包内可见</b> —— {@code
    * ModeMigrationPolicy.carriedCapitalByKind}（档位判据）要读同一条判据； 只改可见性，判据本体一字未动（转业档位不得有第二份"什么带得走"的拼写）。
    */
   static boolean isMobileAsset(AssetKind asset) {
     return switch (asset) {
-      case TOOL, SHIP, CATTLE, MACHINE -> true;
+      case SMALL_TOOL, LARGE_TOOL, SHIP, CATTLE, MACHINE -> true;
       case LAND, WORKSHOP -> false;
     };
   }
@@ -2039,8 +2039,8 @@ public final class ModeMigrationSettlement {
    * 整个世界卡死。
    *
    * <p>★★ <b>W7-fix：判据从牲口换成工具</b>（用户裁定 v3.28 §7「能不能先把牲口要求取消掉啊？…算作工具需求得了」）—— 与模板 {@code
-   * capacityPerUnit = {TOOL: TOOL_PER_UNIT}} 同源；工具是**可移动资产**（{@code isMobileAsset} 含 TOOL），
-   * 随迁携带那一条路照旧成立。★ 理由字面量随之改名（{@code no-carrier-asset-… → no-tool-input-…}，§一.11 不留旧名）。
+   * capacityPerUnit = {SMALL_TOOL: TOOL_PER_UNIT}} 同源；工具是**可移动资产**（{@code isMobileAsset} 含
+   * SMALL_TOOL）， 随迁携带那一条路照旧成立。★ 理由字面量随之改名（{@code no-carrier-asset-… → no-tool-input-…}，§一.11 不留旧名）。
    */
   private static List<ModeMigrationPolicy.MigrationMove> filterOnDemandMerchantMoves(
       List<ModeMigrationPolicy.MigrationMove> moves,
@@ -2197,7 +2197,7 @@ public final class ModeMigrationSettlement {
 
   /**
    * ★ W7 / W7-fix：一个源户"这一批迁移能带走的**作业资本**总量" —— 判据与 {@code migrateAssetsForMove} 同源 （owner == 源户 ∧
-   * 未被别的组织实际使用）。★ 只统计**可移动**资产（{@code isMobileAsset}；{@code TOOL} 在其中）。
+   * 未被别的组织实际使用）。★ 只统计**可移动**资产（{@code isMobileAsset}；{@code SMALL_TOOL} 在其中）。
    *
    * <p>★★ W7-fix（用户裁定 v3.28 §7）：那一维从 {@code CATTLE} 换成 {@link
    * MerchantTradeTemplate#capacityKinds()}（= 模板的 {@code capacityPerUnit} 键集，唯一拼写点） ——

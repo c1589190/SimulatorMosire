@@ -144,7 +144,7 @@ import java.util.Set;
  *       IndustryDefinitionView.capacity}。★ 留着不读 = "看起来在记、其实被静默丢掉"（真档会变成"全格没有产能 ⇒ 绝收"而无人察觉）⇒
  *       <b>给了即抛</b>，消息点名新键；
  *   <li>★★ <b>{@code IndustryDefinitionView} 多一个 {@code capacity}（本格该产业的产能总量）</b>：缺键 ⇒ 空表 ⇒ 规模 0（=
- *       本格没有产能， 真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与
+ *       本格没有产能， 真档里沙漠格的 {@code LAND = 0}、人口不足一厂的格 {@code SMALL_TOOL = 0} 正是这一形态）。★ <b>逐值允许 0</b> （与
  *       {@code capacityPerUnit} 的"必须 > 0"性质不同）。
  * </ol>
  *
@@ -873,8 +873,7 @@ final class EconomyPayloads {
         throw new IllegalArgumentException("assetRules 的每项必须是对象: " + node);
       }
       ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
-      AssetKind assetKind =
-          enumValue(AssetKind.class, requireText(node, "assetKind"), "assetRules[].assetKind");
+      AssetKind assetKind = assetKind(requireText(node, "assetKind"), "assetRules[].assetKind");
       boolean isCoreMeans = requireBoolean(node, "isCoreMeans");
       boolean pledgeable = requireBoolean(node, "pledgeable");
       int liquidationPriority = requireInt(node, "liquidationPriority");
@@ -1334,12 +1333,7 @@ final class EconomyPayloads {
       owner = actorRef(ownerNode);
       operator = actorRef(operatorNode);
     }
-    AssetKind asset;
-    try {
-      asset = AssetKind.valueOf(requireText(node, "asset"));
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("资产份额的 asset 不是生产资料种类: " + node, e);
-    }
+    AssetKind asset = assetKind(requireText(node, "asset"), "asset");
     long quantity = requireLong(node, "quantity");
     AssetRightKind kind;
     try {
@@ -1649,13 +1643,7 @@ final class EconomyPayloads {
         .fields()
         .forEachRemaining(
             entry -> {
-              AssetKind kind;
-              try {
-                kind = AssetKind.valueOf(entry.getKey());
-              } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException(
-                    "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
-              }
+              AssetKind kind = assetKind(entry.getKey(), field);
               out.put(kind, requireIntegral(entry.getValue(), field + "." + entry.getKey()));
             });
     return out;
@@ -1677,13 +1665,7 @@ final class EconomyPayloads {
         .fields()
         .forEachRemaining(
             entry -> {
-              AssetKind kind;
-              try {
-                kind = AssetKind.valueOf(entry.getKey());
-              } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException(
-                    "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
-              }
+              AssetKind kind = assetKind(entry.getKey(), field);
               if (!entry.getValue().isObject()) {
                 throw new IllegalArgumentException(
                     "字段 " + field + "." + entry.getKey() + " 必须是商品表（对象）: " + entry.getValue());
@@ -2124,6 +2106,16 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + value);
     }
     return OptionalLong.of(value.asLong());
+  }
+
+  /** {@code AssetKind} 词表解析的唯一入口（旧 {@code TOOL} ⇒ {@code asset-kind-retired:TOOL}）。 */
+  private static AssetKind assetKind(String text, String field) {
+    try {
+      return AssetKind.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 不是生产资料种类: " + text + "；" + e.getMessage(), e);
+    }
   }
 
   /** ★ E4c：枚举词表解析（未知值 ⇒ 列出合法值，不 silent fallback）。 */

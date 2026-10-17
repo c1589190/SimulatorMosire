@@ -350,6 +350,16 @@ final class ProductionDefinitionPayloads {
     return value;
   }
 
+  /** {@code AssetKind} 词表解析的唯一入口（旧 {@code TOOL} ⇒ {@code asset-kind-retired:TOOL}）。 */
+  private static AssetKind assetKind(String text, String field) {
+    try {
+      return AssetKind.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 的键不是生产资料种类: " + text + "；" + e.getMessage(), e);
+    }
+  }
+
   private static Map<AssetKind, Long> assetMap(JsonNode object, String field) {
     Map<AssetKind, Long> out = new LinkedHashMap<>();
     if (object == null) {
@@ -359,13 +369,7 @@ final class ProductionDefinitionPayloads {
         .fields()
         .forEachRemaining(
             entry -> {
-              AssetKind kind;
-              try {
-                kind = AssetKind.valueOf(entry.getKey());
-              } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException(
-                    "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
-              }
+              AssetKind kind = assetKind(entry.getKey(), field);
               out.put(kind, requireIntegral(entry.getValue(), field + "." + entry.getKey()));
             });
     return out;
@@ -381,13 +385,7 @@ final class ProductionDefinitionPayloads {
         .fields()
         .forEachRemaining(
             entry -> {
-              AssetKind kind;
-              try {
-                kind = AssetKind.valueOf(entry.getKey());
-              } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException(
-                    "字段 " + field + " 的键不是生产资料种类: " + entry.getKey());
-              }
+              AssetKind kind = assetKind(entry.getKey(), field);
               if (!entry.getValue().isObject()) {
                 throw new IllegalArgumentException(
                     "字段 " + field + "." + entry.getKey() + " 必须是商品表（对象）: " + entry.getValue());

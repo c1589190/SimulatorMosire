@@ -201,7 +201,7 @@ public final class MerchantCapacityPool {
 
   /**
    * ★ <b>A3：{@link MerchantCapacity} 作业层的**工具维**键</b>（会话商品账口径；V-22：读的是商品账，**不动** {@code
-   * AssetKind.TOOL} 产权份额）。
+   * AssetKind.SMALL_TOOL} 产权份额）。
    *
    * <p>★ A3 起它<b>不再是门槛</b>（旧 {@code MerchantHaul.TOOL_COMMODITY} 的那套"每趟烧 1,000 毫工具"已删）：
    * 这里读它只为把运力规模（tier / share 的派生依据）算出来。⇒ 收成 {@code private}（不再是对外拼写点）。

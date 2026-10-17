@@ -57,7 +57,7 @@ public final class EconomyVocabulary {
   /** 粮的商品 id（v2 spec §3.2：**粮与种子是同一个商品**，不设 {@code seed}）。 */
   public static final String GRAIN_COMMODITY_ID = "grain";
 
-  /** 布的**商品** id（R3；★ 与 {@code AssetKind.TOOL} 不同命名空间：那个是生产资料，这个是商品）。 */
+  /** 布的**商品** id（R3；★ 与 {@code AssetKind.SMALL_TOOL} 不同命名空间：那个是生产资料，这个是商品）。 */
   public static final String CLOTH_COMMODITY_ID = "cloth";
 
   /** 纤维的商品 id（R3）：农田的副产物（亚麻/秸秆），也是织机与工坊的原料。 **内生于土地**（由农业配方一并产出，不凭空造）。 */

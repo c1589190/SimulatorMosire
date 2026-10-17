@@ -1291,7 +1291,7 @@ public final class ModeMigrationPolicy {
    *
    * <pre>
    * 份额腿 = owner == 该户 actor ∧ quantity &gt; 0 ∧ !claimedByEnterprises ∧ {@link ModeMigrationSettlement#isMobileAsset}(asset)
-   * 商品腿 = 商品账里的工具（{@link MerchantTradeTemplate#TOOL_COMMODITY}）⇒ 计入 {@code AssetKind.TOOL}
+   * 商品腿 = 商品账里的工具（{@link MerchantTradeTemplate#TOOL_COMMODITY}）⇒ 计入 {@code AssetKind.SMALL_TOOL}
    *          （工具是唯一"既有商品形态、又有资产份额形态"的作业资本；两边的量纲都是毫）
    * </pre>
    *
@@ -1321,7 +1321,7 @@ public final class ModeMigrationPolicy {
     }
     long toolCommodity = goods.getOrDefault(MerchantTradeTemplate.TOOL_COMMODITY, 0L);
     if (toolCommodity > 0L) {
-      carried.merge(AssetKind.TOOL, toolCommodity, Math::addExact);
+      carried.merge(AssetKind.SMALL_TOOL, toolCommodity, Math::addExact);
     }
     return carried;
   }
@@ -1774,7 +1774,7 @@ public final class ModeMigrationPolicy {
    * 范围 = owner == 源户 actor ∧ asset ∈ {模板的 capacityPerUnit 那一维} ∧ quantity &gt; 0
    * </pre>
    *
-   * <p>★★ <b>W7-fix（用户裁定 v3.28 §7）</b>：那一维从 {@code CATTLE} 换成 {@code TOOL} —— 与 {@link
+   * <p>★★ <b>W7-fix（用户裁定 v3.28 §7）</b>：那一维从 {@code CATTLE} 换成 {@code SMALL_TOOL} —— 与 {@link
    * MerchantTradeTemplate#industry(HexCoord)} 的 {@code capacityPerUnit} 键**同源**（不是第二个拼写点： 本方法直接从模板的
    * {@code capacityPerUnit.keySet()} 取，模板改哪一维这里跟着改）。
    *

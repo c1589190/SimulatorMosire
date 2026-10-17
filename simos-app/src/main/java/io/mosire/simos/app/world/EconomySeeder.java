@@ -276,8 +276,8 @@ public final class EconomySeeder {
    *        × HAUL_TOOL_PER_MILLE_OF_SERVICE ÷ 1000 = 1 × 1,000 × 100 ÷ 1000 = **100 毫工具/规模·周期**。
    *
    * 量级（供核对；{@code cycleInputPerUnit} 的值侧是"每 1 单位规模"每周期，实际需求 = 值 × 规模）：
-   *   ★★ W7-fix2（2026-10-11，**当下的口径**）：规模锚 = {@code trade.capacityPerUnit = {TOOL:
-   *   MerchantTradeTemplate.TOOL_PER_UNIT}}（**120**）与播种的作业资本（{@code capacity = {TOOL:
+   *   ★★ W7-fix2（2026-10-11，**当下的口径**）：规模锚 = {@code trade.capacityPerUnit = {SMALL_TOOL:
+   *   MerchantTradeTemplate.TOOL_PER_UNIT}}（**120**）与播种的作业资本（{@code capacity = {SMALL_TOOL:
    *   MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}} = 12,000 毫工具）⇒ 规模上界 = ⌊12,000 ÷ 120⌋ = **100 单位**；
    *   **真正**的规模 = min(劳动那一路, 投入满足率那一路)，而每 1 单位规模·周期要 100 毫工具
    *   ⇒ 100 单位规模每周期工具投入 = 100 × 100 = **10,000 毫工具 = 10 商品单位**；创世禀赋 12,000 毫工具
@@ -297,7 +297,7 @@ public final class EconomySeeder {
    */
   /// ★★ W7（2026-10-11）：**值改由 {@link MerchantTradeTemplate#TOOL_MILLI_PER_UNIT_CYCLE} 提供**（唯一拼写点；
   //  值逐值不变 = 12,000 毫工具，原算式 12 趟 × 10 商品单位 × 1,000 毫 × 100‰ ÷ 1000 见那个常量的类注）。
-  //  ★★ W7-fix：它同时是"作业资本那一维"的参照（模板 {@code capacityPerUnit = {TOOL: TOOL_PER_UNIT}}）。
+  //  ★★ W7-fix：它同时是"作业资本那一维"的参照（模板 {@code capacityPerUnit = {SMALL_TOOL: TOOL_PER_UNIT}}）。
   public static final long TOOL_MILLI_PER_TRADE_UNIT_CYCLE =
       MerchantTradeTemplate.TOOL_MILLI_PER_UNIT_CYCLE;
 
@@ -3481,7 +3481,7 @@ public final class EconomySeeder {
         entryIndex,
         node,
         IndustryId.parse(industry),
-        AssetKind.valueOf(asset),
+        AssetKind.parse(asset),
         parseActorNode(owner),
         parseActorNode(operator),
         AssetRightKind.valueOf(kind));
@@ -3649,7 +3649,8 @@ public final class EconomySeeder {
       IndustryPlan farmPlanMain = agriculture(hex, landMilliMu).withOperator(farmOrganizer);
       plans.add(farmPlanMain);
       if (hasRural) {
-        // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + TOOL → CLOTH，由**同一批农村人**承担（见 appendAllocation）。
+        // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + SMALL_TOOL → CLOTH，由**同一批农村人**承担（见
+        // appendAllocation）。
         //   ★ 它**没有自己的阶层行**（H0.2 起织机住在本产业的 {@code capacity}，纤维住在农村四行）⇒ 只有"有农村人口"
         //     的格才建它（没有农村人口的格既无织机也无农村劳动配额 ⇒ 建出来是一具空壳）。
         plans.add(householdWeaving(hex, looms));
@@ -3760,7 +3761,7 @@ public final class EconomySeeder {
         IndustryPlan plan = split.plan();
         // 主 unit：载荷逐字段与 B.2 同形（operator 不变），capacity 变成"剩余"量（体现在 assetShares）。
         // ★★ P11.7/D-024：trade 的 unit 由解析器从 industry 节点的 legacy operator 合成（见 {@link #trade} 的
-        //   兼容读口注释）—— 这里不重发，避免解析器判"同一 (产业, 经营者) 两处拼写"；作业资本（TOOL）份额仍照发。
+        //   兼容读口注释）—— 这里不重发，避免解析器判"同一 (产业, 经营者) 两处拼写"；作业资本（SMALL_TOOL）份额仍照发。
         if (!TRADE.equals(plan.kind())) {
           ProductionRules mainRelation =
               switch (plan.kind()) {
@@ -3797,7 +3798,7 @@ public final class EconomySeeder {
       allocations.addAll(splitAllocations);
       // ★★ M-A1：商号行（merchantFirms）已退役 —— 创世不再为城市格播商号状态。运力改由**派生量**给出
       //   （MerchantCapacityPool：该格"选了跑商"的家户的劳动投入 + 工具可投入量）。
-      //   ★ 保留：本格的 trade 产业（{@link #TRADE}）与它的作业资本（TOOL）份额 —— 那是 merchant 生产方式的产业落点、
+      //   ★ 保留：本格的 trade 产业（{@link #TRADE}）与它的作业资本（SMALL_TOOL）份额 —— 那是 merchant 生产方式的产业落点、
       //     也是迁移前瞻的产业模板（M5/M-D 的"主业副业排序"要用它），与商号行是两件事。
       // ★★ **H0.2：本格的阶层行 = 两组四行（家户）** —— 行的身份是 {@code (格, 居住类型, 阶层)}，
       //   **不再挂在任何产业下**（产业只留"制度 + 配方 + 产能"）。这与"行 = 家户、产业 = 生产活动"的分工一一对应：
@@ -4363,19 +4364,24 @@ public final class EconomySeeder {
 
   /** PRODUCTION_RUNTIME 基线覆盖的生产资料种类（P11.7/D-024 起加入商号运力 SHIP/CATTLE）。 */
   private static final List<AssetKind> PRODUCTION_RUNTIME_ASSET_KINDS =
-      List.of(AssetKind.LAND, AssetKind.TOOL, AssetKind.WORKSHOP, AssetKind.SHIP, AssetKind.CATTLE);
+      List.of(
+          AssetKind.LAND,
+          AssetKind.SMALL_TOOL,
+          AssetKind.WORKSHOP,
+          AssetKind.SHIP,
+          AssetKind.CATTLE);
 
   /** P2 基线资产规则的默认租金分成率（‰；沿用旧 COMPLETE 地基的 300‰ 制度量级）。 */
   private static final int PRODUCTION_RUNTIME_RENT_SHARE_PER_MILLE = 300;
 
   /**
    * ★★ <b>PRODUCTION_RUNTIME：{@code assetRules[]} 节点</b>：{@code DefaultProductionModes} 的<b>每个
-   * mode</b> × {@link #PRODUCTION_RUNTIME_ASSET_KINDS}（LAND/TOOL/WORKSHOP/SHIP/CATTLE）。
+   * mode</b> × {@link #PRODUCTION_RUNTIME_ASSET_KINDS}（LAND/SMALL_TOOL/WORKSHOP/SHIP/CATTLE）。
    *
    * <p>★★ <b>id 是派生值、不是手写第二份身份</b>：逐条经 {@link AssetRuleId#idOf(ProductionModeId, AssetKind)} 生成（与
    * {@code EconomyPayloads.parseAssetRules} 的判据同一处），并有 {@code idMatchesIdentity} 的同一条 {@code (mode,
    * assetKind)} 唯一性。{@code rentRule}/{@code transferRule} 的形状与旧 COMPLETE 地基逐字段同源： LAND
-   * 分成粮、TOOL/WORKSHOP 分成布；转移需所有权人同意、不许转租。
+   * 分成粮、SMALL_TOOL/WORKSHOP 分成布；转移需所有权人同意、不许转租。
    *
    * <p>★ 键序 = mode 目录序 × {@link #PRODUCTION_RUNTIME_ASSET_KINDS} 声明序；纯函数、可复现。
    */
@@ -4390,8 +4396,8 @@ public final class EconomySeeder {
         node.put("assetKind", assetKind.name());
         node.put("isCoreMeans", true);
         node.put("pledgeable", true);
-        // LAND/WORKSHOP = 1、TOOL = 2：土地/作坊先于工具处置（旧 COMPLETE 地基的显式制度参数）。
-        node.put("liquidationPriority", assetKind == AssetKind.TOOL ? 2 : 1);
+        // LAND/WORKSHOP = 1、SMALL_TOOL = 2：土地/作坊先于工具处置（旧 COMPLETE 地基的显式制度参数）。
+        node.put("liquidationPriority", assetKind == AssetKind.SMALL_TOOL ? 2 : 1);
         node.put("rentRule", productionRuntimeRentRuleNode(assetKind));
         node.put("transferRule", productionRuntimeTransferRuleNode());
         nodes.add(node);
@@ -4400,7 +4406,7 @@ public final class EconomySeeder {
     return nodes;
   }
 
-  /** 一条资产规则的租金模板：产出分成 300‰；LAND 分成粮，其余（TOOL/WORKSHOP/SHIP/CATTLE）分成布。 */
+  /** 一条资产规则的租金模板：产出分成 300‰；LAND 分成粮，其余（SMALL_TOOL/WORKSHOP/SHIP/CATTLE）分成布。 */
   private static Map<String, Object> productionRuntimeRentRuleNode(AssetKind assetKind) {
     String commodity = assetKind == AssetKind.LAND ? COMMODITY_GRAIN : COMMODITY_CLOTH;
     Map<String, Object> leg = new LinkedHashMap<>();
@@ -4734,15 +4740,15 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ **农村家庭纺织**（R3 的 T4；每个有农村人口的格一个）：配方 {@code FIBER + LABOR + TOOL → CLOTH}（spec §四 的压力测试），制度 =
-   * {@link #REGIME_HOUSEHOLD}，收劳动的主体是 {@code ActorKind.HOUSEHOLD} 家户。
+   * ★★ **农村家庭纺织**（R3 的 T4；每个有农村人口的格一个）：配方 {@code FIBER + LABOR + SMALL_TOOL → CLOTH}（spec §四
+   * 的压力测试），制度 = {@link #REGIME_HOUSEHOLD}，收劳动的主体是 {@code ActorKind.HOUSEHOLD} 家户。
    *
    * <p>★★ **H0.2：它不再有四行**（旧版那四行人口恒 0、劳动恒 0，是"同一批人的第二本账"）。旧版那四行上的东西**逐项去处**：
    *
    * <ul>
-   *   <li>**织机**（旧：四行各持一份 {@code meansOfProduction.TOOL}）⇒ 并成**总数**写进本产业的 {@code capacity} （{@link
-   *       #RURAL_CAPITA_PER_LOOM} 人一台）。理由：织机是**产能**（"单位规模 = 1 台织机"，见 {@code capacityPerUnit}），K3
-   *       把它从家户账上收归产业；旧版"Σ 四行 = 本格织机数"这条守恒， 现在由**一个数**直接成立；
+   *   <li>**织机**（旧：四行各持一份 {@code meansOfProduction.SMALL_TOOL}）⇒ 并成**总数**写进本产业的 {@code capacity}
+   *       （{@link #RURAL_CAPITA_PER_LOOM} 人一台）。理由：织机是**产能**（"单位规模 = 1 台织机"，见 {@code
+   *       capacityPerUnit}），K3 把它从家户账上收归产业；旧版"Σ 四行 = 本格织机数"这条守恒， 现在由**一个数**直接成立；
    *   <li>**纤维**（旧：四行各持一份 {@code goods.fiber}）⇒ 并入**农村四行**（见 {@link #ruralCohort}）。
    *       理由：那是**农村池的活**（同一批人农闲织布），家户账只能记在自家户名下 —— 记在"纺织"名下等于 给同一批人开第二本账；
    *   <li>**人口与劳动**（旧：恒 0）⇒ 本来就住在农村四行里，**一个数都不动**。农闲织布是同一批人的第二份活， 支撑它的是劳动配额那 100‰（{@link
@@ -4764,13 +4770,15 @@ public final class EconomySeeder {
         "家庭纺织",
         REGIME_HOUSEHOLD,
         // ★★ 产能 = 本格**织机总数**（旧版四行各一份、Σ 才是总数）。★ 值允许 0（农村人口 < 20 的格一台也没有）。
-        Map.of("TOOL", looms),
+        Map.of("SMALL_TOOL", looms),
         // 分配：家户自给 ⇒ 劳动权重为主（没有土地可摊；织机按户头摊）。
         orderedTable("meansWeightPerMille", 300, "laborWeightPerMille", 700),
-        Map.of("TOOL", 1L),
+        Map.of("SMALL_TOOL", 1L),
         LABOR_MILLI_PER_LOOM,
         Map.of(COMMODITY_CLOTH, CLOTH_PER_LOOM_PER_CYCLE),
-        Map.of("TOOL", Map.of(COMMODITY_FIBER, CLOTH_PER_LOOM_PER_CYCLE * FIBER_MILLI_PER_CLOTH)));
+        Map.of(
+            "SMALL_TOOL",
+            Map.of(COMMODITY_FIBER, CLOTH_PER_LOOM_PER_CYCLE * FIBER_MILLI_PER_CLOTH)));
   }
 
   /**
@@ -4823,8 +4831,8 @@ public final class EconomySeeder {
    *
    * <pre>
    * regime          = merchant（{@link RegimeOperators#MERCHANT}；BY_REGIME 不登记它，故经营主体显式给）
-   * capacity        = {TOOL: MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}  // ★ W7-fix：作业资本 = 工具（12,000 毫）
-   * capacityPerUnit = {TOOL: MerchantTradeTemplate.TOOL_PER_UNIT}        // ★ W7-fix2：**120** 毫工具作业资本 / 1 单位规模（存量；≠ 周期投入 100，不要求相等）
+   * capacity        = {SMALL_TOOL: MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}  // ★ W7-fix：作业资本 = 工具（12,000 毫）
+   * capacityPerUnit = {SMALL_TOOL: MerchantTradeTemplate.TOOL_PER_UNIT}        // ★ W7-fix2：**120** 毫工具作业资本 / 1 单位规模（存量；≠ 周期投入 100，不要求相等）
    * outputPerUnit   = {haul: HAUL_PER_TRADE_UNIT_CYCLE}       // ★ A1：产出**运输服务**（改前是空表 ⇒ 收获当场 return）
    * cycleInputPerUnit = {tool: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ A3：跑商工具消耗的**唯一**一套（产业周期投入）
    * laborPerUnit    = LABOR_MILLI_PER_TRADE_UNIT（1000）      // 劳动约束（LaborQueueBook 读它）
@@ -4855,8 +4863,8 @@ public final class EconomySeeder {
    * 工具消耗)」），创世那一份"运力资产"随之落到**工具**：
    *
    * <pre>
-   * capacity        = {TOOL: MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}(12,000)  ← 与同一家户已拿到的启动工具**同一个数**
-   * capacityPerUnit = {TOOL: MerchantTradeTemplate.TOOL_PER_UNIT}(120)          ← 作业资本那一维（**存量**：每 1 单位规模压住的毫工具；★ ≠ 下一行的周期投入 100，**不是同一个量、不要求相等**）
+   * capacity        = {SMALL_TOOL: MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}(12,000)  ← 与同一家户已拿到的启动工具**同一个数**
+   * capacityPerUnit = {SMALL_TOOL: MerchantTradeTemplate.TOOL_PER_UNIT}(120)          ← 作业资本那一维（**存量**：每 1 单位规模压住的毫工具；★ ≠ 下一行的周期投入 100，**不是同一个量、不要求相等**）
    * cycleInputPerUnit = {tool: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}(100)     ← 值侧一字未改，只换分路键
    * </pre>
    *
@@ -4865,7 +4873,7 @@ public final class EconomySeeder {
    * #MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI} 与模板类的 W7-fix 节。
    *
    * <p>★ {@code capacity} 会在 {@code ownershipStakesOf(plan, mainCapacity)} 出口物化成 {@code owner =
-   * operator} 的 {@code OWNED} **TOOL** 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。
+   * operator} 的 {@code OWNED} **SMALL_TOOL** 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。
    */
   private static IndustryPlan trade(HexCoord hex, ActorRef merchantPrincipal) {
     IndustryPlan plan =
@@ -4874,14 +4882,14 @@ public final class EconomySeeder {
             IndustryHexKeys.id(TRADE, hex.q(), hex.r()).value(),
             "贸易",
             RegimeOperators.MERCHANT,
-            Map.of(AssetKind.TOOL.name(), MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI),
+            Map.of(AssetKind.SMALL_TOOL.name(), MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI),
             // 分配模板（旧口径的 split 规则）：承运以运力资产为主、劳动占三成（理由与档位见 TRADE_SPLIT_MEANS_PER_MILLE）。
             orderedTable(
                 "meansWeightPerMille",
                 TRADE_SPLIT_MEANS_PER_MILLE,
                 "laborWeightPerMille",
                 TRADE_SPLIT_LABOR_PER_MILLE),
-            Map.of(AssetKind.TOOL.name(), MerchantTradeTemplate.TOOL_PER_UNIT),
+            Map.of(AssetKind.SMALL_TOOL.name(), MerchantTradeTemplate.TOOL_PER_UNIT),
             LABOR_MILLI_PER_TRADE_UNIT,
             // ★★ A1：**产出 = 运输服务**（商品单位/规模·周期；具名常量与两条独立标定见 HAUL_PER_TRADE_UNIT_CYCLE）。
             //   表只有一项 ⇒ 单键 Map.of 不存在迭代序抖动（本仓"保序"纪律针对多项表；与下面工具投入表同款）。
@@ -4900,7 +4908,9 @@ public final class EconomySeeder {
             //   全仓没有按资产分支读它的现扣/收获路径 ⇒ 挂哪一层的值侧都逐值进同一个读口）。
             //   ★ 值侧口径 = "毫工具 / 规模单位·周期"（与手工业同口径）；表只有一项 ⇒ 用单键 {@code Map.of}
             //     不存在迭代序抖动（本仓"保序"纪律针对多项表）。
-            Map.of(AssetKind.TOOL.name(), Map.of(COMMODITY_TOOL, TOOL_MILLI_PER_TRADE_UNIT_CYCLE)),
+            Map.of(
+                AssetKind.SMALL_TOOL.name(),
+                Map.of(COMMODITY_TOOL, TOOL_MILLI_PER_TRADE_UNIT_CYCLE)),
             merchantPrincipal);
     // ★★ <b>兼容读口必须的两个键（如实记，见实现报告）</b>：{@code EconomyPayloads.industrySpec} 对**每个**
     //   industry 节点都会先算 {@code legacyOperator}（无 operator 键 ⇒ 调 {@code
@@ -4912,7 +4922,7 @@ public final class EconomySeeder {
     //     解析器为下面"由 legacy 合成"的 trade unit 建关系）。
     //   代价：trade 的 unit 由 {@code EconomyPayloads} 的 legacy 合成路径按 {@code (产业, operator)} 的同一公式建出
     //   （id/operator/modeKey 与本类 plan 逐值同式），因此 seeder **不**再为 trade 显式发 units[] 条目（否则解析器判
-    //   "同一 (产业, 经营者) 两处拼写"）；作业资本（TOOL）份额仍走 assetShares 出口。
+    //   "同一 (产业, 经营者) 两处拼写"）；作业资本（SMALL_TOOL）份额仍走 assetShares 出口。
     plan.payload().put("operator", actorNode(merchantPrincipal));
     plan.payload().put("relation", relationNode(tradeRelation(plan)));
     return plan;

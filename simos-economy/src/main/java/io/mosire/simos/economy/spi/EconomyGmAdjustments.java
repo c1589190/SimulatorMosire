@@ -857,11 +857,8 @@ public final class EconomyGmAdjustments {
           label + " 的 modeId 必须已存在（production 当刻定义权威）: " + modeId.value());
     }
     io.mosire.simos.actor.api.asset.AssetKind assetKind =
-        enumValue(
-            label,
-            "assetKind",
-            EconomyCommandPayloads.requireText(label, parameters, "assetKind"),
-            io.mosire.simos.actor.api.asset.AssetKind.class);
+        assetKind(
+            label, "assetKind", EconomyCommandPayloads.requireText(label, parameters, "assetKind"));
     AssetRuleId id = AssetRuleId.idOf(modeId, assetKind);
     if (parameters.hasNonNull("id")) {
       AssetRuleId declared =
@@ -1241,6 +1238,17 @@ public final class EconomyGmAdjustments {
       throw new IllegalArgumentException(label + " 的 " + field + " 不得为负: " + value);
     }
     return value;
+  }
+
+  /** {@code AssetKind} 词表解析的唯一入口（旧 {@code TOOL} ⇒ {@code asset-kind-retired:TOOL}）。 */
+  private static io.mosire.simos.actor.api.asset.AssetKind assetKind(
+      String label, String field, String text) {
+    try {
+      return io.mosire.simos.actor.api.asset.AssetKind.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          label + " 的 " + field + " 不是生产资料种类: " + text + "；" + e.getMessage(), e);
+    }
   }
 
   private static <E extends Enum<E>> E enumValue(

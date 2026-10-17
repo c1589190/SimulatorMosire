@@ -1493,9 +1493,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       long quantity) {
     AssetKind asset;
     try {
-      asset = AssetKind.valueOf(assetName);
+      asset = AssetKind.parse(assetName);
     } catch (IllegalArgumentException e) {
-      throw new IllegalStateException("旧档 capacity 的键不是生产资料种类: " + assetName, e);
+      throw new IllegalStateException(
+          "旧档 capacity 的键不是生产资料种类: " + assetName + "；" + e.getMessage(), e);
     }
     ActorRef owner = actorOf(operatorNode);
     AssetShareId shareId =
