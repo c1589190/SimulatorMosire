@@ -9,6 +9,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -236,6 +237,7 @@ class DeathDebtWriteOffTest {
             CREDITOR,
             DebtUnit.commodity(GRAIN),
             TERMS,
+            DebtSource.ORDINARY_LOAN,
             principal,
             0L,
             OptionalLong.empty(),

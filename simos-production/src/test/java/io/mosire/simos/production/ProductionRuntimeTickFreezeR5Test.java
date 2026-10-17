@@ -158,14 +158,15 @@ class ProductionRuntimeTickFreezeR5Test {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.FARMING, 10_000L, 1_000L, 0L))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.FARM,
                 1L,
                 1L,
                 Map.of(LAND, 1L),
                 Map.of(),
                 Map.of(GRAIN, 1L),
-                primaryExperienceFormula))
+                primaryExperienceFormula,
+                ProductionTestFixtures.FARMING))
         .withInstance(
             ProductionTestFixtures.instance(
                 ProductionTestFixtures.U1, ProductionTestFixtures.FARM, "0_0"))

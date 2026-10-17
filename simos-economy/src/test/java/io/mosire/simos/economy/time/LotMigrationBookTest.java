@@ -7,10 +7,12 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.population.LotMigration;
@@ -108,6 +110,81 @@ class LotMigrationBookTest {
     //   "迁移后源行仍挂着源合同、目标行挂上了新建的目标合同"）。
     assertThat(after.debtsOf(SOURCE)).as("源行派生引用仍在").contains(SOURCE_DEBT);
     assertThat(after.debtsOf(target)).as("目标行派生引用已补上").contains(targetDebt);
+  }
+
+  /**
+   * ★★ W3/N-05 迁移判据：工资债的 {@link DebtSource} 与 0‰ terms 必须随迁移逐值保留 —— 不得在目标侧默认写成 {@code
+   * ORDINARY_LOAN}，也不得把工资债重新套上 20‰。
+   */
+  @Test
+  void migrationPreservesWageArrearsSourceAndZeroInterestTerms() {
+    CurrencyId silver = new CurrencyId("silver");
+    DebtTerms wageTerms = DebtTerms.wageArrearsDefault();
+    DebtContractId sourceWageDebt =
+        DebtContractId.idOf(SOURCE, CREDITOR, DebtUnit.money(silver), wageTerms);
+    DebtContract wageDebt =
+        new DebtContract(
+            sourceWageDebt,
+            SOURCE,
+            CREDITOR,
+            DebtUnit.money(silver),
+            wageTerms,
+            DebtSource.WAGE_ARREARS,
+            SOURCE_PRINCIPAL,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL);
+    HouseholdEconomy source =
+        new HouseholdEconomy(
+            SOURCE,
+            new CohortKey(RURAL_HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT),
+            SOURCE_POPULATION,
+            SOURCE_LABOR,
+            700,
+            500L,
+            Map.of(),
+            Map.of(),
+            0L);
+    HouseholdEconomy creditor =
+        new HouseholdEconomy(
+            CREDITOR,
+            new CohortKey(CREDITOR_HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD),
+            10L,
+            0L,
+            0,
+            0L,
+            Map.of(),
+            Map.of(),
+            0L);
+    EconomyData base =
+        EconomyData.empty()
+            .withMeta(
+                Optional.of(
+                    new EconomyMeta(
+                        "lot-migration-wage-source",
+                        0L,
+                        OptionalLong.empty(),
+                        EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
+                        Optional.empty())))
+            .withHouseholdEconomies(Map.of(SOURCE, source, CREDITOR, creditor))
+            .withDebtContracts(Map.of(sourceWageDebt, wageDebt));
+
+    EconomyData after = applyIntoSession(base, List.of(migration(20L)), 7L);
+
+    HouseholdId target =
+        HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
+    DebtContractId targetWageDebt =
+        DebtContractId.idOf(target, CREDITOR, DebtUnit.money(silver), wageTerms);
+    DebtContract moved = after.debtContracts().get(targetWageDebt);
+    assertThat(moved).as("工资债随迁建目标合同").isNotNull();
+    assertThat(moved.source())
+        .as("N-05：迁移必须逐值保留 source，不得默认 ORDINARY_LOAN")
+        .isEqualTo(DebtSource.WAGE_ARREARS);
+    assertThat(moved.terms())
+        .as("工资债迁到目标侧仍必须是 0‰ factory")
+        .isEqualTo(DebtTerms.wageArrearsDefault());
+    assertThat(moved.principal()).isEqualTo(200_000L);
   }
 
   @Test
@@ -240,6 +317,7 @@ class LotMigrationBookTest {
             CREDITOR,
             DebtUnit.commodity(GRAIN),
             TERMS,
+            DebtSource.ORDINARY_LOAN,
             SOURCE_PRINCIPAL,
             0L,
             OptionalLong.empty(),

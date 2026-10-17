@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -860,6 +861,7 @@ class ModeMigrationPolicyD024Test {
             BUYER2,
             DebtUnit.commodity(GRAIN),
             DebtTerms.legacyDefault(),
+            DebtSource.ORDINARY_LOAN,
             principalMilli,
             0L,
             OptionalLong.empty(),

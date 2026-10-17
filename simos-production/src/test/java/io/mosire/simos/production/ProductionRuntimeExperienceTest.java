@@ -378,7 +378,7 @@ class ProductionRuntimeExperienceTest {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.FARMING, 10_000L, 100L, 30L))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.FARM,
                 1L,
                 1L,
@@ -386,9 +386,10 @@ class ProductionRuntimeExperienceTest {
                 Map.of(),
                 Map.of(GRAIN, 1L),
                 ProductionTestFixtures.totalUse(
-                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L)))
+                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L),
+                ProductionTestFixtures.FARMING))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.MILL,
                 1L,
                 1L,
@@ -396,7 +397,8 @@ class ProductionRuntimeExperienceTest {
                 Map.of(),
                 Map.of(ProductionTestFixtures.CLOTH, 1L),
                 ProductionTestFixtures.totalUse(
-                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 100L)))
+                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 100L),
+                ProductionTestFixtures.FARMING))
         .withInstance(
             ProductionTestFixtures.instance(
                 ProductionTestFixtures.U1, ProductionTestFixtures.FARM, "0_0"))
@@ -411,14 +413,15 @@ class ProductionRuntimeExperienceTest {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.MILLING, 10_000L, 1L, 0L))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.CRAFT,
                 1L,
                 1L,
                 Map.of(LAND, 1L),
                 Map.of(),
                 Map.of(ProductionTestFixtures.CLOTH, 1L),
-                ProductionTestFixtures.neutralUse(ProductionTestFixtures.MILLING)))
+                ProductionTestFixtures.neutralUse(ProductionTestFixtures.MILLING),
+                ProductionTestFixtures.MILLING))
         .withInstance(
             ProductionTestFixtures.instance(
                 ProductionTestFixtures.U3, ProductionTestFixtures.CRAFT, "0_0"))
@@ -464,17 +467,25 @@ class ProductionRuntimeExperienceTest {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.MILLING, 10_000L, 0L, 0L))
         .withIndustry(
-            ProductionTestFixtures.plan(
-                aOnly, 1L, 1L, Map.of(LAND, 1L), Map.of(), Map.of(GRAIN, 1L), bothChannels))
+            ProductionTestFixtures.planWithRoleGrowth(
+                aOnly,
+                1L,
+                1L,
+                Map.of(LAND, 1L),
+                Map.of(),
+                Map.of(GRAIN, 1L),
+                bothChannels,
+                ProductionTestFixtures.FARMING))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 noTrack,
                 1L,
                 1L,
                 Map.of(LAND, 1L),
                 Map.of(),
                 Map.of(GRAIN, 1L),
-                ProductionExperienceUse.NONE)) // ★ 都不挂：两个槽位都缺
+                ProductionExperienceUse.NONE,
+                ProductionTestFixtures.FARMING)) // ★ 都不挂：两个槽位都缺
         .withInstance(ProductionTestFixtures.instance(ProductionTestFixtures.U1, aOnly, "0_0"))
         .withInstance(ProductionTestFixtures.instance(ProductionTestFixtures.U2, noTrack, "0_0"))
         .withHouseholdExperience(
@@ -489,7 +500,7 @@ class ProductionRuntimeExperienceTest {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.FARMING, 10_000L, growth, 0L))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.FARM,
                 1L,
                 1L,
@@ -497,7 +508,8 @@ class ProductionRuntimeExperienceTest {
                 Map.of(),
                 Map.of(GRAIN, 1L),
                 ProductionTestFixtures.totalUse(
-                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L)))
+                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L),
+                ProductionTestFixtures.FARMING))
         .withInstance(
             ProductionTestFixtures.instance(
                 ProductionTestFixtures.U1, ProductionTestFixtures.FARM, "0_0"))
@@ -516,7 +528,7 @@ class ProductionRuntimeExperienceTest {
         .withExperienceTrack(
             ProductionTestFixtures.track(ProductionTestFixtures.FARMING, 10_000L, 0L, 0L))
         .withIndustry(
-            ProductionTestFixtures.plan(
+            ProductionTestFixtures.planWithRoleGrowth(
                 ProductionTestFixtures.FARM,
                 1L,
                 1L,
@@ -524,7 +536,8 @@ class ProductionRuntimeExperienceTest {
                 Map.of(GRAIN, 1L),
                 Map.of(GRAIN, 1L),
                 ProductionTestFixtures.totalUse(
-                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L)))
+                    ProductionTestFixtures.FARMING, ProductionEffectScope.TOTAL, 0L),
+                ProductionTestFixtures.FARMING))
         .withInstance(
             ProductionTestFixtures.instance(
                 ProductionTestFixtures.U1, ProductionTestFixtures.FARM, "0_0"))

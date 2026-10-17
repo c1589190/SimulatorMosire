@@ -9,9 +9,11 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -36,28 +38,29 @@ class HouseholdLaborCommitmentKindTest {
   private static final ProductionUnitId UNIT =
       ProductionUnitId.idOf(new IndustryId("farm@0_0"), OPERATOR);
 
+  private static final ProductionRoleId ROLE = ProductionRoleId.parse("operator");
+
   private static HouseholdLaborCommitment commitment(LaborCommitmentKind kind) {
+    Optional<ProductionRoleId> productionRole =
+        kind == LaborCommitmentKind.PRODUCTION ? Optional.of(ROLE) : Optional.empty();
     return new HouseholdLaborCommitment(
-        ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), 16_000L, 1L, kind);
+        ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), 16_000L, 1L, kind, productionRole);
   }
 
-  /** 旧 7 参调用点（z1b §5 尾注列的测试构造点同形）不得编译不过，且语义 = PRODUCTION。 */
+  /**
+   * ★★ D-032 D2 §5.6 迁移（旧 7 参判据已不适用）：7 参便利构造器缺省 {@code kind=PRODUCTION} 但不带 {@code
+   * productionRole}，新契约要求 PRODUCTION 必须携带角色 ⇒ 该形状必须<b>具名拒绝</b>，而不是静默生成会撞 id 的 生产承诺。生产承诺请走 9 参主构造器（带
+   * {@link ProductionRoleId}）。
+   */
   @Test
-  void sevenArgumentLegacyConstructorDefaultsToProduction() {
-    HouseholdLaborCommitment legacy =
-        new HouseholdLaborCommitment(
-            ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), 16_000L, 1L);
-
-    assertThat(legacy.kind())
-        .as("旧 7 参构造点缺省 = PRODUCTION（漏带 kind 的旧调用点不得静默变成 GOV_SERVICE）")
-        .isEqualTo(LaborCommitmentKind.PRODUCTION);
-    assertThat(legacy.id()).isEqualTo(ALLOCATION);
-    assertThat(legacy.group()).isEqualTo(LOT);
-    assertThat(legacy.household()).isEqualTo(HOUSEHOLD);
-    assertThat(legacy.actor()).isEqualTo(OPERATOR);
-    assertThat(legacy.activity()).isEqualTo(UNIT.value());
-    assertThat(legacy.laborMilli()).isEqualTo(16_000L);
-    assertThat(legacy.period()).isEqualTo(1L);
+  void sevenArgumentLegacyConstructorRejectsProductionWithoutRole() {
+    assertThatThrownBy(
+            () ->
+                new HouseholdLaborCommitment(
+                    ALLOCATION, LOT, HOUSEHOLD, OPERATOR, UNIT.value(), 16_000L, 1L))
+        .as("PRODUCTION + 空 productionRole ⇒ 契约层具名拒绝")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("productionRole");
   }
 
   /** 显式 GOV_SERVICE 必须被 canonical 构造器原样保留（"缺省"不得覆盖显式值）。 */

@@ -14,12 +14,15 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.ExperienceTrack;
 import io.mosire.simos.production.contract.ExperienceTrackId;
 import io.mosire.simos.production.contract.ExpressionDefinition;
+import io.mosire.simos.production.contract.GrowthBasis;
 import io.mosire.simos.production.contract.HouseholdExperienceKey;
 import io.mosire.simos.production.contract.HouseholdProductionConditions;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExperienceFeature;
@@ -27,7 +30,10 @@ import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RestrictedExpression;
+import io.mosire.simos.production.contract.RolePayment;
+import io.mosire.simos.production.contract.RoleShareRemainder;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -163,6 +169,62 @@ final class ProductionTestFixtures {
         use,
         List.of(),
         Set.of(AssetRightKind.OWNED));
+  }
+
+  /**
+   * ★★ D1 迁移夹具：方案级经验面之外，**角色**也必须声明 {@link ExperienceGrowth}（D1 §2.2）。
+   *
+   * <p>本助手把测试世界的历史口径（增长系数在 {@link ExperienceTrack#growthPerLaborMilli}）逐值保留：角色系数取 {@code
+   * 1000}（不额外缩放），增长按实际劳动计。旧测试只改夹具，不改任何期望值。
+   */
+  static IndustryDefinitionView planWithRoleGrowth(
+      IndustryId id,
+      long cycleDays,
+      long laborPerUnit,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<CommodityId, Long> inputPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      ProductionExperienceUse use,
+      ExperienceTrackId growthTrack) {
+    Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit =
+        inputPerUnit.isEmpty()
+            ? Map.of()
+            : Map.of(AssetKind.LAND, new LinkedHashMap<>(inputPerUnit));
+    ProductionRoleDefinition operator =
+        new ProductionRoleDefinition(
+            ProductionRoleDefinition.defaultOperator().id(),
+            "经营者",
+            Optional.empty(),
+            1_000L,
+            IntraRoleSplitRule.EQUAL,
+            0L,
+            Optional.of(
+                new ExperienceGrowth(growthTrack, GrowthBasis.ACTUAL_LABOR, 1_000L, 0L, false)),
+            List.of(),
+            new RolePayment.ProductShare());
+    return new IndustryDefinitionView(
+        id,
+        "方案 " + id.value(),
+        TENANT,
+        Optional.empty(),
+        cycleDays,
+        0L,
+        capacityPerUnit,
+        Map.of(),
+        0L,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 1_000)),
+        new AllocationRule.Split(1_000, 0),
+        MoneyOutput.NONE,
+        use,
+        List.of(),
+        Set.of(AssetRightKind.OWNED),
+        List.of(operator),
+        RoleShareRemainder.UNALLOCATED,
+        List.of(),
+        Optional.empty());
   }
 
   /** 生产方式定义（mode 面不属于本批判据，只在需要"世界里有 mode"时用）。 */

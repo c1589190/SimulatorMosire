@@ -1283,7 +1283,7 @@ class GovAdminSalaryBudgetZ6Test {
   }
 
   private static String upsertPayload() {
-    return "{\"govUnitId\":\"u-1\",\"industryId\":\"office@0_0\",\"assets\":{\"TOOL\":1},\"reason\":\"z6a\"}";
+    return "{\"govUnitId\":\"u-1\",\"industryId\":\"office@0_0\",\"assets\":{\"SMALL_TOOL\":1},\"reason\":\"z6a\"}";
   }
 
   private static String commitment(String household, long laborMilli) {

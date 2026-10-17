@@ -7,6 +7,7 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -375,6 +376,7 @@ class DebtBasedClearingAcceptanceTest {
         CREDITOR,
         debtUnit,
         DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE),
+        DebtSource.ORDINARY_LOAN,
         principal,
         DAY,
         OptionalLong.of(DUE_CYCLE));
@@ -429,7 +431,8 @@ class DebtBasedClearingAcceptanceTest {
           DebtValuation.RepayeeResolver.HOUSEHOLD_ACTORS,
           null, // householdPrices = null ⇒ 估值回落"该户市场区默认价目表"（与生产路径同一条回退）
           world.ledger(),
-          new EconomySettlement.MoneyIssuanceJournal(Map.of(), 0L));
+          new EconomySettlement.MoneyIssuanceJournal(Map.of(), 0L),
+          Set.of()); // ★ W3：本日无新建工资债 ⇒ 同日排除集为空
     } catch (InvocationTargetException failure) {
       Throwable cause = failure.getCause();
       if (cause instanceof RuntimeException runtime) {
@@ -502,7 +505,8 @@ class DebtBasedClearingAcceptanceTest {
               DebtValuation.RepayeeResolver.class,
               DebtValuation.HouseholdPriceTable.class,
               ProductionLedger.Accumulator.class,
-              EconomySettlement.MoneyIssuanceJournal.class);
+              EconomySettlement.MoneyIssuanceJournal.class,
+              Set.class);
       method.setAccessible(true);
       return method;
     } catch (NoSuchMethodException missing) {

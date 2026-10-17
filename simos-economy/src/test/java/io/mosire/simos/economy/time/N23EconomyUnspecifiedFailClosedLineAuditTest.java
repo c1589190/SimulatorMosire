@@ -37,16 +37,16 @@ import org.junit.jupiter.api.Test;
  *       解不出地点"（构造不出来）。本用例把这两处的<b>消息原文与行号</b>钉成读数：源码一移动/一改文案就红， 迫使后来者显式重核（这正是 T6 欠的那一步）。
  * </ul>
  *
- * <p>★ <b>行号读数（2026-10-17 本树实测）</b>：{@code ModeMigrationSettlement.java:1144}、 {@code
- * EconomyEnterpriseSettlement.java:726} —— 与 T6 台账 §16.6.2 记的 {@code 1144}/{@code 726} <b>逐值相同</b>
- * （重核结论：那两处行号未漂移；本文件把它们变成可执行的断言）。
+ * <p>★ <b>行号读数（2026-10-18 W5 重核）</b>：{@code ModeMigrationSettlement.java:1172}、 {@code
+ * EconomyEnterpriseSettlement.java:807} —— W3/W4 生产改动使行号从 T6 台账的 {@code 1144}/{@code 726} 下移；
+ * 本文件把当前行号钉成可执行断言（消息原文一字未改）。
  */
 class N23EconomyUnspecifiedFailClosedLineAuditTest {
 
   /** T6 台账记的行号 = 本树重核的行号（源码移动请显式改这里并在台账留痕）。 */
-  private static final int MODE_MIGRATION_MESSAGE_LINE = 1144;
+  private static final int MODE_MIGRATION_MESSAGE_LINE = 1172;
 
-  private static final int ENTERPRISE_MESSAGE_LINE = 738;
+  private static final int ENTERPRISE_MESSAGE_LINE = 807;
 
   private static final String MODE_MIGRATION_FILE =
       "src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java";

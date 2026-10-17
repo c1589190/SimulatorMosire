@@ -67,26 +67,34 @@ class T2bInvalidEntryPointsAndProbeCostTest {
 
   @Test
   void n24TheRuntimeNullEntryPointsAreGoneAndOnlyTheExplicitRuntimeAssembliesRemain() {
-    // ① `EconomyDayStepper` 只剩两个合法装配：5 参（区域拓扑，出厂默认旋钮 + 单线程）与 7 参（全参）。
-    //    旧 4 参 / 3 参 / 6 参（都委托 `this(..., null, ...)`）已删 —— 现场 EconomyDayStepper.java:129 与 :152。
+    // ① `EconomyDayStepper` 的合法装配只有显式收 runtime 的四档：5 参（区域拓扑，出厂默认旋钮 + 单线程）、
+    //    7 参（全参）、10/11 参（C2 全参：D4-C 资产读口 + 工资读口 + 属性桥，11 参额外带权威 revision）。
+    //    旧 4 参 / 3 参 / 6 参（都委托 `this(..., null, ...)`）已删。
     List<String> stepperCtors = new ArrayList<>();
     for (Constructor<?> constructor : EconomyDayStepper.class.getDeclaredConstructors()) {
       stepperCtors.add(constructor.getParameterCount() + " 参");
+      assertThat(constructor.getParameterTypes())
+          .as("★ 每个合法构造器都必须显式收 %s（runtime=null 的入口不得复活）", ProductionRuntime.class)
+          .contains(ProductionRuntime.class);
     }
     assertThat(stepperCtors)
-        .as("★★ 旧 runtime=null 的构造器（4/3/6 参）必须已删；只剩 5 参与 7 参")
-        .containsExactlyInAnyOrder("5 参", "7 参");
+        .as("★★ 旧 runtime=null 的构造器（4/3/6 参）必须已删；只剩 5/7/10/11 参且都显式收 runtime")
+        .containsExactlyInAnyOrder("5 参", "7 参", "10 参", "11 参");
 
-    // ② `EconomySession` 只剩唯一合法构造（base + definitions + runtime）——
-    //    两个 runtime=null 的旧构造器已删（现场 EconomySession.java:135 与其上方注释）。
-    assertThat(EconomySession.class.getDeclaredConstructors())
-        .as("★★ EconomySession 只许有 1 个构造器（显式收 runtime）")
-        .hasSize(1);
-    assertThat(EconomySession.class.getDeclaredConstructors()[0].getParameterTypes())
-        .as("★ 唯一构造器的第 3 参就是 production 的运行时契约口（正向对照：证明类名/形状没写错）")
-        .contains(ProductionRuntime.class);
+    // ② `EconomySession` 的每个合法构造器都必须显式收 runtime（3 参最小装配、6 参 C2 装配、7 参含 revision）。
+    //    两个 runtime=null 的旧构造器已删（现场 EconomySession.java 与其上方注释）。
+    List<String> sessionCtors = new ArrayList<>();
+    for (Constructor<?> constructor : EconomySession.class.getDeclaredConstructors()) {
+      sessionCtors.add(constructor.getParameterCount() + " 参");
+      assertThat(constructor.getParameterTypes())
+          .as("★ 每个 EconomySession 构造器都必须显式收 %s（runtime=null 入口不得复活）", ProductionRuntime.class)
+          .contains(ProductionRuntime.class);
+    }
+    assertThat(sessionCtors)
+        .as("★★ runtime=null 的旧构造器已删；合法构造器只剩 3/6/7 参且都显式收 runtime")
+        .containsExactlyInAnyOrder("3 参", "6 参", "7 参");
 
-    // ③ `EconomyData` 不再持有实例表 / 定义表 / 候选面（迁移后 31 组件）。
+    // ③ `EconomyData` 不再持有实例表 / 定义表 / 候选面（当前 37 组件）。
     List<String> components = new ArrayList<>();
     for (var component : EconomyData.class.getRecordComponents()) {
       components.add(component.getName());

@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -977,6 +978,7 @@ class EconomyRoundTripTest {
         OTHER_HH,
         DebtUnit.commodity(GRAIN),
         DebtTerms.legacyDefault(),
+        DebtSource.ORDINARY_LOAN,
         100L,
         0L,
         OptionalLong.empty(),
