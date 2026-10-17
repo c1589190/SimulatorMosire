@@ -320,3 +320,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：app `-DskipTests compile -am` rc=0；`spotless:check -pl simos-app -am` rc=0；`git diff --check` rc=0。`HouseholdLaborCommitment` 仅纯格式化，code-token 等价。
 - **测试影响**：`SimosToolsTest` 149→150 + command type、`McpCoverageTest` 149→150 + payload、seed/economyHex 精确键集、依赖旧佃租/给养/匠户分成/工资或“FARM/CRAFT 能创世”的断言需 C4 迁移；C3 未写/未跑测试。
 - **下一步**：W2a（EconomyData 33 `productionWageDefaults` + 34 `productionWagePostings`、default/posting 读口、`ProductionWageBook`、两个 GM handler、seed/payload/validation、`WagePayerLocationSnapshot/Precheck`）；只编译 economy，不写/不跑测试、不提交。随后 W1→W2b(35)→D4-I(36/37)→D4-T→W3。
+
+## 二十一、2026-10-17 22:xx W2a 工资 default/posting 检查点
+
+> **性质**：W2a 生产代码已实现并编译/格式检查通过；未跑测试，未接 W2b 匹配/idle/U20 或 W3 支付。
+
+- **提交**：`b0d30049 feat(economy)!: W2a 工资 default/posting 第33/34组件、读口、GM命令与地点预检`（已推送）。
+- **状态**：`EconomyData` 33 `productionWageDefaults`、34 `productionWagePostings`；ChangeSet/Codec/DayView/BoundaryView/StateBuilder/ClearRegion 全接；无 35–37。
+- **类型/读口**：`WageDefaultKey`/`ProductionWageDefault`、`WagePostingKey`/`ProductionWagePosting`、`WageQuoteSource`；`ProductionWageBook` 同时实现 `ProductionWageQuoteLookup`（posting）+ `ProductionWageDefaultLookup`；缺=empty、显式 0 保留。
+- **命令/seed**：`economy.SetProductionWageDefault` 整表替换 `(plan,zone)`；`economy.SetProductionWagePosting` 整表替换 unit；不隐式建实例；`economy.Seed.wageDefaults`/`wagePostings` 分离；`EconomyReferenceValidation.validateProductionWages` 校验 plan/unit/role/MONEY_WAGE/legalTender/范围。
+- **地点预检**：`WagePayerLocationSnapshot` + `WagePayerLocationDecision` + `WagePayerLocationPrecheck`（单一 `standard()` 实现，纯只读，>1 ⇒ `MULTIPLE_LOCATIONS`）。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **行为/测试影响**：空表时旧数值不变；清区会摘除对应 posting/default；`EconomyRoundTripTest` 31 组件/旧 `new EconomyData(...)` 参数需 W5/C4 迁移；未写/未跑测试。
+- **下一步**：W1（`ExpectedProfitBook` 工资前置估值：default/posting quote、target×cycleDays、payer 完整地点预检、缺价/缺目标/多地点具名；不改 LaborQueue 排序、不做支付）；只编译 economy，不写/不跑测试、不提交。
