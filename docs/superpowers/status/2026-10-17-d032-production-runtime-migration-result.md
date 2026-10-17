@@ -451,3 +451,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **targeted 结果**：`SimosToolsTest` 65 + `McpCoverageTest` 1 + `GuiApiTest` 34 + `R2AssetBudgetReadoutTest` 2 = **102 tests / 0F / 0E / 0 skipped**；frontend gate 412/412。
 - **D4-T 总览**：economy 核心 36/36 + app readout 2/2 targeted 绿；变异自证 economy 4 组。但 `AssetBudgetBook`/`usableAssets`/`asset-scope-shared:awaiting-D4` 仍在 ExpectedProfitBook/Entry/Enterprise/MarketDemandBook/HouseholdClassRule/DebtCapacityBook/app ApiViews/DesertionBridge 等处，R2 不能写成关闭。
 - **下一步**：D4-R2 旧路径清零（生产代码 owner）：将剩余消费者改为 D4 `AssetOccupancyLookup`/same budget 或 fail-closed `asset-occupancy-unavailable`；删除 `SHARED_SCOPE_REJECTION`/旧 `AssetBudgetBook` 生产用法；app 读口迁移 `AssetOccupancyView`；随后 D4-T4 重跑 economy 36 + app 102，再宣布 D4/R2 关闭；不写/不跑测试、不提交。
+
+## 三十一、2026-10-17 23:xx D4-T4 GREEN / D4-R2 targeted 目标关闭
+
+> **性质**：D4 占用/R2 旧路径的 targeted 目标关闭；全仓 clean verify/gate 仍未跑，不等于全项目最终验收。
+
+- **提交**：
+  - `f2d24012 refactor(economy,app)!: D4-R2 旧 AssetBudgetBook/usableAssets 路径清零`（已推送）
+  - `86909dda test(economy,app): D4-T4 旧路径删除后迁移并复跑37+102判据绿`（已推送）
+- **生产清零**：`AssetBudgetBook` 删除；production/app `usableAssets` 43→0、`asset-scope-shared:awaiting-D4` 2→0、`SHARED_SCOPE_REJECTION` 7→0；生产/app 消费者统一 D4 `AssetOccupancyBudget`/`AssetOccupancyLookup`，无预算 fail-closed `asset-occupancy-unavailable`。
+- **D4-T4 真实计数**：economy 37/0/0/0（D4 location/allocator/R2/inventory/lookup/Unified）；app 102/0/0/0（SimosTools/McpCoverage/GuiApi/R2AssetBudgetReadout）；frontend 412/412 已在前次记录。economy→app test-compile 均 rc=0。
+- **变异**：lookup 静默 empty 变异⇒`D4LookupReadoutTest` 红；还原 sha256 `eddf0620…` 一致后绿；生产 diff 清零。D4-T3 4 组更早变异证据仍有效。
+- **结论边界**：**D4-T targeted 判据 + R2 旧路径清零目标已关闭**；未跑全仓 `clean verify`/`tools/gate.sh`、未跑真实世界仿真，仍留 W5/最终门禁。
+- **下一步**：W3（工资支付/抵物/成债：`WageSettlement`/readout、`TransferReason.WAGE_PAYMENT`、`wageArrearsDefault`/`DebtSource`/`DebtContract.source`、普通贷款/迁移/seed source、U21 先钱后库存数量降序、同日债排除、D4 lookup/precheck）；只编译 economy/app，不写/不跑测试、不提交。
