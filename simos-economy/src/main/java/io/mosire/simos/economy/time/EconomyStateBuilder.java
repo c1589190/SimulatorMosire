@@ -24,6 +24,8 @@ import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -32,6 +34,8 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -130,6 +134,12 @@ public final class EconomyStateBuilder {
 
   /** ★★★ D-032 W2b：逐 (unit, role, worker) 工资进位余数工作副本（未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<WageCarryKey, Long> wageCarryRemainders;
+
+  /** ★★★ D-032 D4-Ib1：资产占用授予工作副本（未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies;
+
+  /** ★★★ D-032 D4-Ib1：商品库存预留工作副本（未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<InventoryReservationId, InventoryReservation> inventoryReservations;
 
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -464,6 +474,32 @@ public final class EconomyStateBuilder {
     return wageCarryRemainders;
   }
 
+  /** ★★★ D-032 D4-Ib1：资产占用表的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupanciesOrBase() {
+    return assetOccupancies == null ? base.assetOccupancies() : assetOccupancies;
+  }
+
+  /** ★★★ D-032 D4-Ib1：资产占用工作副本（惰性物化）。 */
+  public LinkedHashMap<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies() {
+    if (assetOccupancies == null) {
+      assetOccupancies = new LinkedHashMap<>(base.assetOccupancies());
+    }
+    return assetOccupancies;
+  }
+
+  /** ★★★ D-032 D4-Ib1：库存预留表的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<InventoryReservationId, InventoryReservation> inventoryReservationsOrBase() {
+    return inventoryReservations == null ? base.inventoryReservations() : inventoryReservations;
+  }
+
+  /** ★★★ D-032 D4-Ib1：库存预留工作副本（惰性物化）。 */
+  public LinkedHashMap<InventoryReservationId, InventoryReservation> inventoryReservations() {
+    if (inventoryReservations == null) {
+      inventoryReservations = new LinkedHashMap<>(base.inventoryReservations());
+    }
+    return inventoryReservations;
+  }
+
   /** 在途批次表工作副本。 */
   public LinkedHashMap<ShipmentId, ShipmentBatch> shipments() {
     if (shipments == null) {
@@ -679,6 +715,10 @@ public final class EconomyStateBuilder {
         productionWagePostings == null ? base.productionWagePostings() : productionWagePostings,
         // ★★★ D-032 W2b：进位余数工作副本；未物化 ⇒ 原样复用 base。漏了它 = 任意一次 advance
         //   都会把已累计的工资进位静默抹掉（逐 tick floor 会永久丢掉不足 1 毫的余数）。
-        wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders);
+        wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders,
+        // ★★★ D-032 D4-Ib1：占用/预留工作副本；未物化 ⇒ 原样复用 base（漏了它 = 任意一次 advance
+        //   都会把已授予的占用与生产预留静默抹掉）。
+        assetOccupancies == null ? base.assetOccupancies() : assetOccupancies,
+        inventoryReservations == null ? base.inventoryReservations() : inventoryReservations);
   }
 }

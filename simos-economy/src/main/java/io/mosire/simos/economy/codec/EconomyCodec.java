@@ -60,11 +60,13 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -308,6 +310,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(WageDefaultKey.class, keyDeserializer(WageDefaultKey::parse));
     module.addKeyDeserializer(WagePostingKey.class, keyDeserializer(WagePostingKey::parse));
     module.addKeyDeserializer(WageCarryKey.class, keyDeserializer(WageCarryKey::parse));
+    // ★★★ D-032 D4-Ib1：第 36/37 组件的键。两者 toString()/parse() 互逆；写侧默认 toString，
+    //   读侧在此注册（与其余稳定 id 同制，不引入旧档兼容/键归一）。
+    module.addKeyDeserializer(
+        AssetOccupancyGrantId.class, keyDeserializer(AssetOccupancyGrantId::parse));
+    module.addKeyDeserializer(
+        InventoryReservationId.class, keyDeserializer(InventoryReservationId::parse));
     // ★★ R1（2026-10-09）govMarketMandates（第 39 个组件）的键 = MarketMandateId（opaque 裸值，与 parse 互逆，
     //   只需读侧）。值 GovernmentMarketMandate 走 Jackson 的 record 字段显式绑定；旧档缺该组件键 ⇒ EconomyData
     //   构造期归一成空表（= 没有任何授权 ⇒ 国库户在商品市场上零订单，既有世界逐值不变）。

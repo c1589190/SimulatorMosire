@@ -63,6 +63,14 @@ public enum EconomyLogSource implements LogOrigin {
       "产出入账主体解析（creditOutput 方法签名无 day 上下文，按纪律归 system）",
       LogOriginKind.SYSTEM),
   ECONOMY_COMMAND("economy-command", "经济写命令处理：登记/设参/调整/候选进入/借贷（命令面）", LogOriginKind.SYSTEM),
+  /**
+   * ★★ D-032 D4：统一资产预算、库存预留写口与两个真实 lookup。业务拒绝 INFO；overcommit、revision/scope mismatch 等契约故障 ERROR
+   * 不降级；逐 share/逐商品明细 TRACE。
+   */
+  ECONOMY_ASSET_OCCUPANCY(
+      "economy-asset-occupancy",
+      "资产占用授予/释放/回填、库存预留创建/释放与 overcommit、资产占用/工资可支付库存读口",
+      LogOriginKind.TICK),
   ECONOMY_CODEC("economy-codec", "EconomyCodec 编解码与变更集施加", LogOriginKind.SYSTEM),
   ECONOMY_RESOLVE("economy-resolve", "EconomyResolver 候选装配与空结果诊断", LogOriginKind.SYSTEM),
   ECONOMY_OUTPUT_QUANTITY(

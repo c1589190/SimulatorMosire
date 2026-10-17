@@ -13,6 +13,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.EconomyPolicyKey;
@@ -20,6 +22,8 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -193,5 +197,15 @@ public final class EconomyBoundaryView implements EconomyDayView {
   @Override
   public Map<WageCarryKey, Long> wageCarryRemainders() {
     return data.wageCarryRemainders();
+  }
+
+  @Override
+  public Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies() {
+    return data.assetOccupancies();
+  }
+
+  @Override
+  public Map<InventoryReservationId, InventoryReservation> inventoryReservations() {
+    return data.inventoryReservations();
   }
 }

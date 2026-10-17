@@ -35,6 +35,8 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
@@ -47,6 +49,8 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -72,7 +76,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 35 个；★ D-032 B4 / §13.14.2 裁定十五起
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 37 个；★ D-032 B4 / §13.14.2 裁定十五起
  * <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
  * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
  * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
@@ -193,7 +197,10 @@ public record EconomyChangeSet(
     FieldDelta<ProductionWageDefault> productionWageDefaults,
     FieldDelta<ProductionWagePosting> productionWagePostings,
     // ── ★★★ D-032 W2b：第 35 个组件 —— 逐 (unit, role, worker) 工资进位余数（0..999）──
-    FieldDelta<Long> wageCarryRemainders)
+    FieldDelta<Long> wageCarryRemainders,
+    // ── ★★★ D-032 D4-Ib1：第 36/37 个组件（键解析器与 toString 互逆，铁律 5）──────────────
+    FieldDelta<AssetOccupancyGrant> assetOccupancies,
+    FieldDelta<InventoryReservation> inventoryReservations)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -311,6 +318,13 @@ public record EconomyChangeSet(
     if (wageCarryRemainders == null) {
       wageCarryRemainders = new FieldDelta.Unchanged<>();
     }
+    // ★★★ D-032 D4-Ib1：第 36/37 组件（旧档没提该组件 ⇒ 未动；Alpha 不写迁移/键归一）。
+    if (assetOccupancies == null) {
+      assetOccupancies = new FieldDelta.Unchanged<>();
+    }
+    if (inventoryReservations == null) {
+      inventoryReservations = new FieldDelta.Unchanged<>();
+    }
     // ★★ B2b：Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）的变更集维已删除
     //   （两维的唯一权威在 production 的 {@code ProductionChangeSet}）。
     // ★★ A1 的第 34/35 个组件（货币词表两张表）：旧变更集没提该组件，就是没动它
@@ -379,7 +393,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.productionRosters(), target.productionRosters()),
         FieldDelta.diff(base.productionWageDefaults(), target.productionWageDefaults()),
         FieldDelta.diff(base.productionWagePostings(), target.productionWagePostings()),
-        FieldDelta.diff(base.wageCarryRemainders(), target.wageCarryRemainders()));
+        FieldDelta.diff(base.wageCarryRemainders(), target.wageCarryRemainders()),
+        FieldDelta.diff(base.assetOccupancies(), target.assetOccupancies()),
+        FieldDelta.diff(base.inventoryReservations(), target.inventoryReservations()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -449,7 +465,13 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(
             base.productionWagePostings(), cs.productionWagePostings(), WagePostingKey::parse),
         FieldDelta.rebuild(
-            base.wageCarryRemainders(), cs.wageCarryRemainders(), WageCarryKey::parse));
+            base.wageCarryRemainders(), cs.wageCarryRemainders(), WageCarryKey::parse),
+        FieldDelta.rebuild(
+            base.assetOccupancies(), cs.assetOccupancies(), AssetOccupancyGrantId::parse),
+        FieldDelta.rebuild(
+            base.inventoryReservations(),
+            cs.inventoryReservations(),
+            InventoryReservationId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -488,7 +510,9 @@ public record EconomyChangeSet(
         || productionRosters.changed()
         || productionWageDefaults.changed()
         || productionWagePostings.changed()
-        || wageCarryRemainders.changed());
+        || wageCarryRemainders.changed()
+        || assetOccupancies.changed()
+        || inventoryReservations.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

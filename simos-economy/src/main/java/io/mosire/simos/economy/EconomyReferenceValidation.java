@@ -6,9 +6,14 @@ import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
+import io.mosire.simos.economy.model.AssetOccupancyStatus;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -77,6 +82,192 @@ public final class EconomyReferenceValidation {
     validateDemandHexes(definitions, candidate, label);
     validateProductionRosters(definitions, production, candidate, label);
     validateProductionWages(definitions, production, candidate, label);
+    validateAssetOccupancies(production, candidate, label);
+    validateInventoryReservations(production, candidate, label);
+  }
+
+  /**
+   * ★★★ <b>D-032 D4-Ib1：带账户快照的完整候选态校验</b> —— 在基础校验之上补 reservation 的 payer×commodity 全地点
+   * overcommit（冻结 + ACTIVE 预留 ≤ 账户余额）。
+   *
+   * <p>★ 账户不可用是契约故障（不能把"没法校验"当作通过）；组合根在 D4-Ib2 装配本重载。
+   */
+  public static void validate(
+      ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label,
+      io.mosire.simos.economy.time.AccountInventorySnapshotLookup accountLookup) {
+    validate(definitions, production, candidate, label);
+    validateInventoryReservations(candidate, accountLookup, label);
+  }
+
+  /**
+   * ★★★ <b>D-032 D4-Ib1：资产占用授予的跨表校验</b>（D4 §4.3 / §8.2）。
+   *
+   * <ul>
+   *   <li>键 == 行内 id；
+   *   <li>share 存在且 not dangling；unit 在 production 当刻实例投影存在；
+   *   <li>share.industry / operator / location 与 unit 逐值一致；
+   *   <li>grant.quantity ≤ share.quantity；
+   *   <li>同一 share 同 interval 不得有两条 ACTIVE grant（具名 ERROR）。
+   * </ul>
+   *
+   * <p>失败以 {@link IllegalArgumentException} 出面（候选态拒绝，不留 revision）；日志由错误事件在命令层统一记录。
+   */
+  public static void validateAssetOccupancies(
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label) {
+    Objects.requireNonNull(production, "production");
+    Objects.requireNonNull(candidate, "candidate");
+    Objects.requireNonNull(label, "label");
+    Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> instances =
+        production.instances();
+    List<AssetOccupancyGrant> active = new java.util.ArrayList<>();
+    for (Map.Entry<AssetOccupancyGrantId, AssetOccupancyGrant> entry :
+        candidate.assetOccupancies().entrySet()) {
+      AssetOccupancyGrantId key = entry.getKey();
+      AssetOccupancyGrant grant = entry.getValue();
+      if (!key.equals(grant.id())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 assetOccupancies 键必须等于行内 id（asset-occupancy-key-mismatch）: 键="
+                + key.value()
+                + " id="
+                + grant.id().value());
+      }
+      OwnershipStake share = candidate.assetShares().get(grant.shareId());
+      if (share == null) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 grant 指名悬空 share（asset-occupancy-share-missing）: "
+                + grant.id().value()
+                + " → "
+                + grant.shareId().value());
+      }
+      ProductionProcess unit = instances.get(grant.unitId());
+      if (unit == null) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 grant 指名悬空 unit（asset-occupancy-unit-missing）: "
+                + grant.id().value()
+                + " → "
+                + grant.unitId().value());
+      }
+      if (!share.industry().equals(unit.industry())
+          || !share.operator().equals(unit.operator())
+          || !share.location().equals(unit.location())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 grant share/unit 的 industry/operator/location 不一致（asset-occupancy-scope-mismatch）: grant="
+                + grant.id().value()
+                + " share="
+                + share.id().value()
+                + " unit="
+                + unit.id().value());
+      }
+      if (grant.quantity() > share.quantity()) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 grant 数量超过 share.quantity（asset-occupancy-quantity-exceeds-share）: grant="
+                + grant.id().value()
+                + " quantity="
+                + grant.quantity()
+                + " shareQuantity="
+                + share.quantity());
+      }
+      if (grant.status() == AssetOccupancyStatus.ACTIVE) {
+        active.add(grant);
+      }
+    }
+    active.sort(
+        java.util.Comparator.comparing((AssetOccupancyGrant grant) -> grant.shareId().value())
+            .thenComparingLong(AssetOccupancyGrant::fromTick)
+            .thenComparingLong(AssetOccupancyGrant::toTickExclusive)
+            .thenComparing(grant -> grant.id().value()));
+    for (int i = 0; i < active.size(); i++) {
+      AssetOccupancyGrant left = active.get(i);
+      for (int j = i + 1; j < active.size(); j++) {
+        AssetOccupancyGrant right = active.get(j);
+        if (left.shareId().equals(right.shareId())
+            && left.overlaps(right.fromTick(), right.toTickExclusive())) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的同一 share 同时段存在重叠 ACTIVE grant（asset-occupancy-overlap）: share="
+                  + left.shareId().value()
+                  + " grants="
+                  + left.id().value()
+                  + "/"
+                  + right.id().value());
+        }
+      }
+    }
+  }
+
+  /**
+   * ★★★ <b>D-032 D4-Ib1：商品库存预留的结构校验</b>（D4 §4.4）：键==id、payer 家户、unit/location/commodity/数量。
+   *
+   * <p>★ overcommit 需要账户快照，见 {@link #validateInventoryReservations(EconomyData,
+   * io.mosire.simos.economy.time.AccountInventorySnapshotLookup, String)}。
+   */
+  public static void validateInventoryReservations(
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label) {
+    Objects.requireNonNull(production, "production");
+    validateInventoryReservations(candidate, label);
+    Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> instances =
+        production.instances();
+    for (Map.Entry<InventoryReservationId, InventoryReservation> entry :
+        candidate.inventoryReservations().entrySet()) {
+      InventoryReservation reservation = entry.getValue();
+      if (!instances.containsKey(reservation.unitId())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 reservation 指名悬空 unit（inventory-reservation-unit-missing）: "
+                + reservation.id().value()
+                + " → "
+                + reservation.unitId().value());
+      }
+    }
+  }
+
+  public static void validateInventoryReservations(EconomyData candidate, String label) {
+    Objects.requireNonNull(candidate, "candidate");
+    Objects.requireNonNull(label, "label");
+    for (Map.Entry<InventoryReservationId, InventoryReservation> entry :
+        candidate.inventoryReservations().entrySet()) {
+      InventoryReservationId key = entry.getKey();
+      InventoryReservation reservation = entry.getValue();
+      if (!key.equals(reservation.id())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 inventoryReservations 键必须等于行内 id（inventory-reservation-key-mismatch）: 键="
+                + key.value()
+                + " id="
+                + reservation.id().value());
+      }
+      if (reservation.payer().kind() != ActorKind.HOUSEHOLD) {
+        throw new IllegalArgumentException(
+            label
+                + " 的 InventoryReservation.payer 必须是家户主体（inventory-reservation-payer-not-household）: "
+                + reservation.payer());
+      }
+      OwnershipStake.requireSpecifiedLocation(reservation.location());
+    }
+  }
+
+  /** ★★★ D4-Ib1：reservation 的 payer×commodity 全地点 overcommit（账户快照可用时）。 */
+  public static void validateInventoryReservations(
+      EconomyData candidate,
+      io.mosire.simos.economy.time.AccountInventorySnapshotLookup accountLookup,
+      String label) {
+    Objects.requireNonNull(candidate, "candidate");
+    Objects.requireNonNull(label, "label");
+    validateInventoryReservations(candidate, label);
+    io.mosire.simos.economy.time.InventoryReservationBook.validateAllActive(
+        candidate.inventoryReservations(), Objects.requireNonNull(accountLookup, "accountLookup"));
   }
 
   /**

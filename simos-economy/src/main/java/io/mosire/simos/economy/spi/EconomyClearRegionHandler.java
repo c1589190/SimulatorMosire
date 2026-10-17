@@ -331,6 +331,25 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     Map<io.mosire.simos.economy.model.WageCarryKey, Long> wageCarryRemainders =
         new LinkedHashMap<>(base.wageCarryRemainders());
     wageCarryRemainders.keySet().removeIf(entry -> removedUnits.contains(entry.unit()));
+    // ★★★ D-032 D4-Ib1：被清产业的资产占用随份额/实例同批删除；被清单元的商品预留同批释放。
+    //   这里只从候选表移除行（不是第二套释放记录）；D4-T 的 ChangeSet 往返会看到差量。
+    Map<
+            io.mosire.simos.economy.model.AssetOccupancyGrantId,
+            io.mosire.simos.economy.model.AssetOccupancyGrant>
+        assetOccupancies = new LinkedHashMap<>(base.assetOccupancies());
+    assetOccupancies
+        .entrySet()
+        .removeIf(
+            entry ->
+                removedShares.contains(entry.getValue().shareId())
+                    || removedUnits.contains(entry.getValue().unitId()));
+    Map<
+            io.mosire.simos.economy.model.InventoryReservationId,
+            io.mosire.simos.economy.model.InventoryReservation>
+        inventoryReservations = new LinkedHashMap<>(base.inventoryReservations());
+    inventoryReservations
+        .entrySet()
+        .removeIf(entry -> removedUnits.contains(entry.getValue().unitId()));
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
     Map<HouseholdId, HouseholdEconomy> householdEconomies =
@@ -500,7 +519,9 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         // ★★★ D-032 W2a：候选默认按 removedIndustries 摘过；执行期岗位按 removedUnits 摘过。
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

@@ -56,6 +56,9 @@ public final class EconomyLog {
   public static final String POPULATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".population";
   public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
 
+  /** ★★ D-032 D4：资产占用、库存预留与两个真实 lookup 的专用分类。 */
+  public static final String ASSET_OCCUPANCY_LOGGER_NAME = ROOT_LOGGER_NAME + ".asset-occupancy";
+
   /**
    * ★★ <b>A2a（2026-10-08）：外汇面</b>—— FX 撮合、官方/实际汇率读数、政府外汇窗口报价与具名拒、异币支付具名拒。
    *
@@ -72,6 +75,8 @@ public final class EconomyLog {
   private static final Logger ORGANIZATION = LoggerFactory.getLogger(ORGANIZATION_LOGGER_NAME);
   private static final Logger POPULATION = LoggerFactory.getLogger(POPULATION_LOGGER_NAME);
   private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
+  private static final Logger ASSET_OCCUPANCY =
+      LoggerFactory.getLogger(ASSET_OCCUPANCY_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
   private static final Logger FX = LoggerFactory.getLogger(FX_LOGGER_NAME);
 
@@ -110,6 +115,11 @@ public final class EconomyLog {
   /** 经济写命令处理：登记/设参/调整/候选进入/借贷（命令面，来源 = {@code economy-command}）。 */
   public static Logger command() {
     return COMMAND;
+  }
+
+  /** ★★ D-032 D4：资产占用授予/释放、库存预留、工资可支付库存读口。 */
+  public static Logger assetOccupancy() {
+    return ASSET_OCCUPANCY;
   }
 
   /** 逐笔原始事件（转移/成交槽/债务变动/迁移 move）。 */

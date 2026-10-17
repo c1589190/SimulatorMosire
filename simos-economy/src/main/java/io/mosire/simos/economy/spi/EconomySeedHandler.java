@@ -260,7 +260,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   一次按格补种会把已设的工资默认/岗位静默抹掉。
             merge(base.productionWageDefaults(), seeded.productionWageDefaults()),
             merge(base.productionWagePostings(), seeded.productionWagePostings()),
-            merge(base.wageCarryRemainders(), seeded.wageCarryRemainders()));
+            merge(base.wageCarryRemainders(), seeded.wageCarryRemainders()),
+            // ★★★ D-032 D4-Ib1：占用/预留为世界运行事实，seed 不声明 ⇒ 逐值带过已有状态。
+            merge(base.assetOccupancies(), seeded.assetOccupancies()),
+            merge(base.inventoryReservations(), seeded.inventoryReservations()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

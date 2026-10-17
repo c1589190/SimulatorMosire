@@ -16,6 +16,8 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.EconomyPolicyKey;
@@ -23,6 +25,8 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -187,6 +191,19 @@ public interface EconomyDayView {
    * EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
    */
   default Map<WageCarryKey, Long> wageCarryRemainders() {
+    return Map.of();
+  }
+
+  /**
+   * ★★★ <b>D-032 D4-Ib1：资产占用授予（第 36 组件）</b>。空表合法（= 没有占用）；当刻值 reader 必须与同一 revision 的 份额/实例同源。{@code
+   * EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
+   */
+  default Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies() {
+    return Map.of();
+  }
+
+  /** ★★★ <b>D-032 D4-Ib1：商品库存预留（第 37 组件）</b>。空表合法（= 没有预留）；它不是第二本余额账。 */
+  default Map<InventoryReservationId, InventoryReservation> inventoryReservations() {
     return Map.of();
   }
 

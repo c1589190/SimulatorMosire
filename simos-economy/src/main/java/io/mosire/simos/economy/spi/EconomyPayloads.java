@@ -657,6 +657,9 @@ final class EconomyPayloads {
         productionRosters,
         wageDefaults,
         wagePostings,
+        Map.of(),
+        // ★★★ D-032 D4-Ib1：创世载荷不声明资产占用/库存预留（空表 = 尚未授予/预留）。
+        Map.of(),
         Map.of());
   }
 

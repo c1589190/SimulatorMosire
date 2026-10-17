@@ -45,6 +45,8 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
@@ -59,6 +61,8 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -99,7 +103,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **三十五个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十五个组件一一对应**（铁律 5）：
+ * <p>★ **三十七个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十七个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
@@ -412,7 +416,11 @@ public record EconomyData(
     Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults,
     Map<WagePostingKey, ProductionWagePosting> productionWagePostings,
     // ── ★★★ D-032 W2b（D3 §2.4/§2.6）：第 35 个组件 —— 逐 (unit, role, worker) 工资进位余数（0..999）──
-    Map<WageCarryKey, Long> wageCarryRemainders)
+    Map<WageCarryKey, Long> wageCarryRemainders,
+    // ── ★★★ D-032 D4-Ib1（D4 §4.3/§8.2）：第 36/37 个组件 —— 资产占用授予与商品库存预留 ─────────
+    //   空表合法（= 没有占用/预留）；键 == 值内 id。两张表是唯一权威，必须同批进 ChangeSet/codec。
+    Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
+    Map<InventoryReservationId, InventoryReservation> inventoryReservations)
     implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
@@ -541,7 +549,7 @@ public record EconomyData(
   }
 
   /**
-   * 往返用例的起点：未激活 + 34 张空表。
+   * 往返用例的起点：未激活 + 36 张空表（37 个组件 = meta + 36 张表）。
    *
    * <p>★★ B2b（§13.11.2 裁定六）：{@code units} / {@code outputQuantityOverrides} / {@code
    * productionEfficiency} 三个组件已从本类型删除；★★ B2c（§13.12.2 裁定八）：第四个 {@code candidates} 同批删净（唯一权威在
@@ -584,7 +592,9 @@ public record EconomyData(
         Map.of(), // productionRosters
         Map.of(), // productionWageDefaults
         Map.of(), // productionWagePostings
-        Map.of()); // wageCarryRemainders
+        Map.of(), // wageCarryRemainders
+        Map.of(), // assetOccupancies
+        Map.of()); // inventoryReservations
   }
 
   public EconomyData {
@@ -2002,6 +2012,56 @@ public record EconomyData(
       wageCarryCopy.put(key, carry);
     }
     wageCarryRemainders = Collections.unmodifiableMap(wageCarryCopy); // ★ 冻在赋值处
+
+    // ── ★★★ D-032 D4-Ib1：第 36 个组件（资产占用授予）──────────────────────────────────────────
+    //   空表合法；键必须等于行内 id。数量/区间/状态由 record 构造期判；跨表 share/unit/operator/location 与
+    //   同 share 同时段重叠由 EconomyReferenceValidation 在候选态校验面判。
+    if (assetOccupancies == null) {
+      assetOccupancies = Map.of();
+    }
+    Map<AssetOccupancyGrantId, AssetOccupancyGrant> occupancyCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetOccupancyGrantId, AssetOccupancyGrant> entry :
+        assetOccupancies.entrySet()) {
+      AssetOccupancyGrantId key = entry.getKey();
+      AssetOccupancyGrant grant = entry.getValue();
+      if (key == null || grant == null) {
+        throw new IllegalArgumentException("assetOccupancies 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(grant.id())) {
+        throw new IllegalArgumentException(
+            "assetOccupancies 的键必须与 AssetOccupancyGrant.id 一致：键="
+                + key.value()
+                + "，行内 id="
+                + grant.id().value());
+      }
+      occupancyCopy.put(key, grant);
+    }
+    assetOccupancies = Collections.unmodifiableMap(occupancyCopy); // ★ 冻在赋值处
+
+    // ── ★★★ D-032 D4-Ib1：第 37 个组件（商品库存预留）──────────────────────────────────────────
+    //   空表合法；键必须等于行内 id。payer×commodity 全地点 overcommit 需要账户快照，落在
+    //   InventoryReservationBook / EconomyReferenceValidation 的账户感知入口。
+    if (inventoryReservations == null) {
+      inventoryReservations = Map.of();
+    }
+    Map<InventoryReservationId, InventoryReservation> reservationCopy = new LinkedHashMap<>();
+    for (Map.Entry<InventoryReservationId, InventoryReservation> entry :
+        inventoryReservations.entrySet()) {
+      InventoryReservationId key = entry.getKey();
+      InventoryReservation reservation = entry.getValue();
+      if (key == null || reservation == null) {
+        throw new IllegalArgumentException("inventoryReservations 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(reservation.id())) {
+        throw new IllegalArgumentException(
+            "inventoryReservations 的键必须与 InventoryReservation.id 一致：键="
+                + key.value()
+                + "，行内 id="
+                + reservation.id().value());
+      }
+      reservationCopy.put(key, reservation);
+    }
+    inventoryReservations = Collections.unmodifiableMap(reservationCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -2117,7 +2177,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2178,7 +2240,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2221,7 +2285,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2261,7 +2327,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   public EconomyData withLaborCommitments(
@@ -2301,7 +2369,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2341,7 +2411,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2392,7 +2464,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2441,7 +2515,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2485,7 +2561,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2524,7 +2602,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2564,7 +2644,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   // ★★ B2b：`withProcesses` 已删（units 组件退役）。实例的唯一权威在 production，写它一律经契约口
@@ -2609,7 +2691,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   // ★★★ B5（§13.15.2 裁定十八）：`withModes(Map<ProductionModeId, ProductionModeDefinitionView>)`
@@ -2654,7 +2738,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2694,7 +2780,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2744,7 +2832,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2785,7 +2875,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2826,7 +2918,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2866,7 +2960,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2906,7 +3002,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2946,7 +3044,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -2990,7 +3090,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3035,7 +3137,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3080,7 +3184,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3125,7 +3231,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3170,7 +3278,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3216,7 +3326,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   // ★★ B2b：`withOutputQuantityOverrides` 已删（GM 产出覆盖的唯一权威在 production）。
@@ -3271,7 +3383,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3316,7 +3430,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3365,7 +3481,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3430,7 +3548,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3480,7 +3600,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /**
@@ -3530,7 +3652,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */
@@ -3646,7 +3770,9 @@ public record EconomyData(
         value,
         productionWageDefaults,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 写入/替换一个 unit 的名册（键 == 值内 unit 由构造期再判一次）。 */
@@ -3708,7 +3834,9 @@ public record EconomyData(
         productionRosters,
         value,
         productionWagePostings,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 整份替换执行期工资岗位表；空表 = 清空。 */
@@ -3749,7 +3877,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         value,
-        wageCarryRemainders);
+        wageCarryRemainders,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   // ── ★★★ D-032 W2b：第 35 个组件的逐组件写口 ──────────────────────────────────────────────
@@ -3792,7 +3922,9 @@ public record EconomyData(
         productionRosters,
         productionWageDefaults,
         productionWagePostings,
-        value);
+        value,
+        assetOccupancies,
+        inventoryReservations);
   }
 
   /** 写入/替换一条 carry（0 的条目仍保留；清空用整表写口）。 */
@@ -3801,5 +3933,136 @@ public record EconomyData(
     LinkedHashMap<WageCarryKey, Long> next = new LinkedHashMap<>(wageCarryRemainders);
     next.put(key, carry);
     return withWageCarryRemainders(next);
+  }
+
+  // ── ★★★ D-032 D4-Ib1：第 36/37 组件的逐组件写口 ─────────────────────────────────────────────
+
+  /** 整份替换资产占用表；空表 = 没有任何占用。 */
+  public EconomyData withAssetOccupancies(Map<AssetOccupancyGrantId, AssetOccupancyGrant> value) {
+    Objects.requireNonNull(value, "value（清除全部占用请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings,
+        wageCarryRemainders,
+        value,
+        inventoryReservations);
+  }
+
+  /** 写入/替换一条资产占用（键 == 值内 id 由构造期再判一次）。 */
+  public EconomyData withAssetOccupancy(AssetOccupancyGrant grant) {
+    Objects.requireNonNull(grant, "grant");
+    LinkedHashMap<AssetOccupancyGrantId, AssetOccupancyGrant> next =
+        new LinkedHashMap<>(assetOccupancies);
+    next.put(grant.id(), grant);
+    return withAssetOccupancies(next);
+  }
+
+  /** 删除一条资产占用；键不存在 ⇒ 逐值不变。 */
+  public EconomyData withoutAssetOccupancy(AssetOccupancyGrantId id) {
+    Objects.requireNonNull(id, "id");
+    if (!assetOccupancies.containsKey(id)) {
+      return this;
+    }
+    LinkedHashMap<AssetOccupancyGrantId, AssetOccupancyGrant> next =
+        new LinkedHashMap<>(assetOccupancies);
+    next.remove(id);
+    return withAssetOccupancies(next);
+  }
+
+  /** 整份替换商品库存预留表；空表 = 没有任何预留。 */
+  public EconomyData withInventoryReservations(
+      Map<InventoryReservationId, InventoryReservation> value) {
+    Objects.requireNonNull(value, "value（清除全部预留请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings,
+        wageCarryRemainders,
+        assetOccupancies,
+        value);
+  }
+
+  /** 写入/替换一条预留（键 == 值内 id 由构造期再判一次）。 */
+  public EconomyData withInventoryReservation(InventoryReservation reservation) {
+    Objects.requireNonNull(reservation, "reservation");
+    LinkedHashMap<InventoryReservationId, InventoryReservation> next =
+        new LinkedHashMap<>(inventoryReservations);
+    next.put(reservation.id(), reservation);
+    return withInventoryReservations(next);
+  }
+
+  /** 删除一条预留；键不存在 ⇒ 逐值不变。 */
+  public EconomyData withoutInventoryReservation(InventoryReservationId id) {
+    Objects.requireNonNull(id, "id");
+    if (!inventoryReservations.containsKey(id)) {
+      return this;
+    }
+    LinkedHashMap<InventoryReservationId, InventoryReservation> next =
+        new LinkedHashMap<>(inventoryReservations);
+    next.remove(id);
+    return withInventoryReservations(next);
   }
 }
