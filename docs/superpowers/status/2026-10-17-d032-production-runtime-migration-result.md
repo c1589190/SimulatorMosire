@@ -258,3 +258,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界**：`HouseholdClassRule` 仅把 `SMALL_TOOL` 纳入 tool/workshop 分类，`LARGE_TOOL` 暂无 seed/生产者，未扩大行为面；`LARGE_TOOL` 的 seed/recipe/分类/测试归 C0/C1/C2/C4 后续确认。`ModeMigrationSettlement.isMobileAsset` 把 `SMALL_TOOL`/`LARGE_TOOL` 都视为可移动；当前无 LARGE_TOOL 生产者。
 - **测试影响**：C4 需迁移至少 10 个测试文件的 `AssetKind.TOOL` 引用；C0-A 未写/未跑测试。
 - **下一步**：C0（D1 落形：economy-api `ProductionRoleId` + production 角色/份额/经验/支付/条件/`RoleDistribution` 契约/state/ChangeSet/codec/payload/GM）单 owner；只编译、不写/不跑测试、不提交。之后 D4-C、C2、W2a… 串行。
+
+## 十六、2026-10-17 22:xx C0 D1 落形检查点
+
+> **性质**：C0 生产代码已实现并编译/格式检查通过；未跑测试，未实现 C1 执行/RoleDistribution 算法/economy 名册/工资/占用。
+
+- **提交**：`0c2e432d feat(production,economy-api)!: C0 D1 角色/份额/经验/支付定义形状与往返面`（已推送）。
+- **新增契约**：economy-api `ProductionRoleId`；production `ProductionRoleDefinition`、`IntraRoleSplitRule`、`RolePayment`（ProductShare/MoneyWage+`BarterDiscountPolicy`）、`BarterReferencePrice`（仅 bid/ask）、`ExperienceGrowth`/`GrowthBasis`、`RoleShareRemainder`。
+- **IndustryDefinitionView**：新增 `roles`/`roleShareRemainderRule`/`upgradesTo`/`mode`（22 组件）；旧 18 参 Java 调用通过单户默认 `operator` 便利构造器保持编译，默认角色 `sharePerMille=1000`、`EQUAL`、`PRODUCT_SHARE`，名称“经营者”。
+- **校验/读写**：roles 非空、无 null、id 唯一、份额合计 ≤1000、`PRODUCT_SHARE⇒share>0`、`MONEY_WAGE⇒share=0`；nested unknown key/重复 id/非法 barter 具名拒；payload/GM tool 新字段；`BarterDiscountPolicy.discountPerMille=0` 合法（W3 折后 0 skip 留债），负值拒绝。
+- **编译/格式**：production/economy/app `-DskipTests compile` rc=0；`spotless:check` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界/偏离**：顶层 `industries` 节点未做全量未知键白名单（现有 app seed 仍带跨域 operator/relation 键；C3 裁剪 seed 或 parser 分模式）；`RoleDistribution.allocate`/participants/逐角色经验/工资/C1 runtime 未实现；C4 需迁移 `ProductionContractGuardTest` 18 字段断言及往返/工具测试。
+- **下一步**：D4-C（只读 `AssetOccupancyLookup`/`WagePayableInventoryLookup` 接口 + `Unavailable*` 适配器，不落 EconomyData），随后 C2(32)、W2a(33/34)、W1、W2b(35)、D4-I(36/37)、D4-T、W3。
