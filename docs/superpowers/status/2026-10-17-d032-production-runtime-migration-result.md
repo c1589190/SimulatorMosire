@@ -333,3 +333,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：economy/app `-DskipTests compile` rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **行为/测试影响**：空表时旧数值不变；清区会摘除对应 posting/default；`EconomyRoundTripTest` 31 组件/旧 `new EconomyData(...)` 参数需 W5/C4 迁移；未写/未跑测试。
 - **下一步**：W1（`ExpectedProfitBook` 工资前置估值：default/posting quote、target×cycleDays、payer 完整地点预检、缺价/缺目标/多地点具名；不改 LaborQueue 排序、不做支付）；只编译 economy，不写/不跑测试、不提交。
+
+## 二十二、2026-10-17 22:xx W1 工资前置估值检查点
+
+> **性质**：W1 生产代码已实现并编译/格式检查通过；未跑测试，未接 W2b 匹配/idle/U20 或 W3 支付。
+
+- **提交**：`3028a02b feat(economy)!: W1 工资前置估值、default/posting读口与payer地点预检`（已推送）。
+- **估值**：`ExpectedProfitBook.Prospect` 新增 `expectedWageCostMilli`，net 扣工资成本；雇主 `Σ floor(quote × targetLaborMilliPerDay × cycleDays / 1000)`；worker `floor(quote × expectedWorkableLaborMilliPerCycle / 1000)`；`WageTermsSource` 实例存在读 posting、实例前读 default，两者不互相回退；显式 0 合法并标 `WAGE_QUOTE_ZERO`；缺 quote/target 具名；`wage-quote-overflow` fail-closed。
+- **地点预检**：existing 来自当前 revision 该 payer 全部已有 unit/roster/posting 地点，candidate 为本次 unit；`WagePayerLocationPrecheck` 在成本/收入前执行，`MULTIPLE_LOCATIONS` ⇒ `wage-payer-location-unsupported`，不调用 inventory lookup、不算成本/净额。
+- **名册读值**：`RosterHouseholdIncome` 增 `expectedWageCostMilli`/`wageReasons`；`rosterIncomes` 完整重载接 postings/existingLocations；旧签名委托空表，工资角色会 fail-closed。
+- **已知边界**：app 仍用旧 `rosterIncomes` 签名（W4/C3 后续接完整重载）；W1 不实现匹配、不调用 `WagePayableInventoryLookup`、不写支付；多 MONEY_WAGE 角色 W1 只取稳定 id 首项并标 `WAGE_ROLE_FIRST_ONLY`。`FIXED_MONEY_WAGE.fixedAmount` 不再回读，标 `LEGACY_MONEY_WAGE_IGNORED`。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **测试影响**：`ExpectedProfitBookEmployerOfTest` 旧 `FIXED_MONEY_WAGE` 收入断言、`Prospect`/`RosterHouseholdIncome` 新组件构造、`laborCostMilli` 不含工资的新口径、迁移速度基准可能漂移；W1 未写/未跑测试。
+- **下一步**：W2b（第 35 `wageCarryRemainders`、`SurvivalOutlook`/`NextTickIncomeProjection`、角色级匹配/idle/U20、B2 整 tick fail-closed；不实现 W3 支付）；只编译 economy，不写/不跑测试、不提交。
