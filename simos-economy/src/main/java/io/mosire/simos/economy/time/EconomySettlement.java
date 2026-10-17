@@ -1172,7 +1172,10 @@ public final class EconomySettlement {
             householdEconomies,
             debts,
             relations,
-            session.sheet().productionOrganizations());
+            session.sheet().productionOrganizations(),
+            session.sheet().assetOccupanciesOrBase(),
+            session.sheet().productionRostersOrBase(),
+            day);
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -1315,7 +1318,10 @@ public final class EconomySettlement {
                   householdEconomies,
                   debts,
                   relations,
-                  session.sheet().productionOrganizations());
+                  session.sheet().productionOrganizations(),
+                  session.sheet().assetOccupanciesOrBase(),
+                  session.sheet().productionRostersOrBase(),
+                  day);
         }
       }
       entryOutcomes = outcomes;
@@ -1508,7 +1514,10 @@ public final class EconomySettlement {
                 householdEconomies,
                 debts,
                 relations,
-                session.sheet().productionOrganizations());
+                session.sheet().productionOrganizations(),
+                session.sheet().assetOccupanciesOrBase(),
+                session.sheet().productionRostersOrBase(),
+                day);
         // ★ 今天由组织阶段新建的 unit 加进"刚进入"豁免集：不得让它触发/参与同格既有周期的重排
         //   （与 R4-E2b 的 enteredToday 同一条口径；下一个日结算日它自然成为普通 unit）。
         Set<ProductionUnitId> withOrganized = new LinkedHashSet<>(enteredToday);
@@ -3038,7 +3047,10 @@ public final class EconomySettlement {
                 householdEconomies,
                 debts,
                 relations,
-                session.sheet().productionOrganizations());
+                session.sheet().productionOrganizations(),
+                session.sheet().assetOccupanciesOrBase(),
+                session.sheet().productionRostersOrBase(),
+                day);
       }
     }
 
@@ -3361,7 +3373,11 @@ public final class EconomySettlement {
               day,
               topology,
               profitCycle.marketReports(),
-              session.productionRuntime());
+              session.productionRuntime(),
+              settlementIndex
+                  .d4AssetOccupancyBudget()
+                  .orElseThrow(
+                      () -> new IllegalStateException("asset-occupancy-unavailable: migration")));
       // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
       //    ★ D-023：把当天的瞬态 ledger 传进去记“留原户资产/关系模板回退”的具名读数（不新增持久组件）。
       if (!migrationPlan.moves().isEmpty()) {
@@ -4331,14 +4347,17 @@ public final class EconomySettlement {
         session.sheet().householdEconomiesOrBase();
     List<io.mosire.simos.production.contract.ProductionDayRequest.Step> steps = new ArrayList<>();
     Map<ProductionUnitId, String> assetScopeRejections = new LinkedHashMap<>();
+    java.util.Optional<AssetOccupancyBudget> d4Budget = settlementIndex.d4AssetOccupancyBudget();
     for (ProductionUnitId id : ordered) {
       ProductionProcess unit = stepUnits.get(id);
-      // ★★ R2：共享资产 scope 的 unit 在构造执行步之前业务拒绝。这样 progress/经验/实际劳动/消耗/产出
-      //   一个字节都不会写；即使坏路径把它送到本方法，也不会进入 production 的 executeDay。
-      java.util.Optional<String> assetRejection = settlementIndex.assetRejectionOf(id);
-      if (assetRejection.isPresent()
-          || AssetBudgetBook.hasMultipleUnitsInScope(stepUnits, unit.industry(), unit.operator())) {
-        assetScopeRejections.put(id, assetRejection.orElse(AssetBudgetBook.SHARED_SCOPE_REJECTION));
+      // ★★★ D4-Ib2a：预计/排队/执行只认同一份 D4 占用预算；预算缺失 ⇒ 具名不可用，绝不回退旧整池扫描。
+      if (d4Budget.isEmpty()) {
+        assetScopeRejections.put(id, "asset-occupancy-unavailable");
+        continue;
+      }
+      java.util.Optional<String> assetRejection = d4Budget.get().rejectionOf(id);
+      if (assetRejection.isPresent()) {
+        assetScopeRejections.put(id, assetRejection.get());
         continue;
       }
       IndustryDefinitionView industry =
@@ -4432,40 +4451,10 @@ public final class EconomySettlement {
           continue;
         }
       }
-      // ★★ 资产占用读口（D4-C）：名册方案只用它；Optional.empty ⇒ 具名 `asset-occupancy-unavailable`，
-      //   绝不回退旧 usableAssets 整池扫描。非名册方案保留既有路径（C2 不声称 R2 已关闭）。
-      Map<io.mosire.simos.actor.api.asset.AssetKind, Long> assetOccupancy;
-      if (roster != null) {
-        java.util.Optional<io.mosire.simos.util.state.RevisionId> expectedRevision =
-            session.expectedRevision();
-        if (expectedRevision.isEmpty()) {
-          assetScopeRejections.put(id, "asset-occupancy-unavailable");
-          continue;
-        }
-        java.util.Optional<io.mosire.simos.economy.time.AssetOccupancySnapshot> snapshot =
-            session.assetOccupancyLookup().occupancyOf(id, expectedRevision.get(), day, day + 1L);
-        if (snapshot.isEmpty()) {
-          assetScopeRejections.put(id, "asset-occupancy-unavailable");
-          continue;
-        }
-        io.mosire.simos.economy.time.AssetOccupancySnapshot occupancy = snapshot.get();
-        if (!occupancy.revision().equals(expectedRevision.get())
-            || !occupancy.unit().equals(id)
-            || !occupancy.location().equals(unit.location())
-            || occupancy.fromTick() != day
-            || occupancy.toTickExclusive() != day + 1L) {
-          throw new IllegalStateException(
-              "asset-occupancy-snapshot-mismatch: 资产占用快照与本次推进不一致: unit="
-                  + id.value()
-                  + " revision="
-                  + occupancy.revision()
-                  + " expected="
-                  + expectedRevision.get());
-        }
-        assetOccupancy = occupancy.allocation();
-      } else {
-        assetOccupancy = ProductionProcessBook.usableAssets(unit, settlementIndex);
-      }
+      // ★★★ D4-Ib2a：执行请求写入的占用 = 同一份 budget 的 allocations（不再由本方法重算，
+      //   不先给整池、不伪造等分）。空 Map 是合法零分配；有拒绝的 unit 已在上面短路。
+      Map<io.mosire.simos.actor.api.asset.AssetKind, Long> assetOccupancy =
+          d4Budget.get().allocationOf(id);
       Map<CommodityId, Long> finalInputs = session.drawnProductionInputsOf(id);
       // ★★ 计划级属性主体 = organizer（D2 §6.2）：有属性桥读数才填，读不到时仍传 EMPTY 作为
       //   `attributes`（production 的计划级条件会因缺属性 fail-closed）；participantAttributes 只装权威读数。
@@ -4497,6 +4486,14 @@ public final class EconomySettlement {
             ? io.mosire.simos.production.contract.ProductionDayResult.empty()
             : runtime.executeDay(
                 new io.mosire.simos.production.contract.ProductionDayRequest(steps));
+    // ★★★ D4-Ib2a：同一 ChangeSet 写 grant/release；被业务拒绝（economy 预检或 production 回执）的 unit
+    //   不留下新 grant，释放行照常回填。写工作副本 = 随后 session.build() 的唯一 ChangeSet。
+    java.util.Set<ProductionUnitId> rejectedUnits =
+        new LinkedHashSet<>(assetScopeRejections.keySet());
+    rejectedUnits.addAll(productionDay.rejections().keySet());
+    if (d4Budget.isPresent()) {
+      applyAssetOccupancyBudget(session, d4Budget.get(), rejectedUnits);
+    }
     if (assetScopeRejections.isEmpty()) {
       return productionDay;
     }
@@ -4519,6 +4516,28 @@ public final class EconomySettlement {
         productionDay.closedUnitScales(),
         productionDay.closedGrossOutput(),
         productionDay.closedMintCandidates());
+  }
+
+  /** ★★★ D4-Ib2a：把同一份预算的 grant/release 写入 economy 工作副本（最终进同一 ChangeSet）。 */
+  private static void applyAssetOccupancyBudget(
+      EconomySession session,
+      AssetOccupancyBudget budget,
+      java.util.Set<ProductionUnitId> rejectedUnits) {
+    java.util.Objects.requireNonNull(session, "session");
+    java.util.Objects.requireNonNull(budget, "budget");
+    java.util.Objects.requireNonNull(rejectedUnits, "rejectedUnits");
+    java.util.LinkedHashMap<
+            io.mosire.simos.economy.model.AssetOccupancyGrantId,
+            io.mosire.simos.economy.model.AssetOccupancyGrant>
+        grants = session.sheet().assetOccupancies();
+    for (io.mosire.simos.economy.model.AssetOccupancyGrant release : budget.grantsToRelease()) {
+      grants.put(release.id(), release);
+    }
+    for (io.mosire.simos.economy.model.AssetOccupancyGrant grant : budget.grantsToWrite()) {
+      if (!rejectedUnits.contains(grant.unitId())) {
+        grants.put(grant.id(), grant);
+      }
+    }
   }
 
   /** 把"逐家户 × 逐商品"的本地累加器并进全局累加器（整数加法；键序 = 首次出现序）。 */
@@ -5948,9 +5967,8 @@ public final class EconomySettlement {
       if (industry == null) {
         throw new IllegalStateException("生产单元指名的产业模板不存在（状态已被改坏）: " + unit);
       }
-      if (index.assetRejectionOf(id).isPresent()
-          || AssetBudgetBook.hasMultipleUnitsInScope(units, unit.industry(), unit.operator())) {
-        continue; // ★★ R2：共享资产 scope 的 unit 在执行前不扣任何周期投入（本日不半推进）。
+      if (index.assetRejectionOf(id).isPresent()) {
+        continue; // ★★★ D4：预算具名拒绝的 unit 在执行前不扣任何周期投入（本日不半推进）。
       }
       if (unit.progressDays() != 0L) {
         continue; // 只有周期的第一天扣投入
@@ -6993,7 +7011,10 @@ public final class EconomySettlement {
         industries,
         assetShares,
         operatorConditions,
-        settlementIndex.assetBudget(),
+        settlementIndex
+            .d4AssetOccupancyBudget()
+            .orElseThrow(
+                () -> new IllegalStateException("asset-occupancy-unavailable: debt-capacity")),
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
         debtUnitValueLookup);
   }

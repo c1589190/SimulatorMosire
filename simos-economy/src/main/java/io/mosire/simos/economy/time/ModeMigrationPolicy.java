@@ -377,6 +377,92 @@ public final class ModeMigrationPolicy {
       MarketTopology topology,
       List<MarketReport> marketReports,
       ProductionRuntime productionRuntime) {
+    AssetOccupancyBudget assetBudget =
+        ProductionProcessBook.assetOccupancyBudget(
+            units,
+            assetShares,
+            base.assetOccupancies(),
+            base.industries(),
+            base.productionRosters(),
+            laborCommitments,
+            day);
+    return planWithBudget(
+        base,
+        enterprises,
+        units,
+        householdEconomies,
+        classMemberships,
+        assetShares,
+        relations,
+        laborCommitments,
+        markets,
+        debts,
+        accounts,
+        book,
+        day,
+        topology,
+        marketReports,
+        productionRuntime,
+        assetBudget);
+  }
+
+  /** ★★★ D4-Ib2a：调用方已持有同一 revision 的唯一占用预算时走本重载。 */
+  public static MigrationPlan plan(
+      EconomyDayView base,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<MarketZoneId, MarketTable> markets,
+      Map<DebtContractId, DebtContract> debts,
+      AccountSession accounts,
+      EnterpriseProfitBook.Book book,
+      long day,
+      MarketTopology topology,
+      List<MarketReport> marketReports,
+      ProductionRuntime productionRuntime,
+      AssetOccupancyBudget assetBudget) {
+    return planWithBudget(
+        base,
+        enterprises,
+        units,
+        householdEconomies,
+        classMemberships,
+        assetShares,
+        relations,
+        laborCommitments,
+        markets,
+        debts,
+        accounts,
+        book,
+        day,
+        topology,
+        marketReports,
+        productionRuntime,
+        assetBudget);
+  }
+
+  private static MigrationPlan planWithBudget(
+      EconomyDayView base,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<MarketZoneId, MarketTable> markets,
+      Map<DebtContractId, DebtContract> debts,
+      AccountSession accounts,
+      EnterpriseProfitBook.Book book,
+      long day,
+      MarketTopology topology,
+      List<MarketReport> marketReports,
+      ProductionRuntime productionRuntime,
+      AssetOccupancyBudget assetBudget) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
@@ -413,6 +499,7 @@ public final class ModeMigrationPolicy {
     if (base.modes().isEmpty()) {
       return MigrationPlan.empty(); // 旧档（无 modes）：逐字 no-op
     }
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null（D4 预算不可用时 fail-closed）");
 
     // ★★ D-024 / 设计 §3.3：需求簿只构建一次，透传给所有源户/候选评估（horizonDays = 世界产业 cycleDays 的统一值；
     //   多个不同值时取最大者——本轮真实世界都是 120）。
@@ -429,7 +516,8 @@ public final class ModeMigrationPolicy {
             accounts,
             markets,
             day,
-            horizonDays);
+            horizonDays,
+            assetBudget);
 
     // ★★★ W9（2026-10-11，用户裁定 v3.30 §7）：**"壳户"不做源户候选**（用户派单 ⑥）。
     //   W7e 真世界读数：`MODE_MIGRATION_PROSPECT_INFEASIBLE` 的 9,547(sw)/21,443(tp) 条里
@@ -527,7 +615,8 @@ public final class ModeMigrationPolicy {
               topology,
               day,
               tally,
-              productionRuntime);
+              productionRuntime,
+              assetBudget);
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
@@ -613,7 +702,8 @@ public final class ModeMigrationPolicy {
       MarketTopology topology,
       long day,
       CandidateTally tally,
-      ProductionRuntime productionRuntime) {
+      ProductionRuntime productionRuntime,
+      AssetOccupancyBudget assetBudget) {
     // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
     IndustryDefinitionView currentIndustry =
         currentIndustryOf(base, source, current, units, enterprises);
@@ -635,7 +725,9 @@ public final class ModeMigrationPolicy {
             day,
             // ★★ §15.12 B（R1）：当前户的物理量（产出/所需劳动/所需投入）也走同一份试算 ——
             //   A 规则与"能否维持生产"从此看见熟练度/GM 覆盖/解锁条件。
-            productionRuntime);
+            null,
+            productionRuntime,
+            assetBudget);
     long currentPerLabor = currentProspect.netPerLaborScaled();
     // ★★★ W9-fix（控制方裁定 v3.32 §7 第 1 条）：速度算式的**正参考基准**（分母下限）之一 ——
     //   **当前生产方式的"收益规模基准"**（1 单位规模劳动的毛收入 / 口粮成本，见 {@link #profitScaleBasisScaled}）。
@@ -667,7 +759,8 @@ public final class ModeMigrationPolicy {
             topology,
             day,
             tally,
-            productionRuntime);
+            productionRuntime,
+            assetBudget);
     // ★★ M-D（设计书 §13 I-A/I-B）：**生产方式排序表** —— 当前项（主业）+ 全部成立候选，
     //   排序输入 = 市场议价权（本格运力占比‰，G-1 同一拼写点）+ 库存（货币余额 + 商品库存折价 + 生产资料份额）；
     //   破平 = 位置 id 升序（I-3）。★ 纯读数：本表不写任何状态，落点仍走既有模式变迁路径。
@@ -938,7 +1031,8 @@ public final class ModeMigrationPolicy {
       MarketTopology topology,
       long day,
       CandidateTally tally,
-      ProductionRuntime productionRuntime) {
+      ProductionRuntime productionRuntime,
+      AssetOccupancyBudget assetBudget) {
     List<Target> targets = new ArrayList<>();
     for (HexCoord hex : hexes) {
       int distance = sourceHouseholdEconomy.view().hex().distanceTo(hex);
@@ -1020,7 +1114,8 @@ public final class ModeMigrationPolicy {
                 day,
                 tierPositionId,
                 // ★★ §15.12 B（R1）：候选的物理量同样取自 production 的试算（熟练度/GM 覆盖/解锁条件进选择链）。
-                productionRuntime);
+                productionRuntime,
+                assetBudget);
         // ★★★ W9（用户裁定 v3.30 §7 第 1 条「没有库存就要么去当前生产方式的最低档…为啥要拦着？」）：
         //   **降档重试** —— 默认位置因为"这户拿不出作业资本/劳动"而不可行时，再按**最低档的位置**试一次
         //   （只有"新建目标"才试；并入既有户不生成新关系、也不新建 unit，位置不是这笔能决定的）。
@@ -1050,7 +1145,8 @@ public final class ModeMigrationPolicy {
                     topology,
                     day,
                     lowestPosition,
-                    productionRuntime);
+                    productionRuntime,
+                    assetBudget);
             if (lowerProspect.feasible() && lowerProspect.feasibleScale() > 0L) {
               prospect = lowerProspect;
               tierPositionId = lowestPosition;

@@ -11,6 +11,7 @@ import io.mosire.simos.economy.model.AssetOccupancyGrant;
 import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.AssetOccupancyStatus;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
@@ -82,7 +83,18 @@ public final class AssetOccupancyBook {
       Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
       Map<AssetShareId, OwnershipStake> assetShares,
       long currentTick) {
-    return allocate(requests, existingGrants, assetShares, Map.of(), currentTick);
+    return allocate(requests, existingGrants, assetShares, Map.of(), Map.of(), currentTick);
+  }
+
+  /** 兼容既有调用面；不支持“无请求的已存在单实例整池”证据（见带 existingUnits 的重载）。 */
+  public static AssetOccupancyBudget allocate(
+      Collection<AssetOccupancyRequest> requests,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, Set<AssetRightKind>> acceptedRightKindsByUnit,
+      long currentTick) {
+    return allocate(
+        requests, existingGrants, assetShares, acceptedRightKindsByUnit, Map.of(), currentTick);
   }
 
   /**
@@ -95,10 +107,12 @@ public final class AssetOccupancyBook {
       Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, Set<AssetRightKind>> acceptedRightKindsByUnit,
+      Map<ProductionUnitId, ProductionProcess> existingUnits,
       long currentTick) {
     Objects.requireNonNull(requests, "requests 不得为 null（无请求用空集合）");
     Objects.requireNonNull(existingGrants, "existingGrants 不得为 null（无占用用空表）");
     Objects.requireNonNull(acceptedRightKindsByUnit, "acceptedRightKindsByUnit 不得为 null（不过滤用空表）");
+    Objects.requireNonNull(existingUnits, "existingUnits 不得为 null（无实例用空表）");
     if (currentTick < 0L) {
       contractFault("asset-occupancy-invalid-tick", "currentTick 不得为负: " + currentTick, null);
     }
@@ -170,25 +184,14 @@ public final class AssetOccupancyBook {
       }
       scopeActive.sort(GRANT_ORDER);
 
-      Set<ProductionUnitId> units = new LinkedHashSet<>();
-      for (AssetOccupancyRequest request : groupRequests) {
-        units.add(request.unitId());
-      }
-      for (AssetOccupancyGrant grant : scopeActive) {
-        units.add(grant.unitId());
-      }
-      List<ProductionUnitId> unitOrder = new ArrayList<>(units);
-      unitOrder.sort(UNIT_ORDER);
-      boolean singleUnitScope = unitOrder.size() == 1;
-
       Set<AssetKind> kinds = new LinkedHashSet<>();
       for (AssetOccupancyRequest request : groupRequests) {
         kinds.addAll(request.requestedQuantity().keySet());
-        if (singleUnitScope
-            || request.hasNoRequestTable()
+        if (request.hasNoRequestTable()
+            || request.hasExplicitZeroScale()
             || request.declaresPositiveScaleWithoutQuantities()) {
-          // 单实例整池 / 缺请求拒绝都需要看见该 scope 的全部资产种类；候选缺请求不得因为没有
-          // requestedQuantity 的 kind 键就静默跳过。
+          // 无请求表/显式零规模/缺请求拒绝需要看见该 scope 的全部资产种类；候选缺请求不得因为
+          // 没有 requestedQuantity 的 kind 键就静默跳过。
           for (OwnershipStake share : scopeShares) {
             kinds.add(share.asset());
           }
@@ -196,11 +199,6 @@ public final class AssetOccupancyBook {
       }
       for (AssetOccupancyGrant grant : scopeActive) {
         kinds.add(shares.get(grant.shareId()).asset());
-      }
-      if (kinds.isEmpty() && singleUnitScope) {
-        for (OwnershipStake share : scopeShares) {
-          kinds.add(share.asset());
-        }
       }
       List<AssetKind> kindOrder = new ArrayList<>(kinds);
       kindOrder.sort(KIND_ORDER);
@@ -211,8 +209,6 @@ public final class AssetOccupancyBook {
             groupRequests,
             scopeShares,
             scopeActive,
-            unitOrder,
-            singleUnitScope,
             kind,
             acceptedRightKindsByUnit,
             allocations,
@@ -223,7 +219,8 @@ public final class AssetOccupancyBook {
             rejections,
             grantsToWrite,
             existingGrantIds,
-            shares);
+            shares,
+            existingUnits.keySet());
       }
     }
 
@@ -301,8 +298,6 @@ public final class AssetOccupancyBook {
       List<AssetOccupancyRequest> groupRequests,
       List<OwnershipStake> allScopeShares,
       List<AssetOccupancyGrant> allScopeActive,
-      List<ProductionUnitId> unitOrder,
-      boolean singleUnitScope,
       AssetKind kind,
       Map<ProductionUnitId, Set<AssetRightKind>> acceptedRightKindsByUnit,
       Map<ProductionUnitId, Map<AssetKind, Long>> allocations,
@@ -313,7 +308,8 @@ public final class AssetOccupancyBook {
       Map<ProductionUnitId, String> rejections,
       List<AssetOccupancyGrant> grantsToWrite,
       Set<AssetOccupancyGrantId> existingGrantIds,
-      Map<AssetShareId, OwnershipStake> shares) {
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<ProductionUnitId> existingUnitIds) {
 
     AssetOccupancyScope scope =
         new AssetOccupancyScope(
@@ -324,13 +320,57 @@ public final class AssetOccupancyBook {
             group.fromTick(),
             group.toTickExclusive());
 
+    List<AssetOccupancyRequest> kindRequests = new ArrayList<>();
+    for (AssetOccupancyRequest request : groupRequests) {
+      if (requestTouchesKind(request, kind)) {
+        kindRequests.add(request);
+      }
+    }
+
+    List<AssetOccupancyGrant> kindActive = new ArrayList<>();
+    for (AssetOccupancyGrant grant : allScopeActive) {
+      OwnershipStake share = shares.get(grant.shareId());
+      if (share.asset() == kind) {
+        kindActive.add(grant);
+      }
+    }
+    kindActive.sort(GRANT_ORDER);
+
+    Set<ProductionUnitId> evidenceUnits = new LinkedHashSet<>();
+    for (AssetOccupancyRequest request : kindRequests) {
+      evidenceUnits.add(request.unitId());
+    }
+    for (AssetOccupancyGrant grant : kindActive) {
+      evidenceUnits.add(grant.unitId());
+    }
+    List<ProductionUnitId> evidenceOrder = new ArrayList<>(evidenceUnits);
+    evidenceOrder.sort(UNIT_ORDER);
     Set<AssetRightKind> acceptedKinds =
-        acceptedKindsFor(group, unitOrder, acceptedRightKindsByUnit);
+        acceptedKindsFor(group, evidenceOrder, acceptedRightKindsByUnit);
     if (acceptedKinds != null && acceptedKinds.isEmpty()) {
       rejectAll(
-          groupRequests, scope, "asset-right-kind-missing:" + group.industry().value(), rejections);
+          kindRequests, scope, "asset-right-kind-missing:" + group.industry().value(), rejections);
       return;
     }
+    kindActive.removeIf(
+        grant -> {
+          OwnershipStake share = shares.get(grant.shareId());
+          return acceptedKinds != null && !acceptedKinds.contains(share.kind());
+        });
+
+    Set<ProductionUnitId> kindUnits = new LinkedHashSet<>();
+    for (AssetOccupancyRequest request : kindRequests) {
+      kindUnits.add(request.unitId());
+    }
+    for (AssetOccupancyGrant grant : kindActive) {
+      kindUnits.add(grant.unitId());
+    }
+    if (kindUnits.isEmpty()) {
+      return;
+    }
+    List<ProductionUnitId> unitOrder = new ArrayList<>(kindUnits);
+    unitOrder.sort(UNIT_ORDER);
+    boolean singleUnitScope = unitOrder.size() == 1;
 
     List<OwnershipStake> kindShares = new ArrayList<>();
     for (OwnershipStake share : allScopeShares) {
@@ -341,26 +381,12 @@ public final class AssetOccupancyBook {
     }
     kindShares.sort(Comparator.comparing(OwnershipStake::id, SHARE_ORDER));
 
-    List<AssetOccupancyGrant> kindActive = new ArrayList<>();
-    for (AssetOccupancyGrant grant : allScopeActive) {
-      OwnershipStake share = shares.get(grant.shareId());
-      if (share.asset() == kind
-          && (acceptedKinds == null || acceptedKinds.contains(share.kind()))) {
-        kindActive.add(grant);
-      }
-    }
-    kindActive.sort(GRANT_ORDER);
-
     if (kindShares.isEmpty()) {
-      for (AssetOccupancyRequest request : groupRequests) {
-        if (request.hasExplicitQuantity(kind) || singleUnitScope) {
-          reject(
-              request.unitId(),
-              scope,
-              "asset-location-scope-missing:" + group.location().value(),
-              rejections);
-        }
-      }
+      rejectAll(
+          kindRequests,
+          scope,
+          "asset-location-scope-missing:" + group.location().value(),
+          rejections);
       return;
     }
 
@@ -406,12 +432,14 @@ public final class AssetOccupancyBook {
 
     if (singleUnitScope) {
       ProductionUnitId unit = unitOrder.get(0);
-      AssetOccupancyRequest request = requestFor(groupRequests, unit);
+      AssetOccupancyRequest request = requestFor(kindRequests, unit);
       long existing = committedByUnit.getOrDefault(unit, 0L);
       // 续占证据（previousGrantId 已由 validateContinuations 校验为同 unit 相邻上一段）也可证明
       // "这是已存在实例"，从而允许无请求表的整池兼容；候选/新实例没有这条证据。
       boolean hasExistingFact =
-          existing > 0L || (request != null && request.previousGrantId().isPresent());
+          existing > 0L
+              || existingUnitIds.contains(unit)
+              || (request != null && request.previousGrantId().isPresent());
       boolean missingRequest =
           request != null
               && (request.declaresPositiveScaleWithoutQuantities()
@@ -513,7 +541,7 @@ public final class AssetOccupancyBook {
     Map<ProductionUnitId, Long> demands = new LinkedHashMap<>();
     long totalDemand = 0L;
     for (ProductionUnitId unitId : unitOrder) {
-      AssetOccupancyRequest request = requestFor(groupRequests, unitId);
+      AssetOccupancyRequest request = requestFor(kindRequests, unitId);
       if (request == null) {
         continue;
       }
@@ -933,6 +961,13 @@ public final class AssetOccupancyBook {
       sorted.put(key, groups.get(key));
     }
     return sorted;
+  }
+
+  private static boolean requestTouchesKind(AssetOccupancyRequest request, AssetKind kind) {
+    return request.hasExplicitQuantity(kind)
+        || request.hasNoRequestTable()
+        || request.hasExplicitZeroScale()
+        || request.declaresPositiveScaleWithoutQuantities();
   }
 
   private static Set<AssetRightKind> acceptedKindsFor(

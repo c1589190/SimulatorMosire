@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
@@ -27,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * ★★ <b>D-024 / 2026-10-06 设计 §3.1：逐（市场区 × 商品）的预期需求簿</b>（纯函数；只读入参，不写状态）。
@@ -214,6 +216,70 @@ public final class MarketDemandBook {
       Map<MarketZoneId, MarketTable> markets,
       long day,
       long horizonDays) {
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(shares, "shares");
+    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
+    return buildWithAllocation(
+        reports,
+        topology,
+        householdEconomies,
+        units,
+        industries,
+        shares,
+        shipments,
+        accounts,
+        markets,
+        day,
+        horizonDays,
+        unit -> assetBudget.allocationOf(unit.id()));
+  }
+
+  /**
+   * ★★★ <b>D4-Ib2a：与日结算共用同一份 {@link AssetOccupancyBudget}</b> 的需求簿入口。生产引致投入需求只读 budget 的逐 unit
+   * allocation，不再各自扫份额整池。
+   */
+  public static Book build(
+      List<MarketReport> reports,
+      MarketTopology topology,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> shares,
+      Map<ShipmentId, ShipmentBatch> shipments,
+      AccountSession accounts,
+      Map<MarketZoneId, MarketTable> markets,
+      long day,
+      long horizonDays,
+      AssetOccupancyBudget assetBudget) {
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null");
+    return buildWithAllocation(
+        reports,
+        topology,
+        householdEconomies,
+        units,
+        industries,
+        shares,
+        shipments,
+        accounts,
+        markets,
+        day,
+        horizonDays,
+        unit -> assetBudget.allocationOf(unit.id()));
+  }
+
+  private static Book buildWithAllocation(
+      List<MarketReport> reports,
+      MarketTopology topology,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> shares,
+      Map<ShipmentId, ShipmentBatch> shipments,
+      AccountSession accounts,
+      Map<MarketZoneId, MarketTable> markets,
+      long day,
+      long horizonDays,
+      Function<ProductionProcess, Map<AssetKind, Long>> allocationOf) {
     Objects.requireNonNull(reports, "reports");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(householdEconomies, "rows");
@@ -232,8 +298,7 @@ public final class MarketDemandBook {
     }
     // ★ 每次调用只取一次活视图（AccountSession 的视图是协调器线程专用；本方法在结算协调器线程里跑）。
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
-    // ★★ R2：引致投入需求与日结算/预计读同一份资产预算；共享 scope 的 unit 不按整池复制出需求。
-    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
+    Objects.requireNonNull(allocationOf, "allocationOf 不得为 null（无预算不得静默回退整池）");
 
     Map<HexCoord, HexCoord> regionAnchorByHex = regionAnchors(topology, markets);
     // ★ 覆盖全部会用到的 hex：家户、unit（产业 id 里的格）、市场、在途收货格、报告里的格。
@@ -272,7 +337,7 @@ public final class MarketDemandBook {
       if (industry == null) {
         continue; // 认不出模板 ⇒ 不猜配方（该 unit 的引致需求记 0；读数组件可另判 "missing-industry"）
       }
-      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, assetBudget);
+      long scale = ProductionProcessBook.capacityScaleOf(allocationOf.apply(unit), industry);
       long cycles = ceilDiv(horizonDays, industry.cycleDays());
       for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
         if (input.getValue() <= 0L || scale <= 0L) {

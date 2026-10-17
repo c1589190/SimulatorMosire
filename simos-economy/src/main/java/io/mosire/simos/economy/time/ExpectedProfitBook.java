@@ -287,6 +287,56 @@ public final class ExpectedProfitBook {
       ClassPositionId positionOrNull,
       ProductionRuntime runtime) {
     Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(shares, "shares");
+    AssetOccupancyBudget assetBudget =
+        ProductionProcessBook.assetOccupancyBudget(
+            units,
+            shares,
+            base.assetOccupancies(),
+            base.industries(),
+            base.productionRosters(),
+            day);
+    return prospect(
+        base,
+        household,
+        modeId,
+        hex,
+        industryOrNull,
+        marketOrNull,
+        demand,
+        shares,
+        claimedByEnterprises,
+        accounts,
+        units,
+        relations,
+        topology,
+        day,
+        positionOrNull,
+        runtime,
+        assetBudget);
+  }
+
+  /** ★★★ D4-Ib2a：调用方已持有同一 revision 的唯一占用预算时走本重载，不二次构造。 */
+  public static Prospect prospect(
+      EconomyDayView base,
+      HouseholdId household,
+      ProductionModeId modeId,
+      HexCoord hex,
+      IndustryDefinitionView industryOrNull,
+      MarketTable marketOrNull,
+      MarketDemandBook.Book demand,
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises,
+      AccountSession accounts,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
+      MarketTopology topology,
+      long day,
+      ClassPositionId positionOrNull,
+      ProductionRuntime runtime,
+      AssetOccupancyBudget assetBudget) {
+    Objects.requireNonNull(base, "base");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(modeId, "modeId");
     Objects.requireNonNull(hex, "hex");
@@ -298,8 +348,7 @@ public final class ExpectedProfitBook {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(runtime, "runtime（§15.12 B：物理量必须取自 production 的试算）");
-    // ★★ R2：一次评估只派生一份资产预算；现有 unit 的预计/工资雇主规模都读同一份分配结果。
-    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null（D4 预算不可用时必须 fail-closed）");
     // ★★★ D-032 D3 §5.1（W1）：工资报价/目标只从 W2a 的当刻读口取一份快照；实例存在时读 posting，
     //   实例存在前读候选 default。缺报价/缺目标一律具名，绝不按 0 静默。
     WageTermsSource wageTermsSource = WageTermsSource.of(base);
@@ -445,7 +494,7 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
       ProductionRuntime runtime,
-      AssetBudgetBook.AssetBudget assetBudget,
+      AssetOccupancyBudget assetBudget,
       WageTermsSource wageTermsSource) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
@@ -462,9 +511,7 @@ public final class ExpectedProfitBook {
             household, modeId, position.id(), hex, industry.id(), assetRejection.get());
       }
       // 当前在产：用这个 unit 的统一资产分配结果（含租佃而来的 operator==组织者份额）——预计与实际同源。
-      occupancy =
-          ProductionProbeInputs.positiveAssets(
-              ProductionProcessBook.usableAssets(existingUnit, assetBudget));
+      occupancy = ProductionProbeInputs.positiveAssets(assetBudget.allocationOf(existingUnit.id()));
       carry = runtime.efficiencyOf(unitId);
     } else {
       // ★★ R2：同一个 (industry, operator) 已有别的 unit（旧档 opaque id/坏路径）⇒ 不得把候选再叠成共享实例。
@@ -669,7 +716,7 @@ public final class ExpectedProfitBook {
       MarketTable market,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
-      AssetBudgetBook.AssetBudget assetBudget,
+      AssetOccupancyBudget assetBudget,
       WageTermsSource wageTermsSource) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
@@ -872,7 +919,7 @@ public final class ExpectedProfitBook {
       MarketTopology topology,
       long day,
       AccountSession accounts,
-      AssetBudgetBook.AssetBudget assetBudget,
+      AssetOccupancyBudget assetBudget,
       WageTermsSource wageTermsSource) {
     IndustryDefinitionView trade =
         industryOrNull != null && isMerchantRegime(industryOrNull)
@@ -1792,7 +1839,7 @@ public final class ExpectedProfitBook {
       HexCoord hex,
       HouseholdId household,
       Map<ProductionUnitId, ProductionProcess> units,
-      AssetBudgetBook.AssetBudget assetBudget) {
+      AssetOccupancyBudget assetBudget) {
     ActorRef self = HouseholdActors.of(household);
     Employer best = null;
     int bestRank = -1;
@@ -1811,7 +1858,8 @@ public final class ExpectedProfitBook {
       if (assetBudget.rejectionOf(unitId).isPresent()) {
         continue; // ★★ R2：共享 scope 的 unit 不是可用雇主。
       }
-      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, assetBudget);
+      long scale =
+          ProductionProcessBook.capacityScaleOf(assetBudget.allocationOf(unit.id()), industry);
       if (scale < 1L) {
         continue; // 规模 0 的 unit 不是真实雇主（wageProspect 同样以 scale<1 判 NO_EMPLOYER），不让它挡住低秩的可用雇主
       }
