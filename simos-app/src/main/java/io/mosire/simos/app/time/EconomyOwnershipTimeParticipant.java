@@ -17,6 +17,8 @@ import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomyHouseholdGap;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.economy.time.SurvivalOutlookException;
+import io.mosire.simos.economy.time.SurvivalSocialFacts;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import org.slf4j.Logger;
 
 /**
@@ -103,8 +106,37 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
 
   private final String mapId;
 
+  /**
+   * ★★★ <b>W5-C：Social 下一 tick 生存事实的只读 provider</b>（入参 = 请求的 {@code nextTick}）。
+   *
+   * <p>{@code null} = 组合根从未接线（既有备用 fixture 口径）：不向 {@link EconomyDayStepper} 注入任何替代事实， 保留其 {@link
+   * SurvivalSocialFacts#unavailable()} 缺省；真实劳动候选出现时仍由 economy 具名抛 {@code
+   * survival-need-missing}，绝不伪造空需求/默认预算。
+   *
+   * <p>测试或组合根必须显式传入合法 facts（可用 {@link SocialSurvivalFacts#forNextTick} 从同一份 Social 现算）才能提供下一 tick
+   * 需求。provider 只在 {@code step(day)} 前按 {@code day + 1} 调用一次，结果不落状态。
+   */
+  private final Function<Long, SurvivalSocialFacts> survivalSocialFactsProvider;
+
+  /** 无 Social 来源的既有入口：保持 {@code survival-need-missing} 的 fail-closed 缺省。 */
   public EconomyOwnershipTimeParticipant(String mapId) {
+    this(mapId, (Function<Long, SurvivalSocialFacts>) null);
+  }
+
+  /** 只读注入入口：{@code provider} 不得为 null；每次 step 前按下一 tick 现算一份 Social 事实。 */
+  public EconomyOwnershipTimeParticipant(
+      String mapId, Function<Long, SurvivalSocialFacts> survivalSocialFactsProvider) {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.survivalSocialFactsProvider = survivalSocialFactsProvider;
+  }
+
+  /** 单 tick/固定投影入口：等价于 {@code nextTick -> survivalSocialFacts}。 */
+  public EconomyOwnershipTimeParticipant(String mapId, SurvivalSocialFacts survivalSocialFacts) {
+    this(
+        mapId,
+        ignored ->
+            Objects.requireNonNull(
+                survivalSocialFacts, "survivalSocialFacts（无 Social 来源请使用单参构造器，不得传 null）"));
   }
 
   @Override
@@ -225,6 +257,22 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：**备用推进路径同样每 tick 恰开一次生产推进**
       //   （先按明确日序衰减一次经验，再冻结本 tick 生效条件）。两条路径口径<b>逐字相同</b> ——
       //   备用路径不是"少一步"的路径；重复开启/回退由引擎具名抛契约故障（不在此捕获）。
+      if (survivalSocialFactsProvider != null) {
+        long nextTick = day + 1L;
+        SurvivalSocialFacts facts =
+            Objects.requireNonNull(
+                survivalSocialFactsProvider.apply(nextTick),
+                "survival-need-missing: EconomyOwnershipTimeParticipant 的 Social 事实 provider 返回 null");
+        if (facts.available() && facts.nextTick() != nextTick) {
+          throw new SurvivalOutlookException(
+              "survival-need-stale",
+              "EconomyOwnershipTimeParticipant 的 Social 事实 nextTick="
+                  + facts.nextTick()
+                  + "，本 tick 请求="
+                  + nextTick);
+        }
+        stepper.updateSurvivalSocialFacts(facts);
+      }
       productionRuntime.beginTick(day);
       ProductionLedger ledger = stepper.step(day);
       // ★★ W3（2026-10-11）：经济腿每天还会推一份"逐户缺口"瞬态 outbox（报给 Social 的饥荒输入）。

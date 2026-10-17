@@ -37,12 +37,8 @@ import io.mosire.simos.economy.time.EconomyParallelism;
 import io.mosire.simos.economy.time.EconomyPopulationTransfer;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.MarketTopology;
-import io.mosire.simos.economy.time.NextTickSubsistenceNeed;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
-import io.mosire.simos.economy.time.SubsistenceNeedKey;
-import io.mosire.simos.economy.time.SubsistenceNeedLine;
-import io.mosire.simos.economy.time.SurvivalSocialFacts;
 import io.mosire.simos.gov.AdministrationCoefficients;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovDemand;
@@ -682,7 +678,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           stepper.updateNaturalNeeds(dayNaturalNeeds);
           // ★★★ D-032 W4：用同一份当刻 Social 现算**下一 tick** 的逐需求行与劳动预算；economy 只消费只读事实，
           //   并由 W2b 的 SurvivalOutlookEvaluator/NextTickIncomeProjection 组装生存资格（app 不复制任何生存/匹配公式）。
-          stepper.updateSurvivalSocialFacts(survivalSocialFactsOf(currentSocial, day + 1L));
+          stepper.updateSurvivalSocialFacts(
+              SocialSurvivalFacts.forNextTick(currentSocial, day + 1L));
           // ── ★★ D-032（D2 直接删）：原"文化加成中性接线点"（CultureAptitudeBridge）已随
           //   "文化 → 生产效率倍率"整条通路退役（用户 U5）。⇒ 这里**不再有任何效率修正注入**：
           //   生产效率的新口径 = 家户熟练度经方案公式解释出的倍率，归 production（见
@@ -2101,39 +2098,6 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               report.data().satietyPerMille().size()));
     }
     return report.data();
-  }
-
-  /**
-   * ★★★ <b>D-032 W4：Social 的下一 tick 生存投影（只读）</b>。
-   *
-   * <p>逐户给 {@link NextTickSubsistenceNeed}（稳定 need key = commodity id；数值来自 Social 的 {@link
-   * SocialData#householdNaturalNeeds}）与 {@link SocialData#householdLaborMilli}。app
-   * 只翻译形状，不发明需求/营养/劳动公式。
-   */
-  private SurvivalSocialFacts survivalSocialFactsOf(SocialData social, long nextTick) {
-    Objects.requireNonNull(social, "social");
-    if (nextTick < 0L) {
-      throw new IllegalArgumentException("survival 下一 tick 不得为负: " + nextTick);
-    }
-    CalendarClock clock = CalendarClock.julianDefault();
-    List<HouseholdId> ordered = new ArrayList<>(social.households().keySet());
-    ordered.sort(Comparator.comparing(HouseholdId::value));
-    Map<HouseholdId, NextTickSubsistenceNeed> needs = new LinkedHashMap<>();
-    Map<HouseholdId, Long> laborBudgets = new LinkedHashMap<>();
-    for (HouseholdId household : ordered) {
-      Map<CommodityId, Long> naturalNeeds =
-          social.householdNaturalNeeds(household, nextTick, clock);
-      List<SubsistenceNeedLine> lines = new ArrayList<>(naturalNeeds.size());
-      for (Map.Entry<CommodityId, Long> entry : naturalNeeds.entrySet()) {
-        lines.add(
-            new SubsistenceNeedLine(
-                new SubsistenceNeedKey(entry.getKey().value()), entry.getKey(), entry.getValue()));
-      }
-      lines.sort(Comparator.comparing(line -> line.key().value()));
-      needs.put(household, new NextTickSubsistenceNeed(nextTick, lines));
-      laborBudgets.put(household, social.householdLaborMilli(household, nextTick, clock));
-    }
-    return SurvivalSocialFacts.of(nextTick, needs, laborBudgets);
   }
 
   /**
