@@ -439,3 +439,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：economy/app compile rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑全仓 verify/gate。
 - **仍缺**：app 测试面未迁移（McpCoverageTest/GuiApiTest/R2AssetBudgetReadoutTest 旧 `OwnershipStake`/`AssetKind.TOOL`/命令计数），`ApiViews.economyHex` 只读断言未跑；旧 `asset-scope-shared:awaiting-D4` 尚未退役；D4/R2 不能写成完整关闭。
 - **下一步**：C4b app 测试迁移（只改 app 测试/夹具），恢复 app test-compile 并 targeted `ApiViews.economyHex`/R2 readout；然后 D4-T4 复核 app readout，再决定删除旧 guard、进入 W3。
+
+## 三十、2026-10-17 23:xx C4b app 测试迁移与 D4-T app readout 检查点
+
+> **性质**：app 测试迁移与只读读完断言通过；旧 `AssetBudgetBook`/`asset-scope-shared` 仍存在，R2 未关闭。
+
+- **提交**：`652c1fd6 test(app): C4b 迁移命令/资产读口测试并恢复 app test-compile`（已推送）。
+- **test-compile**：app `-DskipTests test-compile -am` 初始 14 错误/7 文件 → 最终 rc=0；`spotless:check -pl simos-app -am` rc=0。
+- **命令面**：实测 `SHELL_ASSEMBLED handler=152`；新增 `SetProductionRoster`/`SetProductionWageDefault`/`SetProductionWagePosting`，`SimosToolsTest`/`McpCoverageTest` 149→152；三命令 reachability 用 `PRECONDITION_REJECT_PAYLOADS` 具名拒。
+- **readout**：`R2AssetBudgetReadoutTest` 迁移为 `economyHex` 三栏只读断言（occupancy 12 键/reservation 10 键/posting 13 键、稳定序、本格过滤、空表合法、不写状态）。
+- **targeted 结果**：`SimosToolsTest` 65 + `McpCoverageTest` 1 + `GuiApiTest` 34 + `R2AssetBudgetReadoutTest` 2 = **102 tests / 0F / 0E / 0 skipped**；frontend gate 412/412。
+- **D4-T 总览**：economy 核心 36/36 + app readout 2/2 targeted 绿；变异自证 economy 4 组。但 `AssetBudgetBook`/`usableAssets`/`asset-scope-shared:awaiting-D4` 仍在 ExpectedProfitBook/Entry/Enterprise/MarketDemandBook/HouseholdClassRule/DebtCapacityBook/app ApiViews/DesertionBridge 等处，R2 不能写成关闭。
+- **下一步**：D4-R2 旧路径清零（生产代码 owner）：将剩余消费者改为 D4 `AssetOccupancyLookup`/same budget 或 fail-closed `asset-occupancy-unavailable`；删除 `SHARED_SCOPE_REJECTION`/旧 `AssetBudgetBook` 生产用法；app 读口迁移 `AssetOccupancyView`；随后 D4-T4 重跑 economy 36 + app 102，再宣布 D4/R2 关闭；不写/不跑测试、不提交。
