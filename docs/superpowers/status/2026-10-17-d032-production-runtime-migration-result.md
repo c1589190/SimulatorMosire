@@ -294,3 +294,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知下游断点**：economy `EconomySettlement.java:4285` 仍用旧 7 参 `ProductionDayRequest.Step`（旧 Map 劳动表），`simos-economy,simos-app -am` compile rc=1；按 D2 §13 归 C2 接线，C1 不改 economy/app。
 - **测试影响**：production 8 个旧 Request/Step/CycleContribution 测试、economy 2 个旧参与表测试需 C4 迁移；C1 未写/未跑测试。
 - **下一步**：C2（economy 32 `productionRosters`/名册命令/单户默认名册/预计所得/角色分配接线/旧 Step 调用改造）；只编译 economy，不写/不跑测试、不提交。
+
+## 十九、2026-10-17 22:xx C2 economy 名册/预计所得/分配接线检查点
+
+> **性质**：C2 economy 主代码已实现并编译/格式检查通过；未跑测试，C3 app 装配/seed/读口后续接线。
+
+- **提交**：`63eb8242 feat(economy)!: C2 productionRosters 第32组件、名册命令/seed、预计所得与角色分配接线`（已推送）。
+- **状态**：`EconomyData` 31→32 组件 `productionRosters`；ChangeSet/codec/DayView/BoundaryView/StateBuilder/clear/migration 全接；无 33–37。
+- **名册/劳动**：新增 `ProductionRoster`/`ProductionParticipant`/`ProductionRosters`/`ProductionWageQuote`；`HouseholdLaborCommitment.productionRole` 与 `PRODUCTION ⇔ present` 硬判、`idOfProduction` 角色入 id；`economy.SetProductionRoster`/seed `productionRosters`/单户默认名册/多角色 `roster-required`。
+- **分配/预计**：`ProductionOutputNetting` 为 gross→net 唯一拼写点；`ExpectedProfitBook.rosterIncomes(...)` 完成名册校验→资格→probe→netting→`RoleDistribution`→逐户净值（负净额保留）；名册 unit 关账走角色分配，不先 credit operator、不双分。
+- **执行**：`EconomySettlement.driveProductionDay` 已改逐 `ParticipantContribution`，传 participantAttributes/劳动预算/管理劳动；旧 7 参 Step 断点已清；economy/app `-DskipTests compile` rc=0；economy spotless rc=0。
+- **已知边界/偏离（C3/C4 接）**：`ExpectedProfitBook.rosterIncomes` 尚无生产调用者；`SetProductionRosterHandler` 未装配到 app/GM catalog；`RegimeRelations` 旧规则未删除/映射（C3 seed）；D4-C 资产读口只接名册路径，非名册旧 `usableAssets` 保留（R2 未关闭）；属性桥/工资读口默认 Unavailable；部分迁移名册计划劳动未缩放（D2 未定义）。
+- **测试影响**：`EconomyRoundTripTest`/`D031P1NegativeSurfaceTest` 的 31 组件断言、7 参 `HouseholdLaborCommitment` 生产引用、`LaborQueueBook.Offer` 角色参数、旧 id 形状/golden 需 C4 迁移；C2 未写/未跑测试。
+- **下一步**：C3（app `Shell`/GM catalog 注册 `SetProductionRoster`、`EconomySeeder`/`GenesisModuleSlices` 新 roles+productionRosters seed、`rosterIncomes` 只读消费/读口、旧 rules seed 映射；不改 economy 公式/测试）；然后 W2a(33/34)→W1→W2b(35)→D4-I(36/37)→D4-T→W3。
