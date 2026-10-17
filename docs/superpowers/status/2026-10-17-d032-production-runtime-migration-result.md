@@ -402,3 +402,14 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界**：Entry/Enterprise 候选资产来源/租佃拆分仍有 OwnershipStake 遍历（非已存在实例占用读口）；Migration 份额移动仍是所有权搬迁；旧 8 参 `SettlementIndex.build` 不建 D4 budget；app 仍用 Unavailable；D4-T 未跑。
 - **测试影响**：`R2SharedAssetScopeTest`/`UnifiedBudgetNoDoubleBookingTest`/`R2AssetBudgetReadoutTest` 旧 guard/读口断言需 D4-T/D4-Ib2b 迁移；未写/未跑测试。
 - **下一步**：D4-Ib2b（app 真实装配：`AppProductionLookups` 替换 Unavailable、`AccountInventorySnapshotLookup` provider、W2a 两个 wage handler 注册、ApiViews assetOccupancy/wage readout、`rosterIncomes` 完整重载）；只编译 app，不写/不跑测试、不提交；随后 D4-T。
+
+## 二十七、2026-10-17 22:xx D4-Ib2b app 真实lookup/readout检查点
+
+> **性质**：D4-Ib2b 生产代码已实现并编译/格式检查通过；未跑测试/D4-T。
+
+- **提交**：`8a46ce48 feat(app): D4-Ib2b 真实 asset/wage lookup、W2a命令与只读输出`（已推送）。
+- **装配**：`AppProductionLookups.forState/forEconomy` 从当刻 state/session/revision 构造真实 `AssetOccupancyLookupImpl`、`ProductionWageBook`、`WagePayableInventoryLookupImpl`；`AppAccountInventorySnapshotLookup` 只读 `AccountSession` 账户快照，缺账户 empty、0 商品空 Map；`Unavailable*` 保留为 fail-closed fallback；两条推进路径共用。
+- **命令/readout**：`Shell` 注册 `SetProductionWageDefault`/`SetProductionWagePosting`（GM-only）；`CatalogTool` schema；`ApiViews.economyHex` 增 `assetOccupancies`/`inventoryReservations`/`productionWagePostings` 只读栏；`AppProductionConsumerPort.rosterReadouts` 改完整 `rosterIncomes` 重载（真实 quote/posting/existing locations）。
+- **编译/格式**：app `-DskipTests compile -am` rc=0；spotless app rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：`ParticipantAttributeLookup` 仍 Unavailable（无真实 Social 属性源）；wage default 无逐格输出（plan×zone 候选事实）；W3 未接；旧 R2 guard 保留；测试命令数量/JSON 键需 D4-T/W5。
+- **下一步**：D4-T（独立测试 owner：OwnershipStake location/share id/merge、AssetOccupancyBook 单/多实例与释放、R2 原复现、InventoryReservation overcommit、Lookup revision/empty、app readout；允许改测试，不改生产代码；跑 targeted tests；报告 BLOCKED/实际红）。
