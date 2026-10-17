@@ -307,3 +307,16 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界/偏离（C3/C4 接）**：`ExpectedProfitBook.rosterIncomes` 尚无生产调用者；`SetProductionRosterHandler` 未装配到 app/GM catalog；`RegimeRelations` 旧规则未删除/映射（C3 seed）；D4-C 资产读口只接名册路径，非名册旧 `usableAssets` 保留（R2 未关闭）；属性桥/工资读口默认 Unavailable；部分迁移名册计划劳动未缩放（D2 未定义）。
 - **测试影响**：`EconomyRoundTripTest`/`D031P1NegativeSurfaceTest` 的 31 组件断言、7 参 `HouseholdLaborCommitment` 生产引用、`LaborQueueBook.Offer` 角色参数、旧 id 形状/golden 需 C4 迁移；C2 未写/未跑测试。
 - **下一步**：C3（app `Shell`/GM catalog 注册 `SetProductionRoster`、`EconomySeeder`/`GenesisModuleSlices` 新 roles+productionRosters seed、`rosterIncomes` 只读消费/读口、旧 rules seed 映射；不改 economy 公式/测试）；然后 W2a(33/34)→W1→W2b(35)→D4-I(36/37)→D4-T→W3。
+
+## 二十、2026-10-17 22:xx C3 app 装配/创世/只读消费检查点（含 BLOCKED）
+
+> **性质**：C3 app 主代码已实现并编译/格式检查通过；旧规则迁移只做到可安全回退，FARM/CRAFT 仍走旧路径，属具名 BLOCKED 设计缺口。
+
+- **提交**：`39f6969d feat(app): C3 装配 SetProductionRoster/seed roles+rosters，旧规则按 plan 回退旧路径（BLOCKED）`（已推送）。
+- **装配**：`Shell` 注册 `economy.SetProductionRoster`（GM-only）；`CatalogTool` schema；`AppProductionLookups` 唯一注入 `UnavailableAssetOccupancyLookup`/`UnavailableWagePayableInventoryLookup`/`UnavailableParticipantAttributeLookup`；`AppProductionConsumerPort.rosterReadouts` → `ExpectedProfitBook.rosterIncomes` → `ApiViews.economyHex.productionRosters` 只读栏。
+- **seed**：production 定义补显式单 operator roles；顶层 `productionRosters`；多角色缺显式 roster ⇒ `seed-roster-missing`；production seed 白名单裁剪跨域键；旧 rules 按 plan 处理。
+- **旧规则回退（BLOCKED）**：FARM（feudal）因 `FIXED_IN_KIND_PER_LABOR` 及 `OUTPUT_SHARE` 4300‰、CRAFT（handicraft）因 4×600‰ >1000 ⇒ **保留旧 `ProductionRules.rules`、加单 operator roles、不写 roster、继续创世、旧结算路径**；INFO `legacy-compensation-rule-blocked:<plan>:<reason>`。WEAVE/TRADE/MINT 无旧规则 ⇒ mapped 单 operator。可安全整体映射才清空旧 rules，不做半映射。
+- **未完成/设计缺口**：FARM/CRAFT 未迁到角色名册；要真正迁需 (a) 角色逐商品份额 / (b) 固定实物支付形态 / (c) 主副 unit 拆 plan + 显式 roster 三选一（需用户/设计裁定）。多角色映射当前一律回退（`roles-require-explicit-roster`）。这是 BLOCKED，不是 DONE。
+- **编译/格式**：app `-DskipTests compile -am` rc=0；`spotless:check -pl simos-app -am` rc=0；`git diff --check` rc=0。`HouseholdLaborCommitment` 仅纯格式化，code-token 等价。
+- **测试影响**：`SimosToolsTest` 149→150 + command type、`McpCoverageTest` 149→150 + payload、seed/economyHex 精确键集、依赖旧佃租/给养/匠户分成/工资或“FARM/CRAFT 能创世”的断言需 C4 迁移；C3 未写/未跑测试。
+- **下一步**：W2a（EconomyData 33 `productionWageDefaults` + 34 `productionWagePostings`、default/posting 读口、`ProductionWageBook`、两个 GM handler、seed/payload/validation、`WagePayerLocationSnapshot/Precheck`）；只编译 economy，不写/不跑测试、不提交。随后 W1→W2b(35)→D4-I(36/37)→D4-T→W3。
