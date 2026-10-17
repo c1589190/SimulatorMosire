@@ -7115,7 +7115,8 @@ public final class EconomySettlement {
                   share.owner(),
                   share.owner(), // ★ 只改 operator：份额回到所有者、可再出租
                   share.quantity(),
-                  share.kind()));
+                  share.kind(),
+                  share.location()));
           returnedShares++;
           returnedQuantity += share.quantity();
           returnedShareIds.add(shareId);

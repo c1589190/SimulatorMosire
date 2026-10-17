@@ -640,13 +640,31 @@ public final class EconomyReferenceValidation {
     }
     for (Map.Entry<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> entry :
         candidate.assetShares().entrySet()) {
-      if (definitions.industry(entry.getValue().industry()).isEmpty()) {
+      OwnershipStake share = entry.getValue();
+      if (!entry.getKey().equals(share.id())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的资产份额键必须与行内 id 一致: 键="
+                + entry.getKey().value()
+                + " 行内 id="
+                + share.id().value());
+      }
+      OwnershipStake.requireSpecifiedLocation(share.location());
+      if (!OwnershipStake.idEmbedsLocation(share.id(), share.location())) {
+        throw new IllegalArgumentException(
+            label
+                + " 的资产份额 id 与其 location 不一致（asset-location-id-mismatch）: share="
+                + share.id().value()
+                + " location="
+                + share.location().value());
+      }
+      if (definitions.industry(share.industry()).isEmpty()) {
         throw new IllegalArgumentException(
             label
                 + " 的资产份额指名的产业定义不存在（production 当刻权威）: share="
                 + entry.getKey().value()
                 + " industry="
-                + entry.getValue().industry().value());
+                + share.industry().value());
       }
     }
   }

@@ -30,6 +30,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.ExperienceTrackId;
 import io.mosire.simos.production.contract.HouseholdProductionConditions;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -513,8 +514,10 @@ final class EconomyEntrySettlement {
       //   它必然与 `execute` 的真实公式漂开（同一份配置、两套算术 ⇒ 预计与实际不同源）。
       //   现在 economy 只做三件它还该做的事：需求信号（上面）、价格与利润打分（下面）、资产拆分的腿（再下面）。
       //   ★ `probe` 无副作用（I5）：不改任何切片、不推进时间、不涨经验。
+      String entryLocationKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
       Map<AssetKind, Long> own =
-          ownAssets(actor, industryId, planDefinition.acceptedRightKinds(), context);
+          ownAssets(
+              actor, industryId, planDefinition.acceptedRightKinds(), entryLocationKey, context);
       // ★★ B2c（裁定八）：闲置份额来源主体留 economy —— 按**方案 id** 声明的外部来源（缺省 = 只认自有份额）。
       Optional<ActorRef> assetSource = Optional.ofNullable(context.planAssetSources.get(plan.id()));
       // ★★★ D-032 §15.6（R6）：`probe` 的 `assetOccupancy` = 候选**将要实占**的资产 = 自有份额 ∪ 外部允许来源。
@@ -1028,17 +1031,30 @@ final class EconomyEntrySettlement {
       ActorRef actor,
       IndustryId industryId,
       Set<AssetRightKind> acceptedKinds,
+      String locationKey,
       EntryContext context) {
     Map<AssetKind, Long> sums = new LinkedHashMap<>();
     Set<AssetShareId> seen = new LinkedHashSet<>();
     for (AssetShareId shareId : context.shareIdsByOperator.getOrDefault(actor, List.of())) {
       if (seen.add(shareId)) {
-        mergeOwn(sums, context.tables.assetShares.get(shareId), industryId, acceptedKinds, actor);
+        mergeOwn(
+            sums,
+            context.tables.assetShares.get(shareId),
+            industryId,
+            acceptedKinds,
+            locationKey,
+            actor);
       }
     }
     for (AssetShareId shareId : context.shareIdsByOwner.getOrDefault(actor, List.of())) {
       if (seen.add(shareId)) {
-        mergeOwn(sums, context.tables.assetShares.get(shareId), industryId, acceptedKinds, actor);
+        mergeOwn(
+            sums,
+            context.tables.assetShares.get(shareId),
+            industryId,
+            acceptedKinds,
+            locationKey,
+            actor);
       }
     }
     return sums;
@@ -1049,9 +1065,11 @@ final class EconomyEntrySettlement {
       OwnershipStake share,
       IndustryId industryId,
       Set<AssetRightKind> acceptedKinds,
+      String locationKey,
       ActorRef actor) {
     if (share == null
         || !share.industry().equals(industryId)
+        || !share.location().value().equals(locationKey)
         || !acceptedKinds.contains(share.kind())
         || !(share.owner().equals(actor) || share.operator().equals(actor))) {
       return;
@@ -1090,7 +1108,7 @@ final class EconomyEntrySettlement {
       if (share == null
           || !share.operator().equals(share.owner())
           || !capacityKinds.contains(share.asset())
-          || !hexKeyOf(share.industry()).equals(IndustryHexKeys.hexKey(hex.q(), hex.r()))) {
+          || !share.location().value().equals(IndustryHexKeys.hexKey(hex.q(), hex.r()))) {
         continue;
       }
       sums.merge(share.asset(), share.quantity(), Long::sum);
@@ -1108,7 +1126,7 @@ final class EconomyEntrySettlement {
       if (share == null
           || !share.operator().equals(share.owner())
           || !share.asset().equals(asset)
-          || !hexKeyOf(share.industry()).equals(hexKey)
+          || !share.location().value().equals(hexKey)
           || share.quantity() <= 0L) {
         continue;
       }
@@ -1347,7 +1365,8 @@ final class EconomyEntrySettlement {
                 source.owner(),
                 source.operator(),
                 left,
-                source.kind()));
+                source.kind(),
+                source.location()));
       }
       AssetShareId newId =
           nextShareId(
@@ -1356,7 +1375,8 @@ final class EconomyEntrySettlement {
               grant.asset(),
               source.owner(),
               intent.householdActor(),
-              grant.kind());
+              grant.kind(),
+              intent.location());
       tables.assetShares.put(
           newId,
           new OwnershipStake(
@@ -1366,7 +1386,8 @@ final class EconomyEntrySettlement {
               source.owner(),
               intent.householdActor(),
               grant.quantity(),
-              grant.kind()));
+              grant.kind(),
+              intent.location()));
     }
     if (allocationId != null) {
       PeopleLotId lot = intent.laborLot().orElseThrow();
@@ -1410,10 +1431,11 @@ final class EconomyEntrySettlement {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetRightKind kind) {
+      AssetRightKind kind,
+      ProductionLocation location) {
     for (long sequence = 0L; ; sequence++) {
       AssetShareId candidate =
-          OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
+          OwnershipStake.idOf(industry, asset, owner, operator, kind, location, sequence);
       if (!tables.assetShares.containsKey(candidate)) {
         return candidate;
       }

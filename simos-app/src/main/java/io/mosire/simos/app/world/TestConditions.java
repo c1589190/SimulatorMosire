@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
@@ -536,13 +537,19 @@ public record TestConditions(
 
   /**
    * ★★ <b>家户自有 OWNED 份额的确定性 id</b> = {@code OwnershipStake.idOf(industry, asset, household,
-   * household, OWNED, sequence)}。{@code sequence} 是该 {@code entry} 内同 {@code (industry, asset,
-   * owner, operator, kind)} 键的第几条（从 0 起）—— 拆分出来的新份额通常 {@code sequence=0}（目标家户此前没有同键份额）。
+   * household, OWNED, location, sequence)}。{@code location} 必须显式取自真实 seed/unit 格； {@code sequence}
+   * 是该 {@code entry} 内同 {@code (industry, asset, owner, operator, kind, location)} 键的第几条（从 0 起）——
+   * 拆分出来的新份额通常 {@code sequence=0}（目标家户此前没有同键份额）。
    */
   public static AssetShareId ownedShareIdForHousehold(
-      IndustryId industry, AssetKind asset, HouseholdId household, long sequence) {
+      IndustryId industry,
+      AssetKind asset,
+      HouseholdId household,
+      ProductionLocation location,
+      long sequence) {
     ActorRef actor = HouseholdActors.of(household);
-    return OwnershipStake.idOf(industry, asset, actor, actor, AssetRightKind.OWNED, sequence);
+    return OwnershipStake.idOf(
+        industry, asset, actor, actor, AssetRightKind.OWNED, location, sequence);
   }
 
   // ── JSON 解析（fail-closed、具名）──────────────────────────────────────────────────────

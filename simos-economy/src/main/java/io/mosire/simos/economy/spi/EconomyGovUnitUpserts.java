@@ -21,6 +21,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -55,10 +56,10 @@ import java.util.Objects;
  *   <li><b>unit</b>：{@code idOf(industryId, operator)} 不存在 ⇒ 新增 {@link ProductionProcess}（{@code
  *       progressDays=0}、 {@code cycleLaborMilli=0}、空投入）；已存在且 industry/operator/modeKey 逐值一致 ⇒
  *       不动（运行时进度不属于载荷字段，不重置也不冲突）； 任一字段不一致 ⇒ 具名 {@link Rejection}，绝不静默覆盖。
- *   <li><b>assetShares</b>：按 {@code ProductionProcessBook} 的“可用资产”口径（{@code industry} + {@code
- *       operator} 双等值，与 owner/kind 无关）汇总各资产；逐 recipe {@code capacityPerUnit} 的 kind 要求载荷量 ≥ 既有量： 相等
- *       ⇒ 不动；不足 ⇒ 新增一条 {@code OWNED} 份额（owner=operator）补差；既有量超过载荷量 ⇒ 具名拒（本命令只补不缩，不静默覆盖他人份额）。
- *       载荷中不属于该 recipe {@code capacityPerUnit} 的资产 kind ⇒ 具名拒（避免“发了没生效”）。
+ *   <li><b>assetShares</b>：按 {@code industry} + {@code operator} + 实例显式 {@code location} 三等值 （与
+ *       owner/kind 无关）汇总各资产；逐 recipe {@code capacityPerUnit} 的 kind 要求载荷量 ≥ 既有量： 相等 ⇒ 不动；不足 ⇒ 新增一条
+ *       {@code OWNED} 份额（owner=operator）补差；既有量超过载荷量 ⇒ 具名拒（本命令只补不缩，不静默覆盖他人份额）。 载荷中不属于该 recipe {@code
+ *       capacityPerUnit} 的资产 kind ⇒ 具名拒（避免“发了没生效”）。
  *   <li><b>relations</b>：缺键 ⇒ 新增 V1 空规则 {@link ProductionRules}（{@code rules=[]}、{@code
  *       residualOwner=operator}、 {@code inputSupplier=ToActor(operator)}、{@code
  *       laborSource=WAGE}）——即“产出全留 operator”的既有等价路径（E9 先例）； 已有关系与这条 期望值逐字不同 ⇒ 具名拒（工资等规则归 Z3 的
@@ -394,8 +395,9 @@ public final class EconomyGovUnitUpserts {
               + existingRelation.laborSource());
     }
 
+    ProductionLocation location = OwnershipStake.requireSpecifiedLocation(existingUnit.location());
     Map<AssetKind, Long> totalsBefore =
-        usableAssetTotals(base, intent.industryId(), intent.operator());
+        usableAssetTotals(base, intent.industryId(), intent.operator(), location);
     for (AssetKind kind : intent.assets().keySet()) {
       if (!industry.capacityPerUnit().containsKey(kind)) {
         throw new Rejection(
@@ -445,7 +447,8 @@ public final class EconomyGovUnitUpserts {
                 kind,
                 intent.operator(),
                 intent.operator(),
-                AssetRightKind.OWNED);
+                AssetRightKind.OWNED,
+                location);
         OwnershipStake share =
             new OwnershipStake(
                 shareId,
@@ -454,7 +457,8 @@ public final class EconomyGovUnitUpserts {
                 intent.operator(),
                 intent.operator(),
                 delta,
-                AssetRightKind.OWNED);
+                AssetRightKind.OWNED,
+                location);
         assetShares.put(shareId, share);
         sharesCreated.add(shareId);
         totalsAfter.put(kind, Math.addExact(existing, delta));
@@ -522,14 +526,16 @@ public final class EconomyGovUnitUpserts {
   }
 
   /**
-   * 可用资产汇总（与 {@code ProductionProcessBook.usableAssets} 同口径）：{@code industry} + {@code operator}
-   * 双等值， 与 owner/kind 无关；逐 kind 按份额首次出现序保序。
+   * 可用资产汇总：{@code industry} + {@code operator} + 显式 {@code location} 三等值，与 owner/kind 无关； 逐 kind
+   * 按份额首次出现序保序。
    */
   private static Map<AssetKind, Long> usableAssetTotals(
-      EconomyData base, IndustryId industryId, ActorRef operator) {
+      EconomyData base, IndustryId industryId, ActorRef operator, ProductionLocation location) {
     Map<AssetKind, Long> totals = new LinkedHashMap<>();
     for (OwnershipStake share : base.assetShares().values()) {
-      if (share.industry().equals(industryId) && share.operator().equals(operator)) {
+      if (share.industry().equals(industryId)
+          && share.operator().equals(operator)
+          && share.location().equals(location)) {
         totals.merge(share.asset(), share.quantity(), Math::addExact);
       }
     }
@@ -543,10 +549,11 @@ public final class EconomyGovUnitUpserts {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetRightKind kind) {
+      AssetRightKind kind,
+      ProductionLocation location) {
     for (long sequence = 0L; ; sequence++) {
       AssetShareId candidate =
-          OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
+          OwnershipStake.idOf(industry, asset, owner, operator, kind, location, sequence);
       if (!assetShares.containsKey(candidate)) {
         return candidate;
       }

@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,8 +49,8 @@ import java.util.Set;
  * 的引用；若源份额被本批移空，<b>保留一条 {@code quantity = 0} 的零行</b>，让"质押 → 份额"的引用继续成立。 零行不占任何额度，也不参与实物总量。
  *
  * <p>★★ <b>新份额 id 确定性</b>：新 id 走 {@link OwnershipStake#idOf(IndustryId, AssetKind, ActorRef,
- * ActorRef, AssetRightKind, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。★ 旧档 opaque id 不解析、不改写，只按「同
- * tuple 已有行」直接合并。
+ * ActorRef, AssetRightKind, ProductionLocation, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。 ★ Alpha
+ * 不兼容旧档；合并键包含源份额地点，跨地点绝不合并。
  *
  * <p>★★ <b>新质押 id 确定性</b>：跟随产生的质押走 {@link #nextPledgeId}，形如 {@code pledge-follow-N}（N 从 0 起找
  * 第一个未占用序号）。它只表达"由跟随产生的新质押行"，与旧 {@code PledgeId} 不解析、不拼接（旧 id 可能带 {@code "."}， 拼进新 id
@@ -243,13 +244,14 @@ public final class OwnershipStakeBook {
       ActorRef toOperator,
       AssetRightKind kind) {}
 
-  /** 目标份额的合并键（同 tuple = 同一行，数量与质押都比例累加）。 */
+  /** 目标份额的合并键（同 tuple = 同一行，数量与质押都比例累加；地点是键的一部分）。 */
   private record ShareTuple(
       IndustryId industry,
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetRightKind kind) {}
+      AssetRightKind kind,
+      ProductionLocation location) {}
 
   /** 跟随质押的合并键：同一目标份额上「同债务合同 + 同 mode + 同优先级」的 ACTIVE 质押累加。 */
   private record PledgeMergeKey(
@@ -370,7 +372,12 @@ public final class OwnershipStakeBook {
       IndustryId toIndustry = rebuildMode ? move.toIndustry() : source.industry();
       ShareTuple tuple =
           new ShareTuple(
-              toIndustry, source.asset(), move.toOwner(), move.toOperator(), move.kind());
+              toIndustry,
+              source.asset(),
+              move.toOwner(),
+              move.toOperator(),
+              move.kind(),
+              source.location());
       AssetShareId destination = tupleIndex.get(tuple);
       if (destination == null) {
         destination =
@@ -381,7 +388,8 @@ public final class OwnershipStakeBook {
                 source.asset(),
                 move.toOwner(),
                 move.toOperator(),
-                move.kind());
+                move.kind(),
+                source.location());
         pending.put(
             destination,
             new OwnershipStake(
@@ -391,7 +399,8 @@ public final class OwnershipStakeBook {
                 move.toOwner(),
                 move.toOperator(),
                 0L,
-                move.kind()));
+                move.kind(),
+                source.location()));
         tupleIndex.put(tuple, destination);
       }
       destinations.add(destination);
@@ -470,7 +479,8 @@ public final class OwnershipStakeBook {
                 base.owner(),
                 base.operator(),
                 quantity,
-                base.kind()));
+                base.kind(),
+                base.location()));
       }
     }
     return List.copyOf(destinations);
@@ -485,7 +495,12 @@ public final class OwnershipStakeBook {
     for (OwnershipStake share : ordered) {
       index.putIfAbsent(
           new ShareTuple(
-              share.industry(), share.asset(), share.owner(), share.operator(), share.kind()),
+              share.industry(),
+              share.asset(),
+              share.owner(),
+              share.operator(),
+              share.kind(),
+              share.location()),
           share.id());
     }
     return index;
@@ -828,10 +843,11 @@ public final class OwnershipStakeBook {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetRightKind kind) {
+      AssetRightKind kind,
+      ProductionLocation location) {
     for (long sequence = 0L; sequence >= 0L; sequence++) {
       AssetShareId candidate =
-          OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
+          OwnershipStake.idOf(industry, asset, owner, operator, kind, location, sequence);
       if (!shares.containsKey(candidate) && !pending.containsKey(candidate)) {
         return candidate;
       }

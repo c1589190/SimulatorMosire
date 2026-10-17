@@ -87,6 +87,7 @@ import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RolePayment;
@@ -1733,14 +1734,26 @@ final class EconomyPayloads {
 
   // ── 实物资产份额（R3B.1）────────────────────────────────────────────────────────────
 
+  /** 资产份额的必填地点：不做 entry/industry 反推，缺键/空白/非法一律 {@code asset-location-missing}。 */
+  private static ProductionLocation ownershipStakeLocation(JsonNode node) {
+    JsonNode value = node.get("location");
+    if (value == null || !value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalArgumentException(
+          "asset-location-missing: 资产份额缺少必填 location（规范 <q>_<r>）: " + node);
+    }
+    return OwnershipStake.requireSpecifiedLocation(ProductionLocation.parse(value.asText()));
+  }
+
   /**
    * ★★ <b>一条实物资产份额载荷 → {@link OwnershipStake}</b>。
    *
-   * <p>★ <b>新形状</b>：{@code {industry, owner:{kind,id}, operator:{kind,id}, asset, quantity, kind}}
-   * —— {@code owner} 与 {@code operator} 是两件事，允许不等（租佃/委托）。
+   * <p>★ <b>新形状</b>：{@code {industry, owner:{kind,id}, operator:{kind,id}, asset, quantity, kind,
+   * location}} —— {@code owner} 与 {@code operator} 是两件事，允许不等（租佃/委托）；{@code location} 必填且必须是规范
+   * {@code <q>_<r>}（D-032 D4 R-15）。
    *
-   * <p>★ <b>旧形状（{@code useRights} 数组）</b>：{@code {activity, holder, asset, quantity, kind}} ⇒ 一对一翻译
-   * {@code holder ⇒ owner=operator}、{@code activity ⇒ industry}；不拆地主/佃户/多 unit（R3B.1 边界）。
+   * <p>★ <b>旧形状（{@code useRights} 数组）</b>：{@code {activity, holder, asset, quantity, kind,
+   * location}} ⇒ 一对一翻译 {@code holder ⇒ owner=operator}、{@code activity ⇒ industry}；不拆地主/佃户/多
+   * unit（R3B.1 边界）。地点同样必填， 不从 activity/holder 猜。
    *
    * <p>★ <b>id 一律不信任载荷、由确定性序号生成</b>（{@link OwnershipStake#idOf}）：同一份载荷重放得到同一批 id， 禁止随机数/时间戳；旧档里已落盘的
    * {@code use-…} id 不走本方法（那条路在 {@code EconomyCodec} 里原样保留）。
@@ -1775,6 +1788,7 @@ final class EconomyPayloads {
       operator = actorRef(operatorNode);
     }
     AssetKind asset = assetKind(requireText(node, "asset"), "asset");
+    ProductionLocation location = ownershipStakeLocation(node);
     long quantity = requireLong(node, "quantity");
     AssetRightKind kind;
     try {
@@ -1782,18 +1796,20 @@ final class EconomyPayloads {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("资产份额的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
     }
-    String sequenceKey = industry + "|" + asset + "|" + owner + "|" + operator + "|" + kind;
+    String sequenceKey =
+        industry + "|" + asset + "|" + owner + "|" + operator + "|" + kind + "|" + location.value();
     long sequence = sequences.getOrDefault(sequenceKey, 0L);
     sequences.put(sequenceKey, sequence + 1L);
     OwnershipStake share =
         new OwnershipStake(
-            OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence),
+            OwnershipStake.idOf(industry, asset, owner, operator, kind, location, sequence),
             industry,
             asset,
             owner,
             operator,
             quantity,
-            kind);
+            kind,
+            location);
     if (out.putIfAbsent(share.id(), share) != null) {
       throw new IllegalArgumentException("同一份载荷里资产份额重复: " + share.id());
     }

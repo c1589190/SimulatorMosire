@@ -72,6 +72,7 @@ import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -1514,9 +1515,16 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
           "旧档 capacity 的键不是生产资料种类: " + assetName + "；" + e.getMessage(), e);
     }
     ActorRef owner = actorOf(operatorNode);
+    ProductionLocation location =
+        ProductionLocation.ofPlan(new IndustryId(industryKey))
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "旧档 capacity 的 industry 串不带格键，无法落定 OwnershipStake.location: "
+                            + industryKey));
     AssetShareId shareId =
         OwnershipStake.idOf(
-            new IndustryId(industryKey), asset, owner, owner, AssetRightKind.OWNED, 0L);
+            new IndustryId(industryKey), asset, owner, owner, AssetRightKind.OWNED, location, 0L);
     ObjectNode share = JsonNodeFactory.instance.objectNode();
     share.put("id", shareId.value());
     share.set("industry", idNode(industryKey));
@@ -1525,6 +1533,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     share.set("operator", operatorNode.deepCopy());
     share.put("quantity", quantity);
     share.put("kind", AssetRightKind.OWNED.name());
+    share.put("location", location.value());
     assetShares.putIfAbsent(shareId.value(), share);
   }
 

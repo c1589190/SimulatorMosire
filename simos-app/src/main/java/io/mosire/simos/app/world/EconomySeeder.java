@@ -60,6 +60,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RolePayment;
@@ -2593,9 +2594,10 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一条 {@code OwnershipStake} 载荷节点：{@code {industry, owner, operator, asset, quantity, kind}} ——
-   * 新形状显式给 owner/operator（租佃时两者不等），id 由 {@code EconomyPayloads.addOwnershipStake} 的确定性序号生成 （同一
-   * {@code (industry, asset, owner, operator, kind)} 从 0 递增）。
+   * 一条 {@code OwnershipStake} 载荷节点：{@code {industry, owner, operator, asset, quantity, kind,
+   * location}} —— 新形状显式给 owner/operator（租佃时两者不等）与真实格键 location；id 由 {@code
+   * EconomyPayloads.addOwnershipStake} 的确定性序号生成（同一 {@code (industry, asset, owner, operator, kind,
+   * location)} 从 0 递增）。
    */
   private static Map<String, Object> ownershipStakeNode(
       String industry,
@@ -2603,7 +2605,8 @@ public final class EconomySeeder {
       ActorRef owner,
       ActorRef operator,
       AssetRightKind kind,
-      long quantity) {
+      long quantity,
+      String location) {
     Map<String, Object> share = new LinkedHashMap<>();
     share.put("industry", industry);
     share.put("owner", actorNode(owner));
@@ -2611,6 +2614,7 @@ public final class EconomySeeder {
     share.put("asset", asset);
     share.put("quantity", quantity);
     share.put("kind", kind.name());
+    share.put("location", location);
     return share;
   }
 
@@ -3078,6 +3082,7 @@ public final class EconomySeeder {
                 handle.owner(),
                 handle.operator(),
                 handle.kind(),
+                handle.location(),
                 sequence);
         if (shares.putIfAbsent(id, handle) != null) {
           throw new IllegalStateException("资产份额确定性 id 冲突（plan 内部构造错误）: " + id);
@@ -3112,12 +3117,20 @@ public final class EconomySeeder {
               + "|"
               + target
               + "|"
-              + AssetRightKind.OWNED;
+              + AssetRightKind.OWNED
+              + "|"
+              + source.location().value();
       long sequence = sequences.getOrDefault(sequenceKey, 0L);
       sequences.put(sequenceKey, sequence + 1L);
       AssetShareId newId =
           OwnershipStake.idOf(
-              source.industry(), source.asset(), target, target, AssetRightKind.OWNED, sequence);
+              source.industry(),
+              source.asset(),
+              target,
+              target,
+              AssetRightKind.OWNED,
+              source.location(),
+              sequence);
       Map<String, Object> newNode =
           ownershipStakeNode(
               source.industry().value(),
@@ -3125,7 +3138,8 @@ public final class EconomySeeder {
               target,
               target,
               AssetRightKind.OWNED,
-              split.quantity());
+              split.quantity(),
+              source.location().value());
       ownershipStakesList(entries.get(source.entryIndex()), source.entryIndex()).add(newNode);
       if (shares.putIfAbsent(
               newId,
@@ -3136,7 +3150,8 @@ public final class EconomySeeder {
                   source.asset(),
                   target,
                   target,
-                  AssetRightKind.OWNED))
+                  AssetRightKind.OWNED,
+                  source.location()))
           != null) {
         throw new IllegalStateException("拆分新建份额 id 冲突（plan 内部构造错误）: " + newId);
       }
@@ -3446,7 +3461,8 @@ public final class EconomySeeder {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetRightKind kind) {
+      AssetRightKind kind,
+      ProductionLocation location) {
 
     long quantity() {
       return ((Number) node.get("quantity")).longValue();
@@ -3454,10 +3470,10 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ <b>与经济载荷解析器逐字同式的确定性 id 口径</b>：序列键 = {@code industry|asset|owner|operator|kind} （{@code
-   * EconomyPayloads.addOwnershipStake} 的 {@code sequenceKey}），序号 = 该键在<b>整份载荷</b>里出现的第几条（从 0 起）。
-   * 本类先在拆分前对全部既有份额算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id <b>逐值相同</b>（拆分创建的目标份额因此可被
-   * {@code InitialPledge.assetShareId} 直接引用）。
+   * ★★ <b>与经济载荷解析器逐字同式的确定性 id 口径</b>：序列键 = {@code industry|asset|owner|operator|kind|location}
+   * （{@code EconomyPayloads.addOwnershipStake} 的 {@code sequenceKey}），序号 = 该键在<b>整份载荷</b>里出现的第几条（从
+   * 0 起）。 本类先在拆分前对全部既有份额算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id
+   * <b>逐值相同</b>（拆分创建的目标份额因此可被 {@code InitialPledge.assetShareId} 直接引用）。
    */
   private static String sequenceKeyOf(ShareHandle handle) {
     return handle.industry()
@@ -3468,7 +3484,9 @@ public final class EconomySeeder {
         + "|"
         + handle.operator()
         + "|"
-        + handle.kind();
+        + handle.kind()
+        + "|"
+        + handle.location().value();
   }
 
   /** 守恒复核对账键：逐 {@code (industry, asset)}。 */
@@ -3494,12 +3512,14 @@ public final class EconomySeeder {
     Object ownerNode = node.get("owner");
     Object operatorNode = node.get("operator");
     Object quantityNode = node.get("quantity");
+    Object locationNode = node.get("location");
     if (!(industryNode instanceof String industry)
         || !(assetNode instanceof String asset)
         || !(kindNode instanceof String kind)
         || !(ownerNode instanceof Map<?, ?> owner)
         || !(operatorNode instanceof Map<?, ?> operator)
-        || !(quantityNode instanceof Number)) {
+        || !(quantityNode instanceof Number)
+        || !(locationNode instanceof String location)) {
       throw new IllegalStateException("资产份额节点形状非法（plan 内部构造错误）: " + node);
     }
     return new ShareHandle(
@@ -3509,7 +3529,8 @@ public final class EconomySeeder {
         AssetKind.parse(asset),
         parseActorNode(owner),
         parseActorNode(operator),
-        AssetRightKind.valueOf(kind));
+        AssetRightKind.valueOf(kind),
+        OwnershipStake.requireSpecifiedLocation(ProductionLocation.parse(location)));
   }
 
   private static ActorRef parseActorNode(Map<?, ?> node) {
@@ -3806,7 +3827,9 @@ public final class EconomySeeder {
           units.add(
               mainRelation == null ? unitOf(plan) : unitOf(plan, plan.operator(), mainRelation));
         }
-        assetShares.addAll(ownershipStakesOf(plan, split.mainCapacity()));
+        assetShares.addAll(
+            ownershipStakesOf(
+                plan, split.mainCapacity(), IndustryHexKeys.hexKey(hex.q(), hex.r())));
         // 副 unit：owner/operator/kind 显式落 assetShares；relation 显式随 unit 发出。
         for (HouseholdUnit secondary : split.secondaries()) {
           units.add(unitOf(plan, secondary));
@@ -3821,7 +3844,8 @@ public final class EconomySeeder {
                     secondary.owner(),
                     secondary.operator(),
                     secondary.kind(),
-                    asset.getValue()));
+                    asset.getValue(),
+                    IndustryHexKeys.hexKey(hex.q(), hex.r())));
           }
         }
         // 劳动：主行减 moved、副 unit 新发一条；Σ 逐批次不变。
@@ -4224,7 +4248,8 @@ public final class EconomySeeder {
             operator,
             operator,
             AssetRightKind.OWNED,
-            furnaces);
+            furnaces,
+            IndustryHexKeys.hexKey(hex.q(), hex.r()));
     // ② 把产业 + unit + 份额挂进政府家户落点那一格的 entry（entry 一定存在：seedGovernmentHousehold 刚写过）
     boolean attached = false;
     for (Map<String, Object> entry : entries) {
@@ -5738,7 +5763,7 @@ public final class EconomySeeder {
    * kind = OWNED} 是创世默认档。★ B.2 不拆多 unit：一块 capacity 只发一条整额份额。
    */
   private static List<Map<String, Object>> ownershipStakesOf(
-      IndustryPlan plan, Map<String, Long> quantities) {
+      IndustryPlan plan, Map<String, Long> quantities, String location) {
     List<Map<String, Object>> shares = new ArrayList<>();
     for (Map.Entry<String, Long> entry : quantities.entrySet()) {
       // ★★ 逐项**含 0 值**：0 产能是合法形态（沙漠格 LAND=0），但"非退出 unit 必须有至少一条同 industry 的
@@ -5750,7 +5775,8 @@ public final class EconomySeeder {
               plan.operator(),
               plan.operator(),
               AssetRightKind.OWNED,
-              entry.getValue()));
+              entry.getValue(),
+              location));
     }
     return shares;
   }

@@ -16,6 +16,7 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.time.OwnershipStakeBook;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -33,7 +34,7 @@ import org.slf4j.Logger;
  * <pre>{@code
  * {"share":"share-…","quantity":123,
  *  "toOwner":{"kind":"HOUSEHOLD","id":"hh-…"},"toOperator":{"kind":"ESTATE","id":"farm@-20_-81"},
- *  "kind":"TENANCY","reason":"…"}
+ *  "kind":"TENANCY","location":"0_0","reason":"…"}
  * }</pre>
  *
  * <p>★★ <b>语义（与 B.3 计划逐条对应）</b>：
@@ -47,7 +48,8 @@ import org.slf4j.Logger;
  *   <li>{@code 0 < quantity < 原 quantity} ⇒ <b>拆分</b>：旧行减 {@code quantity}，新行 {@code quantity} 由
  *       {@link OwnershipStake#idOf} 生成新 id；
  *   <li>{@code quantity <= 0} 或 {@code > 原 quantity} ⇒ {@link HandlerOutcome.Rejected}（不产生半截
- *       revision）；
+ *       revision）；{@code location} 可选，但只允许原值 —— 请求改地点 ⇒ 具名 {@code asset-relocation-unsupported}（D4
+ *       首期无搬迁命令，绝不静默改）；
  *   <li>份额总量逐 {@code (industry, asset)} 不变；<b>不动</b>商品/货币/债务/劳动；新 owner/operator 不要求已有账户 （账户是 actor
  *       侧的事，本命令不越界代造）；
  *   <li>结果一律走 {@link EconomyChangeSet#between(EconomyData, EconomyData)}，由 {@link
@@ -141,9 +143,34 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
         return new HandlerOutcome.Rejected(
             "quantity 不得超过原份额 " + originalQuantity + ": " + quantity);
       }
+      AssetRightKind kind = optionalKind(payload, "kind", share.kind());
+      ProductionLocation requestedLocation = optionalLocation(payload);
+      if (requestedLocation != null && !requestedLocation.equals(share.location())) {
+        String reason =
+            "asset-relocation-unsupported: TransferAssetShare 不支持改地点"
+                + "（D4 首期份额搬迁另立 spec）: share="
+                + shareId.value()
+                + "，现地点="
+                + share.location().value()
+                + "，请求地点="
+                + requestedLocation.value();
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "asset-relocation-unsupported",
+                    "share",
+                    shareId.value(),
+                    "location",
+                    share.location().value(),
+                    "requestedLocation",
+                    requestedLocation.value()));
+        return new HandlerOutcome.Rejected(reason);
+      }
       ActorRef toOwner = optionalActor(payload, "toOwner", share.owner());
       ActorRef toOperator = optionalActor(payload, "toOperator", share.operator());
-      AssetRightKind kind = optionalKind(payload, "kind", share.kind());
       if (toOwner.equals(share.owner())
           && toOperator.equals(share.operator())
           && kind == share.kind()) {
@@ -260,6 +287,25 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       throw new IllegalArgumentException("字段 " + field + " 必须是 {kind,id} 对象: " + node);
     }
     return new ActorRef(ActorKind.parse(requireText(node, "kind")), requireText(node, "id"));
+  }
+
+  /**
+   * 可选的 {@code location}：缺键 / JSON null ⇒ null；给了就必须是规范 {@code <q>_<r>}。
+   *
+   * <p>它只用于识别"请求搬迁"并具名拒绝，不进入 {@link OwnershipStakeBook.Move}（Move 无地点组件）。
+   */
+  private static ProductionLocation optionalLocation(JsonNode payload) {
+    JsonNode node = payload.get("location");
+    if (node == null || node.isNull()) {
+      return null;
+    }
+    if (!node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException(
+          "asset-location-missing: 字段 location 必须是非空规范 <q>_<r>: " + node);
+    }
+    ProductionLocation requested =
+        OwnershipStake.requireSpecifiedLocation(ProductionLocation.parse(node.asText()));
+    return requested;
   }
 
   /** 可选的 {@code kind}：缺键 / JSON null ⇒ 原值；给了但不在词表 ⇒ 抛（列出合法值）。 */
