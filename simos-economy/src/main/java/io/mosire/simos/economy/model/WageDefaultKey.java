@@ -11,8 +11,9 @@ import java.util.Objects;
  * <p>键 = {@code (plan, role, marketZone)}。同一个键至多一条 {@link ProductionWageDefault}；
  * 它只服务实例存在前的候选估价与选中物化， <b>不是</b>执行期报价权威（执行期唯一权威仍是 {@link ProductionWagePosting}）。
  *
- * <p>★ 线格式用 {@link #toString()} 的规范串，{@link #parse(String)} 与其互逆；分隔符为 {@code |}。三个组成 id 的 {@code
- * toString()} 都是裸值，故变更集/快照的 Jackson 键绑定无需额外的值侧绑定。
+ * <p>★ 线格式采用长度前缀（{@code <plan 字符数>:<plan><role 字符数>:<role><marketZone>}），不用 {@code |} 裸拼：{@link
+ * IndustryId} 与 {@link ProductionRoleId} 的合法值可以含 {@code |} / {@code :}，裸分隔符无法与 {@link
+ * #parse(String)} 严格互逆。最后一段 marketZone 取剩余全部字符。
  *
  * @param plan 方案稳定身份；不得为 null
  * @param role 方案内工资角色稳定身份；不得为 null
@@ -26,21 +27,19 @@ public record WageDefaultKey(IndustryId plan, ProductionRoleId role, MarketZoneI
     Objects.requireNonNull(marketZone, "WageDefaultKey.marketZone 不得为 null");
   }
 
+  /** 规范串：{@code <plan.length()>:<plan><role.length()>:<role><marketZone>}（与 {@link #parse} 互为逆）。 */
   @Override
   public String toString() {
-    return plan.value() + "|" + role.value() + "|" + marketZone.value();
+    return WageKeyWireFormat.encode(plan.value(), role.value(), marketZone.value());
   }
 
-  /** 解析 {@link #toString()} 的产物；段数/空白不合法即抛。 */
+  /**
+   * 解析 {@link #toString()} 的产物。
+   *
+   * @throws IllegalArgumentException 文本为空、长度前缀缺失/非整数/非正、长度越界或任一段为空
+   */
   public static WageDefaultKey parse(String text) {
-    if (text == null || text.isBlank()) {
-      throw new IllegalArgumentException("WageDefaultKey 不得为空白: " + text);
-    }
-    String[] parts = text.split("\\|", -1);
-    if (parts.length != 3) {
-      throw new IllegalArgumentException(
-          "WageDefaultKey 必须是 <plan>|<role>|<marketZone> 三段: " + text);
-    }
+    String[] parts = WageKeyWireFormat.decode("WageDefaultKey", text, "plan", "role", "marketZone");
     return new WageDefaultKey(
         IndustryId.parse(parts[0]), ProductionRoleId.parse(parts[1]), MarketZoneId.parse(parts[2]));
   }
