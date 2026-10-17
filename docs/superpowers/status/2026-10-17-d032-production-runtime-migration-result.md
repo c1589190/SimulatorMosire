@@ -234,3 +234,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **F-03**：D3-I3/I25 改为 W1/W2b/W3 共用 `WagePayerLocationSnapshot` + `WagePayerLocationPrecheck`；W1/W2b 候选不可行/skip、W3 整组 `wage-payer-location-unsupported`，均零 lookup/零部分支付/零新债/零 carry 变化。
 - **F-04**：新增 W2b 唯一 pure `NextTickIncomeProjection`（`time/NextTickIncomeProjection.java`）：输入 D2 cycle `Prospect`/候选 + `nextTick` + cycleStart/End + locked quote/target + 下一 tick 劳动计划，输出下一 tick 可交付 `expected*` 与 `incomeAvailableAtTick`。cycleEnd > nextTick 的 product share 本 tick 为 0；cycleEnd <= nextTick 才可计。缺 cycle 边界/quote/target/劳动计划 ⇒ `survival-income-projection-missing`/`survival-income-timing-unknown` fail-closed；D2 §8.2/P23、D3 §2.5.1.0/P51 同步。
 - **未做/未验证**：F-01..F-04 仍只是设计文字；未实现/编译/测试/仿真/门禁；未修 R2；未验证任何判据；未提交/推送/同步主树。
+
+## 十四、2026-10-17 21:xx D1–D4 设计终局复核通过（侧线工作树）
+
+> **性质**：设计冻结记录；仍无代码/测试实现，未跑 Maven/测试/仿真/门禁。
+
+- **终局复核**：`docs/superpowers/reports/2026-10-17-d032-d1-d4-design-final-review-5.md`，结论 **通过（设计层）**，P0=0/P1=0/P2=0。
+- **D1–D4 设计可冻结**：D1 定义形状、D2 合作名册/分配、D3 工资链/生存判定/抵物、D4 资产占用/R2/W3 lookup 的当前有效正文已通过独立复核。终局检查点 HEAD `59a17b6c`（复核报告随后单独提交）。
+- **组件号/owner 顺序**：C2=32 `productionRosters`；W2a=33/34 `productionWageDefaults`/`productionWagePostings`；W2b=35 `wageCarryRemainders`；D4-I=36/37 `assetOccupancies`/`inventoryReservations`。共享 economy 文件顺序：`C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。
+- **D4-C**：只读接口批次（`AssetOccupancyLookup` + `WagePayableInventoryLookup` + `Unavailable*` fail-closed 适配器），不新增 EconomyData 组件；D4-I 唯一真实实现；D4-T 后 W3。
+- **关键边界**：`AssetOccupancySnapshot` 带 `RevisionId`，跨 revision/地点/区间 mismatch 具名 ERROR；W1/W2b/W3 共用 payer 全地点快照预检；`SurvivalOutlook` 只计 `incomeAvailableAtTick <= nextTick`；工资债 0‰ + `DebtSource.WAGE_ARREARS`；普通贷款/租金按各自 source/terms。
+- **未做**：没有任何代码落形；未编译、未跑测试/仿真/门禁；未修 R2 完整功能；`WagePayableInventoryLookup`/`AssetOccupancyLookup`/D4 occupancy/DebtSource/SurvivalOutlook 仍未实现；主树未同步。
+- **下一步**：按 owner 顺序派 C0/C0-A（production 定义形状 + `AssetKind` 词表）单 owner，只写生产代码到编译，不写/不跑测试；然后 D4-C、C2、W2a… 串行。提交/推送按小分支检查点继续；C0 派单前需确认当前设计提交/工作树边界。

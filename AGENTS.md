@@ -107,6 +107,7 @@
 | `docs/superpowers/specs/2026-10-17-d032-cooperative-production-design.md` | **D-032 D2 合作生产与分配约束设计**：参与名册、按户预计所得、角色两层分配、资格主体、经验/迁移、C2 状态/命令/ChangeSet/codec；U23/裁决列已并入，未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-wage-chain-design.md` | **D-032 D3 工资链与劳动匹配约束设计**：U15–U23、报价 default/posting、U20 调价、角色级匹配/idle、W1 工资前置、W3 直付/抵物/成债、W2a→W1→W2b→W3；未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-asset-occupancy-design.md` | **D-032 D4 资产与占用完整设计**：OwnershipStake location、AssetOccupancyGrant/InventoryReservation（36/37）、统一预算/跨周期/释放回填、R2 关闭路径、W3 lookup；未实现（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-d1-d4-design-final-review-5.md` | **D-032 D1–D4 终局设计复核通过**：P0/P1/P2=0；D4-C 接口、组件 32–37、W1/W2b/W3 revision/location 边界已冻结；仅设计层，未实现（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-d3-precheck-adjudication.md` | **D-032 D3 独立复核与工程裁决列**：时间尺度、idle、候选 default、降价边界、产品池措辞、W1/W2/W3/D4 衔接；未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-cooperative-production-proposal.md` | **D-032 多家户合作生产提案（待用户修改/确认）**：现有多人劳动/分账事实、共同经验、角色分配模型、参与名册、资格主体与本地资产占用建议；未实施（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-distribution-wage-offer-proposal.md` | **D-032 产品分配/现金与抵物/自主工资报价调查提案**：地主权益不要求下地劳动；角色经验量独立配置；工资报价、家户比较与本地反馈机制待确认，未实现（2026-10-17） |
