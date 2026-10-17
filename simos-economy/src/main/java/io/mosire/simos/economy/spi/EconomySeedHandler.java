@@ -86,9 +86,14 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
               state.meta().timestamp(),
               definitions,
               // ★★ B2b：实例权威也在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
-              production.instances());
+              production.instances(),
+              // ★★★ D-032 W2a：工资 default/posting 的市场区/法定币必须对当前 economy 区表校验。
+              base.marketZones());
       // ★★★ D-032 C2（D2 §5.5 / §7.1）：创世名册的跨切片校验（角色存在/份额 owner/全局预算/旧规则禁用）。
       io.mosire.simos.economy.EconomyReferenceValidation.validateProductionRosters(
+          definitions, production, seeded, "economy.Seed");
+      // ★★★ D-032 W2a：候选 default / 执行期 posting 的 plan/role/币种/范围跨切片校验。
+      io.mosire.simos.economy.EconomyReferenceValidation.validateProductionWages(
           definitions, production, seeded, "economy.Seed");
     } catch (IllegalArgumentException | IllegalStateException e) {
       // ★ B2b：旧形状载荷（缺 household）不再有构造期自动迁移（迁移器已删）—— 它在 EconomyData 的
@@ -250,7 +255,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             base.marketRoundStats(),
             // ★★★ D-032 C2（D2 §5.5）：名册按 unit 合并 —— 新播的 unit 带自己的名册；缺键 ⇒ 逐值带过已有状态。
             //   漏了它 = 一次按格追加播种会把已建立的名册静默抹掉。
-            merge(base.productionRosters(), seeded.productionRosters()));
+            merge(base.productionRosters(), seeded.productionRosters()),
+            // ★★★ D-032 W2a：候选 default / 执行期 posting 同样按 append 口径合并；漏了它们 =
+            //   一次按格补种会把已设的工资默认/岗位静默抹掉。
+            merge(base.productionWageDefaults(), seeded.productionWageDefaults()),
+            merge(base.productionWagePostings(), seeded.productionWagePostings()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

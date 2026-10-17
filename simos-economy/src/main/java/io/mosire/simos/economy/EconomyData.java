@@ -70,6 +70,10 @@ import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -94,7 +98,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **三十一个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十一个组件一一对应**（铁律 5）：
+ * <p>★ **三十四个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十四个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
@@ -400,7 +404,12 @@ public record EconomyData(
     //   键 == 值内 unit；空表合法（= 没有任何名册）。名册是"谁以什么角色参与"的**唯一权威**：
     //   production 只从执行请求接收，不持久持有；economy 不得从 ProductionEnterprise / ProductionRules 反推角色。
     //   ★ D2/D3/D4 组件号约束：31 = C2 前基线；本组件 = 32；D3 只新增 33–35；D4 后续 36/37。
-    Map<ProductionUnitId, ProductionRoster> productionRosters)
+    Map<ProductionUnitId, ProductionRoster> productionRosters,
+    // ── ★★★ D-032 W2a（D3 §2.2/§2.6）：第 33/34 个组件 ─────────────────────────────────────
+    //   33 = 候选级工资默认（实例存在前）；34 = 执行期工资岗位（实例存在后的唯一报价权威）。
+    //   空表合法；第 35 个 wageCarryRemainders 归 W2b，不在此批。
+    Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults,
+    Map<WagePostingKey, ProductionWagePosting> productionWagePostings)
     implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
@@ -529,7 +538,7 @@ public record EconomyData(
   }
 
   /**
-   * 往返用例的起点：未激活 + 32 张空表。
+   * 往返用例的起点：未激活 + 34 张空表。
    *
    * <p>★★ B2b（§13.11.2 裁定六）：{@code units} / {@code outputQuantityOverrides} / {@code
    * productionEfficiency} 三个组件已从本类型删除；★★ B2c（§13.12.2 裁定八）：第四个 {@code candidates} 同批删净（唯一权威在
@@ -569,7 +578,9 @@ public record EconomyData(
         Map.of(), // commodityFreightBaseMilli
         Map.of(), // govMarketMandates
         Map.of(), // marketRoundStats
-        Map.of()); // productionRosters
+        Map.of(), // productionRosters
+        Map.of(), // productionWageDefaults
+        Map.of()); // productionWagePostings
   }
 
   public EconomyData {
@@ -1914,8 +1925,56 @@ public record EconomyData(
       productionRostersCopy.put(rosterUnit, roster);
     }
     productionRosters = Collections.unmodifiableMap(productionRostersCopy); // ★ 冻在赋值处
-    //   {@code ProductionRuntime#efficiencyOf(unit)} 只读投影），由 {@code ProductionRuntime#executeDay}
-    // 写。
+
+    // ── ★★★ D-032 W2a：第 33 个组件（候选级工资默认）形状守卫 + 冻结 ────────────────────────────
+    //   ★ 本组件只判本域形状（键 == 值内 (plan, role, marketZone)、null、quote ≥ 0、target > 0）；
+    //     角色存在性/`MONEY_WAGE`/市场区存在性由 EconomyReferenceValidation 读 production/economy 权威判。
+    if (productionWageDefaults == null) {
+      productionWageDefaults = Map.of();
+    }
+    Map<WageDefaultKey, ProductionWageDefault> wageDefaultsCopy = new LinkedHashMap<>();
+    for (Map.Entry<WageDefaultKey, ProductionWageDefault> entry :
+        productionWageDefaults.entrySet()) {
+      WageDefaultKey key = entry.getKey();
+      ProductionWageDefault value = entry.getValue();
+      if (key == null || value == null) {
+        throw new IllegalArgumentException("productionWageDefaults 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(value.key())) {
+        throw new IllegalArgumentException(
+            "wage-default-key-mismatch: productionWageDefaults 的键必须等于值内 (plan, role, marketZone)：键="
+                + key
+                + "，值内="
+                + value.key());
+      }
+      wageDefaultsCopy.put(key, value);
+    }
+    productionWageDefaults = Collections.unmodifiableMap(wageDefaultsCopy); // ★ 冻在赋值处
+
+    // ── ★★★ D-032 W2a：第 34 个组件（执行期工资岗位）形状守卫 + 冻结 ────────────────────────────
+    //   ★ 键 == 值内 (unit, role)、null、target/quote/streak/观测值域；币种 legalTender 与角色支付类型由
+    //     EconomyReferenceValidation/命令层判（跨切片）。
+    if (productionWagePostings == null) {
+      productionWagePostings = Map.of();
+    }
+    Map<WagePostingKey, ProductionWagePosting> wagePostingsCopy = new LinkedHashMap<>();
+    for (Map.Entry<WagePostingKey, ProductionWagePosting> entry :
+        productionWagePostings.entrySet()) {
+      WagePostingKey key = entry.getKey();
+      ProductionWagePosting value = entry.getValue();
+      if (key == null || value == null) {
+        throw new IllegalArgumentException("productionWagePostings 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(value.key())) {
+        throw new IllegalArgumentException(
+            "wage-posting-key-mismatch: productionWagePostings 的键必须等于值内 (unit, role)：键="
+                + key
+                + "，值内="
+                + value.key());
+      }
+      wagePostingsCopy.put(key, value);
+    }
+    productionWagePostings = Collections.unmodifiableMap(wagePostingsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -2028,7 +2087,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2086,7 +2147,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2126,7 +2189,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2163,7 +2228,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   public EconomyData withLaborCommitments(
@@ -2200,7 +2267,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2237,7 +2306,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2285,7 +2356,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         value,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2331,7 +2404,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2372,7 +2447,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2408,7 +2485,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2445,7 +2524,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   // ★★ B2b：`withProcesses` 已删（units 组件退役）。实例的唯一权威在 production，写它一律经契约口
@@ -2487,7 +2568,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   // ★★★ B5（§13.15.2 裁定十八）：`withModes(Map<ProductionModeId, ProductionModeDefinitionView>)`
@@ -2529,7 +2612,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2566,7 +2651,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2613,7 +2700,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2651,7 +2740,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2689,7 +2780,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2726,7 +2819,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2763,7 +2858,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2800,7 +2897,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2841,7 +2940,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2883,7 +2984,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2925,7 +3028,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -2967,7 +3072,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3009,7 +3116,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3052,7 +3161,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   // ★★ B2b：`withOutputQuantityOverrides` 已删（GM 产出覆盖的唯一权威在 production）。
@@ -3104,7 +3215,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3146,7 +3259,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3192,7 +3307,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3254,7 +3371,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3301,7 +3420,9 @@ public record EconomyData(
         value,
         govMarketMandates,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /**
@@ -3348,7 +3469,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         value,
         marketRoundStats,
-        productionRosters);
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */
@@ -3461,7 +3584,9 @@ public record EconomyData(
         commodityFreightBaseMilli,
         govMarketMandates,
         marketRoundStats,
-        value);
+        value,
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 写入/替换一个 unit 的名册（键 == 值内 unit 由构造期再判一次）。 */
@@ -3481,5 +3606,87 @@ public record EconomyData(
     LinkedHashMap<ProductionUnitId, ProductionRoster> next = new LinkedHashMap<>(productionRosters);
     next.remove(unit);
     return withProductionRosters(next);
+  }
+
+  // ── ★★★ D-032 W2a：第 33/34 个组件的逐组件写口 ──────────────────────────────────────────────
+
+  /** 整份替换候选级工资默认表；空表 = 清空。 */
+  public EconomyData withProductionWageDefaults(Map<WageDefaultKey, ProductionWageDefault> value) {
+    Objects.requireNonNull(value, "value（清除全部工资默认请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        productionRosters,
+        value,
+        productionWagePostings);
+  }
+
+  /** 整份替换执行期工资岗位表；空表 = 清空。 */
+  public EconomyData withProductionWagePostings(Map<WagePostingKey, ProductionWagePosting> value) {
+    Objects.requireNonNull(value, "value（清除全部工资岗位请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        productionRosters,
+        productionWageDefaults,
+        value);
   }
 }

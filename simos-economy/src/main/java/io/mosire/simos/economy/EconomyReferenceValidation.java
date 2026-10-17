@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -16,6 +17,11 @@ import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
@@ -69,6 +75,7 @@ public final class EconomyReferenceValidation {
     validateFlowsOnIndustryHex(definitions, candidate, label);
     validateDemandHexes(definitions, candidate, label);
     validateProductionRosters(definitions, production, candidate, label);
+    validateProductionWages(definitions, production, candidate, label);
   }
 
   /**
@@ -344,6 +351,146 @@ public final class EconomyReferenceValidation {
                 + row.laborMilli());
       }
     }
+  }
+
+  /**
+   * ★★★ <b>D-032 W2a：候选级工资默认 / 执行期工资岗位的跨切片校验</b>（D3 §2.2.1/§2.7/§2.9）。
+   *
+   * <p>★ 只读：在候选态上判 default/posting 是否与 production 当刻定义/实例以及 economy 当刻市场区自洽； 失败以 {@link
+   * IllegalArgumentException} 具名出面（命令层折 {@code Rejected}，不留 revision）。
+   *
+   * <p>判据：
+   *
+   * <ul>
+   *   <li>default：键 == 值内 {@code (plan, role, marketZone)}；plan 存在；role 存在于 plan.roles 且 payment =
+   *       {@code MONEY_WAGE}；marketZone 存在；quote ≥ 0；target &gt; 0；
+   *   <li>posting：键 == 值内 {@code (unit, role)}；unit 存在；role 存在于实例 plan.roles 且 payment = {@code
+   *       MONEY_WAGE}；currency == unit 所在市场区 legalTender；target/quote/streak/观测值范围合法。
+   * </ul>
+   */
+  public static void validateProductionWages(
+      ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label) {
+    Objects.requireNonNull(definitions, "definitions");
+    Objects.requireNonNull(production, "production");
+    Objects.requireNonNull(candidate, "candidate");
+    Objects.requireNonNull(label, "label");
+
+    for (Map.Entry<WageDefaultKey, ProductionWageDefault> entry :
+        candidate.productionWageDefaults().entrySet()) {
+      WageDefaultKey key = entry.getKey();
+      ProductionWageDefault value = entry.getValue();
+      if (!key.equals(value.key())) {
+        throw new IllegalArgumentException(
+            label + " 的工资默认键与值内三元组不一致（wage-default-key-mismatch）: 键=" + key);
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(value.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          "wage-default-plan-unknown:" + value.plan().value()));
+      ProductionRoleDefinition role = roleOf(plan, value.role());
+      if (role == null) {
+        throw new IllegalArgumentException("wage-default-role-unknown:" + value.role().value());
+      }
+      if (!(role.payment() instanceof RolePayment.MoneyWage)) {
+        throw new IllegalArgumentException("wage-default-role-not-money:" + value.role().value());
+      }
+      if (!candidate.marketZones().containsKey(value.marketZone())) {
+        throw new IllegalArgumentException(
+            "wage-default-market-zone-missing:" + value.marketZone().value());
+      }
+      if (value.initialWagePerLaborMilli() < 0L) {
+        throw new IllegalArgumentException("wage-default-quote-negative:" + value.role().value());
+      }
+      if (value.initialTargetLaborMilliPerDay() <= 0L) {
+        throw new IllegalArgumentException(
+            value.initialTargetLaborMilliPerDay() == 0L
+                ? "wage-default-target-missing:" + value.role().value()
+                : "wage-default-target-negative:" + value.role().value());
+      }
+    }
+
+    Map<io.mosire.simos.economy.api.id.ProductionUnitId, ProductionProcess> instances =
+        production.instances();
+    for (Map.Entry<WagePostingKey, ProductionWagePosting> entry :
+        candidate.productionWagePostings().entrySet()) {
+      WagePostingKey key = entry.getKey();
+      ProductionWagePosting value = entry.getValue();
+      if (!key.equals(value.key())) {
+        throw new IllegalArgumentException(
+            label + " 的工资岗位键与值内二元组不一致（wage-posting-key-mismatch）: 键=" + key);
+      }
+      ProductionProcess instance = instances.get(value.unit());
+      if (instance == null) {
+        throw new IllegalArgumentException("wage-posting-unit-unknown:" + value.unit().value());
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(instance.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          label
+                              + " 的工资岗位实例方案定义不存在: unit="
+                              + value.unit().value()
+                              + " plan="
+                              + instance.plan().value()));
+      ProductionRoleDefinition role = roleOf(plan, value.role());
+      if (role == null) {
+        throw new IllegalArgumentException("wage-posting-role-unknown:" + value.role().value());
+      }
+      if (!(role.payment() instanceof RolePayment.MoneyWage)) {
+        throw new IllegalArgumentException("wage-role-not-money:" + value.role().value());
+      }
+      io.mosire.simos.economy.api.market.MarketZone zone = marketZoneOf(instance, candidate);
+      if (zone == null) {
+        throw new IllegalArgumentException("wage-market-zone-missing:" + value.unit().value());
+      }
+      if (!value.currency().equals(zone.legalTender())) {
+        throw new IllegalArgumentException(
+            "wage-currency-mismatch:" + value.unit().value() + ":" + value.role().value());
+      }
+      if (value.targetLaborMilliPerDay() < 0L) {
+        throw new IllegalArgumentException(
+            "wage-target-negative:" + value.unit().value() + ":" + value.role().value());
+      }
+      if (value.wagePerLaborMilli() < 0L) {
+        throw new IllegalArgumentException(
+            "wage-quote-negative:" + value.unit().value() + ":" + value.role().value());
+      }
+    }
+  }
+
+  private static ProductionRoleDefinition roleOf(
+      IndustryDefinitionView plan, io.mosire.simos.economy.api.production.ProductionRoleId role) {
+    for (ProductionRoleDefinition candidate : plan.roles()) {
+      if (candidate.id().equals(role)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private static io.mosire.simos.economy.api.market.MarketZone marketZoneOf(
+      ProductionProcess instance, EconomyData candidate) {
+    HexCoord hex;
+    try {
+      hex = HexCoord.parse(instance.location().value());
+    } catch (RuntimeException e) {
+      return null;
+    }
+    for (io.mosire.simos.economy.api.market.MarketZone zone :
+        MarketZoneBook.zones(candidate.marketZones())) {
+      if (zone.hexes().contains(hex)) {
+        return zone;
+      }
+    }
+    return null;
   }
 
   /**

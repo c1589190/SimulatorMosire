@@ -42,6 +42,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
@@ -64,16 +65,22 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.model.TransferRule;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
+import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.ClassSlot;
@@ -81,6 +88,8 @@ import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -315,8 +324,10 @@ final class EconomyPayloads {
       JsonNode payload,
       SimosTimestamp at,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
-      Map<ProductionUnitId, ProductionProcess> productionInstances) {
+      Map<ProductionUnitId, ProductionProcess> productionInstances,
+      Map<MarketZoneId, MarketZone> knownMarketZones) {
     Objects.requireNonNull(at, "at");
+    Objects.requireNonNull(knownMarketZones, "knownMarketZones（工资 default/posting 的区/法定币校验用）");
     Objects.requireNonNull(
         definitions, "definitions（B5：载荷不再带 industries[]，产业定义权威在 production，必须显式注入）");
     Objects.requireNonNull(productionInstances, "productionInstances（B2b：实例权威的只读投影，必须显式注入）");
@@ -364,6 +375,12 @@ final class EconomyPayloads {
     //   角色/资格/份额 owner 的跨切片判据由 EconomyReferenceValidation#validateProductionRosters 在候选态判。
     Map<ProductionUnitId, ProductionRoster> productionRosters =
         productionRosters(payload, definitions, productionInstances);
+    // ★★★ D-032 W2a（D3 §2.8/§2.10）：候选默认与执行期岗位是**两个独立顶层数组**，不混写。
+    //   两者都在实例/定义已由 production.Seed 落账后解析；区存在性/legalTender 用当前 economy 区表判。
+    Map<WageDefaultKey, ProductionWageDefault> wageDefaults =
+        productionWageDefaults(payload, definitions, knownMarketZones);
+    Map<WagePostingKey, ProductionWagePosting> wagePostings =
+        productionWagePostings(payload, definitions, productionInstances, knownMarketZones);
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
@@ -636,7 +653,206 @@ final class EconomyPayloads {
         Map.of(),
         Map.of(),
         Map.of(),
-        productionRosters);
+        productionRosters,
+        wageDefaults,
+        wagePostings);
+  }
+
+  /**
+   * ★★★ <b>D-032 W2a：顶层 {@code wageDefaults} 的形状解析</b>（D3 §2.10）。
+   *
+   * <pre>
+   * "wageDefaults": [
+   *   {"plan":"farm","marketZone":"zone-0_0",
+   *    "roles":[{"role":"hired-hand","initialWagePerLaborMilli":1000,
+   *              "initialTargetLaborMilliPerDay":5000}]}
+   * ]
+   * </pre>
+   *
+   * <p>★ 与 {@code wagePostings} 分开；空数组 = 无默认。重复 {@code (plan,role,zone)} / 未知 plan/role/zone、 非
+   * MONEY_WAGE、负报价、非正目标都 fail-closed，不静默补 0。
+   */
+  private static Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults(
+      JsonNode payload,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<MarketZoneId, MarketZone> knownMarketZones) {
+    Map<WageDefaultKey, ProductionWageDefault> defaults = new LinkedHashMap<>();
+    for (JsonNode group : optionalArray(payload, "wageDefaults")) {
+      if (group == null || !group.isObject()) {
+        throw new IllegalArgumentException("wageDefaults 的元素必须是对象: " + group);
+      }
+      IndustryId plan = IndustryId.parse(requireText(group, "plan"));
+      MarketZoneId marketZone = MarketZoneId.parse(requireText(group, "marketZone"));
+      IndustryDefinitionView definition =
+          definitions
+              .industry(plan)
+              .orElseThrow(
+                  () -> new IllegalArgumentException("wage-default-plan-unknown:" + plan.value()));
+      if (!knownMarketZones.containsKey(marketZone)) {
+        throw new IllegalArgumentException(
+            "wage-default-market-zone-missing:" + marketZone.value());
+      }
+      JsonNode roles = group.get("roles");
+      if (roles == null || !roles.isArray()) {
+        throw new IllegalArgumentException("wageDefaults[].roles 必须是数组: " + group);
+      }
+      for (JsonNode node : roles) {
+        if (node == null || !node.isObject()) {
+          throw new IllegalArgumentException("wageDefaults[].roles 的元素必须是对象: " + node);
+        }
+        ProductionRoleId role = ProductionRoleId.parse(requireText(node, "role"));
+        ProductionRoleDefinition roleDefinition = requireMoneyWageRole(definition, role, true);
+        long quote = requireLong(node, "initialWagePerLaborMilli");
+        long target = requireLong(node, "initialTargetLaborMilliPerDay");
+        if (quote < 0L) {
+          throw new IllegalArgumentException("wage-default-quote-negative:" + role.value());
+        }
+        if (target < 0L) {
+          throw new IllegalArgumentException("wage-default-target-negative:" + role.value());
+        }
+        if (target == 0L) {
+          throw new IllegalArgumentException("wage-default-target-missing:" + role.value());
+        }
+        WageDefaultKey key = new WageDefaultKey(plan, role, marketZone);
+        if (defaults.putIfAbsent(
+                key, new ProductionWageDefault(plan, role, marketZone, quote, target))
+            != null) {
+          throw new IllegalArgumentException(
+              "wage-default-role-duplicate:"
+                  + plan.value()
+                  + ":"
+                  + marketZone.value()
+                  + ":"
+                  + role.value());
+        }
+        // 本句只用于把"角色定义确实存在且是 MONEY_WAGE"与后续构造绑在同一个解析段里；
+        // requireMoneyWageRole 返回定义，避免再扫一遍 plan.roles。
+        Objects.requireNonNull(roleDefinition, "roleDefinition");
+      }
+    }
+    return defaults;
+  }
+
+  /**
+   * ★★★ <b>D-032 W2a：顶层 {@code wagePostings} 的形状解析</b>（D3 §2.8）。
+   *
+   * <pre>
+   * "wagePostings": [
+   *   {"unit":"unit-farm@0_0-hh-1","role":"hired-hand",
+   *    "targetLaborMilliPerDay":5000,"currency":"silver",
+   *    "initialWagePerLaborMilli":1000}
+   * ]
+   * </pre>
+   *
+   * <p>★ 实例必须已存在（不隐式创建）；每个 MONEY_WAGE 角色必须显式给初始报价（0 合法）；currency 省略时取 unit 所在市场区
+   * legalTender，给了就必须一致；source = SEED，历史观测字段全 0。
+   */
+  private static Map<WagePostingKey, ProductionWagePosting> productionWagePostings(
+      JsonNode payload,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      Map<ProductionUnitId, ProductionProcess> productionInstances,
+      Map<MarketZoneId, MarketZone> knownMarketZones) {
+    Map<WagePostingKey, ProductionWagePosting> postings = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "wagePostings")) {
+      if (node == null || !node.isObject()) {
+        throw new IllegalArgumentException("wagePostings 的元素必须是对象: " + node);
+      }
+      ProductionUnitId unit = ProductionUnitId.parse(requireText(node, "unit"));
+      ProductionProcess instance = productionInstances.get(unit);
+      if (instance == null) {
+        throw new IllegalArgumentException("wage-posting-unit-unknown:" + unit.value());
+      }
+      IndustryDefinitionView definition =
+          definitions
+              .industry(instance.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "生产实例指名的方案定义不存在（production 当刻权威，跨切片不一致）: unit="
+                              + unit.value()
+                              + " plan="
+                              + instance.plan().value()));
+      ProductionRoleId role = ProductionRoleId.parse(requireText(node, "role"));
+      requireMoneyWageRole(definition, role, false);
+      MarketZone zone = marketZoneOf(instance, knownMarketZones);
+      CurrencyId currency =
+          optionalText(node, "currency").map(CurrencyId::parse).orElseGet(zone::legalTender);
+      if (!currency.equals(zone.legalTender())) {
+        throw new IllegalArgumentException(
+            "wage-currency-mismatch:" + unit.value() + ":" + role.value());
+      }
+      long target = requireLong(node, "targetLaborMilliPerDay");
+      if (target < 0L) {
+        throw new IllegalArgumentException(
+            "wage-target-negative:" + unit.value() + ":" + role.value());
+      }
+      long quote = requireLong(node, "initialWagePerLaborMilli");
+      if (quote < 0L) {
+        throw new IllegalArgumentException(
+            "wage-quote-negative:" + unit.value() + ":" + role.value());
+      }
+      WagePostingKey key = new WagePostingKey(unit, role);
+      if (postings.putIfAbsent(
+              key,
+              new ProductionWagePosting(
+                  unit,
+                  role,
+                  target,
+                  currency,
+                  quote,
+                  WageQuoteSource.SEED,
+                  0L,
+                  0L,
+                  0L,
+                  0L,
+                  0L,
+                  0L,
+                  0L))
+          != null) {
+        throw new IllegalArgumentException(
+            "wage-posting-duplicate:" + unit.value() + ":" + role.value());
+      }
+    }
+    return postings;
+  }
+
+  /** 解析/校验 plan 内角色；{@code defaultMode} 时给出 default 专属拒绝词。 */
+  private static ProductionRoleDefinition requireMoneyWageRole(
+      IndustryDefinitionView definition, ProductionRoleId role, boolean defaultMode) {
+    ProductionRoleDefinition found = null;
+    for (ProductionRoleDefinition candidate : definition.roles()) {
+      if (candidate.id().equals(role)) {
+        found = candidate;
+        break;
+      }
+    }
+    if (found == null) {
+      throw new IllegalArgumentException(
+          (defaultMode ? "wage-default-role-unknown:" : "wage-posting-role-unknown:")
+              + role.value());
+    }
+    if (!(found.payment() instanceof RolePayment.MoneyWage)) {
+      throw new IllegalArgumentException(
+          (defaultMode ? "wage-default-role-not-money:" : "wage-role-not-money:") + role.value());
+    }
+    return found;
+  }
+
+  /** unit 所在市场区（生产实例 location → 区表成员格）；没有区即 fail-closed。 */
+  private static MarketZone marketZoneOf(
+      ProductionProcess instance, Map<MarketZoneId, MarketZone> knownMarketZones) {
+    HexCoord hex;
+    try {
+      hex = HexCoord.parse(instance.location().value());
+    } catch (RuntimeException e) {
+      throw new IllegalArgumentException("wage-market-zone-missing:" + instance.id().value(), e);
+    }
+    for (MarketZone zone : MarketZoneBook.zones(knownMarketZones)) {
+      if (zone.hexes().contains(hex)) {
+        return zone;
+      }
+    }
+    throw new IllegalArgumentException("wage-market-zone-missing:" + instance.id().value());
   }
 
   /**

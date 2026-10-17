@@ -57,6 +57,10 @@ import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.ChangeSet;
@@ -67,7 +71,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 32 个；★ D-032 B4 / §13.14.2 裁定十五起
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 34 个；★ D-032 B4 / §13.14.2 裁定十五起
  * <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
  * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
  * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
@@ -181,7 +185,12 @@ public record EconomyChangeSet(
     FieldDelta<MarketRoundStats> marketRoundStats,
     // ── ★★★ D-032 C2（D2 §5.3）：第 32 个组件 —— 生产参与名册（键 = ProductionUnitId）────────────
     //   与 EconomyData 的第 32 个组件一一对应（铁律 5）。键解析器 = ProductionUnitId::parse（与 toString 互逆）。
-    FieldDelta<ProductionRoster> productionRosters)
+    FieldDelta<ProductionRoster> productionRosters,
+    // ── ★★★ D-032 W2a：第 33/34 个组件（与 EconomyData 一一对应，铁律 5）──────────────────────
+    //   键解析器 = WageDefaultKey::parse / WagePostingKey::parse（各自的 toString 与 parse 互逆）。
+    //   空表/Unchanged 均为合法中性态；第 35 个 wageCarryRemainders 归 W2b，不在此批。
+    FieldDelta<ProductionWageDefault> productionWageDefaults,
+    FieldDelta<ProductionWagePosting> productionWagePostings)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -288,6 +297,13 @@ public record EconomyChangeSet(
     if (productionRosters == null) {
       productionRosters = new FieldDelta.Unchanged<>();
     }
+    // ★★ D-032 W2a：工资 default/posting 两维（旧档/旧变更集没提该组件，就是没动它）。
+    if (productionWageDefaults == null) {
+      productionWageDefaults = new FieldDelta.Unchanged<>();
+    }
+    if (productionWagePostings == null) {
+      productionWagePostings = new FieldDelta.Unchanged<>();
+    }
     // ★★ B2b：Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）的变更集维已删除
     //   （两维的唯一权威在 production 的 {@code ProductionChangeSet}）。
     // ★★ A1 的第 34/35 个组件（货币词表两张表）：旧变更集没提该组件，就是没动它
@@ -353,7 +369,9 @@ public record EconomyChangeSet(
         // ★★ R1（第 39 个组件）：政府市场授权表（成交累加与耗尽/到期清除写它，铁律 5 的一一对应）。
         FieldDelta.diff(base.govMarketMandates(), target.govMarketMandates()),
         FieldDelta.diff(base.marketRoundStats(), target.marketRoundStats()),
-        FieldDelta.diff(base.productionRosters(), target.productionRosters()));
+        FieldDelta.diff(base.productionRosters(), target.productionRosters()),
+        FieldDelta.diff(base.productionWageDefaults(), target.productionWageDefaults()),
+        FieldDelta.diff(base.productionWagePostings(), target.productionWagePostings()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -416,7 +434,12 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.marketRoundStats(), cs.marketRoundStats(), MarketZoneId::parse),
         // ★★ D-032 C2：名册维（键解析器 = ProductionUnitId::parse）。
         FieldDelta.rebuild(
-            base.productionRosters(), cs.productionRosters(), ProductionUnitId::parse));
+            base.productionRosters(), cs.productionRosters(), ProductionUnitId::parse),
+        // ★★ D-032 W2a：候选 default / 执行期 posting 两维（键解析器各自 toString/parse 互逆）。
+        FieldDelta.rebuild(
+            base.productionWageDefaults(), cs.productionWageDefaults(), WageDefaultKey::parse),
+        FieldDelta.rebuild(
+            base.productionWagePostings(), cs.productionWagePostings(), WagePostingKey::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -452,7 +475,9 @@ public record EconomyChangeSet(
         || commodityFreightBaseMilli.changed()
         || govMarketMandates.changed()
         || marketRoundStats.changed()
-        || productionRosters.changed());
+        || productionRosters.changed()
+        || productionWageDefaults.changed()
+        || productionWagePostings.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

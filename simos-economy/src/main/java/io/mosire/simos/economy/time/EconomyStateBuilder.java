@@ -41,6 +41,10 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRuntime;
@@ -116,6 +120,12 @@ public final class EconomyStateBuilder {
 
   /** ★★★ D-032 C2：生产参与名册工作副本（自动组织 / 名册命令在段内写；未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters;
+
+  /** ★★★ D-032 W2a：候选级工资默认工作副本（W1/W2b 若在段内物化会写；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<WageDefaultKey, ProductionWageDefault> productionWageDefaults;
+
+  /** ★★★ D-032 W2a：执行期工资岗位工作副本（U20/W2b 后续写；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<WagePostingKey, ProductionWagePosting> productionWagePostings;
 
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -411,6 +421,32 @@ public final class EconomyStateBuilder {
     return productionRosters;
   }
 
+  /** ★★★ D-032 W2a：候选级工资默认的只读选择（已物化读工作副本、未物化直接复用 base 的不可变表）。 */
+  public Map<WageDefaultKey, ProductionWageDefault> productionWageDefaultsOrBase() {
+    return productionWageDefaults == null ? base.productionWageDefaults() : productionWageDefaults;
+  }
+
+  /** ★★★ D-032 W2a：候选级工资默认工作副本（惰性物化）。 */
+  public LinkedHashMap<WageDefaultKey, ProductionWageDefault> productionWageDefaults() {
+    if (productionWageDefaults == null) {
+      productionWageDefaults = new LinkedHashMap<>(base.productionWageDefaults());
+    }
+    return productionWageDefaults;
+  }
+
+  /** ★★★ D-032 W2a：执行期工资岗位的只读选择（已物化读工作副本、未物化直接复用 base 的不可变表）。 */
+  public Map<WagePostingKey, ProductionWagePosting> productionWagePostingsOrBase() {
+    return productionWagePostings == null ? base.productionWagePostings() : productionWagePostings;
+  }
+
+  /** ★★★ D-032 W2a：执行期工资岗位工作副本（惰性物化）。 */
+  public LinkedHashMap<WagePostingKey, ProductionWagePosting> productionWagePostings() {
+    if (productionWagePostings == null) {
+      productionWagePostings = new LinkedHashMap<>(base.productionWagePostings());
+    }
+    return productionWagePostings;
+  }
+
   /** 在途批次表工作副本。 */
   public LinkedHashMap<ShipmentId, ShipmentBatch> shipments() {
     if (shipments == null) {
@@ -619,6 +655,10 @@ public final class EconomyStateBuilder {
         marketRoundStats == null ? base.marketRoundStats() : marketRoundStats,
         // ★★★ D-032 C2（第 32 个组件）：自动组织会在段内写真名册 ⇒ 走显式工作副本；未物化 ⇒ 原样复用 base。
         //   漏了它 = 任意一次 advance 都会把已建立的名册静默抹掉（本仓最贵的那类 bug）。
-        productionRosters == null ? base.productionRosters() : productionRosters);
+        productionRosters == null ? base.productionRosters() : productionRosters,
+        // ★★★ D-032 W2a：工资 default/posting 两维；未物化 ⇒ 原样复用 base。漏了它们 =
+        //   任意一次 advance 都会把 GM 设过的候选默认/执行岗位静默抹掉。
+        productionWageDefaults == null ? base.productionWageDefaults() : productionWageDefaults,
+        productionWagePostings == null ? base.productionWagePostings() : productionWagePostings);
   }
 }

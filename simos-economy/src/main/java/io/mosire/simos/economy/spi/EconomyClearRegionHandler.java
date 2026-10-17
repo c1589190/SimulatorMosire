@@ -36,6 +36,10 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -313,6 +317,17 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     //   （`roster-instance-unknown`）。
     Map<ProductionUnitId, ProductionRoster> productionRosters =
         withoutKeys(base.productionRosters(), removedUnits);
+    // ★★★ D-032 W2a：被清实例的执行期工资岗位同批删除；候选 default 按 plan 同批删（避免指向已退役定义）。
+    Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults =
+        new LinkedHashMap<>(base.productionWageDefaults());
+    productionWageDefaults
+        .entrySet()
+        .removeIf(entry -> removedIndustries.contains(entry.getKey().plan()));
+    Map<WagePostingKey, ProductionWagePosting> productionWagePostings =
+        new LinkedHashMap<>(base.productionWagePostings());
+    productionWagePostings
+        .entrySet()
+        .removeIf(entry -> removedUnits.contains(entry.getKey().unit()));
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
     Map<HouseholdId, HouseholdEconomy> householdEconomies =
@@ -478,7 +493,10 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.govMarketMandates(),
         staged.marketRoundStats(),
         // ★★★ D-032 C2：被清格里的名册同批删除（staged 已按 removedUnits 摘过）。
-        staged.productionRosters());
+        staged.productionRosters(),
+        // ★★★ D-032 W2a：候选默认按 removedIndustries 摘过；执行期岗位按 removedUnits 摘过。
+        productionWageDefaults,
+        productionWagePostings);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

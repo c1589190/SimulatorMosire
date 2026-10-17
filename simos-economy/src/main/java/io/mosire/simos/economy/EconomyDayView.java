@@ -29,6 +29,10 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
@@ -156,6 +160,24 @@ public interface EconomyDayView {
    * 直接实现（它就是自己的当刻值）；{@code WorkingDayView} 覆盖为**工作副本优先** （自动组织/名册命令会在段内写它）。
    */
   default Map<ProductionUnitId, ProductionRoster> productionRosters() {
+    return Map.of();
+  }
+
+  /**
+   * ★★★ <b>D-032 W2a：候选级工资默认（键 = plan/role/marketZone）</b>。
+   *
+   * <p>只在实例存在前服务候选估价；空表合法。{@code EconomyData} 直接实现（它就是自己的当刻值）， {@code WorkingDayView} 覆盖为工作副本优先。
+   */
+  default Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults() {
+    return Map.of();
+  }
+
+  /**
+   * ★★★ <b>D-032 W2a：执行期工资岗位（键 = unit/role）</b>。
+   *
+   * <p>已存在实例的唯一实际报价权威；空表合法。{@code EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
+   */
+  default Map<WagePostingKey, ProductionWagePosting> productionWagePostings() {
     return Map.of();
   }
 

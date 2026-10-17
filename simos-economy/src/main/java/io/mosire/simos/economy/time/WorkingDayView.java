@@ -28,6 +28,10 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageDefaultKey;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
@@ -151,6 +155,16 @@ final class WorkingDayView implements EconomyDayView {
   @Override
   public Map<ProductionUnitId, ProductionRoster> productionRosters() {
     return sheet.productionRostersOrBase();
+  }
+
+  @Override
+  public Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults() {
+    return sheet.productionWageDefaultsOrBase();
+  }
+
+  @Override
+  public Map<WagePostingKey, ProductionWagePosting> productionWagePostings() {
+    return sheet.productionWagePostingsOrBase();
   }
 
   @Override
