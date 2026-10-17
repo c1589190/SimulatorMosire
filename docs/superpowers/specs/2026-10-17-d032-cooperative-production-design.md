@@ -19,7 +19,7 @@
 > - **D3 旧 §0.3 的五项“待同步修正”已并入本册**（§0.4 逐条登记）；两册不得各留一套。
 > - **`allowIdle` 已撤回**（U23）：本册不出现 `allowIdle`/`householdLaborChoices`；不从业资格归 D3 §2.5.1；工资债利率归 economy/D3 §6.5。
 >
-> **2026-10-17 F-05/F-06 定点修正注（当前有效）**：D4-C 只读接口先于 C2；C2=32、W2a=33/34、W2b=35、D4-I=36/37；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。D4 P18d 补跨地点 overcommit 反向判据。
+> **2026-10-17 F-05/F-06/F-07/F-08 定点修正注（当前有效）**：D4-C 必选只读接口 `WagePayableInventoryLookup` + `AssetOccupancyLookup`（含精确签名与 fail-closed 适配器）先于 C2；C2=32、W2a=33/34、W2b=35、D4-I=36/37；共享 economy 文件顺序改为 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。D4 P18d 补跨地点 overcommit 反向判据。
 >
 > **2026-10-17 第三次定点修正注（N-04/N-08，当前有效）**：§8.2 明确 D2 周期预计不得直接当 D3 下一 tick 生存输入；§13 写死共享 economy 文件 owner 交接顺序 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。
 >
@@ -555,8 +555,8 @@ interface ProductionWageQuoteLookup {
 ### 8.4 工资/资产的分册边界
 
 - **D3**：报价状态（33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`）、U20 调价、劳动匹配、下一 tick 生存条件不从业（U23，`idleEligible` 资格与 `idleChosen` 选择分离，D3 §2.5.1/§4.4）、U21 现金→库存数量降序→债务、欠薪零息与“不影响择业”。D2 只定义 quote 读口与金额公式；C2 遇到无报价的 `MONEY_WAGE` 角色返回 `wage-quote-missing`、缺目标返回 `wage-target-missing`，不得假装已支付。**W2b 独立阶段**（W3 未接）对真实 `settleOneDayInto` 必须在任何抽料/劳动写回/进度/经验/实际劳动写入**之前**整 tick 拒绝 `wage-settlement-not-implemented`（D3 §4.7/§7.2），不得只发产品份额而把工资静默留空；W3 接通后改为按实例业务拒绝。
-- **D4/A**：`assetOccupancy` 必须来自统一占用分配；C2 不得回读“整池复制”的 `ProductionProcessBook.usableAssets` 作为最终占用。D2 只定义输入形状 `Map<ProductionUnitId, Map<AssetKind, Long>>`（由 app/D4 装配的 `AssetOccupancyLookup` 提供，缺失 ⇒ `asset-occupancy-unavailable`）。在 D4 未接时，C2 对同一 `(plan, operator)` 的多个实例、或共享同一 `AssetShareId` 的多实例，具名拒绝 `asset-scope-shared:awaiting-D4`；单实例路径可继续，且 C2 验收不得声称 R2 已关闭。
-- **现有 `usableAssets` 的定位**：它只可作为 D4 未接时的**单实例临时适配器**来源；必须在 `AssetOccupancyLookup` 实现内集中标注 `awaiting-D4`，不得在 `ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement` 各写一份。多实例/共享份额一律走拒绝路径。
+- **D4/A**：`assetOccupancy` 必须来自 D4-C 的必选只读 `AssetOccupancyLookup`：C2 只调用 `occupancyOf(unit, fromTick, toTickExclusive)`，把返回 `AssetOccupancySnapshot.allocation` 原样用于 `ProductionProbeRequest/ExecutionRequest.assetOccupancy`；`committed/unallocated/rejection` 只读，不另外推导。`Optional.empty()` ⇒ C2 具名 `asset-occupancy-unavailable`/零产出，不得读成 0、不得回退旧整池扫描 `usableAssets`；空 Map = 有权威结果、合法零占用。snapshot 必须同 revision/同 interval，unit/location/interval mismatch ⇒ ERROR `asset-occupancy-snapshot-mismatch`。D4-C 提供 fail-closed `UnavailableAssetOccupancyLookup`，D4-I 提供唯一真实实现（`AssetOccupancyLookupImpl`）。在 D4 未接时，C2 对同一 `(plan, operator)` 的多个实例、或共享同一 `AssetShareId` 的多实例，具名拒绝 `asset-scope-shared:awaiting-D4`；单实例路径可继续，且 C2 验收不得声称 R2 已关闭。
+- **现有 `usableAssets` 的定位**：D4-C 接口装配后，C2 不得再用它；仅允许作为 D4-C/D4-I 未接前的 fail-closed 适配器内部实现细节，且必须返回 `Optional.empty()`/具名 `asset-occupancy-unavailable`，不得在 `ExpectedProfitBook`/`LaborQueueBook`/`EconomySettlement` 各写一份，也不得回退整池扫描。
 
 ---
 
@@ -643,6 +643,7 @@ management-labor-missing:<role>:<household>
 input-supplier-unsupported
 enterprise-roster-mismatch
 asset-occupancy-unavailable
+asset-occupancy-snapshot-mismatch
 asset-scope-shared:awaiting-D4
 legacy-compensation-rules-present
 legacy-rule-not-representable:<type>
@@ -725,6 +726,7 @@ seed-roster-missing:<unit>
 | P21 | 周期预计 vs 下一 tick（N-04） | D2 的 `产品份额/工资 × cycleDays` 只能进周期候选净额；D3 SurvivalOutlook 只接收 `incomeAvailableAtTick <= nextTick` 的可交付量。整季 1000/期末交付、下一 tick 需求 10 ⇒ 生存覆盖 0（另有同 tick 10 时只计 10），不得把 1000 当下一 tick 口粮 |
 | P22 | payer 已有 + 候选地点快照（F-01） | 同一 payer 已有 unit A（location A），候选 B（location B）：`WagePayerLocationSnapshot` 必须得到 `{A,B}`；W1/W2b 候选不可行/skip、W3 整组拒绝，均零 lookup；只传 `{B}` 的候选阶段通过 ⇒ 红 |
 | P23 | D2→D3 next-tick adapter（F-04） | `NextTickIncomeProjection` 是 W2b 唯一实现；cycle=100、nextTick=1、期末 product share=1000 ⇒ 下一 tick 投影 0；cycleEnd=nextTick ⇒ 可计对应交付量；缺 cycle 起止/quote/target/劳动计划 ⇒ `survival-income-projection-missing`/`survival-income-timing-unknown`，不得静默 0 |
+| P24 | C2 只依赖 D4-C 接口（F-07/F-08） | C2 仅凭 D4-C 的 `AssetOccupancyLookup`/`WagePayableInventoryLookup` 可编译；`AssetOccupancyLookup` 返回 empty ⇒ `asset-occupancy-unavailable`/零产出；空 Map ⇒ 合法 0；snapshot mismatch ⇒ ERROR `asset-occupancy-snapshot-mismatch`；旧 `usableAssets` 回退 ⇒ 红；D4-I 接手后无第二套实现 |
 
 ### 12.2 负向/变异判据（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 一致）
 
@@ -755,6 +757,8 @@ seed-roster-missing:<unit>
 | 把 D2 cycle Prospect 直接塞进 D3 next-tick expected 字段 | P23/P51 |
 | cycleEnd > nextTick 的 product share 仍计入下一 tick | P23/P49 |
 | adapter 缺 cycle 边界/quote/target/劳动计划却静默按 0 继续 | P23/`survival-income-projection-missing` |
+| C2 复制临时 AssetOccupancyLookup/回退旧 usableAssets | P24 |
+| AssetOccupancyLookup 的 empty/空 Map 语义混淆 | P24 |
 
 ### 12.3 数值例（C4 用）
 
@@ -776,7 +780,8 @@ seed-roster-missing:<unit>
 | **C0（D1 落形）** | `simos-economy-api/.../api/production/ProductionRoleId.java`（新增）；`simos-production/.../contract/`（角色/份额/经验/支付/条件/`RoleDistribution`）；D1 文档的局部更正注 | 不改 economy 实现、不改 app、不做名册状态；**不拥有 `AssetKind`**（见 C0-A） |
 | **C0-A（`AssetKind` 词表与旧引用，D1 §2.7；先于 C0）** | 写面 = `simos-actor-api/.../asset/AssetKind.java`（删 `TOOL`、加 `SMALL_TOOL`/`LARGE_TOOL`）+ `rg -l 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 命中的**全部 main 文件**（含 `simos-production` 载荷/seed、`simos-economy` 的 `MerchantTradeTemplate`/`MerchantCapacity`/`ModeMigration*`/`EconomySettlement`/`HouseholdClassRule`/`EconomyPayloads`/`EconomyGovUnitUpserts`、`simos-app/.../EconomySeeder`、`simos-util/EconomyVocabulary` 等；以扫描清单为准，不靠记忆补漏） | 只做词表与直接旧引用替换，不改分配/占用行为；不得保留别名/兼容位；**测试断言归 C4**（C0-A 不写/不跑测试）；交 `rg -n 'AssetKind\.TOOL|"TOOL"' simos-*/src/main` 清零清单，以及 `SMALL_TOOL`/`LARGE_TOOL` 各自 seed→state→codec→apply 往返证据；不拥有 `ProductionRoleId`/角色契约（归 C0） |
 | **C1（production 角色执行）** | `simos-production/src/main/java/.../ProductionData.java`、`ProductionRuntimeEngine.java`、`ProductionExperience.java`、`ProductionProcess.java`、`ProductionSnapshot.java`、`codec/ProductionCodec.java`、`change/ProductionChangeSet.java`；`ProductionExecutionRequest/DayRequest/Receipt/CycleContribution`；`RoleDistribution` | 不写 economy 名册/账户；不实现工资支付/资产分配 |
-| **D4-C（只读 lookup 接口，F-05；先于 C2）** | `simos-economy/.../time/WagePayableInventoryLookup.java`（只读接口；地点用 `production.contract.ProductionLocation`）；必要时 `time/AssetOccupancyLookup.java` 等最小读口 | **只新增接口，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
+| **D4-C（只读接口，F-05/F-07/F-08；先于 C2）** | **必选**：`simos-economy/.../time/WagePayableInventoryLookup.java`、`simos-economy/.../time/AssetOccupancyLookup.java`（含 `AssetOccupancySnapshot` 精确签名）、`simos-economy/.../time/UnavailableAssetOccupancyLookup.java`（fail-closed 返回 empty）；必要时最小读口 | **只新增接口/无状态适配器，不新增 EconomyData 组件、不实现状态、不写账户/资产**；不把接口放 economy-api；D4-C 必须先于 C2，C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
+| **D4-I（真实 lookup + 36/37）** | `AssetOccupancyLookup`/`WagePayableInventoryLookup` 的唯一真实实现（如 `AssetOccupancyLookupImpl`/`WagePayableInventoryLookupImpl`）；`EconomyData` 第 36/37 组件；`AssetOccupancyBook`/`AssetOccupancyGrant`/`InventoryReservation` 等 D4 状态 | D4-I 在 W2b 后；不得改 D4-C 接口签名，不新增第二套读口；只编译，不写/不跑测试 |
 | **C2（economy 名册/分配）** | `simos-economy-api/.../api/labor/HouseholdLaborCommitment.java`（加 role/改 id）；`simos-economy/src/main/java/.../EconomyData.java`、`EconomyDayView.java`、`EconomyBoundaryView.java`；`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`；`model/ProductionRoster*`、`model/ProductionWageQuote.java`（最小读值，D3 可扩展）、`model/RegimeRelations.java`（旧规则删除/映射）；`spi/EconomySetProductionRosterHandler.java`、`EconomyPayloads.java`、`EconomySeedHandler.java`；`time/EconomyEnterpriseSettlement.java`、`EconomyEntrySettlement.java`、`EconomySettlement.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`time/ProductionOutputNetting.java`（新增，毛产→net 的唯一拼写点）、`ProductionSettlement` 的调用面、`LaborQueueSettlement.java`（劳动候选面）；`EconomyReferenceValidation.java` | 不 import production 实现；不改 POM/enforcer；不实现 D3 工资支付/D4 资产占用；不改 app |
 | **C3（app 装配/创世/读口）** | `simos-app/.../Shell.java`、`AppProductionConsumerPort.java`、`world/*Seeder`、`world/GenesisModuleSlices`、工具/Catalog 载荷提示、只读视图 | 不复制 economy 分配公式；不新增空推进器；不改测试断言 |
 | **C4（独立测试 owner）** | `simos-production/src/test/**`、`simos-economy/src/test/**`、`simos-app/src/test/**`、门禁守卫清单 | 实现 owner 不写/不跑测试；测试按 §12 判据，不按实现反推 |

@@ -1,6 +1,6 @@
 # D-032 D4 资产与占用完整设计（2026-10-17）
 
-> **性质**：D4 的**约束设计书**。只冻结“世界必须长成什么样”，不写生产代码、不写测试、不跑 Maven，不提交、不推送、不触碰主树。实施由后续 D4-I（唯一写代码 owner，只编译、不测试）和 D4-T（独立测试 owner）分两批完成。**历史落盘声明**：初版 D4-D0 未改 D1/D2/D3/R2/status/decision/precheck/adjudication；2026-10-17 复核修正轮按 R-01..R-18 另行局部修改了 D1/D2/D3、D3 裁决文件、重规划与 status（仍仅设计/计划/状态文档，见 §12.1）。
+> **性质**：D4 的**约束设计书**。只冻结“世界必须长成什么样”，不写生产代码、不写测试、不跑 Maven，不提交、不推送、不触碰主树。实施由 D4-C（只读接口，只编译）、D4-I（状态/实现，只编译、不测试）与 D4-T（独立测试 owner）分批完成。**历史落盘声明**：初版 D4-D0 未改 D1/D2/D3/R2/status/decision/precheck/adjudication；2026-10-17 复核修正轮按 R-01..R-18 另行局部修改了 D1/D2/D3、D3 裁决文件、重规划与 status（仍仅设计/计划/状态文档，见 §12.1）。
 >
 > **工作树基线**：`/home/cna/SimulatorMosire/.claude/worktrees/parallel-side-module`，开工 HEAD `b6f694dd`，开工 `git status --porcelain=v1` 为空。本文只新增本文件。
 >
@@ -8,7 +8,7 @@
 >
 > **效力与边界**：本文中的“**用户已定**”只逐字来自用户原话；“**工程默认**”均是控制方为落实用户口径而冻结的接口/分配/失败语义，不是新玩法裁定，也不是用户已经选过参数。D4 不重开独立土地账，不把再生产权益变成活动库存，不新增工资、价格、利率、折价或土地制度玩法。
 >
-> **2026-10-17 F-05/F-06 定点修正注（当前有效）**：D4-C 先冻结 `WagePayableInventoryLookup` 只读接口，D4-I 后落 36/37 并实现 lookup；组件落形 `C2=32 → W2a=33/34 → W2b=35 → D4-I=36/37`；共享 economy 文件顺序 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。P18d 增补 A=600/B=600/余额=1000 的跨地点 overcommit 反向判据。以下旧 N/R 注保留为历史。
+> **2026-10-17 F-05/F-06/F-07/F-08 定点修正注（当前有效）**：D4-C 先冻结 `WagePayableInventoryLookup` 与**必选** `AssetOccupancyLookup` 只读接口（含 `AssetOccupancySnapshot` 精确签名与 `UnavailableAssetOccupancyLookup`），D4-I 后落 36/37 并实现真实 lookup；组件落形 `C2=32 → W2a=33/34 → W2b=35 → D4-I=36/37`；共享 economy 文件顺序 `C0/C0-A → D4-C → C2 → W2a → W1 → W2b → D4-I → D4-T → W3`。P18d 增补 A=600/B=600/余额=1000 的跨地点 overcommit 反向判据。以下旧 N/R 注保留为历史。
 >
 > **2026-10-17 D1–D4 独立复核局部修正注（R-01/R-05/R-08/R-10/R-15/R-16，当前有效）**：本册按 `2026-10-17-d032-d1-d4-design-review.md` 修正：`AssetKind` 只用 `SMALL_TOOL`/`LARGE_TOOL`，二者分别定义 horizon，`TOOL` 输入具名拒；W3 在 lookup/支付前按 payer 聚合，跨 settlement location 整组拒绝；`AccountSession` 是账户余额/冻结权威；`OwnershipStake.location` 的构造/seed 入口在 D4-I 全部列明；`requestedScale` 默认 1 只留“已存在单实例且无请求”兼容路径；location 采用规范 `<q>_<r>` 格式；`WagePayableInventoryLookup.java` 接口契约 owner = D4-C（只读接口，不落状态）；唯一实现 owner = D4-I；W1/W2b/W3 只消费接口，W3 在 D4-T 后运行。旧正文保留为历史 provenance。
 
@@ -538,6 +538,43 @@ D4 完成后的完整判据分两种合法形态：
 
 ## §7 W1/W2b/W3 接入：唯一可支付库存读口
 
+### 7.0 `AssetOccupancyLookup`（D4-C 必选只读接口，F-07/F-08）
+
+D4-C 必须与 `WagePayableInventoryLookup` 并列冻结以下接口；C2 只依赖它，不复制临时接口、不回退旧 `usableAssets`。
+
+```java
+record AssetOccupancySnapshot(
+    ProductionUnitId unit,
+    ProductionLocation location,
+    long fromTick,
+    long toTickExclusive,
+    Map<AssetKind, Long> allocation,
+    Map<AssetKind, Long> committed,
+    Map<AssetKind, Long> unallocated,
+    Optional<String> rejection) {}
+
+interface AssetOccupancyLookup {
+  Optional<AssetOccupancySnapshot> occupancyOf(
+      ProductionUnitId unit, long fromTick, long toTickExclusive);
+}
+
+// D4-C fail-closed 适配器：只供 C2 编译/测试与 D4 未接路径
+final class UnavailableAssetOccupancyLookup implements AssetOccupancyLookup {
+  @Override
+  public Optional<AssetOccupancySnapshot> occupancyOf(
+      ProductionUnitId unit, long fromTick, long toTickExclusive) {
+    return Optional.empty();
+  }
+}
+```
+
+- **`Optional.empty()`** = D4-C 接口未装配 / D4-I 未实现 / 权威占用事实不可用。C2 必须具名 `asset-occupancy-unavailable`，**不得读成 0、不得回退旧整池扫描 `usableAssets`**。
+- **空 `Map`** = 有权威结果且该 unit 确实没有该资产分配（合法 0），不是“不可用”；`allocation/committed/unallocated` 可为空表。
+- **revision/时域**：snapshot 必须来自同一 revision、同一 `fromTick/toTickExclusive` 口径；跨 revision 的陈旧事实不得返回。unit/location/interval 与请求不匹配 ⇒ ERROR `asset-occupancy-snapshot-mismatch`。
+- **消费边界**：C2 只把 `allocation` 用作 `ProductionProbeRequest/ExecutionRequest.assetOccupancy`；`committed/unallocated/rejection` 只读，不据此另行推导资产或分配。
+- **实现/适配器**：D4-C 提供 fail-closed `UnavailableAssetOccupancyLookup`（始终返回 `Optional.empty()`），仅供 C2 编译/测试与 D4 未接路径；真实实现由 **D4-I** 唯一提供（如 `AssetOccupancyLookupImpl`），与 36/37 同批；D4-T 验证 C2 只依赖 D4-C 接口、D4-I 接手后无第二套实现。
+- **C2 判据**：C2 仅凭 D4-C 接口可编译；`Optional.empty()` ⇒ `asset-occupancy-unavailable`/零产出；空 Map ⇒ 合法 0；跨 revision/地点/区间 mismatch ⇒ 具名 ERROR；旧 `usableAssets` 回退 ⇒ 红。
+
 ### 7.1 契约（逐字沿用 D3 §6.9）
 
 ```java
@@ -624,6 +661,7 @@ W3 对本次 tick 的全部工资义务先按 payer 聚合，再做地点预检�
 | `wage-barter-discount-zero:<commodity>` | INFO skip | 折后单位价值 ≤0；该商品不抵付 |
 | `inventory-reservation-overcommitted` | ERROR | 冻结+活动预留 > 账面余额；契约故障，拒绝整个候选 revision |
 | `asset-occupancy-unavailable` | INFO/业务拒绝 | 需要 D4 预算但读口不可用；不得退回整池扫描 |
+| `asset-occupancy-snapshot-mismatch` | ERROR | AssetOccupancySnapshot 的 revision/unit/location/interval 与请求不一致；拒绝整个候选 revision，不得静默修正 |
 | `asset-occupancy-overlap:<share>:<unit>` | INFO/业务拒绝 | 同一份额、同一时段出现重叠占用请求/授予 |
 | `asset-location-missing` | INFO/业务拒绝或 ERROR（契约入口） | 份额/实例/请求地点缺失、为 `UNSPECIFIED`，或不是规范 `<q>_<r>`（如 `foo`）；不得进入 allocation/lookup |
 | `asset-location-scope-missing:<location>` | INFO/业务拒绝 | 该地点没有匹配的实物份额；不跨格借用 |
@@ -688,7 +726,7 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 
 - 内部写口：`AssetOccupancyBook.allocate(...)` 产出 `grantsToWrite`/`grantsToRelease`，经 economy 的 `EconomyChangeSet` 提交；`InventoryReservation` 由生产投入承诺/实际转出的同一 revision 写入或释放（可落在一个 economy 内部 `InventoryReservationBook`，但它不是资产分配器）；
 - 资产份额写口：既有 `OwnershipStakeBook` / `EconomyGovUnitUpserts` / `EconomyTransferOwnershipStake` / `EconomyEntrySettlement` / seed / GM adjust，统一要求 `location`；D4 不另开资产数量写口；
-- 内部读口：`AssetOccupancyLookup`（unit/scope 的 allocations、committed、unallocated、rejections、releases）；
+- 内部读口：D4-C 的 `AssetOccupancyLookup`（unit/scope 的 allocation、committed、unallocated、rejection；真实实现由 D4-I 提供）；C2 只用 `allocation` 填 probe/execution，C2 不扫份额。
 - W3 读口：`WagePayableInventoryLookup`（§7）；
 - app 只读：展示 per-unit allocations、per-scope available/occupied/unallocated、released 和 rejection，不自己扫份额/账户重算。
 
@@ -760,6 +798,7 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 | P24b | `OwnershipStakeBook.ShareTuple` 纳入 location（N-03） | `ShareTuple`/`buildTupleIndex`/Move/split/rebuild/transfer 的合并键包含 `ProductionLocation`；A/B 两份同 industry/asset/owner/operator/kind 但 location 不同的份额，经 split/merge/rebuild 后仍是两行，location 逐值不变；同地点份额才合并。源码核对点：`OwnershipStakeBook.java:247-252,371-374,486-489` |
 | P25 | location 格式（R-15） | `foo`、`1`、`1_`、`a_b`、`01_2`、`+1_2`、`-0_1` 均 ⇒ `asset-location-missing`；`0_0`/`-3_2` 合法；非法值不得进入 allocation/lookup |
 | P26 | W1/W2b/W3 共享 payer 预检（N-02/F-01） | 已有 unit A（location A）+ candidate B（location B）：W1/W2b 必须用 `{A,B}` 在候选阶段即不可行/skip，W3 整组 `wage-payer-location-unsupported`；三者都在 lookup 前失败，均零 lookup；不得只传 B 导致候选 OK |
+| P27 | D4-C `AssetOccupancyLookup` 精确契约（F-07/F-08） | C2 仅依赖 D4-C 接口可编译；`UnavailableAssetOccupancyLookup` 返回 `Optional.empty()` ⇒ C2 具名 `asset-occupancy-unavailable`/零产出；空 Map ⇒ 合法 0；跨 revision/地点/区间 ⇒ ERROR `asset-occupancy-snapshot-mismatch`；旧 `usableAssets` 回退 ⇒ 红；D4-I 提供唯一真实实现、D4-T 验证 |
 
 ### 10.2 负向 / 变异判据
 
@@ -789,6 +828,9 @@ D4 首期在 `EconomyData` 增加两个组件。当前编号链以 D2/D3 已冻�
 | 预留创建只校验当前 location、不校验 payer×commodity 全地点合计；A=600/B=600/余额=1000 仍放行 | P18d |
 | 把其他地点 ACTIVE 预留当作本地点可支付库存 | P18c |
 | W1/W2b 只传候选地点、不并入已有 unit/roster/posting 地点 | P26/P39b |
+| C2 复制临时 AssetOccupancyLookup/回退旧 `usableAssets` | P27 |
+| `AssetOccupancyLookup` 的 Optional.empty 被当 0、空 Map 被当不可用 | P27 |
+| 返回跨 revision/地点/区间不匹配的 snapshot 未报 ERROR | P27/`asset-occupancy-snapshot-mismatch` |
 | 用 `HashMap` 遍历决定并列/余数 | P21 |
 | 漏掉 `OwnershipStake.location` 或 grant interval 的 codec/ChangeSet 字段 | P21 |
 | 把 `asset-scope-shared:awaiting-D4` 当 D4 完成后的正常运行词 | §6 文档验收 + 扫描 |
@@ -903,9 +945,9 @@ A 地点 ACTIVE InventoryReservation = 600
 | 批次 | owner 可写 | 禁止/边界 |
 |---|---|---|
 | **D4-D0** | 本文（控制方） | 只写设计；不改 D1/D2/D3/status/R2 设计/decision/precheck/adjudication；不写代码/测试；不跑 Maven |
-| **D4-C（只读接口契约，F-05；先于 C2）** | `simos-economy/.../time/WagePayableInventoryLookup.java`（只读接口契约，地点形参固定 `io.mosire.simos.production.contract.ProductionLocation`）；如 C2/W1/W2b 确需，另可新增 `simos-economy/.../time/AssetOccupancyLookup.java` 等最小只读接口 | **只新增接口，不新增 EconomyData 组件、不实现状态、不写账户/资产、不改分配公式**；不把接口放进 economy-api；D4-C 必须先于 C2，且与 C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
-| **D4-I（economy/资产占用状态与 lookup 实现，唯一状态/实现 owner）** | `simos-economy/src/main/java/io/mosire/simos/economy/model/OwnershipStake.java`；`time/OwnershipStakeBook.java`（两处 `new OwnershipStake`；`ShareTuple`/`buildTupleIndex`/Move/split/rebuild 全部加 location）；`spi/EconomyGovUnitUpserts.java`；`spi/EconomyPayloads.java`（`addOwnershipStake` 的 location 载荷/解析）；`time/EconomyEntrySettlement.java`；`time/EconomySettlement.java`（份额构造点）；`simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java`（`ownershipStakeNode` 及其全部调用点，seed 必须带 location）；新增 economy 的 `AssetOccupancyGrant/Id/Status`、`InventoryReservation/Id/Status`、`AssetOccupancyBook`、**`WagePayableInventoryLookup` 的唯一实现**（`WagePayableInventoryLookupImpl`；接口契约归 D4-C）；`EconomyData.java`、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`、`EconomySeedHandler.java`、`EconomyReferenceValidation.java`；`time/SettlementIndex.java`、`ProductionProcessBook.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`DebtCapacityBook.java`、`MarketDemandBook.java`、`EconomyEnterpriseSettlement.java`、`HouseholdClassRule.java`；必要时 app 只读视图适配 | **只编译，不写/不跑测试**；不修 D3/W3 支付公式；不改 POM/XML/enforcer/模块边界；不改 `ProductionProcess`/`ProductionLocation` 等 production 共享定义（如确需改，先停手报控制方）；**不改 `AssetKind`（词表归 C0-A）**；不直接改 actor Map；不新增独立土地账；不把 grant 当资产数量；不提交/同步；必须逐点改完 `OwnershipStake` 构造/seed 入口，漏一入口即编译/创世红 |
-| **D4-T（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`（如 D4-I 未改 production 契约，则无需 production 测试）；D4 证据/台账 | 按 §10 判据写测试，不按实现反推；不改 `src/main/**`（变异自证必须先声明/还原并 md5 对照）；不改 D1-D4 设计正文；不由实现 owner 写/跑 |
+| **D4-C（只读接口契约，F-05/F-07/F-08；先于 C2）** | **必选**：`simos-economy/.../time/WagePayableInventoryLookup.java`、`simos-economy/.../time/AssetOccupancyLookup.java`（含 `AssetOccupancySnapshot` 与 `AssetOccupancyLookup` 精确签名，地点用 `production.contract.ProductionLocation`）、`simos-economy/.../time/UnavailableAssetOccupancyLookup.java`（fail-closed，返回 empty）；如 C2/W1/W2b 另有确需，可加最小只读接口 | **只新增接口/无状态适配器，不新增 EconomyData 组件、不实现状态、不写账户/资产、不改分配公式**；不把接口放进 economy-api；D4-C 必须先于 C2，且与 C2/W2a/W1/W2b/D4-I 不并行改同一 economy 文件 |
+| **D4-I（economy/资产占用状态与 lookup 实现，唯一状态/实现 owner）** | `simos-economy/src/main/java/io/mosire/simos/economy/model/OwnershipStake.java`；`time/OwnershipStakeBook.java`（两处 `new OwnershipStake`；`ShareTuple`/`buildTupleIndex`/Move/split/rebuild 全部加 location）；`spi/EconomyGovUnitUpserts.java`；`spi/EconomyPayloads.java`（`addOwnershipStake` 的 location 载荷/解析）；`time/EconomyEntrySettlement.java`；`time/EconomySettlement.java`（份额构造点）；`simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java`（`ownershipStakeNode` 及其全部调用点，seed 必须带 location）；新增 economy 的 `AssetOccupancyGrant/Id/Status`、`InventoryReservation/Id/Status`、`AssetOccupancyBook`、**`WagePayableInventoryLookup` 与 `AssetOccupancyLookup` 的唯一真实实现**（`WagePayableInventoryLookupImpl`、`AssetOccupancyLookupImpl`；接口契约归 D4-C）；`EconomyData.java`、`change/EconomyChangeSet.java`、`codec/EconomyCodec.java`、`EconomySeedHandler.java`、`EconomyReferenceValidation.java`；`time/SettlementIndex.java`、`ProductionProcessBook.java`、`ExpectedProfitBook.java`、`LaborQueueBook.java`、`DebtCapacityBook.java`、`MarketDemandBook.java`、`EconomyEnterpriseSettlement.java`、`HouseholdClassRule.java`；必要时 app 只读视图适配 | **只编译，不写/不跑测试**；不修 D3/W3 支付公式；不改 POM/XML/enforcer/模块边界；不改 `ProductionProcess`/`ProductionLocation` 等 production 共享定义（如确需改，先停手报控制方）；**不改 `AssetKind`（词表归 C0-A）**；不直接改 actor Map；不新增独立土地账；不把 grant 当资产数量；不提交/同步；必须逐点改完 `OwnershipStake` 构造/seed 入口，漏一入口即编译/创世红 |
+| **D4-T（独立测试 owner）** | `simos-economy/src/test/**`、`simos-app/src/test/**`（如 D4-I 未改 production 契约，则无需 production 测试）；D4 证据/台账 | 按 §10 判据写测试，不按实现反推；**验证 C2 只依赖 D4-C 的 `AssetOccupancyLookup`/`WagePayableInventoryLookup` 接口，D4-I 接手后无第二套实现**；不改 `src/main/**`（变异自证必须先声明/还原并 md5 对照）；不改 D1-D4 设计正文；不由实现 owner 写/跑 |
 | **W3（后续）** | **只消费 D4-C 的 `WagePayableInventoryLookup` 接口 + D4-I 的实现**与既有 D3 契约；在 D4-I/D4-T 后串行开始 | **不新增/不实现 `WagePayableInventoryLookup` 接口或实现**；不实现第二套库存减法；W3 在 lookup/支付前按 payer 聚合，同一 payer >1 settlement location ⇒ 整组 `wage-payer-location-unsupported`，不做部分支付；不改 D4 占用/grant 文件；W3 的支付/抵物/债务公式仍按 D3/U23 |
 | **R2 关闭** | D4-T 结果 + 控制方复核 | 只有在 §6.2 全部门通过后，才可删除 `asset-scope-shared:awaiting-D4` 并声明 R2 完整修复；D4-D0 本身不关闭 R2 |
 
@@ -920,7 +962,7 @@ A 地点 ACTIVE InventoryReservation = 600
 - 本文件只是设计：**没有写/改生产代码，没有写/改测试**。
 - **没有跑 Maven、没有跑测试、没有跑仿真、没有跑门禁**。
 - 没有修 R2 完整功能；当前 R2 仍只是“共享 scope fail-closed”的最小实现，不能写“R2 已关闭”。
-- 没有实现 `WagePayableInventoryLookup`；D3 §6.9 仍只是契约，不是可调用实现。
+- 没有实现 `WagePayableInventoryLookup`/`AssetOccupancyLookup`；D4 §7.0/§7.1 与 D3 §6.9 仍只是契约，不是可调用实现。
 - D4-D0 最初落盘时没有修改 D1/D2/D3/status/R2 设计/decision/precheck/adjudication；**2026-10-17 D1–D4 复核修正轮另行局部修改了 D1/D2/D3、D3 裁决文件、重规划与 status（仅设计/计划/状态文档），仍没有改 R2 最小设计/decision/precheck 历史事实**；没有提交、推送、stash、checkout、merge、同步，也没有触碰主树。
 - 没有新增任何用户玩法裁定；本文所有比例/时限/接口/failure word 均为工程默认或工程契约。
 
@@ -930,7 +972,7 @@ A 地点 ACTIVE InventoryReservation = 600
 2. 多实例比例分配在“请求量相等”时天然接近平均；这不是用户选定的公平制度，只是当前的确定性工程预算规则。若用户以后要求其他分配公平性，另立 spec。
 3. 资产跨格搬迁、动态抢占、跨周期提前解约、GM 人工改占用、Wage payable 的定价/折价参数仍不在 D4 首期。
 4. D4-I 若发现必须新增 production 共享定义字段（例如 per-asset horizon 由方案定义提供），必须停止并上报，不得为了编译在 D4-I 并行改 D1/production contract；当前设计已用 economy 策略避免该依赖。
-5. `WagePayableInventoryLookup` 的 UI 呈现、日志字段细节、性能缓存不在本文冻结；但“只读、不写、不跨 revision 陈旧”的边界不可变。
+5. `WagePayableInventoryLookup`/`AssetOccupancyLookup` 的 UI 呈现、日志字段细节、性能缓存不在本文冻结；但“只读、不写、不跨 revision 陈旧”的边界不可变。
 
 ### 12.3 交付声明
 
