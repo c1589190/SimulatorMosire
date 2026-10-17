@@ -150,25 +150,28 @@ class UnifiedBudgetNoDoubleBookingTest {
         .isEqualTo(1L);
   }
 
-  // ── ④ R2 具名未修：同方案两实例重复获得整份资产（统一预算缺口）────────────────────────────
+  // ── ④ R2 最小修复：同方案两实例不再重复获得整份资产 ──────────────────────────────────────
 
   /**
-   * ★★★ <b>R2（§15.2）的缺陷现状载体 —— 本判据断言"当前<b>仍</b>是缺陷"，<b>不</b>修</b>。
+   * ★★★ <b>R2 的修复后载体（D-032 R2-min；约束设计书 §2.2/§4.1 P2）</b>。
    *
-   * <p>★★ <b>为什么它必须是红的判据而不是被改宽</b>：§15.2 的复现是「同一 LAND 份额、同经营者两个实例 ⇒ 每个 unit 各得整份数量， 合计 200（实有
-   * 100）」，违反 I8「同一份资产不得被两个方案<b>或两个实例</b>重复占用」。本判据把现状逐值钉住： 一旦 R2 修好（Phase A
-   * 的统一分配落地），这条<b>当场红</b>，届时按新语义改写期望值 —— 不许提前删掉/改宽。
+   * <p>★★ <b>语义已变（旧断言必须改写，不是放宽）</b>：改前这条用例断言「同一 LAND 份额、同经营者两个实例 ⇒ 每个 unit 各得整份数量，合计 200（实有
+   * 100）」，那是<b>缺陷现状</b>。R2 最小修复后，同 {@code (industry, operator)} scope 内只要有多于一个 unit，就按 fail-closed
+   * 处理：
    *
-   * <p>★ <b>范围（重规划 v2 §4 Phase F）</b>：F3 只覆盖 R1/R3/R4/R5/R6，<b>不含 R2</b>；R2 关闭在 Phase A。 ⇒
-   * 本判据不是"为绿灯改掉缺陷判据"，而是"保留具名'未修复'证据"。
+   * <pre>
+   * 两个 unit 的 allocations 都为空
+   * scope 汇总（LAND=1,000）保留在 unallocated（只读，不搬走、不改 OwnershipStake）
+   * 两个 unit 都得到具名拒绝 asset-scope-shared:awaiting-D4
+   * 每个 unit 的可用资产/产能规模 = 0（不再是各 1、合计 2）
+   * </pre>
    *
-   * <p>★ <b>手算</b>：{@code SettlementIndex.usableAssets} 按 {@code (industry, operator)}
-   * 聚合后把<b>整份</b>数量复制给同 scope 的每个 unit（本文件 ③ 只测了"不同方案 id"那一腿，靠 industry 不等挡住；同方案多实例这一腿没有判据）。 一份
-   * 1,000 千分亩 LAND、{@code capacityPerUnit LAND=1,000} ⇒ 每个 unit 的可用资产 = 1,000、产能规模各 = 1、 合计 2 ——
-   * 实有只有 1,000（= 规模 1）。
+   * <p>★ <b>这不是完整 R2/D4</b>：多实例的真实实例/地点占用、占用期、释放与统一预算仍归 D4/A；本条只证明 "同一份资产不再被同 scope 的多个实例整池复制"。
+   *
+   * <p>★ <b>判别力</b>：若实现把整池复制回每个 unit，{@code usableAssetsOf} 会重新出现 LAND=1,000、规模 变成 1+1=2 ⇒ 本条当场红。
    */
   @Test
-  void r2SamePlanTwoInstancesStillDoubleBookTheSameAssetStake() {
+  void r2SamePlanTwoInstancesNoLongerDoubleBookTheSameAssetStake() {
     OwnershipStake sharedLand =
         new OwnershipStake(
             OwnershipStake.idOf(FARM, AssetKind.LAND, OPERATOR, OPERATOR, AssetRightKind.OWNED, 0L),
@@ -194,20 +197,29 @@ class UnifiedBudgetNoDoubleBookingTest {
             Map.of(),
             Map.of());
 
-    assertThat(index.usableAssetsOf(first))
-        .as("R2 现状：两个实例各拿到整份 1,000（不是各 500）")
-        .containsEntry(AssetKind.LAND, 1_000L);
-    assertThat(index.usableAssetsOf(second)).containsEntry(AssetKind.LAND, 1_000L);
+    assertThat(index.usableAssetsOf(first)).as("R2 修复后：第一个实例的可用资产为空（不再拿整份 1,000）").isEmpty();
+    assertThat(index.usableAssetsOf(second)).as("R2 修复后：第二个实例的可用资产也为空").isEmpty();
+    assertThat(index.assetBudget().unallocated())
+        .as("★ 整池 1,000 保留在 unallocated（只读可见，不静默丢弃、不搬给任一实例）")
+        .containsEntry(
+            new AssetBudgetBook.AssetScope(FARM, OPERATOR), Map.of(AssetKind.LAND, 1_000L));
+    assertThat(index.assetRejectionOf(first.id()))
+        .as("第一个实例得到具名拒绝")
+        .contains(AssetBudgetBook.SHARED_SCOPE_REJECTION);
+    assertThat(index.assetRejectionOf(second.id()))
+        .as("第二个实例得到同一个具名拒绝")
+        .contains(AssetBudgetBook.SHARED_SCOPE_REJECTION);
 
-    long firstScale = ProductionProcessBook.capacityScaleOf(first, plan(FARM), stakes);
-    long secondScale = ProductionProcessBook.capacityScaleOf(second, plan(FARM), stakes);
-    assertThat(firstScale).as("每个实例的产能规模各算 1（1,000 ÷ 1,000）").isEqualTo(1L);
-    assertThat(secondScale).isEqualTo(1L);
+    long firstScale = ProductionProcessBook.capacityScaleOf(first, plan(FARM), index);
+    long secondScale = ProductionProcessBook.capacityScaleOf(second, plan(FARM), index);
+    assertThat(firstScale).as("每个实例的产能规模 = 0（不再各算 1）").isZero();
+    assertThat(secondScale).isZero();
     assertThat(firstScale + secondScale)
-        .as(
-            "★★ R2 未修复：Σ产能规模 = 2 > 实有规模 1 —— 同一份 1,000 LAND 被两个实例各占一遍（I8 被违反；"
-                + "修复点 = §15.2 / Phase A 的统一占用分配）")
-        .isEqualTo(2L);
+        .as("★★ Σ产能规模 = 0（旧缺陷是 1 + 1 = 2 > 实有规模 1）：同一份 1,000 LAND 不再被两个实例各占一遍；" + "多实例真实分配仍归 D4/A")
+        .isZero();
+    assertThat(stakes.get(sharedLand.id()))
+        .as("★★ R2-I5：OwnershipStake 的 quantity/owner/operator/kind 一字不改（只读派生）")
+        .isEqualTo(sharedLand);
   }
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────

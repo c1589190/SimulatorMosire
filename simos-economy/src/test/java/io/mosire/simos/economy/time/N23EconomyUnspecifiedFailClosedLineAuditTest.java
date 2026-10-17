@@ -46,7 +46,7 @@ class N23EconomyUnspecifiedFailClosedLineAuditTest {
   /** T6 台账记的行号 = 本树重核的行号（源码移动请显式改这里并在台账留痕）。 */
   private static final int MODE_MIGRATION_MESSAGE_LINE = 1144;
 
-  private static final int ENTERPRISE_MESSAGE_LINE = 726;
+  private static final int ENTERPRISE_MESSAGE_LINE = 738;
 
   private static final String MODE_MIGRATION_FILE =
       "src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java";
