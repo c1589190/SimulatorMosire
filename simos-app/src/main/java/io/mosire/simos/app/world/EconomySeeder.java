@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -3379,6 +3380,9 @@ public final class EconomySeeder {
       termsNode.put("dueDay", terms.dueDay().getAsLong());
     }
     node.put("terms", termsNode);
+    // ★★★ D-032 W4：创世/测试条件里的初始债全部是普通借贷（没有工资/地租旧债来源可判定）；
+    //   显式写 DebtSource.ORDINARY_LOAN，绝不留空让创世被 debt-source-missing 拒。
+    node.put("source", DebtSource.ORDINARY_LOAN.name());
     node.put("principal", debt.principal());
     node.put("openedDay", 0L);
     // 尚未计息/无约定到期周期：显式 null（载荷解析口径：缺席/null ⇒ 空）。

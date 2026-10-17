@@ -104,10 +104,21 @@ public final class EconomyDayStepper implements AutoCloseable {
   private final EconomyParallelism parallelism;
 
   /**
+   * ★★★ <b>D-032 W4：Social 对下一 tick 的权威只读投影</b>（逐 tick 由 app 组合根用当日 Social 重算后注入；不进状态/变更集）。
+   *
+   * <p>缺省 {@link SurvivalSocialFacts#unavailable()} = 没有 Social 接线。真实生产 tick 若存在劳动候选，匹配层必须具名 {@code
+   * survival-need-missing}，不得把缺投影当空需求继续。
+   */
+  private SurvivalSocialFacts survivalSocialFacts = SurvivalSocialFacts.unavailable();
+
+  /**
    * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在 {@code EconomySettlement}
    * 内复位）。旧档 {@code modes} 为空时恒为 {@code null} ⇒ 逐值不变。
    */
   private final EnterpriseProfitBook.CycleAccumulator profitCycle;
+
+  /** ★ D-032 W4：最近一次 {@link #step(long)} 的 W3 逐义务只读读数（原样来自 {@link WageSettlementReadoutFeed}）。 */
+  private List<WageSettlementReadout> lastWageSettlementReadouts = List.of();
 
   /** ★ M2.3/M2.4：最近一次 step 的区域市场报告（瞬态；L3 读数接它）。 */
   private MarketReport lastMarketReport;
@@ -238,6 +249,25 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
   public EconomyParallelism parallelism() {
     return parallelism;
+  }
+
+  /**
+   * ★★★ <b>D-032 W4：替换本 tick 的 Social 下一 tick 生存投影</b> —— 与 {@link #updateComposition(Map)} 同一条
+   * "只读投影、不进状态"的纪律；由 app 在每次 {@link #step(long)} 之前从当刻 Social 现算后注入。
+   */
+  public void updateSurvivalSocialFacts(SurvivalSocialFacts next) {
+    this.survivalSocialFacts =
+        Objects.requireNonNull(next, "survivalSocialFacts（无 Social 投影请传 unavailable()）");
+  }
+
+  /** ★ D-032 W4：本 tick 的 Social 下一 tick 生存投影（只读；缺省 unavailable）。 */
+  public SurvivalSocialFacts survivalSocialFacts() {
+    return survivalSocialFacts;
+  }
+
+  /** ★ D-032 W4：最近一次 {@link #step(long)} 的 W3 逐义务只读读数（稳定序由 W3 保证；空表 = 当日无义务）。 */
+  public List<WageSettlementReadout> lastWageSettlementReadouts() {
+    return lastWageSettlementReadouts;
   }
 
   /**
@@ -508,7 +538,14 @@ public final class EconomyDayStepper implements AutoCloseable {
         marketExcludedHouseholds,
         portEnforcement,
         portTax,
-        procurementPriority);
+        procurementPriority,
+        survivalSocialFacts);
+    lastWageSettlementReadouts =
+        session
+            .base()
+            .meta()
+            .flatMap(meta -> WageSettlementReadoutFeed.last(meta.mapId(), day))
+            .orElse(List.of());
     OptionalLong closedAfter =
         session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
     this.lastCycleClosed = !closedBefore.equals(closedAfter);

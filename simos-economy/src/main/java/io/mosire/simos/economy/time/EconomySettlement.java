@@ -1024,6 +1024,47 @@ public final class EconomySettlement {
       PortEnforcementInput portEnforcement,
       PortTaxInput portTax,
       ProcurementPriorityInput procurementPriority) {
+    settleOneDayInto(
+        session,
+        day,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        ledger,
+        parallelism,
+        profitCycle,
+        composition,
+        marketExcludedHouseholds,
+        portEnforcement,
+        portTax,
+        procurementPriority,
+        SurvivalSocialFacts.unavailable());
+  }
+
+  /**
+   * ★★★ <b>D-032 W4：带 Social 下一 tick 生存投影的日结算入口</b>（唯一真实生产调用点 = {@code EconomyDayStepper.step}）。
+   *
+   * <p>{@code survivalSocialFacts} 只承载 Social 已算好的下一 tick 需求/劳动预算；匹配层的 {@code SurvivalOutlook} 由
+   * economy 用 W2b 的纯 evaluator 组装，不在这里重写任何生存/匹配公式。
+   */
+  static void settleOneDayInto(
+      EconomySession session,
+      long day,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      ProductionLedger.Accumulator ledger,
+      EconomyParallelism parallelism,
+      EnterpriseProfitBook.CycleAccumulator profitCycle,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<HouseholdId> marketExcludedHouseholds,
+      PortEnforcementInput portEnforcement,
+      PortTaxInput portTax,
+      ProcurementPriorityInput procurementPriority,
+      SurvivalSocialFacts survivalSocialFacts) {
+    Objects.requireNonNull(
+        survivalSocialFacts,
+        "survivalSocialFacts（没有 Social 投影请显式传 SurvivalSocialFacts.unavailable()）");
     Objects.requireNonNull(
         portEnforcement, "portEnforcement（没有口岸面给 PortEnforcementInput.none()，不得为 null）");
     Objects.requireNonNull(portTax, "portTax（没有税给 PortTaxInput.none()，不得为 null）");
@@ -1585,6 +1626,11 @@ public final class EconomySettlement {
     //   ★ 为什么不能不清：读数按"本生产日"语义（见 `EconomySession#clearDrawnProductionInputs`），
     //     同一会话跨多日（`EconomyDayStepper#step` 连推）时不得把昨天的实扣量当成今天的。
     session.clearDrawnProductionInputs();
+    // ★★★ D-032 W4：匹配与 W3 共用同一权威可支付库存读口；快照绑定本日 AccountSession，不跨日复用。
+    AccountSnapshot matchingAccountSnapshot = accounts.snapshot();
+    WagePayableInventoryLookup matchingWagePayableInventoryLookup =
+        new WagePayableInventoryLookupImpl(
+            dayView.inventoryReservations(), day, () -> Optional.of(matchingAccountSnapshot));
     if (plantingDrawsFirst) {
       drawCycleInputsPartitioned(
           session,
@@ -1606,7 +1652,15 @@ public final class EconomySettlement {
         // ★★ §4.3.1：劳动分配、库存分配、投入扣减是**同一次遍历**的三个动作 —— 本调用点在投入扣减**之后**
         //   （PLANTING_DRAWS_BEFORE_CONSUMPTION = true）⇒ 套利快照里的库存已是扣完料的余额（I14 由此结构性成立）。
         LaborQueueSettlement.apply(
-            session, settlementIndex, day, composition, enteredToday, accounts, arbitrageCollector);
+            session,
+            settlementIndex,
+            day,
+            composition,
+            enteredToday,
+            accounts,
+            arbitrageCollector,
+            survivalSocialFacts,
+            matchingWagePayableInventoryLookup);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图，后续（unit 家户归属/市场参与者/人口回写）继续 O(1) 查表。
       settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
@@ -1642,7 +1696,15 @@ public final class EconomySettlement {
         // ★★ P2-B §13.4：每 tick 重算 —— 不在生产周期开始时锁死；投入已扣（本支在消费后），判定有据。
         // ★★ 2026-10-08（阶段 1）：套利活动与生产进同一个排序器；快照 = 本刻（消费后、投入已扣）的可动余额。
         LaborQueueSettlement.apply(
-            session, settlementIndex, day, composition, enteredToday, accounts, arbitrageCollector);
+            session,
+            settlementIndex,
+            day,
+            composition,
+            enteredToday,
+            accounts,
+            arbitrageCollector,
+            survivalSocialFacts,
+            matchingWagePayableInventoryLookup);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
       settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
@@ -2019,6 +2081,8 @@ public final class EconomySettlement {
     wageCarries.clear();
     wageCarries.putAll(wageSettlement.carryRemainders());
     Set<DebtContractId> sameDayWageDebtIds = new LinkedHashSet<>(wageSettlement.newWageDebtIds());
+    // ★★★ D-032 W4：把 W3 已算出的读数原样投递给 app 只读面（不重算、不写状态；同日 tick 才可信）。
+    WageSettlementReadoutFeed.publish(meta.mapId(), day, wageSettlement.readouts());
     if (TRACE.isTraceEnabled() && !wageSettlement.readouts().isEmpty()) {
       for (WageSettlementReadout readout : wageSettlement.readouts()) {
         EventLog.channel(TRACE)

@@ -1209,6 +1209,14 @@ public final class ApiViews {
       }
     }
     view.put("productionRosters", PRODUCTION_CONSUMER.rosterReadouts(state, rosterUnits));
+    // ★★★ D-032 W4：W3 工资结算逐义务只读读数（feed 原样，不重算支付/抵物/债；稳定序由 consumer port 保证）。
+    Optional<List<Map<String, Object>>> wageReadouts =
+        PRODUCTION_CONSUMER.wageSettlementReadouts(state, rosterUnits);
+    view.put("wageSettlementReadouts", wageReadouts.orElse(List.of()));
+    view.put("wageSettlementReadoutStatus", wageReadouts.isPresent() ? "ok" : "unavailable");
+    view.put(
+        "wageSettlementReadoutUnavailableReason",
+        wageReadouts.isPresent() ? null : "wage-settlement-readout-unavailable");
     return view;
   }
 

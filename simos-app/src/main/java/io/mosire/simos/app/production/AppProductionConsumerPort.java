@@ -29,6 +29,8 @@ import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.ExpectedProfitBook;
 import io.mosire.simos.economy.time.ExpectedProfitBook.RosterHouseholdIncome;
+import io.mosire.simos.economy.time.WageSettlementReadout;
+import io.mosire.simos.economy.time.WageSettlementReadoutFeed;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionRuntimeEngine;
 import io.mosire.simos.production.ProductionSnapshot;
@@ -47,10 +49,13 @@ import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import org.slf4j.Logger;
@@ -196,6 +201,78 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
         assetRules,
         modeTransitions,
         pledges);
+  }
+
+  /**
+   * ★★★ <b>D-032 W4：W3 工资结算只读读数（逐义务）</b>。
+   *
+   * <p>唯一来源 = {@link WageSettlementReadoutFeed} 里 {@link
+   * io.mosire.simos.economy.time.WageSettlement} 已算出的 readout；本方法只按本格 unit 过滤并按 {@code (unit, role,
+   * worker)} 稳定排序，<b>不重算</b>支付/抵物/债、不写状态。 读不到（未结算/进程重启/tick 不一致）返回 {@link Optional#empty()}，由读口报具名
+   * unavailable，不填空数组冒充。
+   */
+  public Optional<List<Map<String, Object>>> wageSettlementReadouts(
+      SimulationState state, Collection<ProductionUnitId> units) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(units, "units");
+    EconomyData economy = economyOf(state);
+    if (economy.meta().isEmpty()) {
+      return Optional.empty();
+    }
+    long tick = state.meta().timestamp().tick();
+    Optional<List<WageSettlementReadout>> feed =
+        WageSettlementReadoutFeed.last(economy.meta().orElseThrow().mapId(), tick);
+    if (feed.isEmpty()) {
+      return Optional.empty();
+    }
+    Set<ProductionUnitId> wanted = new LinkedHashSet<>(units);
+    List<WageSettlementReadout> ordered = new ArrayList<>();
+    for (WageSettlementReadout readout : feed.get()) {
+      if (wanted.contains(readout.unit())) {
+        ordered.add(readout);
+      }
+    }
+    ordered.sort(
+        Comparator.comparing((WageSettlementReadout value) -> value.unit().value())
+            .thenComparing(value -> value.role().value())
+            .thenComparing(value -> value.worker().value())
+            .thenComparing(value -> value.payer().value()));
+    List<Map<String, Object>> rows = new ArrayList<>(ordered.size());
+    for (WageSettlementReadout readout : ordered) {
+      rows.add(wageSettlementReadoutView(readout));
+    }
+    return Optional.of(Collections.unmodifiableList(rows));
+  }
+
+  /** 一条工资 readout 的稳定 JSON 形（字段名与 D3 §6.7 同源；不新增/不改写任何金额）。 */
+  private static Map<String, Object> wageSettlementReadoutView(WageSettlementReadout readout) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("unit", readout.unit().value());
+    row.put("role", readout.role().value());
+    row.put("worker", readout.worker().value());
+    row.put("payer", readout.payer().value());
+    row.put("currency", readout.currency().value());
+    row.put("tickLaborMilli", readout.tickLaborMilli());
+    row.put("quote", readout.quoteWagePerLaborMilli());
+    row.put("carryBefore", readout.carryBefore());
+    row.put("carryAfter", readout.carryAfter());
+    row.put("dueMilli", readout.dueMilli());
+    row.put("paidMoneyMilli", readout.paidMoneyMilli());
+    row.put("barterQuantity", new LinkedHashMap<>(readout.barterQuantity()));
+    row.put("barterPaidValueMilli", new LinkedHashMap<>(readout.barterPaidValueMilli()));
+    Map<String, Object> barter = new LinkedHashMap<>();
+    barter.put("qPay", new LinkedHashMap<>(readout.barterQuantity()));
+    barter.put("paidValueMilli", new LinkedHashMap<>(readout.barterPaidValueMilli()));
+    row.put("barter", Collections.unmodifiableMap(barter));
+    row.put("arrearsMilli", readout.arrearsMilli());
+    row.put(
+        "debtContractId",
+        readout
+            .debtContractId()
+            .map(io.mosire.simos.economy.api.id.DebtContractId::value)
+            .orElse(null));
+    row.put("reasons", readout.reasons());
+    return Collections.unmodifiableMap(row);
   }
 
   /** economy 切片（装配故障 ⇒ ERROR + 抛，不降级）。 */
