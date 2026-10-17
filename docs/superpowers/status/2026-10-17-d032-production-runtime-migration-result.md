@@ -162,3 +162,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **组件号**：32 `productionRosters` / 33 `productionWageDefaults` / 34 `productionWagePostings` / 35 `wageCarryRemainders`；无第 36 个；D1/D2/D3 一致。
 - **原话核对**：U15–U21 D2/D3 逐字相同；U22/U23 与 architecture source/decision doc 逐字匹配。`git diff --check` 通过；无 `LOCAL_LAST_TRADE`/`referencePriceOf`/`SettlementLocationRef` 残留。
 - **未做/未验证**：所有 P/负向判据仍只是设计判据；D4 正文未完成；未实现工资链/生存判定/抵物；R2 多实例真实分配仍归 D4/A；未跑 `clean verify`/`tools/gate.sh`。下一步：D4 正文与 D1–D4 统一，再独立复核、提交检查点、C0 派单。
+
+## 十二、2026-10-17 21:25 D4 资产与占用设计落盘（侧线工作树）
+
+> **性质**：只新增 D4 设计文档；未改 Java/XML/POM/测试，未跑 Maven/测试/门禁，未提交 main/同步主树。
+
+- **D4 设计**：`docs/superpowers/specs/2026-10-17-d032-asset-occupancy-design.md`（876 行，commit `3da1237d`，已推送）。
+- **核心形状**：`OwnershipStake` 最小增加必填 `ProductionLocation location`，仍是唯一资产数量权威；新增 `AssetOccupancyGrant`（引用 share/unit、数量、半开区间、ACTIVE/RELEASED、释放回填）与 `InventoryReservation`（商品库存占用声明，不是第二本余额）。D4 后 `EconomyData` 第 36/37 组件；D2/D3 已占 32–35，旧“第 40/41/42”编号作废。
+- **统一预算**：`AssetOccupancyBook` 按 industry/operator/location/assetKind/from/to 形成 scope；先认 ACTIVE 已占，单实例拿整池保持逐值不变，多实例按请求量整数最大余数分配、按 share id 稳定拆 grant；农业/工具 horizon 为控制方工程默认，到期/取消释放并回填；预计/排队/执行/读口/债务容量/需求簿读同一份预算。
+- **R2 路径**：D4-I 编译 + D4-T 独立测试 + 旧路径清零 + 统一入口守卫 + 原复现改判，才允许删除 `asset-scope-shared:awaiting-D4` 并声明 R2 完整修复；D4-D0 本身不关闭 R2。原 `LAND=100` 两实例按地点/份额真实分配，Σ≤实有。
+- **W3 接入**：D4 首次实现 `WagePayableInventoryLookup`，逐字保持 D3 §6.9 的 `payableInventory(payer, ProductionLocation)`；返回已扣 `frozenGoods` + ACTIVE `InventoryReservation` 的最终商品量，`Optional.empty()` = 不可用而非 0；W3 不二次扣减、不重定价、不回退整账户余额；同 payer×location 一次快照，跨格/不可用具名。
+- **模块边界**：资产数量/占用/预留归 economy；生产定义/实例/技术归 production；账户余额/冻结归 actor；Social 不碰资产；app/Core 只编排。D4 不新增玩法命令。
+- **用户原话**：U8/U16/U21/U22/U23 逐字收录并核对；U23 的零息/生存不从业/折价边界仅作输入，D4 不重定义。
+- **未做/未验证**：全部 P1–P22/负向/数值例仍只是设计判据；R2 完整功能未实现；`WagePayableInventoryLookup` 未实现；未跑 Maven/测试/仿真/门禁。下一步：D4-I 单 owner 实现（只编译）→ D4-T 独立测试 → 控制方复核；之后 W3 串行接入，R2 关闭须 D4-T 证据。
+- **AGENTS 索引**已补 D2/D3/D4/D3 裁决列条目；本轮未改任何代码或测试。

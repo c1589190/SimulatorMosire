@@ -104,6 +104,10 @@
 | `docs/superpowers/reports/2026-10-17-d032-production-line-replan-v2-review.md` | **D-032 重规划 v2 复核通过**：可冻结规划基线、继续详细设计；经验归一化为可配置工程默认、R2 仍未修，未验收 F1/F2 实现（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-d3-integration-precheck.md` | **D-032 D3 衔接预审与 U22 bug-first 决定**：§5 顺序为 R2 必需最小设计→修复→独立验证；工资三项后由 U23 裁定，原衔接问题保留，未验收实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-wage-idle-barter-decision.md` | **D-032 U23 最新工资裁决与模块边界**：欠薪零息、按下一 tick 生存条件裁决不从业、抵物折价可更低且可配置；production 定规则、economy 判定/估值/结算，Social 管生存需求与劳动，未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-cooperative-production-design.md` | **D-032 D2 合作生产与分配约束设计**：参与名册、按户预计所得、角色两层分配、资格主体、经验/迁移、C2 状态/命令/ChangeSet/codec；U23/裁决列已并入，未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-wage-chain-design.md` | **D-032 D3 工资链与劳动匹配约束设计**：U15–U23、报价 default/posting、U20 调价、角色级匹配/idle、W1 工资前置、W3 直付/抵物/成债、W2a→W1→W2b→W3；未实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-asset-occupancy-design.md` | **D-032 D4 资产与占用完整设计**：OwnershipStake location、AssetOccupancyGrant/InventoryReservation（36/37）、统一预算/跨周期/释放回填、R2 关闭路径、W3 lookup；未实现（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-d3-precheck-adjudication.md` | **D-032 D3 独立复核与工程裁决列**：时间尺度、idle、候选 default、降价边界、产品池措辞、W1/W2/W3/D4 衔接；未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-cooperative-production-proposal.md` | **D-032 多家户合作生产提案（待用户修改/确认）**：现有多人劳动/分账事实、共同经验、角色分配模型、参与名册、资格主体与本地资产占用建议；未实施（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-distribution-wage-offer-proposal.md` | **D-032 产品分配/现金与抵物/自主工资报价调查提案**：地主权益不要求下地劳动；角色经验量独立配置；工资报价、家户比较与本地反馈机制待确认，未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-wage-settlement-simplification-decision.md` | **D-032 工资简化裁决**：直接支付、库存不足成债、再生产权益不入活动库存仍有效；定价公式建议已被后续选业前定价分析取代，未实现（2026-10-17） |
