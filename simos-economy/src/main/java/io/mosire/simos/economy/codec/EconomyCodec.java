@@ -23,6 +23,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -1124,6 +1125,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         creditor,
         unit,
         terms,
+        DebtSource.LEGACY_UNKNOWN,
         principal,
         0L,
         OptionalLong.empty(),
@@ -1148,6 +1150,15 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     if (!first.id().equals(second.id())) {
       throw new IllegalStateException("合并旧债务时新合同 id 不一致: " + first.id() + " vs " + second.id());
     }
+    if (first.source() != second.source()) {
+      throw new IllegalStateException(
+          "debt-source-mismatch: 合并同 id 旧债务时来源不一致: "
+              + first.id()
+              + " "
+              + first.source()
+              + " vs "
+              + second.source());
+    }
     long principal = Math.addExact(first.principal(), second.principal());
     DebtStatus status =
         (first.status() == DebtStatus.DEFAULTED || second.status() == DebtStatus.DEFAULTED)
@@ -1159,6 +1170,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         first.creditor(),
         first.unit(),
         first.terms(),
+        first.source(),
         principal,
         Math.min(first.openedDay(), second.openedDay()),
         maxOptionalLong(first.lastInterestDay(), second.lastInterestDay()),

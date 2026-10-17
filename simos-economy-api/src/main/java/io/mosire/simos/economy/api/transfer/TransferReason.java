@@ -33,6 +33,13 @@ public enum TransferReason {
   /** 按 {@code ProductionRules} 的分成 / 给养 / 地租（制度规定的分配）。 */
   RELATION_PAYMENT("relation_payment"),
 
+  /**
+   * ★★★ <b>W3 工资支付</b>（D-032 D3 §6.6）：organizer household → worker household 的工资转移腿。
+   *
+   * <p>不得复用 {@link #RELATION_PAYMENT}：读账必须能分开“工资”与“分成/给养/地租”。
+   */
+  WAGE_PAYMENT("wage_payment"),
+
   /** 同格按需取材（生产投入的征调：田里的纤维 → 同格织机）。 */
   INPUT_REQUISITION("input_requisition"),
 

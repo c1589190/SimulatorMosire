@@ -9,6 +9,7 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -69,7 +70,6 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRecipe;
-import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -314,13 +314,12 @@ public final class EconomySettlement {
       DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE;
 
   /**
-   * ★★ <b>E4c：欠租/欠薪资本化所用条款的来源名</b>——{@code "E4c_LEGACY_DEFAULT"}。
+   * ★★ <b>E4c：欠租/欠薪资本化所用条款的来源名</b>——历史常量 {@code "E4c_LEGACY_DEFAULT"}。
    *
-   * <p>★★ E4c 的资本化条款明确取 {@link DebtTerms#legacyDefault()}（利率 {@code
-   * DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE}‰/周期、关账日偿还后计息、NOT_ALLOWED、期限空）。
-   * 这不是"未知条款静默并入默认档"：欠款读数 {@code Arrear} 本身不携带条款，E4c 只有这一条资本化路径； 该来源名随 {@code
-   * ProductionLedger.DebtCapitalization.termsSource} 一起进读口，将来出现按规则/合同定条款的
-   * 资本化时，必须新开一条带来源的路径，不得改这里悄悄换语义。
+   * <p>★★ D-032 W3/R-11 起，条款按 {@code Arrear.Kind} 分派：{@code WAGE ⇒ WAGE_ARREARS +
+   * wageArrearsDefault()}（0‰）；{@code RENT ⇒ RENT_ARREARS + legacyDefault()}。未分类类别 fail-closed
+   * {@code debt-source-missing}，不静默并入默认条。该来源名只作为既有 {@code
+   * ProductionLedger.DebtCapitalization.termsSource} 的审计标签保留。
    */
   public static final String CAPITALIZATION_TERMS_SOURCE = "E4c_LEGACY_DEFAULT";
 
@@ -843,47 +842,6 @@ public final class EconomySettlement {
   //   `EconomyDayStepper`（家户账是会话状态 + 显式 runtime）或 app 协调器。
 
   /**
-   * ★★★ <b>D3 §4.7/§7.2 B2：W2b 边界预检</b>。
-   *
-   * <p>W3 尚未接通时，只要存在 {@code MONEY_WAGE} 角色（或已持久化的工资 posting），真实 {@code settleOneDayInto}
-   * 必须在任何消费/抽料/匹配写回/进度/经验/实际劳动写入前整 tick 具名拒绝 {@code
-   * wage-settlement-not-implemented}；不得留下任何半状态。dry-run/只读匹配不走本方法。
-   */
-  private static void rejectMoneyWageTickUntilWageSettlement(
-      EconomySession session, EconomyDayView dayView, long day) {
-    if (!dayView.productionWagePostings().isEmpty()) {
-      rejectWageSettlement(day, "persisted-production-wage-postings");
-    }
-    for (ProductionProcess unit : session.sheet().units().values()) {
-      Optional<IndustryDefinitionView> definition = dayView.definitions().industry(unit.industry());
-      if (definition.isEmpty()) {
-        continue; // 坏定义由既有守卫具名拒绝；B2 不猜
-      }
-      for (var role : definition.get().roles()) {
-        if (role.payment() instanceof RolePayment.MoneyWage) {
-          rejectWageSettlement(
-              day, "money-wage-role:" + unit.id().value() + ":" + role.id().value());
-        }
-      }
-    }
-  }
-
-  private static void rejectWageSettlement(long day, String detail) {
-    EventLog.channel(EconomyLog.settlement())
-        .info(
-            LogEvent.of(
-                "WAGE_SETTLEMENT_NOT_IMPLEMENTED",
-                EconomyLogSource.ECONOMY_SETTLEMENT,
-                "day",
-                day,
-                "reason",
-                "wage-settlement-not-implemented",
-                "detail",
-                detail));
-    throw new IllegalStateException("wage-settlement-not-implemented: " + detail);
-  }
-
-  /**
    * ★★ <b>结算一天（S1 完整入口，单线程退化路径）</b>：等价于传 {@link EconomyParallelism#singleThreaded()} 的 R2 重载 ——
    * 保留给旧调用方/测试，分区与提交序与并行路径共用同一套（见下一个重载）。
    */
@@ -1088,9 +1046,8 @@ public final class EconomySettlement {
     //     而 base 是段首快照 —— 段内第 2 天起再读 base 就是读"上一天以前的旧世界"（这正是路径效应的根因）。
     //   ★ 为什么不是"构造时把表拍进字段"：工作副本是惰性物化的，拍快照会在它物化的那一刻变成过期引用。
     EconomyDayView dayView = new WorkingDayView(session.sheet());
-    // ── ★★★ D-032 D3 §4.7/§7.2（B2）：W3 未接时含 MONEY_WAGE 角色的真实 tick 必须整 tick 拒绝 ───────
-    //   位置钉死：在任何消费/抽料/劳动匹配写回/进度/经验/实际劳动写入之前；日志只是读数，不写状态。
-    rejectMoneyWageTickUntilWageSettlement(session, dayView, day);
+    // ── ★★★ D-032 D3 §7（W3）：MONEY_WAGE 的 B2 整 tick 拒绝已由真实工资结算取代 ─────────────
+    //   真实结算在 `driveProductionDay`/关账之后、市场轮/还债之前执行（见下面的 WAGE_SETTLEMENT 段）。
     // ★★★ R2（2026-10-11，控制方裁定）：**组合根注入的 Z7b 集合原样照收** —— 分类只发生在**一处**：
     //   {@code MarketRound.householdMarketRole}（国库户 ⇒ 只按授权下单；其余单位户 ⇒ 只买不卖；其余 ⇒ 普通家户）。
     //   ★ 改前这里有第二处分类：`unitExclusionsMinusGovernmentTreasuries`（把"是政府国库户"的单位户从集合里摘出来）。
@@ -2033,6 +1990,65 @@ public final class EconomySettlement {
       haulServiceProducedMilli = logHaulServiceOutput(day, harvestLedger, dayView);
     }
 
+    // ── ★★★ W3（D-032 D3 §6/§7）：工资直付 → 抵物 → 余款成债 ────────────────────────────────
+    //   ★ 位置钉死：`driveProductionDay` 与关账/收获/铸币之后、市场轮/还债之前。due 只读本 tick
+    //     ProductionReceipt 的实际劳动；工资债在本日还款轮被 `sameDayWageDebtIds` 排除，次日才可还。
+    //   ★ 账户权威 = AccountSession 快照；库存权威 = D4 的 WagePayableInventoryLookup（一次/付款人组）。
+    AccountSnapshot wageAccountSnapshot = accounts.snapshot();
+    WagePayableInventoryLookup wagePayableInventoryLookup =
+        new WagePayableInventoryLookupImpl(
+            dayView.inventoryReservations(), day, () -> Optional.of(wageAccountSnapshot));
+    WageSettlement.Result wageSettlement =
+        WageSettlement.settle(
+            day,
+            dueCycle,
+            dayView,
+            units,
+            wageAccountSnapshot,
+            householdGoods,
+            householdMoney,
+            householdFrozenGoods,
+            householdFrozenMoney,
+            householdOfActor,
+            debts,
+            ledger,
+            productionDay,
+            topology,
+            wagePayableInventoryLookup);
+    var wageCarries = session.sheet().wageCarryRemainders();
+    wageCarries.clear();
+    wageCarries.putAll(wageSettlement.carryRemainders());
+    Set<DebtContractId> sameDayWageDebtIds = new LinkedHashSet<>(wageSettlement.newWageDebtIds());
+    if (TRACE.isTraceEnabled() && !wageSettlement.readouts().isEmpty()) {
+      for (WageSettlementReadout readout : wageSettlement.readouts()) {
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "WAGE_SETTLEMENT_READOUT",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "unit",
+                    readout.unit().value(),
+                    "role",
+                    readout.role().value(),
+                    "worker",
+                    readout.worker().value(),
+                    "payer",
+                    readout.payer().value(),
+                    "dueMilli",
+                    readout.dueMilli(),
+                    "paidMoneyMilli",
+                    readout.paidMoneyMilli(),
+                    "paidBarterValueMilli",
+                    readout.barterPaidValueMilli(),
+                    "arrearsMilli",
+                    readout.arrearsMilli(),
+                    "debtContractId",
+                    readout.debtContractId().map(DebtContractId::value).orElse("-")));
+      }
+    }
+
     // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────
     //   ★★ 只对**本日 ledger 的 Arrear 读数**（owed > 0）执行：把"制度规定未付"落成连续合同债权；
     //     **不移动任何商品/货币库存**（欠款本来就是未付），也**不清零 Arrear 读数**（读数仍是制度事实）。
@@ -2048,7 +2064,8 @@ public final class EconomySettlement {
         debts,
         capitalizedArrearsToday,
         day,
-        dueCycle);
+        dueCycle,
+        sameDayWageDebtIds);
     ProductionLedger capitalized = ledger.toLedger();
     if (!capitalized.debtCapitalizations().isEmpty()
         || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
@@ -2830,7 +2847,8 @@ public final class EconomySettlement {
           DebtValuation.RepayeeResolver.HOUSEHOLD_ACTORS,
           repaymentPrices,
           ledger,
-          issuanceJournal);
+          issuanceJournal,
+          sameDayWageDebtIds);
       long repaidGrainTotal = traceTotalLongs(repaidToday);
       // ★★ P-T4：还款读数**按币分列**（禁跨币相加）—— 门槛仍与改前同真同假（还款腿只累加正额）。
       Map<String, Long> repaidMoneyByCurrency = traceMoneyByCurrency(repaidMoneyToday);
@@ -7291,6 +7309,20 @@ public final class EconomySettlement {
       ProductionUnitId activity,
       CompensationRule rule) {}
 
+  /** 契约/跨切片一致性故障：ERROR 不降级，带稳定词返回给调用方抛出。 */
+  private static IllegalStateException contractFault(String word, String detail) {
+    EventLog.channel(TRACE)
+        .error(
+            LogEvent.of(
+                "ECONOMY_SETTLEMENT_CONTRACT_FAULT",
+                EconomyLogSource.ECONOMY_DEBT,
+                "failure",
+                word,
+                "detail",
+                detail == null ? "-" : detail));
+    return new IllegalStateException(word + ": " + detail);
+  }
+
   /**
    * ★★ <b>E4c：欠租/欠薪资本化</b>（生产/租金阶段之后；见 {@code settleOneDayInto} 的 3b）。
    *
@@ -7298,9 +7330,9 @@ public final class EconomySettlement {
    * 输入   = 本日 ProductionLedger 的 Arrear 读数（owed = 应付 − 实付 > 0）
    * 去重   = 同一天内 (payer, payee, unit.key(), activity, rule) 相同 ⇒ 读数额相加、只 upsert 一次
    * unit   = Arrear.currency 有值 ⇒ DebtUnit.Money(currency)；否则 DebtUnit.Commodity(commodity)
-   * terms  = DebtTerms.legacyDefault()（20‰/周期、关账日偿还后计息、NOT_ALLOWED、期限空）
-   *          —— E4c 的默认条款来源在 {@code DebtCapitalization.termsSource} 里显式标成
-   *          {@value #CAPITALIZATION_TERMS_SOURCE}，不把未知条款静默并进默认条
+   * terms  = Arrear.Kind.WAGE ⇒ DebtTerms.wageArrearsDefault()（0‰）+ DebtSource.WAGE_ARREARS
+   *          Arrear.Kind.RENT ⇒ DebtTerms.legacyDefault()（20‰）+ DebtSource.RENT_ARREARS
+   *          其余类别 ⇒ fail-closed debt-source-missing（不得猜来源，也不得套工资债）
    * amount = owed；day = 当日；dueCycle = 当前周期 + 1
    * 端点   = P2：{@link DebtPartyResolver} 唯一解析点到责任家户；多户按人口最大余数拆 owed，
    *          再对每个 debtor × creditor 组合经 {@link DebtPartyResolver#splitDebtAmounts} 守恒拆分。
@@ -7337,7 +7369,8 @@ public final class EconomySettlement {
       Map<DebtContractId, DebtContract> debts,
       LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedByHousehold,
       long day,
-      long dueCycle) {
+      long dueCycle,
+      Set<DebtContractId> sameDayWageDebtIds) {
     List<ProductionLedger.Arrear> arrears = ledger.arrears();
     if (arrears.isEmpty()) {
       return; // 没有欠款读数 ⇒ 连去重表都不建（旧路径逐值不变）
@@ -7409,7 +7442,32 @@ public final class EconomySettlement {
                 split.selfNettedAmount(),
                 "self-party-netted:" + split.selfHouseholds().size() + "-households"));
       }
-      DebtTerms terms = DebtTerms.legacyDefault();
+      DebtTerms terms;
+      DebtSource source;
+      switch (sample.kind()) {
+        case WAGE -> {
+          // ★★★ D3/U23/R-11：旧 wage 路径也不再生息；必须同时写 WAGE_ARREARS 与 0‰。
+          if (sample.currency().isEmpty()) {
+            throw contractFault(
+                "wage-debt-terms-unsupported",
+                "工资欠款必须是 DebtUnit.Money(currency)，但该 Arrear 无货币: activity="
+                    + sample.activity().value());
+          }
+          terms = DebtTerms.wageArrearsDefault();
+          source = DebtSource.WAGE_ARREARS;
+        }
+        case RENT -> {
+          terms = DebtTerms.legacyDefault();
+          source = DebtSource.RENT_ARREARS;
+        }
+        default ->
+            throw contractFault(
+                "debt-source-missing",
+                "capitalizeArrears 无法为欠款类别确定 DebtSource（不得猜）：kind="
+                    + sample.kind()
+                    + " activity="
+                    + sample.activity().value());
+      }
       for (DebtPartyResolver.DebtAmount amount : split.amounts()) {
         DebtContract contract =
             DebtContractBook.upsert(
@@ -7418,9 +7476,14 @@ public final class EconomySettlement {
                 amount.creditor(),
                 unit,
                 terms,
+                source,
                 amount.amount(),
                 day,
                 OptionalLong.of(dueCycle));
+        if (source == DebtSource.WAGE_ARREARS) {
+          // ★ D3-I13：旧 wage 路径同日新资本化的工资债也不得在同一 tick 还款轮被再付。
+          sameDayWageDebtIds.add(contract.id());
+        }
         HouseholdEconomy debtorHouseholdEconomy = householdEconomies.get(amount.debtor());
         if (debtorHouseholdEconomy == null) {
           // 端点来自 DebtPartyResolver（同源于 data.classes），解析到却查不到行 = 状态已被改坏，fail-closed。
@@ -7548,7 +7611,9 @@ public final class EconomySettlement {
       DebtValuation.RepayeeResolver repayeeResolver,
       DebtValuation.HouseholdPriceTable householdPrices,
       ProductionLedger.Accumulator ledger,
-      MoneyIssuanceJournal issuanceJournal) {
+      MoneyIssuanceJournal issuanceJournal,
+      Set<DebtContractId> sameDayWageDebtIds) {
+    Objects.requireNonNull(sameDayWageDebtIds, "sameDayWageDebtIds（没有同日工资债给空集，不得为 null）");
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
     List<HouseholdId> debtors = new ArrayList<>(householdEconomies.keySet());
     debtors.sort(Comparator.comparing(HouseholdId::value)); // 稳定债务人序（不沿用 Map 插入序）
@@ -7601,6 +7666,27 @@ public final class EconomySettlement {
                         "why",
                         "self-held-not-executable"));
           }
+          continue;
+        }
+        if (sameDayWageDebtIds.contains(debt.id())) {
+          // ★★★ D3-I13 / §6.5（E12）：本日 W3 新建的工资债不得在同日还款轮被再付一次。
+          EventLog.channel(TRACE)
+              .info(
+                  LogEvent.of(
+                      "WAGE_DEBT_SAME_DAY_REPAY_BLOCKED",
+                      EconomyLogSource.ECONOMY_DEBT,
+                      "day",
+                      day,
+                      "worker",
+                      DebtContractBook.isSelfHeld(debt) ? "-" : debt.creditor().value(),
+                      "creditor",
+                      debt.creditor().value(),
+                      "debtContract",
+                      debt.id().value(),
+                      "amount",
+                      debt.principal(),
+                      "reason",
+                      "wage-debt-same-day-repay-blocked"));
           continue;
         }
         owed.add(debt);

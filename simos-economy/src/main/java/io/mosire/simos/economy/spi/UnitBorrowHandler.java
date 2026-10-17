@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.debt.DefaultRemedy;
@@ -173,6 +174,7 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets {
             request.lenderHousehold(),
             debtUnit,
             terms,
+            DebtSource.ORDINARY_LOAN,
             request.principal(),
             tick,
             OptionalLong.empty());

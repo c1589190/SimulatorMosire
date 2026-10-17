@@ -7,6 +7,7 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -7833,6 +7834,7 @@ final class MarketSettlement {
             creditor,
             unit,
             DEFERRED_PAYMENT_TERMS,
+            DebtSource.ORDINARY_LOAN,
             deferred,
             ctx.round.day,
             ctx.deferredPaymentConfig == null

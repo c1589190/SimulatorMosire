@@ -92,6 +92,22 @@ public record DebtTerms(
   }
 
   /**
+   * ★★★ <b>工资欠款条款</b>（D-032 D3 §2.9；U23 用户已定 0‰）：唯一工资债工厂。
+   *
+   * <p>工资债必须同时带 {@link DebtSource#WAGE_ARREARS}；不得套用 {@link #legacyDefault()} 的 20‰。
+   */
+  public static DebtTerms wageArrearsDefault() {
+    return new DebtTerms(
+        0,
+        InterestTiming.AFTER_REPAYMENT_ON_CLOSE,
+        RepaymentRule.AVAILABLE_SURPLUS_SHARE,
+        MonetaryConversion.NOT_ALLOWED,
+        DefaultRemedy.MARK_DEFAULTED,
+        OptionalLong.empty(),
+        OptionalLong.empty());
+  }
+
+  /**
    * ★★ <b>可读规范串</b>：只含数字与枚举名，各段以 {@code "|"} 分隔且段内无 {@code "|"} ⇒ 同一 terms 恒同串、 不同 terms
    * 必不同串。它用于读口/审计，不直接进 id（{@link #identityToken()} 负责把字符集收窄成无点形式）。
    */

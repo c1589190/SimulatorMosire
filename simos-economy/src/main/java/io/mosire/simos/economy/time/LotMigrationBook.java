@@ -282,6 +282,7 @@ public final class LotMigrationBook {
           contract.creditor(),
           contract.unit(),
           contract.terms(),
+          contract.source(),
           movedPrincipal,
           day,
           contract.dueCycle());

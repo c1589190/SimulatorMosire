@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -93,6 +94,7 @@ public final class DebtContractBook {
    * @param creditor 债权人；不得为 null
    * @param unit 计量单位；不得为 null
    * @param terms 条款（参与身份）；不得为 null
+   * @param source 债务来源；不得为 null；同 id 同 terms 但 source 不同 ⇒ {@code debt-source-mismatch}
    * @param amount 增加的本金；必须 {@code > 0}（0/负增量不是一种本金变化）
    * @param day 本次借入/资本化发生日（只在新条时进 {@code openedDay}）；不得为负
    * @param dueCycle 合同当前约定到期周期；空 = 保留旧条原值
@@ -104,6 +106,7 @@ public final class DebtContractBook {
       HouseholdId creditor,
       DebtUnit unit,
       DebtTerms terms,
+      DebtSource source,
       long amount,
       long day,
       OptionalLong dueCycle) {
@@ -112,6 +115,18 @@ public final class DebtContractBook {
     Objects.requireNonNull(creditor, "creditor 不得为 null");
     Objects.requireNonNull(unit, "unit 不得为 null");
     Objects.requireNonNull(terms, "terms 不得为 null");
+    if (source == null) {
+      throw contractFault("debt-source-missing", "DebtContractBook.upsert source 不得为 null");
+    }
+    if (source == DebtSource.WAGE_ARREARS
+        && (!DebtTerms.wageArrearsDefault().equals(terms) || !(unit instanceof DebtUnit.Money))) {
+      throw contractFault(
+          "wage-debt-terms-unsupported",
+          "WAGE_ARREARS 必须是 DebtUnit.Money + wageArrearsDefault()（0‰）: unit="
+              + unit
+              + " terms="
+              + terms);
+    }
     if (amount <= 0L) {
       throw new IllegalArgumentException("DebtContractBook.upsert 的本金增量必须 > 0: " + amount);
     }
@@ -132,6 +147,7 @@ public final class DebtContractBook {
               creditor,
               unit,
               terms,
+              source,
               amount,
               day,
               OptionalLong.empty(),
@@ -139,6 +155,11 @@ public final class DebtContractBook {
               DebtStatus.NORMAL);
     } else {
       requireSameIdentity(id, existing);
+      if (existing.source() != source) {
+        throw contractFault(
+            "debt-source-mismatch",
+            "同 id 合同来源不一致：id=" + id + " 既有=" + existing.source() + " 本次=" + source);
+      }
       long principal = Math.addExact(existing.principal(), amount);
       DebtStatus status =
           existing.status() == DebtStatus.SETTLED || existing.status() == DebtStatus.FORGIVEN
@@ -151,6 +172,7 @@ public final class DebtContractBook {
               existing.creditor(),
               existing.unit(),
               existing.terms(),
+              existing.source(),
               principal,
               existing.openedDay(),
               existing.lastInterestDay(),
@@ -180,6 +202,8 @@ public final class DebtContractBook {
                   amount,
                   "principal",
                   next.principal(),
+                  "source",
+                  source,
                   "ratePerMille",
                   terms.interestRatePerMillePerCycle(),
                   "dueCycle",
@@ -237,6 +261,7 @@ public final class DebtContractBook {
             debt.creditor(),
             debt.unit(),
             debt.terms(),
+            debt.source(),
             remaining,
             debt.openedDay(),
             debt.lastInterestDay(),
@@ -309,6 +334,7 @@ public final class DebtContractBook {
             debt.creditor(),
             debt.unit(),
             debt.terms(),
+            debt.source(),
             principal,
             debt.openedDay(),
             OptionalLong.of(day),
@@ -377,6 +403,7 @@ public final class DebtContractBook {
             debt.creditor(),
             debt.unit(),
             debt.terms(),
+            debt.source(),
             debt.principal(),
             debt.openedDay(),
             debt.lastInterestDay(),
@@ -449,6 +476,7 @@ public final class DebtContractBook {
             debt.creditor(),
             debt.unit(),
             debt.terms(),
+            debt.source(),
             remaining,
             debt.openedDay(),
             debt.lastInterestDay(),
@@ -515,6 +543,20 @@ public final class DebtContractBook {
     Objects.requireNonNull(unit, "unit 不得为 null");
     Objects.requireNonNull(terms, "terms 不得为 null");
     return forgive(contracts, DebtContractId.idOf(debtor, creditor, unit, terms), amount, reason);
+  }
+
+  /** 契约/跨切片一致性故障：ERROR 不降级，带稳定词返回给调用方抛出。 */
+  private static IllegalStateException contractFault(String word, String detail) {
+    EventLog.channel(DEBT)
+        .error(
+            LogEvent.of(
+                "DEBT_CONTRACT_FAULT",
+                EconomyLogSource.ECONOMY_DEBT,
+                "failure",
+                word,
+                "detail",
+                detail == null ? "-" : detail));
+    return new IllegalStateException(word + ": " + detail);
   }
 
   /** 取合同；缺席 ⇒ 具名抛（不允许"减少一条不存在的合同"这种静默 no-op）。 */

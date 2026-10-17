@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -2186,6 +2187,7 @@ final class EconomyPayloads {
    *    "terms":{"interestRatePerMillePerCycle":20,"interestTiming":"AFTER_REPAYMENT_ON_CLOSE",
    *             "repaymentRule":"AVAILABLE_SURPLUS_SHARE","monetaryConversion":"NOT_ALLOWED",
    *             "defaultRemedy":"MARK_DEFAULTED"},
+   *    "source":"ORDINARY_LOAN",
    *    "principal":1000,"openedDay":0,"lastInterestDay":null,"dueCycle":1,"status":"NORMAL"}]}
    * </pre>
    *
@@ -2196,6 +2198,8 @@ final class EconomyPayloads {
    *       interestRatePerMillePerCycle / interestTiming / repaymentRule / monetaryConversion /
    *       defaultRemedy} 五个键给全 —— 缺键 fail-closed，不把漏写静默补成默认档（资本化路径的 `legacyDefault` 只在结算层显式使用，并由
    *       {@code termsSource} 标注）；
+   *   <li>★★ {@code source} <b>必填</b>：普通贷款 seed 显式写 {@code ORDINARY_LOAN}；缺键 ⇒ {@code
+   *       debt-source-missing}，不得静默给 {@code LEGACY_UNKNOWN} 或工资债；
    *   <li>{@code openedDay} 缺省 = 0；{@code lastInterestDay}/{@code dueCycle} 缺省 = 空；{@code status}
    *       缺省 = NORMAL；
    *   <li>单位：{@code commodity} ⇒ {@code {"kind":"commodity","commodity":"grain"}}；货币 ⇒ {@code
@@ -2219,6 +2223,7 @@ final class EconomyPayloads {
       HouseholdId creditor = HouseholdId.parse(requireText(node, "creditor"));
       DebtUnit unit = debtUnit(requireObject(node, "unit"));
       DebtTerms terms = debtTerms(requireObject(node, "terms"));
+      DebtSource source = parseDebtSource(node);
       long principal = requireLong(node, "principal");
       long openedDay = optionalLong(node, "openedDay", 0L);
       OptionalLong lastInterestDay = optionalOptionalLong(node, "lastInterestDay");
@@ -2240,6 +2245,7 @@ final class EconomyPayloads {
               creditor,
               unit,
               terms,
+              source,
               principal,
               openedDay,
               lastInterestDay,
@@ -2250,6 +2256,22 @@ final class EconomyPayloads {
       }
     }
     return contracts;
+  }
+
+  /**
+   * ★★★ R-11：seed/JSON 的债务来源必须显式给出；缺键/空白 ⇒ {@code debt-source-missing}，不得猜
+   * LEGACY_UNKNOWN，也不得把普通贷款静默当工资债。
+   */
+  private static DebtSource parseDebtSource(JsonNode node) {
+    if (!node.hasNonNull("source")) {
+      throw new IllegalArgumentException("debt-source-missing: debtContracts[].source 必须显式给出");
+    }
+    try {
+      return DebtSource.parse(requireText(node, "source"));
+    } catch (IllegalArgumentException failure) {
+      throw new IllegalArgumentException(
+          "debt-source-missing: debtContracts[].source 非法（" + failure.getMessage() + "）", failure);
+    }
   }
 
   /** ★ E4c：债务单位节点（{@code kind=commodity|money}；另一维必须给且只给一个）。 */

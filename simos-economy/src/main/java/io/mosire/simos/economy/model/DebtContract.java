@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -18,6 +19,7 @@ import java.util.OptionalLong;
  *   debtor, creditor, // 家户稳定身份（S1 起身份与视图分离）
  *   unit,             // 显式计量标的：实物 CommodityId 或货币 CurrencyId，恰有其一
  *   terms,            // 条款（利率/计息时点/偿还规则/折偿/救济/期限维）；不同 terms 不合并
+ *   source,           // ★ 来源（工资欠款/欠租/普通贷款/历史未知）；工资债必须 WAGE_ARREARS + 0‰
  *   principal,        // 连续本金余额；≥ 0；计息并入本金（不搬粮/钱）
  *   openedDay,        // 首次建条日（旧档迁移无此字段 ⇒ 0，见 Codec 迁移说明）
  *   lastInterestDay,  // 最近一次**真的把利息并入本金**的日；可空 = 本档尚未计息
@@ -37,6 +39,7 @@ import java.util.OptionalLong;
  * @param creditor 债权人；不得为 null
  * @param unit 计量标的；不得为 null
  * @param terms 条款；不得为 null
+ * @param source 债务来源；不得为 null（缺 source 是 {@code debt-source-missing} 契约故障）
  * @param principal 连续本金余额；不得为负
  * @param openedDay 建条日；不得为负
  * @param lastInterestDay 最近真的计息并入本金的日；不得为 null（从未计息用 {@code OptionalLong.empty()}）
@@ -49,6 +52,7 @@ public record DebtContract(
     HouseholdId creditor,
     DebtUnit unit,
     DebtTerms terms,
+    DebtSource source,
     long principal,
     long openedDay,
     OptionalLong lastInterestDay,
@@ -61,6 +65,17 @@ public record DebtContract(
     Objects.requireNonNull(creditor, "DebtContract.creditor 不得为 null");
     Objects.requireNonNull(unit, "DebtContract.unit 不得为 null");
     Objects.requireNonNull(terms, "DebtContract.terms 不得为 null");
+    if (source == null) {
+      throw new IllegalStateException("debt-source-missing: DebtContract.source 不得为 null");
+    }
+    if (source == DebtSource.WAGE_ARREARS
+        && (!DebtTerms.wageArrearsDefault().equals(terms) || !(unit instanceof DebtUnit.Money))) {
+      throw new IllegalStateException(
+          "wage-debt-terms-unsupported: WAGE_ARREARS 必须是 DebtUnit.Money + wageArrearsDefault()（0‰）: unit="
+              + unit
+              + " terms="
+              + terms);
+    }
     Objects.requireNonNull(status, "DebtContract.status 不得为 null");
     if (principal < 0L) {
       throw new IllegalArgumentException("DebtContract.principal 不得为负: " + principal);
@@ -102,6 +117,7 @@ public record DebtContract(
         creditor,
         unit,
         terms,
+        source,
         newPrincipal,
         openedDay,
         lastInterestDay,
@@ -117,6 +133,7 @@ public record DebtContract(
         creditor,
         unit,
         terms,
+        source,
         principal,
         openedDay,
         lastInterestDay,
@@ -132,6 +149,7 @@ public record DebtContract(
         creditor,
         unit,
         terms,
+        source,
         principal,
         openedDay,
         lastInterestDay,
@@ -147,6 +165,7 @@ public record DebtContract(
         creditor,
         unit,
         terms,
+        source,
         principal,
         openedDay,
         newLastInterestDay,

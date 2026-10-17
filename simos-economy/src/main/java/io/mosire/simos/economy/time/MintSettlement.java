@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -610,6 +611,7 @@ final class MintSettlement {
         organizer,
         new DebtUnit.Money(currency),
         DebtTerms.legacyDefault(),
+        DebtSource.ORDINARY_LOAN,
         minted,
         day,
         OptionalLong.of(currentCycle + 1L));

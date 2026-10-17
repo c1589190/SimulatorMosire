@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -644,6 +645,7 @@ final class MoneyMarketSettlement {
             // ★ 单位 = 本区计价币（{@code DebtUnit.money} 是唯一工厂；{@code DebtUnit.Money} 是 record 变体本身）。
             DebtUnit.money(currency),
             DebtTerms.legacyDefault((int) termsRate),
+            DebtSource.ORDINARY_LOAN,
             amount,
             round.day(),
             OptionalLong.of(input.dueCycle()));
