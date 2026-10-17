@@ -427,3 +427,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
   - 修复：三 key 统一长度前缀规范串；`WageKeyWireFormat` 同包 helper；含 `|`/`:` roundtrip 证据；economy/app compile、spotless 绿。
 - **D4-T 现状**：BLOCKED 的旧测试编译面已解除，但 D4 新判据（location/allocator/R2/inventory/lookup/readout）尚未写/未跑；D4-T 必须重新执行，不能引用 C4a 的绿灯冒充 D4 通过。
 - **下一步**：D4-T2（独立测试 owner）新增/运行 D4 判据与变异自证；随后按结果决定是否 D4-T 通过、删除旧 `asset-scope-shared:awaiting-D4`、进入 W3。
+
+## 二十九、2026-10-17 23:xx D4-T3 GREEN 检查点
+
+> **性质**：D4 economy 核心判据独立测试通过；app readout/旧 guard 退役仍未完成。
+
+- **提交**：`fa02ec77 fix/test(economy): D4-T3 修复overlap/lookup并36/36判据绿+变异自证`（已推送）。
+- **生产 bugfix**：`AssetOccupancyBook` overlap 键加 `unitId` + share 时刻总量 `asset-occupancy-overcommit`；`AssetOccupancyLookupImpl` location/scope mismatch 具名 `asset-occupancy-snapshot-mismatch`；`EconomyReferenceValidation` 同源 overlap/总量校验。
+- **测试**：新增 `D4OwnershipStakeLocationTest`(5)/`D4AssetOccupancyBookTest`(9)/`D4InventoryReservationTest`(4)/`D4LookupReadoutTest`(6)，迁移 `R2SharedAssetScopeTest`(8)/`UnifiedBudgetNoDoubleBookingTest`(4)；targeted **36/0F/0E/0 skipped，rc=0**。
+- **变异自证**：4 组 `改坏⇒红⇒还原⇒md5 一致⇒绿`（unitId overlap、location mismatch、整池复制、overcommit 只看当前 location）。
+- **编译/格式**：economy/app compile rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑全仓 verify/gate。
+- **仍缺**：app 测试面未迁移（McpCoverageTest/GuiApiTest/R2AssetBudgetReadoutTest 旧 `OwnershipStake`/`AssetKind.TOOL`/命令计数），`ApiViews.economyHex` 只读断言未跑；旧 `asset-scope-shared:awaiting-D4` 尚未退役；D4/R2 不能写成完整关闭。
+- **下一步**：C4b app 测试迁移（只改 app 测试/夹具），恢复 app test-compile 并 targeted `ApiViews.economyHex`/R2 readout；然后 D4-T4 复核 app readout，再决定删除旧 guard、进入 W3。
