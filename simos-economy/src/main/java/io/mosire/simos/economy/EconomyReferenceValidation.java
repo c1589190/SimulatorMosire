@@ -19,6 +19,7 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
@@ -462,6 +463,41 @@ public final class EconomyReferenceValidation {
       if (value.wagePerLaborMilli() < 0L) {
         throw new IllegalArgumentException(
             "wage-quote-negative:" + value.unit().value() + ":" + value.role().value());
+      }
+    }
+
+    // ── ★★★ D-032 W2b §2.4：逐户工资进位余数 ───────────────────────────────────────────────
+    //   值域已由 EconomyData 构造期判；此处补跨切片身份：unit 存在、role 存在且为 MONEY_WAGE。
+    for (Map.Entry<WageCarryKey, Long> entry : candidate.wageCarryRemainders().entrySet()) {
+      WageCarryKey key = entry.getKey();
+      Long carry = entry.getValue();
+      if (carry == null || carry < 0L || carry > 999L) {
+        throw new IllegalArgumentException("wage-carry-out-of-range: " + key + "=" + carry);
+      }
+      ProductionProcess instance = instances.get(key.unit());
+      if (instance == null) {
+        throw new IllegalArgumentException("wage-posting-unit-unknown:" + key.unit().value());
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(instance.plan())
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          label
+                              + " 的工资进位实例方案定义不存在: unit="
+                              + key.unit().value()
+                              + " plan="
+                              + instance.plan().value()));
+      ProductionRoleDefinition role = roleOf(plan, key.role());
+      if (role == null) {
+        throw new IllegalArgumentException("wage-posting-role-unknown:" + key.role().value());
+      }
+      if (!(role.payment() instanceof RolePayment.MoneyWage)) {
+        throw new IllegalArgumentException("wage-role-not-money:" + key.role().value());
+      }
+      if (!candidate.classes().isEmpty() && !candidate.classes().containsKey(key.worker())) {
+        throw new IllegalArgumentException("wage-worker-account-missing:" + key.worker().value());
       }
     }
   }

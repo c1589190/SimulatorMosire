@@ -72,6 +72,7 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
@@ -98,7 +99,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **三十四个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十四个组件一一对应**（铁律 5）：
+ * <p>★ **三十五个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十五个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
@@ -407,9 +408,11 @@ public record EconomyData(
     Map<ProductionUnitId, ProductionRoster> productionRosters,
     // ── ★★★ D-032 W2a（D3 §2.2/§2.6）：第 33/34 个组件 ─────────────────────────────────────
     //   33 = 候选级工资默认（实例存在前）；34 = 执行期工资岗位（实例存在后的唯一报价权威）。
-    //   空表合法；第 35 个 wageCarryRemainders 归 W2b，不在此批。
+    //   空表合法；第 35 个 wageCarryRemainders 由 W2b 追加在末尾。
     Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults,
-    Map<WagePostingKey, ProductionWagePosting> productionWagePostings)
+    Map<WagePostingKey, ProductionWagePosting> productionWagePostings,
+    // ── ★★★ D-032 W2b（D3 §2.4/§2.6）：第 35 个组件 —— 逐 (unit, role, worker) 工资进位余数（0..999）──
+    Map<WageCarryKey, Long> wageCarryRemainders)
     implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
@@ -580,7 +583,8 @@ public record EconomyData(
         Map.of(), // marketRoundStats
         Map.of(), // productionRosters
         Map.of(), // productionWageDefaults
-        Map.of()); // productionWagePostings
+        Map.of(), // productionWagePostings
+        Map.of()); // wageCarryRemainders
   }
 
   public EconomyData {
@@ -1975,6 +1979,29 @@ public record EconomyData(
       wagePostingsCopy.put(key, value);
     }
     productionWagePostings = Collections.unmodifiableMap(wagePostingsCopy); // ★ 冻在赋值处
+
+    // ── ★★★ D-032 W2b：第 35 个组件（逐户工资进位余数）形状守卫 + 冻结 ─────────────────────────
+    //   ★ 键 == 值内身份由 WageCarryKey 自身保证；本处只判 null 与值域 0..999（坏 carry 是契约故障）。
+    if (wageCarryRemainders == null) {
+      wageCarryRemainders = Map.of();
+    }
+    Map<WageCarryKey, Long> wageCarryCopy = new LinkedHashMap<>();
+    for (Map.Entry<WageCarryKey, Long> entry : wageCarryRemainders.entrySet()) {
+      WageCarryKey key = entry.getKey();
+      Long carry = entry.getValue();
+      if (key == null || carry == null) {
+        throw new IllegalArgumentException("wageCarryRemainders 的键与值都不得为 null: " + key);
+      }
+      if (carry < 0L || carry > 999L) {
+        throw new IllegalArgumentException(
+            "wage-carry-out-of-range: wageCarryRemainders 的值必须在 0..999: 键="
+                + key
+                + "，carry="
+                + carry);
+      }
+      wageCarryCopy.put(key, carry);
+    }
+    wageCarryRemainders = Collections.unmodifiableMap(wageCarryCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -2089,7 +2116,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2149,7 +2177,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2191,7 +2220,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2230,7 +2260,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   public EconomyData withLaborCommitments(
@@ -2269,7 +2300,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2308,7 +2340,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2358,7 +2391,8 @@ public record EconomyData(
         value,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2406,7 +2440,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2449,7 +2484,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2487,7 +2523,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2526,7 +2563,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   // ★★ B2b：`withProcesses` 已删（units 组件退役）。实例的唯一权威在 production，写它一律经契约口
@@ -2570,7 +2608,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   // ★★★ B5（§13.15.2 裁定十八）：`withModes(Map<ProductionModeId, ProductionModeDefinitionView>)`
@@ -2614,7 +2653,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2653,7 +2693,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2702,7 +2743,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2742,7 +2784,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2782,7 +2825,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2821,7 +2865,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2860,7 +2905,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
@@ -2899,7 +2945,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2942,7 +2989,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -2986,7 +3034,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3030,7 +3079,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3074,7 +3124,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3118,7 +3169,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3163,7 +3215,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   // ★★ B2b：`withOutputQuantityOverrides` 已删（GM 产出覆盖的唯一权威在 production）。
@@ -3217,7 +3270,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3261,7 +3315,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3309,7 +3364,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3373,7 +3429,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3422,7 +3479,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /**
@@ -3471,7 +3529,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */
@@ -3586,7 +3645,8 @@ public record EconomyData(
         marketRoundStats,
         value,
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 写入/替换一个 unit 的名册（键 == 值内 unit 由构造期再判一次）。 */
@@ -3647,7 +3707,8 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         value,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 整份替换执行期工资岗位表；空表 = 清空。 */
@@ -3687,6 +3748,58 @@ public record EconomyData(
         marketRoundStats,
         productionRosters,
         productionWageDefaults,
+        value,
+        wageCarryRemainders);
+  }
+
+  // ── ★★★ D-032 W2b：第 35 个组件的逐组件写口 ──────────────────────────────────────────────
+
+  /** 整份替换逐户工资进位余数表；空表 = 全部为 0。 */
+  public EconomyData withWageCarryRemainders(Map<WageCarryKey, Long> value) {
+    Objects.requireNonNull(value, "value（清除全部工资进位请用空表）");
+    return new EconomyData(
+        meta,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        demands,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats,
+        productionRosters,
+        productionWageDefaults,
+        productionWagePostings,
         value);
+  }
+
+  /** 写入/替换一条 carry（0 的条目仍保留；清空用整表写口）。 */
+  public EconomyData withWageCarry(WageCarryKey key, long carry) {
+    Objects.requireNonNull(key, "key");
+    LinkedHashMap<WageCarryKey, Long> next = new LinkedHashMap<>(wageCarryRemainders);
+    next.put(key, carry);
+    return withWageCarryRemainders(next);
   }
 }

@@ -43,6 +43,7 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -126,6 +127,9 @@ public final class EconomyStateBuilder {
 
   /** ★★★ D-032 W2a：执行期工资岗位工作副本（U20/W2b 后续写；未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<WagePostingKey, ProductionWagePosting> productionWagePostings;
+
+  /** ★★★ D-032 W2b：逐 (unit, role, worker) 工资进位余数工作副本（未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<WageCarryKey, Long> wageCarryRemainders;
 
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -447,6 +451,19 @@ public final class EconomyStateBuilder {
     return productionWagePostings;
   }
 
+  /** ★★★ D-032 W2b：工资进位余数的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<WageCarryKey, Long> wageCarryRemaindersOrBase() {
+    return wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders;
+  }
+
+  /** ★★★ D-032 W2b：工资进位余数工作副本（惰性物化）。 */
+  public LinkedHashMap<WageCarryKey, Long> wageCarryRemainders() {
+    if (wageCarryRemainders == null) {
+      wageCarryRemainders = new LinkedHashMap<>(base.wageCarryRemainders());
+    }
+    return wageCarryRemainders;
+  }
+
   /** 在途批次表工作副本。 */
   public LinkedHashMap<ShipmentId, ShipmentBatch> shipments() {
     if (shipments == null) {
@@ -659,6 +676,9 @@ public final class EconomyStateBuilder {
         // ★★★ D-032 W2a：工资 default/posting 两维；未物化 ⇒ 原样复用 base。漏了它们 =
         //   任意一次 advance 都会把 GM 设过的候选默认/执行岗位静默抹掉。
         productionWageDefaults == null ? base.productionWageDefaults() : productionWageDefaults,
-        productionWagePostings == null ? base.productionWagePostings() : productionWagePostings);
+        productionWagePostings == null ? base.productionWagePostings() : productionWagePostings,
+        // ★★★ D-032 W2b：进位余数工作副本；未物化 ⇒ 原样复用 base。漏了它 = 任意一次 advance
+        //   都会把已累计的工资进位静默抹掉（逐 tick floor 会永久丢掉不足 1 毫的余数）。
+        wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders);
   }
 }

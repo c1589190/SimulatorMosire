@@ -328,6 +328,9 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     productionWagePostings
         .entrySet()
         .removeIf(entry -> removedUnits.contains(entry.getKey().unit()));
+    Map<io.mosire.simos.economy.model.WageCarryKey, Long> wageCarryRemainders =
+        new LinkedHashMap<>(base.wageCarryRemainders());
+    wageCarryRemainders.keySet().removeIf(entry -> removedUnits.contains(entry.unit()));
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
     Map<HouseholdId, HouseholdEconomy> householdEconomies =
@@ -496,7 +499,8 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.productionRosters(),
         // ★★★ D-032 W2a：候选默认按 removedIndustries 摘过；执行期岗位按 removedUnits 摘过。
         productionWageDefaults,
-        productionWagePostings);
+        productionWagePostings,
+        wageCarryRemainders);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

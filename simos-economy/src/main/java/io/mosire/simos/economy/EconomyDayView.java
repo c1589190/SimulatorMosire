@@ -31,6 +31,7 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -178,6 +179,14 @@ public interface EconomyDayView {
    * <p>已存在实例的唯一实际报价权威；空表合法。{@code EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
    */
   default Map<WagePostingKey, ProductionWagePosting> productionWagePostings() {
+    return Map.of();
+  }
+
+  /**
+   * ★★★ <b>D-032 W2b：逐 {@code (unit, role, worker)} 工资进位余数（0..999）</b>。空表 = 全部为 0； {@code
+   * EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
+   */
+  default Map<WageCarryKey, Long> wageCarryRemainders() {
     return Map.of();
   }
 

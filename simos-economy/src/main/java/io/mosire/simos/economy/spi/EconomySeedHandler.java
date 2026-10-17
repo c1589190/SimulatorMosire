@@ -259,7 +259,8 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★★ D-032 W2a：候选 default / 执行期 posting 同样按 append 口径合并；漏了它们 =
             //   一次按格补种会把已设的工资默认/岗位静默抹掉。
             merge(base.productionWageDefaults(), seeded.productionWageDefaults()),
-            merge(base.productionWagePostings(), seeded.productionWagePostings()));
+            merge(base.productionWagePostings(), seeded.productionWagePostings()),
+            merge(base.wageCarryRemainders(), seeded.wageCarryRemainders()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

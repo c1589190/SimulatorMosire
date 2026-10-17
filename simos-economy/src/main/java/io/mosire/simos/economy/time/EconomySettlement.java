@@ -69,6 +69,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRecipe;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -842,6 +843,47 @@ public final class EconomySettlement {
   //   `EconomyDayStepper`（家户账是会话状态 + 显式 runtime）或 app 协调器。
 
   /**
+   * ★★★ <b>D3 §4.7/§7.2 B2：W2b 边界预检</b>。
+   *
+   * <p>W3 尚未接通时，只要存在 {@code MONEY_WAGE} 角色（或已持久化的工资 posting），真实 {@code settleOneDayInto}
+   * 必须在任何消费/抽料/匹配写回/进度/经验/实际劳动写入前整 tick 具名拒绝 {@code
+   * wage-settlement-not-implemented}；不得留下任何半状态。dry-run/只读匹配不走本方法。
+   */
+  private static void rejectMoneyWageTickUntilWageSettlement(
+      EconomySession session, EconomyDayView dayView, long day) {
+    if (!dayView.productionWagePostings().isEmpty()) {
+      rejectWageSettlement(day, "persisted-production-wage-postings");
+    }
+    for (ProductionProcess unit : session.sheet().units().values()) {
+      Optional<IndustryDefinitionView> definition = dayView.definitions().industry(unit.industry());
+      if (definition.isEmpty()) {
+        continue; // 坏定义由既有守卫具名拒绝；B2 不猜
+      }
+      for (var role : definition.get().roles()) {
+        if (role.payment() instanceof RolePayment.MoneyWage) {
+          rejectWageSettlement(
+              day, "money-wage-role:" + unit.id().value() + ":" + role.id().value());
+        }
+      }
+    }
+  }
+
+  private static void rejectWageSettlement(long day, String detail) {
+    EventLog.channel(EconomyLog.settlement())
+        .info(
+            LogEvent.of(
+                "WAGE_SETTLEMENT_NOT_IMPLEMENTED",
+                EconomyLogSource.ECONOMY_SETTLEMENT,
+                "day",
+                day,
+                "reason",
+                "wage-settlement-not-implemented",
+                "detail",
+                detail));
+    throw new IllegalStateException("wage-settlement-not-implemented: " + detail);
+  }
+
+  /**
    * ★★ <b>结算一天（S1 完整入口，单线程退化路径）</b>：等价于传 {@link EconomyParallelism#singleThreaded()} 的 R2 重载 ——
    * 保留给旧调用方/测试，分区与提交序与并行路径共用同一套（见下一个重载）。
    */
@@ -1046,6 +1088,9 @@ public final class EconomySettlement {
     //     而 base 是段首快照 —— 段内第 2 天起再读 base 就是读"上一天以前的旧世界"（这正是路径效应的根因）。
     //   ★ 为什么不是"构造时把表拍进字段"：工作副本是惰性物化的，拍快照会在它物化的那一刻变成过期引用。
     EconomyDayView dayView = new WorkingDayView(session.sheet());
+    // ── ★★★ D-032 D3 §4.7/§7.2（B2）：W3 未接时含 MONEY_WAGE 角色的真实 tick 必须整 tick 拒绝 ───────
+    //   位置钉死：在任何消费/抽料/劳动匹配写回/进度/经验/实际劳动写入之前；日志只是读数，不写状态。
+    rejectMoneyWageTickUntilWageSettlement(session, dayView, day);
     // ★★★ R2（2026-10-11，控制方裁定）：**组合根注入的 Z7b 集合原样照收** —— 分类只发生在**一处**：
     //   {@code MarketRound.householdMarketRole}（国库户 ⇒ 只按授权下单；其余单位户 ⇒ 只买不卖；其余 ⇒ 普通家户）。
     //   ★ 改前这里有第二处分类：`unitExclusionsMinusGovernmentTreasuries`（把"是政府国库户"的单位户从集合里摘出来）。

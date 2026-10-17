@@ -28,6 +28,7 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageDefaultKey;
 import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
@@ -187,5 +188,10 @@ public final class EconomyBoundaryView implements EconomyDayView {
   @Override
   public Map<WagePostingKey, ProductionWagePosting> productionWagePostings() {
     return data.productionWagePostings();
+  }
+
+  @Override
+  public Map<WageCarryKey, Long> wageCarryRemainders() {
+    return data.wageCarryRemainders();
   }
 }

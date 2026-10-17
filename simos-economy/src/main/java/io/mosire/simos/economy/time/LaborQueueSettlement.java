@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -20,8 +21,11 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -102,7 +106,8 @@ final class LaborQueueSettlement {
         composition,
         entryTrialUnits,
         null,
-        new MarketArbitragePlan.Collector());
+        new MarketArbitragePlan.Collector(),
+        Map.of());
   }
 
   /**
@@ -142,7 +147,57 @@ final class LaborQueueSettlement {
       Set<ProductionUnitId> entryTrialUnits,
       AccountSession accounts,
       MarketArbitragePlan.Collector arbitrageCollector) {
+    return apply(
+        session, index, day, composition, entryTrialUnits, accounts, arbitrageCollector, Map.of());
+  }
+
+  /**
+   * ★★★ <b>D3 §2.5/§4.4：带只读 SurvivalOutlook 的显式入口</b>（dry-run/读口/后续 W4 装配用）。
+   *
+   * <p>{@code survivalOutlooks} 只提供 {@code idleEligible} 资格；{@code idleChosen} 仍由本类的 {@link
+   * LaborQueueBook#plan} 按 {@code SURVIVAL_IDLE_POLICY} 写。真实 {@code settleOneDayInto} 在 W3 未接时 由 B2
+   * 预检整 tick 拒绝，因此本入口只服务只读验证。
+   */
+  static LaborQueueReport apply(
+      EconomySession session,
+      SettlementIndex index,
+      long day,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<ProductionUnitId> entryTrialUnits,
+      AccountSession accounts,
+      MarketArbitragePlan.Collector arbitrageCollector,
+      Map<HouseholdId, SurvivalOutlook> survivalOutlooks) {
+    return apply(
+        session,
+        index,
+        day,
+        composition,
+        entryTrialUnits,
+        accounts,
+        arbitrageCollector,
+        survivalOutlooks,
+        new UnavailableWagePayableInventoryLookup());
+  }
+
+  /**
+   * ★★★ <b>D3 §6.9：带唯一工资可支付库存读口的 dry-run 入口</b>。
+   *
+   * <p>D4-I 前只能注入 {@link UnavailableWagePayableInventoryLookup}；empty 必须具名为 {@code
+   * wage-inventory-scope-unavailable}，不得当 0、不得回退账户余额。真实 tick 仍由 B2 整 tick 拒绝。
+   */
+  static LaborQueueReport apply(
+      EconomySession session,
+      SettlementIndex index,
+      long day,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<ProductionUnitId> entryTrialUnits,
+      AccountSession accounts,
+      MarketArbitragePlan.Collector arbitrageCollector,
+      Map<HouseholdId, SurvivalOutlook> survivalOutlooks,
+      WagePayableInventoryLookup wagePayableInventoryLookup) {
     Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(survivalOutlooks, "survivalOutlooks");
+    Objects.requireNonNull(wagePayableInventoryLookup, "wagePayableInventoryLookup");
     Objects.requireNonNull(index, "index");
     Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(entryTrialUnits, "entryTrialUnits");
@@ -159,6 +214,14 @@ final class LaborQueueSettlement {
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
     LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
+    ProductionWageBook wageBook = new ProductionWageBook(new WorkingDayView(session.sheet()));
+    SurvivalIdlePolicy survivalIdlePolicy =
+        SurvivalIdlePolicy.fromPolicyValue(
+            session
+                .sheet()
+                .base()
+                .economyPolicyOf(
+                    io.mosire.simos.economy.model.EconomyPolicyKey.SURVIVAL_IDLE_POLICY));
 
     // ── 组织 → unit（mode 读数的来源；旧 unit 没有组织 ⇒ Optional.empty）────────────────────
     Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess = new LinkedHashMap<>();
@@ -324,28 +387,95 @@ final class LaborQueueSettlement {
         Optional<ProductionModeId> modeId = modeIdOf(unit, enterpriseByProcess);
         String rankModeKey = modeId.map(ProductionModeId::value).orElse(unit.modeKey());
         if (slot.moneyWage()) {
-          // ★★★ D-032 D2 §6.5 / §8.2：C2 不持久化工资报价 ⇒ 默认 lookup 永远 empty。
-          //   含工资角色的候选必须具名 `wage-quote-missing:<role>`（不得按 0 报价，也不得伪造 worker）。
+          // ★★★ D-032 W2b：执行期只读本 tick 的 ProductionWagePosting 快照；缺 = 具名，0 = 合法。
+          Optional<ProductionWagePosting> posting =
+              Optional.ofNullable(
+                  wageBook.postingSnapshot().get(new WagePostingKey(unit.id(), slot.role())));
           Optional<io.mosire.simos.economy.model.ProductionWageQuote> quote =
-              session.wageQuoteLookup().quoteFor(unit.id(), slot.role());
-          String wageReason =
-              quote.isEmpty()
-                  ? "wage-quote-missing:" + slot.role().value()
-                  : "wage-target-missing:" + slot.role().value();
+              wageBook.quoteFor(unit.id(), slot.role());
+          if (quote.isEmpty() || posting.isEmpty()) {
+            offers.add(
+                new LaborQueueBook.Offer(
+                    unit.id(),
+                    slot.role(),
+                    modeId,
+                    rankModeKey,
+                    0L,
+                    false,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    "wage-quote-missing:" + slot.role().value()));
+            continue;
+          }
+          if (posting.get().targetLaborMilliPerDay() <= 0L) {
+            offers.add(
+                new LaborQueueBook.Offer(
+                    unit.id(),
+                    slot.role(),
+                    modeId,
+                    rankModeKey,
+                    0L,
+                    true,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    "wage-target-missing:" + slot.role().value()));
+            continue;
+          }
+          String skip =
+              moneyWageCandidateSkipReason(
+                  session,
+                  index,
+                  accounts,
+                  unit,
+                  slot.household(),
+                  enterpriseByProcess,
+                  productionRosters,
+                  wagePayableInventoryLookup);
+          if (skip != null) {
+            offers.add(
+                new LaborQueueBook.Offer(
+                    unit.id(),
+                    slot.role(),
+                    modeId,
+                    rankModeKey,
+                    0L,
+                    true,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    skip));
+            continue;
+          }
+          long wagePerThousandLaborMilli = quote.get().wagePerLaborMilli();
+          long yieldScaled;
+          try {
+            yieldScaled = Math.multiplyExact(wagePerThousandLaborMilli, 1000L);
+          } catch (ArithmeticException overflow) {
+            throw new IllegalStateException(
+                "wage-quote-overflow: " + unit.id().value() + "|" + slot.role().value(), overflow);
+          }
           offers.add(
               new LaborQueueBook.Offer(
                   unit.id(),
                   slot.role(),
                   modeId,
                   rankModeKey,
+                  posting.get().targetLaborMilliPerDay(),
+                  true,
+                  wagePerThousandLaborMilli,
                   0L,
-                  false,
-                  0L,
-                  0L,
-                  0L,
-                  0L,
-                  0L,
-                  wageReason));
+                  wagePerThousandLaborMilli,
+                  1000L,
+                  yieldScaled,
+                  ""));
           continue;
         }
         LaborQueueBook.Offer offer =
@@ -431,7 +561,32 @@ final class LaborQueueSettlement {
             laborCommitments, householdLaborCommitments, queuedSlots, budget, govServiceLaborMilli);
         preserved = budget;
       }
-      LaborQueueBook.Plan desired = LaborQueueBook.plan(household, budget, preserved, offers);
+      SurvivalOutlook outlook = survivalOutlooks.get(household);
+      IdleOption idleOption =
+          outlook == null ? IdleOption.notEligible() : IdleOption.of(outlook, survivalIdlePolicy);
+      LaborQueueBook.Plan desired =
+          LaborQueueBook.plan(household, budget, preserved, offers, idleOption);
+      if (outlook != null && EconomyLog.population().isDebugEnabled()) {
+        EventLog.channel(EconomyLog.population())
+            .debug(
+                LogEvent.of(
+                    "SURVIVAL_OUTLOOK",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "day",
+                    day,
+                    "household",
+                    household.value(),
+                    "nextTick",
+                    outlook.nextTickNeed().forTick(),
+                    "bottleneckCoveragePerMille",
+                    outlook.bestAchievableCoverage().bottleneckCoveragePerMille(),
+                    "idleEligible",
+                    outlook.idleEligible(),
+                    "idleChosen",
+                    desired.idleChosen(),
+                    "reason",
+                    outlook.reason().stableReason()));
+      }
       works.add(
           new HouseholdWork(
               household,
@@ -533,6 +688,7 @@ final class LaborQueueSettlement {
               work.preserved(),
               allocated,
               Math.max(0L, work.budget() - allocated),
+              work.desired().idleChosen(),
               decisions);
       applyPlan(
           laborCommitments,
@@ -908,6 +1064,127 @@ final class LaborQueueSettlement {
 
   // ── 候选 / 批次 / 市场 ─────────────────────────────────────────────────────────────────
 
+  /**
+   * ★★★ W2b 候选级 skip：同市场区、非 organizer 自雇、账户存在、payer 单位置预检通过。 返回 null = 通过；否则是 D3 §4.5/§6.9.1 的稳定
+   * reason。
+   */
+  private static String moneyWageCandidateSkipReason(
+      EconomySession session,
+      SettlementIndex index,
+      AccountSession accounts,
+      ProductionProcess unit,
+      HouseholdId worker,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      WagePayableInventoryLookup wagePayableInventoryLookup) {
+    HouseholdId organizer =
+        organizerHouseholdOf(unit, index, enterpriseByProcess, productionRosters);
+    if (organizer == null) {
+      return "wage-payer-account-missing:" + worker.value();
+    }
+    if (worker.equals(organizer)) {
+      return "wage-organizer-self-employment:" + worker.value();
+    }
+    if (!sameMarketZone(session, unit, worker)) {
+      return "wage-worker-location-mismatch:" + worker.value();
+    }
+    if (accounts == null
+        || (!accounts.householdMoney().containsKey(worker)
+            && !accounts.householdGoods().containsKey(worker))) {
+      return "wage-worker-account-missing:" + worker.value();
+    }
+    ActorRef payer = HouseholdActors.of(organizer);
+    WagePayerLocationSnapshot snapshot =
+        new WagePayerLocationSnapshot(
+            payer,
+            existingSettlementLocationsOf(session, payer, enterpriseByProcess, productionRosters),
+            Set.of(unit.location()));
+    if (WagePayerLocationPrecheck.standard().evaluate(snapshot)
+        == WagePayerLocationDecision.MULTIPLE_LOCATIONS) {
+      return "wage-payer-location-unsupported:" + worker.value();
+    }
+    if (wagePayableInventoryLookup.payableInventory(payer, unit.location()).isEmpty()) {
+      return "wage-inventory-scope-unavailable:" + worker.value();
+    }
+    return null;
+  }
+
+  /** organizer 的唯一来源：组织表优先；无名册/组织的旧 unit 退回 operator 家户。 */
+  private static HouseholdId organizerHouseholdOf(
+      ProductionProcess unit,
+      SettlementIndex index,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
+    ProductionEnterprise enterprise = enterpriseByProcess.get(unit.id());
+    if (enterprise != null) {
+      HouseholdId household = index.householdByActor().get(enterprise.organizer());
+      if (household != null) {
+        return household;
+      }
+    }
+    ProductionRoster roster = productionRosters.get(unit.id());
+    if (roster != null) {
+      return roster.organizerHousehold();
+    }
+    return index.householdByActor().get(unit.operator());
+  }
+
+  /** payer 当前 revision 已有 unit/roster/posting 地点（与候选地点合并后交给唯一预检）。 */
+  private static Set<ProductionLocation> existingSettlementLocationsOf(
+      EconomySession session,
+      ActorRef payer,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
+    Set<ProductionLocation> locations = new LinkedHashSet<>();
+    for (ProductionProcess unit : session.sheet().units().values()) {
+      if (payer.equals(unit.operator())) {
+        locations.add(unit.location());
+        continue;
+      }
+      ProductionEnterprise enterprise = enterpriseByProcess.get(unit.id());
+      if (enterprise != null && payer.equals(enterprise.organizer())) {
+        locations.add(unit.location());
+      }
+      ProductionRoster roster = productionRosters.get(unit.id());
+      if (roster != null && payer.equals(HouseholdActors.of(roster.organizerHousehold()))) {
+        locations.add(unit.location());
+      }
+    }
+    // postings 的 settlement location 已由上面"payer 的 unit/组织/名册"覆盖；不得把**全世界的**
+    // posting 地点都并进来 —— 那会伪造 MULTIPLE_LOCATIONS（payer 级预检的集合必须是该 payer 的）。
+    return locations;
+  }
+
+  /** W2b 首期只允许同一 MarketZoneId 的本地招募；无法确定区（派生市场/缺区表）⇒ 具名 skip。 */
+  private static boolean sameMarketZone(
+      EconomySession session, ProductionProcess unit, HouseholdId worker) {
+    HouseholdEconomy household = session.sheet().householdEconomiesOrBase().get(worker);
+    if (household == null) {
+      return false;
+    }
+    io.mosire.simos.economy.api.id.MarketZoneId unitZone =
+        zoneOfHex(session, unit.location().value());
+    io.mosire.simos.economy.api.id.MarketZoneId workerZone =
+        zoneOfHex(session, household.view().hex().toString());
+    return unitZone != null && unitZone.equals(workerZone);
+  }
+
+  private static io.mosire.simos.economy.api.id.MarketZoneId zoneOfHex(
+      EconomySession session, String hexText) {
+    HexCoord hex;
+    try {
+      hex = HexCoord.parse(hexText);
+    } catch (RuntimeException bad) {
+      return null;
+    }
+    for (var entry : session.sheet().base().marketZones().entrySet()) {
+      if (entry.getValue().hexes().contains(hex)) {
+        return entry.getKey();
+      }
+    }
+    return null;
+  }
+
   /** 该 unit 归哪些家户（operator、组织的 organizer/laborSources、既有配额的 household）——稳定去重。 */
   private static Set<HouseholdId> candidateHouseholdsOf(
       ProductionProcess unit,
@@ -981,33 +1258,16 @@ final class LaborQueueSettlement {
         if (roleDefinition == null) {
           continue; // 未知角色由 EconomyReferenceValidation 拒绝；这里不猜
         }
-        boolean moneyWage =
-            roleDefinition.payment()
-                instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage;
-        if (moneyWage) {
-          slots.add(new LaborSlot(participant.household(), unit, participant.role(), true));
-          continue;
+        if (roleDefinition.payment()
+            instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage) {
+          continue; // MONEY_WAGE 不读 roster worker；下面按同市场区自动展开本地家户候选。
         }
         if (participant.plannedLaborMilliPerDay() > 0L
             && householdEconomies.containsKey(participant.household())) {
           slots.add(new LaborSlot(participant.household(), unit, participant.role(), false));
         }
       }
-      // MONEY_WAGE 角色可无 participant：C2 仍要为它发一条具名缺报价读数（organizer 作为读口主体）。
-      for (io.mosire.simos.production.contract.ProductionRoleDefinition roleDefinition :
-          plan.get().roles()) {
-        if (!(roleDefinition.payment()
-            instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage)) {
-          continue;
-        }
-        boolean covered = slots.stream().anyMatch(slot -> slot.role().equals(roleDefinition.id()));
-        if (!covered) {
-          HouseholdId organizerHousehold = roster.organizerHousehold();
-          if (householdEconomies.containsKey(organizerHousehold)) {
-            slots.add(new LaborSlot(organizerHousehold, unit, roleDefinition.id(), true));
-          }
-        }
-      }
+      addMoneyWageSlots(unit, plan.get(), householdEconomies, slots);
       return slots;
     }
     if (plan.get().roles().size() != 1) {
@@ -1015,14 +1275,39 @@ final class LaborQueueSettlement {
     }
     io.mosire.simos.production.contract.ProductionRoleDefinition onlyRole =
         plan.get().roles().get(0);
-    boolean moneyWage =
-        onlyRole.payment() instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage;
+    if (onlyRole.payment() instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage) {
+      addMoneyWageSlots(unit, plan.get(), householdEconomies, slots);
+      return slots;
+    }
     for (HouseholdId household :
         candidateHouseholdsOf(
             unit, householdEconomies, enterpriseByProcess, allocationHouseholdsByActivity, index)) {
-      slots.add(new LaborSlot(household, unit, onlyRole.id(), moneyWage));
+      slots.add(new LaborSlot(household, unit, onlyRole.id(), false));
     }
     return slots;
+  }
+
+  /**
+   * ★★★ W2b：MONEY_WAGE 角色的候选面 = 本地家户全体，资格/同区/账户/自雇/payer 单位置在 offer 构造处逐条 skip。 roster 的工资
+   * participant 不构成第二份 worker 权威。
+   */
+  private static void addMoneyWageSlots(
+      ProductionProcess unit,
+      IndustryDefinitionView plan,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      List<LaborSlot> slots) {
+    List<HouseholdId> households = new ArrayList<>(householdEconomies.keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    for (io.mosire.simos.production.contract.ProductionRoleDefinition roleDefinition :
+        plan.roles()) {
+      if (!(roleDefinition.payment()
+          instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage)) {
+        continue;
+      }
+      for (HouseholdId household : households) {
+        slots.add(new LaborSlot(household, unit, roleDefinition.id(), true));
+      }
+    }
   }
 
   /** 该 unit 的组织 mode；没有组织 ⇒ 空（旧 unit 的并列键退回 {@code modeKey}）。 */

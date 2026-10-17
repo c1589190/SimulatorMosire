@@ -44,7 +44,7 @@ import java.util.Optional;
  *      key              = ⌊netMilli × 1_000_000 ÷ max(1, perScaleLabor)⌋   （百万分之一毫钱 / 单位劳动）
  * ③ 从 key 最高的开始填，填满它的最大可吸收量，再填下一个，直到家户预算用完或没有可吸收的生产方式
  *      并列按 modeId（无 mode 的旧 unit 按 modeKey）/ unit id 字典序升序
- *      key < {@link #MIN_NET_PER_LABOR_SCALED}（预期 ≤ 0）不参与利润队列（首版默认，可调参数）
+ *      不再设经济盈利预过滤：零/负收益 offer 保留在队列中，由带符号 yield 排序并具名读出
  * </pre>
  *
  * <p>★★★ <b>D-032 §15.12 A（R1）：「物理量」一律取自 {@link ProductionRuntime#probe}，economy 只保留估值</b> ——
@@ -100,14 +100,6 @@ public final class LaborQueueBook {
   public static final long PER_LABOR_SCALE = 1_000_000L;
 
   /**
-   * ★ 首版可调参数：预期单位劳动净收益低于它就**不参与利润队列**（0 = 白干、负 = 亏本）。
-   *
-   * <p>★ 为什么用 1 而不是 0：{@code scaledRatio} 是整数除法，0 恰好能被"刚好保本"与"略负"同时命中；取 1 让 "预期 ≤ 0
-   * 不参与"这条线在整数网格上不歧义（计划 §13.5："预期 ≤ 0 的生产方式不参与利润队列（首版默认，可写注释留调参）"）。
-   */
-  public static final long MIN_NET_PER_LABOR_SCALED = 1L;
-
-  /**
    * ★★ <b>D-032 §15.12 A：喂给 {@link ProductionRuntime#probe} 的参考基准规模</b>（合成占用/投入/劳动都按它放大， probe
    * 结果再除回"每 1 基准规模"）。
    *
@@ -147,9 +139,9 @@ public final class LaborQueueBook {
       }
     }
 
-    /** 本 offer 进利润队列吗（有可吸收量且预期 > 0）。 */
+    /** 本 offer 进利润队列吗（D3 §4.3：只判物理可吸收量，不保留经济盈利门槛）。 */
     public boolean queueable() {
-      return maxAbsorbableLaborMilli > 0L && netPerLaborScaled >= MIN_NET_PER_LABOR_SCALED;
+      return maxAbsorbableLaborMilli > 0L;
     }
   }
 
@@ -172,6 +164,7 @@ public final class LaborQueueBook {
       long preservedLaborMilli,
       long allocatedLaborMilli,
       long idleLaborMilli,
+      boolean idleChosen,
       List<Decision> decisions) {
 
     public Plan {
@@ -191,6 +184,24 @@ public final class LaborQueueBook {
                 + idleLaborMilli);
       }
       decisions = List.copyOf(decisions);
+    }
+
+    /** 兼容 W2b 之前的五参构造：idleChosen 缺省 false。 */
+    public Plan(
+        HouseholdId household,
+        long budgetMilli,
+        long preservedLaborMilli,
+        long allocatedLaborMilli,
+        long idleLaborMilli,
+        List<Decision> decisions) {
+      this(
+          household,
+          budgetMilli,
+          preservedLaborMilli,
+          allocatedLaborMilli,
+          idleLaborMilli,
+          false,
+          decisions);
     }
 
     /** 给出某个 unit 的排队决定；没有该 unit 的 offer ⇒ 空。 */
@@ -512,8 +523,24 @@ public final class LaborQueueBook {
    */
   public static Plan plan(
       HouseholdId household, long budgetMilli, long preservedLaborMilli, List<Offer> offers) {
+    return plan(household, budgetMilli, preservedLaborMilli, offers, IdleOption.notEligible());
+  }
+
+  /**
+   * ★★★ <b>D3 §4.4：把 IdleOption 作为独立控制候选接入唯一排序器</b>。
+   *
+   * <p>idle 不进入 {@code offers}、不经过 {@code queueable()/maxAbsorbable}，只在生产 offer 排序之后由策略显式决定胜负：
+   * 默认策略下资格成立即放弃可自由分配劳动并记 {@code IDLE_CHOSEN}；BEST_EFFORT 下正收益先做，只有零/负收益工作可由 idle 击败。
+   */
+  public static Plan plan(
+      HouseholdId household,
+      long budgetMilli,
+      long preservedLaborMilli,
+      List<Offer> offers,
+      IdleOption idleOption) {
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(offers, "offers");
+    Objects.requireNonNull(idleOption, "idleOption");
     long budget = Math.max(0L, budgetMilli);
     long preserved = Math.max(0L, preservedLaborMilli);
     if (preserved > budget) {
@@ -525,33 +552,98 @@ public final class LaborQueueBook {
               + budget);
     }
     long remaining = budget - preserved;
-    // ★★ §4.3.4：排序走**唯一排序器** {@link ActivitySelector}（收益率 desc → activityId asc → unitId asc）。
-    //   它不改入参序、每个 offer 只投影一次键 ⇒ 同一份输入必然给出同一个队列（不变量 I7/E6）。
     List<Offer> sorted = ActivitySelector.rank(new ArrayList<>(offers), LaborQueueBook::rankKeyOf);
     List<Decision> decisions = new ArrayList<>();
+    boolean idleChosen = false;
     int rank = 0;
+
+    if (idleOption.idleEligible()
+        && idleOption.policy() == SurvivalIdlePolicy.PREFER_IDLE_WHEN_SUBSISTENCE_UNMET) {
+      idleChosen = remaining > 0L;
+      for (Offer offer : sorted) {
+        rank++;
+        String outcome = nonGrantableOutcome(offer);
+        if (outcome == null && offer.netPerLaborScaled() > 0L) {
+          outcome = "IDLE_FOREGONE_POSITIVE";
+        } else if (outcome == null) {
+          outcome = "IDLE_CHOSEN";
+        }
+        decisions.add(new Decision(rank, offer, 0L, outcome));
+      }
+      return new Plan(household, budget, preserved, preserved, remaining, idleChosen, decisions);
+    }
+
+    if (idleOption.idleEligible() && idleOption.policy() == SurvivalIdlePolicy.BEST_EFFORT_WORK) {
+      // 第一遍只给正收益且物理可吸收的 offer；有正收益被授予时 idle 不再胜出，剩余劳动记 UNALLOCATED_LABOR。
+      boolean grantedPositive = false;
+      Map<Offer, Long> grants = new LinkedHashMap<>();
+      for (Offer offer : sorted) {
+        if (nonGrantableOutcome(offer) != null || offer.netPerLaborScaled() <= 0L) {
+          continue;
+        }
+        if (remaining <= 0L) {
+          break;
+        }
+        long grant = Math.min(remaining, offer.maxAbsorbableLaborMilli());
+        if (grant > 0L) {
+          grants.put(offer, grant);
+          remaining -= grant;
+          grantedPositive = true;
+        }
+      }
+      idleChosen = !grantedPositive && remaining > 0L;
+      rank = 0;
+      for (Offer offer : sorted) {
+        rank++;
+        String outcome = nonGrantableOutcome(offer);
+        long grant = grants.getOrDefault(offer, 0L);
+        if (outcome == null) {
+          if (grant > 0L) {
+            outcome = "GRANTED";
+          } else if (offer.netPerLaborScaled() <= 0L) {
+            outcome = idleChosen ? "IDLE_CHOSEN" : "UNALLOCATED_LABOR";
+          } else {
+            outcome = "UNALLOCATED_LABOR";
+          }
+        }
+        decisions.add(new Decision(rank, offer, grant, outcome));
+      }
+      long allocated = budget - remaining;
+      return new Plan(household, budget, preserved, allocated, remaining, idleChosen, decisions);
+    }
+
+    // idleEligible=false：不构造可胜出的 idle；零/负收益工作也可按唯一排序器被选择，并具名读数。
     for (Offer offer : sorted) {
       rank++;
       String outcome;
       long grant = 0L;
-      if (offer.maxAbsorbableLaborMilli() <= 0L) {
-        outcome =
-            offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)
-                ? "REJECTED:" + offer.reason()
-                : "IDLE_MAX_ABSORBABLE_ZERO";
-      } else if (offer.netPerLaborScaled() < MIN_NET_PER_LABOR_SCALED) {
-        outcome = "IDLE_EXPECTED_NON_POSITIVE";
+      String nonGrantable = nonGrantableOutcome(offer);
+      if (nonGrantable != null) {
+        outcome = nonGrantable;
       } else if (remaining <= 0L) {
-        outcome = "IDLE_BUDGET_EXHAUSTED";
+        outcome = "UNALLOCATED_LABOR";
       } else {
         grant = Math.min(remaining, offer.maxAbsorbableLaborMilli());
         remaining -= grant;
-        outcome = "GRANTED";
+        outcome =
+            offer.netPerLaborScaled() > 0L
+                ? "GRANTED"
+                : offer.netPerLaborScaled() == 0L ? "GRANTED_ZERO" : "GRANTED_NEGATIVE";
       }
       decisions.add(new Decision(rank, offer, grant, outcome));
     }
     long allocated = budget - remaining;
-    return new Plan(household, budget, preserved, allocated, remaining, decisions);
+    return new Plan(household, budget, preserved, allocated, remaining, false, decisions);
+  }
+
+  /** 物理/资格不可授予的稳定读数；可进入策略比较时返回 null。 */
+  private static String nonGrantableOutcome(Offer offer) {
+    if (offer.maxAbsorbableLaborMilli() <= 0L) {
+      return offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)
+          ? "REJECTED:" + offer.reason()
+          : "IDLE_MAX_ABSORBABLE_ZERO";
+    }
+    return null;
   }
 
   /**
@@ -571,8 +663,9 @@ public final class LaborQueueBook {
 
   /** 把一条生产 offer 投影成唯一排序器的键（唯一投影点；套利活动自带自己的键）。 */
   static ActivitySelector.RankKey rankKeyOf(Offer offer) {
-    return new ActivitySelector.RankKey(
-        offer.netPerLaborScaled(), offer.rankModeKey(), offer.unitId().value());
+    String activityId = "unit:" + offer.unitId().value() + "/role:" + offer.role().value();
+    String tieId = offer.unitId().value() + "/" + offer.role().value();
+    return new ActivitySelector.RankKey(offer.netPerLaborScaled(), activityId, tieId);
   }
 
   // ── ③ 最大可吸收劳动的唯一算式 ─────────────────────────────────────────────────────────────
@@ -757,7 +850,9 @@ public final class LaborQueueBook {
         .append(" allocated=")
         .append(plan.allocatedLaborMilli())
         .append(" idle=")
-        .append(plan.idleLaborMilli());
+        .append(plan.idleLaborMilli())
+        .append(" idleChosen=")
+        .append(plan.idleChosen());
     for (Decision decision : plan.decisions()) {
       text.append(" | ").append(describe(decision));
     }
@@ -783,7 +878,7 @@ public final class LaborQueueBook {
    *       <b>不拿"估不出价"当"不赚钱"</b>，既有配额原样保留。
    * </ul>
    *
-   * <p>三类都原样保留既有配额；只有"确实定过价、且预期 ≤ 0"的活动才会被排队判为空缺（IDLE_EXPECTED_NON_POSITIVE）。
+   * <p>三类都原样保留既有配额；零/负收益不再被本判据预过滤，而是保留在队列中由 idle 策略显式比较。
    *
    * <p>★★ <b>C7 的边界</b>：本判据只看 unit 的 offer（是否缺价格/配方/劳动），**看不见承诺的 {@code kind}**。 {@code
    * GOV_SERVICE} 承诺"不进队列、不可缩"的保护在 {@code LaborQueueSettlement} 按 {@code kind} 直接判定 （带 GOV_SERVICE

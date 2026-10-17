@@ -68,7 +68,16 @@ public enum EconomyPolicyKey {
   MIGRATION_SPEED_CAP_PER_MILLE("转业速度上限（‰/轮·户）", 100L, 0L, 1_000L),
 
   /** 转业速度斜率（‰/收益差比）：收益差驱动的转业速度斜率。现值 = 100。 */
-  PROFIT_GAP_SPEED_SLOPE_PER_MILLE("转业速度斜率（‰/收益差比）", 100L, 0L, 1_000L);
+  PROFIT_GAP_SPEED_SLOPE_PER_MILLE("转业速度斜率（‰/收益差比）", 100L, 0L, 1_000L),
+
+  /**
+   * ★★★ <b>D-032 U23-b / D3 §4.4：生存不足时的 idle 选择策略</b>。
+   *
+   * <p>值域只有两档：{@code 1 = PREFER_IDLE_WHEN_SUBSISTENCE_UNMET}（缺省；资格成立即可自由分配剩余劳动记 {@code
+   * IDLE_CHOSEN}）；{@code 0 = BEST_EFFORT_WORK}（正收益工作先选，零/负收益工作才可由 idle 击败）。 它不是 per-household
+   * {@code allowIdle} 开关，也不恢复 {@code householdLaborChoices} 状态。
+   */
+  SURVIVAL_IDLE_POLICY("生存不足 idle 策略（1=优先 idle，0=尽力工作）", 1L, 0L, 1L);
 
   private final String description;
   private final long defaultValue;

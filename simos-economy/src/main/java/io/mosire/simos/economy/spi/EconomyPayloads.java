@@ -655,7 +655,8 @@ final class EconomyPayloads {
         Map.of(),
         productionRosters,
         wageDefaults,
-        wagePostings);
+        wagePostings,
+        Map.of());
   }
 
   /**
