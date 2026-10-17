@@ -237,6 +237,13 @@ public final class LaborQueueBook {
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(session, "session");
 
+    // ★★ R2：共享资产 scope 的 unit 在预计阶段就具名不可行，绝不进入劳动分配/利润队列。
+    Optional<String> assetRejection = index.assetRejectionOf(unit.id());
+    if (assetRejection.isPresent()) {
+      return new Offer(
+          unit.id(), modeId, rankModeKey, 0L, false, 0L, 0L, 0L, 0L, 0L, assetRejection.get());
+    }
+
     long capacityScale =
         ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
     long inputScale = Long.MAX_VALUE;
@@ -501,7 +508,10 @@ public final class LaborQueueBook {
       String outcome;
       long grant = 0L;
       if (offer.maxAbsorbableLaborMilli() <= 0L) {
-        outcome = "IDLE_MAX_ABSORBABLE_ZERO";
+        outcome =
+            offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)
+                ? "REJECTED:" + offer.reason()
+                : "IDLE_MAX_ABSORBABLE_ZERO";
       } else if (offer.netPerLaborScaled() < MIN_NET_PER_LABOR_SCALED) {
         outcome = "IDLE_EXPECTED_NON_POSITIVE";
       } else if (remaining <= 0L) {
@@ -588,6 +598,10 @@ public final class LaborQueueBook {
       SettlementIndex index,
       OperatorCondition condition,
       EconomySession session) {
+    // ★★ R2：共享 scope 的 unit 不可吸收劳动（预计/排队同一份资产预算）。
+    if (index.assetRejectionOf(unit.id()).isPresent()) {
+      return 0L;
+    }
     long laborPerUnit = industry.recipe().laborPerUnit();
     if (laborPerUnit <= 0L) {
       return 0L;
@@ -749,6 +763,11 @@ public final class LaborQueueBook {
    * 承诺的 activity 根本不进候选 / 不计入比例缩），不经过本方法。
    */
   public static boolean isPreservedByQueue(Offer offer) {
+    // ★★ R2：共享 scope 的具名拒绝**不是**“估不出价 ⇒ 原样保留”；它必须进队列并以 maxAbsorbable=0
+    //   清掉既有劳动配额，最后在执行段再次 fail-closed。
+    if (offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)) {
+      return false;
+    }
     return offer.reason().startsWith("LABOR_FREE")
         || offer.reason().startsWith("NO_RECIPE_OUTPUT")
         || !offer.outputPriced();

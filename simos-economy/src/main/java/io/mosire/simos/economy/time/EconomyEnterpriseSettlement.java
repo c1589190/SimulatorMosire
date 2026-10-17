@@ -526,6 +526,18 @@ final class EconomyEnterpriseSettlement {
           REASON_UNIT_ID_TAKEN + ":" + unitId.value());
     }
 
+    // ★★ R2：同一 (industry, operator) 已有别的 unit（旧档 opaque id / 坏路径）⇒ 不得自动创建第二个同 scope
+    //   unit 并复制整池资产。显式种子若已形成共享 scope，后续预计/执行会按同一拒绝词 fail-closed。
+    if (AssetBudgetBook.hasUnitInScope(units, industryId, organizer)) {
+      return shortageResult(
+          orgId,
+          mode,
+          positionId,
+          household,
+          shareIdsOf(industryId, organizer, assetShares),
+          AssetBudgetBook.SHARED_SCOPE_REJECTION);
+    }
+
     // ── 路由 ②：计划一条新 unit（只读；任一路不满 ⇒ 具名 SHORTAGE）──────────────────────────
     ProductionRecipe recipe = industry.recipe();
     long disposableLabor = disposableLabor(household, householdEconomy, laborCommitments);

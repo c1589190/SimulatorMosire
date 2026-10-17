@@ -232,6 +232,8 @@ public final class MarketDemandBook {
     }
     // ★ 每次调用只取一次活视图（AccountSession 的视图是协调器线程专用；本方法在结算协调器线程里跑）。
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
+    // ★★ R2：引致投入需求与日结算/预计读同一份资产预算；共享 scope 的 unit 不按整池复制出需求。
+    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
 
     Map<HexCoord, HexCoord> regionAnchorByHex = regionAnchors(topology, markets);
     // ★ 覆盖全部会用到的 hex：家户、unit（产业 id 里的格）、市场、在途收货格、报告里的格。
@@ -270,7 +272,7 @@ public final class MarketDemandBook {
       if (industry == null) {
         continue; // 认不出模板 ⇒ 不猜配方（该 unit 的引致需求记 0；读数组件可另判 "missing-industry"）
       }
-      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, shares);
+      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, assetBudget);
       long cycles = ceilDiv(horizonDays, industry.cycleDays());
       for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
         if (input.getValue() <= 0L || scale <= 0L) {

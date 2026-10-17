@@ -41,6 +41,7 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.money.CurrencyDef;
@@ -70,6 +71,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.time.AssetBudgetBook;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.DebtCapacityBook;
@@ -1194,6 +1196,10 @@ public final class ApiViews {
       long tick,
       String readoutUnavailable) {
     Map<String, Object> view = hexCoord(coord);
+    // ★★ R2：本格的资产预算只派生一次；逐 unit 资产、共享 scope 拒绝与 unallocated 都读这一份。
+    AssetBudgetBook.AssetBudget assetBudget =
+        AssetBudgetBook.allocate(productionUnits, data.assetShares());
+    view.put("assetBudget", assetBudgetView(assetBudget));
     view.put("activated", data.meta().isPresent());
     // ★★ M2.7：把读数的坐标与窗口随视图发出去（此前读口没有 tick，读者无法判断"这个数属于哪一天"）。
     view.put("tick", tick < 0L ? null : tick);
@@ -1255,8 +1261,7 @@ public final class ApiViews {
       Map<AssetKind, Long> unitAssets = new TreeMap<>();
       Map<String, Long> cycleInputUsed = new TreeMap<>();
       for (ProductionProcess unit : units) {
-        for (Map.Entry<AssetKind, Long> asset :
-            ProductionProcessBook.usableAssets(unit, data.assetShares()).entrySet()) {
+        for (Map.Entry<AssetKind, Long> asset : assetBudget.allocationOf(unit.id()).entrySet()) {
           unitAssets.merge(asset.getKey(), asset.getValue(), Long::sum);
         }
         for (Map.Entry<CommodityId, Long> used : unit.cycleInputUsedMilli().entrySet()) {
@@ -1298,7 +1303,7 @@ public final class ApiViews {
             productionProcessView(
                 unit,
                 industry,
-                data.assetShares(),
+                assetBudget,
                 data.relations().get(unit.id()),
                 data.operatorConditions().get(unit.id())));
       }
@@ -3687,6 +3692,37 @@ public final class ApiViews {
     return keys;
   }
 
+  /** ★★ <b>R2：资产预算只读视图</b>（allocations / unallocated / rejections 一次发出；不把整池资产复制成每 unit 一份）。 */
+  private static Map<String, Object> assetBudgetView(AssetBudgetBook.AssetBudget budget) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    Map<String, Object> allocations = new TreeMap<>();
+    for (Map.Entry<ProductionUnitId, Map<AssetKind, Long>> entry :
+        budget.allocations().entrySet()) {
+      Map<String, Long> assets = new TreeMap<>();
+      for (Map.Entry<AssetKind, Long> asset : entry.getValue().entrySet()) {
+        assets.put(asset.getKey().name(), asset.getValue());
+      }
+      allocations.put(entry.getKey().value(), assets);
+    }
+    Map<String, Object> unallocated = new TreeMap<>();
+    for (Map.Entry<AssetBudgetBook.AssetScope, Map<AssetKind, Long>> entry :
+        budget.unallocated().entrySet()) {
+      Map<String, Long> assets = new TreeMap<>();
+      for (Map.Entry<AssetKind, Long> asset : entry.getValue().entrySet()) {
+        assets.put(asset.getKey().name(), asset.getValue());
+      }
+      unallocated.put(entry.getKey().industry().value() + "|" + entry.getKey().operator(), assets);
+    }
+    view.put("allocations", allocations);
+    view.put("unallocated", unallocated);
+    Map<String, String> rejections = new TreeMap<>();
+    for (Map.Entry<ProductionUnitId, String> entry : budget.rejections().entrySet()) {
+      rejections.put(entry.getKey().value(), entry.getValue());
+    }
+    view.put("rejections", rejections);
+    return view;
+  }
+
   /**
    * ★★ <b>R3B.2：一个 unit 的读口行</b>（{@code id/industry/operator/modeKey/progressDays/cycleLaborMilli/
    * cycleInputUsedMilli/assets/condition/relation}）。资产走 {@link ProductionProcessBook#usableAssets}
@@ -3695,7 +3731,7 @@ public final class ApiViews {
   private static Map<String, Object> productionProcessView(
       ProductionProcess unit,
       IndustryDefinitionView industry,
-      Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> assetShares,
+      AssetBudgetBook.AssetBudget assetBudget,
       ProductionRules relation,
       OperatorCondition condition) {
     Map<String, Object> view = new LinkedHashMap<>();
@@ -3708,11 +3744,11 @@ public final class ApiViews {
     view.put("cycleLaborMilli", unit.cycleLaborMilli());
     view.put("cycleInputUsedMilli", sortedCommodities(unit.cycleInputUsedMilli()));
     Map<String, Object> assets = new TreeMap<>();
-    for (Map.Entry<AssetKind, Long> entry :
-        ProductionProcessBook.usableAssets(unit, assetShares).entrySet()) {
+    for (Map.Entry<AssetKind, Long> entry : assetBudget.allocationOf(unit.id()).entrySet()) {
       assets.put(entry.getKey().name(), entry.getValue());
     }
     view.put("assets", assets);
+    view.put("assetRejection", assetBudget.rejectionOf(unit.id()).orElse(null));
     view.put("condition", condition == null ? null : operatorConditionView(condition));
     view.put("relation", relation == null ? null : relationView(relation));
     return view;

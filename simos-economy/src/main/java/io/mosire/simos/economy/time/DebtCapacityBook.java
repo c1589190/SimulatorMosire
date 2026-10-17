@@ -291,6 +291,45 @@ public final class DebtCapacityBook {
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
+    Objects.requireNonNull(units, "units 不得为 null");
+    Objects.requireNonNull(assetShares, "assetShares 不得为 null");
+    return capacities(
+        householdEconomies,
+        afterAllocationGrainIncome,
+        cycleToDateGrainConsumed,
+        taxPaidFromFlowRow,
+        grainStockMilliOf,
+        cycleDaysByHousehold,
+        debts,
+        units,
+        industries,
+        assetShares,
+        operatorConditions,
+        AssetBudgetBook.allocate(units, assetShares),
+        pledgeableAssetPolicyValue,
+        debtUnitValueLookup);
+  }
+
+  /**
+   * ★★ <b>R2：与日结算共用同一份资产预算的入口</b>。{@code assetBudget} 必须来自同一 revision 的 {@link
+   * AssetBudgetBook#allocate(Map, Map)}（或 {@link SettlementIndex#assetBudget()}）；共享 scope 的 unit
+   * 不产生下一轮粮投入需求。
+   */
+  public static Map<HouseholdId, DebtCapacity> capacities(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Long> afterAllocationGrainIncome,
+      Map<HouseholdId, Long> cycleToDateGrainConsumed,
+      Map<HouseholdId, Long> taxPaidFromFlowRow,
+      Function<HouseholdId, OptionalLong> grainStockMilliOf,
+      Map<HouseholdId, Long> cycleDaysByHousehold,
+      Map<DebtContractId, DebtContract> debts,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      AssetBudgetBook.AssetBudget assetBudget,
+      long pledgeableAssetPolicyValue,
+      DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(householdEconomies, "rows 不得为 null");
     Objects.requireNonNull(afterAllocationGrainIncome, "afterAllocationGrainIncome 不得为 null");
     Objects.requireNonNull(cycleToDateGrainConsumed, "cycleToDateGrainConsumed 不得为 null");
@@ -301,6 +340,7 @@ public final class DebtCapacityBook {
     Objects.requireNonNull(industries, "industries 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
     Objects.requireNonNull(operatorConditions, "operatorConditions 不得为 null");
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null");
 
     // ★ 旧调用点传 null / NO_UNIT_PRICES 时保留旧 E4b 行为：粮 unit 按 identity 计入，其它 unit 不折；生产路径显式传
     //   marketPriceLookup（走 §3.4 公式，缺 grain 价/缺单位价一律 unpriced）。
@@ -332,7 +372,7 @@ public final class DebtCapacityBook {
               key,
               unitsByOperator,
               industries,
-              assetShares,
+              assetBudget,
               operatorConditions,
               consumedGrain,
               householdEconomy.cycleNaturalNeedMilli());
@@ -411,7 +451,7 @@ public final class DebtCapacityBook {
       HouseholdId household,
       Map<ActorRef, List<ProductionProcess>> unitsByOperator,
       Map<IndustryId, IndustryDefinitionView> industries,
-      Map<AssetShareId, OwnershipStake> assetShares,
+      AssetBudgetBook.AssetBudget assetBudget,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long consumedGrain,
       long cycleNaturalNeedMilli) {
@@ -440,7 +480,7 @@ public final class DebtCapacityBook {
       }
       long scale =
           ProductionProcessBook.plannedCapacityScaleOf(
-              unit, industry, assetShares, operatorConditions.get(unit.id()));
+              unit, industry, assetBudget, operatorConditions.get(unit.id()));
       if (scale <= 0L) {
         continue;
       }

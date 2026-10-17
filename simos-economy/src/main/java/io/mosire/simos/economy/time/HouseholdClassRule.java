@@ -269,8 +269,11 @@ public final class HouseholdClassRule {
     // ── 债务：本金合计（分类只用"本金 ÷ 资产数量"这一个比值）────────────────────────────
     private final Map<HouseholdId, Long> debtPrincipal = new LinkedHashMap<>();
 
-    /** ★ R4-B.3a-perf：结算入口的只读派生索引；{@code null} = 读口/测试的旧路径（现扫 OwnershipStake）。 */
+    /** ★ R4-B.3a-perf：结算入口的只读派生索引；{@code null} = 读口/测试的无索引窄入口。 */
     private final SettlementIndex settlementIndex;
+
+    /** ★★ R2：无索引入口也从同一纯函数派生一次资产预算，不在循环里逐 unit 重扫份额。 */
+    private final AssetBudgetBook.AssetBudget assetBudget;
 
     private Index(
         Map<AssetShareId, OwnershipStake> assetShares,
@@ -281,6 +284,7 @@ public final class HouseholdClassRule {
         Map<DebtContractId, DebtContract> debts,
         SettlementIndex settlementIndex) {
       this.settlementIndex = settlementIndex;
+      this.assetBudget = AssetBudgetBook.allocate(units, assetShares);
       this.householdEconomies = new LinkedHashMap<>(householdEconomies);
       for (ProductionProcess unit : units.values()) {
         unitsByIndustryOperator
@@ -556,11 +560,14 @@ public final class HouseholdClassRule {
           settlementIndex);
     }
 
-    /** 资产汇总的唯一取值口：有结算索引走索引，旧读口/测试路径仍逐份额扫（两者同一个算式）。 */
+    /**
+     * 资产汇总的唯一取值口：有结算索引走索引；无索引读口也读本 Index 构造时一次派生的 {@link AssetBudgetBook.AssetBudget} （共享 scope
+     * 与结算路径同样具名零分配，不再各自扫描份额）。
+     */
     private Map<AssetKind, Long> usableAssetsOf(
         ProductionProcess unit, Map<AssetShareId, OwnershipStake> assetShares) {
       return settlementIndex == null
-          ? ProductionProcessBook.usableAssets(unit, assetShares)
+          ? ProductionProcessBook.usableAssets(unit, assetBudget)
           : ProductionProcessBook.usableAssets(unit, settlementIndex);
     }
 

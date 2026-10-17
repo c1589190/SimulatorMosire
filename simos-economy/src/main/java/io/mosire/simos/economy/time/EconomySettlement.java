@@ -3013,6 +3013,7 @@ public final class EconomySettlement {
               industries,
               assetShares,
               operatorConditions,
+              settlementIndex,
               debtUnitValueLookup);
       EconomyLiquidationSettlement.settle(
           session,
@@ -4252,8 +4253,17 @@ public final class EconomySettlement {
     List<ProductionUnitId> ordered = new ArrayList<>(stepUnits.keySet());
     ordered.sort(Comparator.comparing(ProductionUnitId::value));
     List<io.mosire.simos.production.contract.ProductionDayRequest.Step> steps = new ArrayList<>();
+    Map<ProductionUnitId, String> assetScopeRejections = new LinkedHashMap<>();
     for (ProductionUnitId id : ordered) {
       ProductionProcess unit = stepUnits.get(id);
+      // ★★ R2：共享资产 scope 的 unit 在构造执行步之前业务拒绝。这样 progress/经验/实际劳动/消耗/产出
+      //   一个字节都不会写；即使坏路径把它送到本方法，也不会进入 production 的 executeDay。
+      java.util.Optional<String> assetRejection = settlementIndex.assetRejectionOf(id);
+      if (assetRejection.isPresent()
+          || AssetBudgetBook.hasMultipleUnitsInScope(stepUnits, unit.industry(), unit.operator())) {
+        assetScopeRejections.put(id, assetRejection.orElse(AssetBudgetBook.SHARED_SCOPE_REJECTION));
+        continue;
+      }
       IndustryDefinitionView industry =
           session.sheet().definitions().industry(unit.industry()).orElse(null);
       if (industry == null) {
@@ -4281,7 +4291,33 @@ public final class EconomySettlement {
               finalInputs,
               io.mosire.simos.production.contract.ExternalAttributeFacts.EMPTY));
     }
-    return runtime.executeDay(new io.mosire.simos.production.contract.ProductionDayRequest(steps));
+    io.mosire.simos.production.contract.ProductionDayResult productionDay =
+        steps.isEmpty()
+            ? io.mosire.simos.production.contract.ProductionDayResult.empty()
+            : runtime.executeDay(
+                new io.mosire.simos.production.contract.ProductionDayRequest(steps));
+    if (assetScopeRejections.isEmpty()) {
+      return productionDay;
+    }
+    // ★★ R2：业务拒绝与 production 自己的业务拒绝合并，键序仍按 unit id 稳定序；回执/关账表原样保留。
+    Map<ProductionUnitId, String> mergedRejections = new LinkedHashMap<>();
+    for (ProductionUnitId id : ordered) {
+      String assetReason = assetScopeRejections.get(id);
+      if (assetReason != null) {
+        mergedRejections.put(id, assetReason);
+        continue;
+      }
+      String engineReason = productionDay.rejections().get(id);
+      if (engineReason != null) {
+        mergedRejections.put(id, engineReason);
+      }
+    }
+    return new io.mosire.simos.production.contract.ProductionDayResult(
+        productionDay.receipts(),
+        mergedRejections,
+        productionDay.closedUnitScales(),
+        productionDay.closedGrossOutput(),
+        productionDay.closedMintCandidates());
   }
 
   /** 把"逐家户 × 逐商品"的本地累加器并进全局累加器（整数加法；键序 = 首次出现序）。 */
@@ -5710,6 +5746,10 @@ public final class EconomySettlement {
       if (industry == null) {
         throw new IllegalStateException("生产单元指名的产业模板不存在（状态已被改坏）: " + unit);
       }
+      if (index.assetRejectionOf(id).isPresent()
+          || AssetBudgetBook.hasMultipleUnitsInScope(units, unit.industry(), unit.operator())) {
+        continue; // ★★ R2：共享资产 scope 的 unit 在执行前不扣任何周期投入（本日不半推进）。
+      }
       if (unit.progressDays() != 0L) {
         continue; // 只有周期的第一天扣投入
       }
@@ -6488,6 +6528,9 @@ public final class EconomySettlement {
    *
    * <p>★ M2.1 起 {@link MarketSettlement} 也算经营者的"必要生产投入"（= 本方法 × {@code inputPerUnit}），故它从 {@code
    * private} 放宽到包内可见；算法一字未改。
+   *
+   * <p>★★ <b>R2 窄入口</b>：本重载只给可证明 scope 内只有一个 unit 的夹具/无索引入口；生产日、预计、排队、执行、 app 读口、债务容量必须走 {@link
+   * SettlementIndex} 或 {@link AssetBudgetBook.AssetBudget} 版本。
    */
   static long capacityScaleOf(
       ProductionProcess unit,
@@ -6508,6 +6551,8 @@ public final class EconomySettlement {
    *
    * <p>★ 缩产/停业只影响"本周期的计划"（投入需求、劳动需求、收获规模），<b>不销毁</b> {@code capacity} / {@code OwnershipStake}：
    * 条件缺失（旧档）或状态回到 {@code ACTIVE} ⇒ 系数 1000‰ ⇒ 与旧行为逐值相同。
+   *
+   * <p>★★ <b>R2 窄入口</b>：直接扫描份额的重载只允许单 unit 夹具/无索引路径；正式生产面走索引预算版本。
    */
   static long plannedCapacityScaleOf(
       ProductionProcess unit,
@@ -6715,6 +6760,7 @@ public final class EconomySettlement {
       Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      SettlementIndex settlementIndex,
       DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup) {
     Map<HouseholdId, Long> cycleToDateIncome = new LinkedHashMap<>();
     Map<HouseholdId, Long> cycleToDateConsumed = new LinkedHashMap<>();
@@ -6745,6 +6791,7 @@ public final class EconomySettlement {
         industries,
         assetShares,
         operatorConditions,
+        settlementIndex.assetBudget(),
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
         debtUnitValueLookup);
   }

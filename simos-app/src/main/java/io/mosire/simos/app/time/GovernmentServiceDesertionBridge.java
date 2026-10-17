@@ -21,6 +21,7 @@ import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.time.AccountSession;
+import io.mosire.simos.economy.time.AssetBudgetBook;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ExpectedProfitBook;
 import io.mosire.simos.economy.time.MarketDemandBook;
@@ -820,6 +821,8 @@ public final class GovernmentServiceDesertionBridge {
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions) {
     ActorRef operator = HouseholdActors.of(household);
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
+    AssetBudgetBook.AssetBudget assetBudget =
+        AssetBudgetBook.allocate(productionUnits, economy.assetShares());
     long margin = 0L;
     for (ProductionProcess process : productionUnits.values()) {
       if (!process.operator().equals(operator)) {
@@ -834,7 +837,7 @@ public final class GovernmentServiceDesertionBridge {
       if (industry == null) {
         continue;
       }
-      long scale = ProductionProcessBook.capacityScaleOf(process, industry, economy.assetShares());
+      long scale = ProductionProcessBook.capacityScaleOf(process, industry, assetBudget);
       long capacityLabor = Math.multiplyExact(scale, industry.recipe().laborPerUnit());
       long committed = 0L;
       for (HouseholdLaborCommitment commitment : economy.allocations().values()) {

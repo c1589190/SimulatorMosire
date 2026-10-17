@@ -40,6 +40,10 @@ public final class ProductionProcessBook {
    * <p>★ <b>只按 operator 汇总</b>（不是 owner）：规模问的是"这个经营者实际能用多少"；所有权只决定收益归属（关系规则）。
    * 旧档一对一迁移（owner==operator）下两者同值，与旧 {@code IndustryDefinitionView.capacity} 逐值相等。
    *
+   * <p>★★ <b>R2 窄入口</b>：本重载直接扫描份额，只能用于<b>可证明 scope 内只有一个 unit</b> 的夹具/无索引入口。 生产日、预计、排队、执行、app
+   * 读口和债务容量必须使用 {@link SettlementIndex} 或 {@link AssetBudgetBook.AssetBudget} 版本；无法证明单 unit
+   * 时必须走索引版，不得用本方法猜。
+   *
    * @param assetShares 实物总账（键序 = 状态插入序；返回表按份额首次出现序保序）
    * @return 按资产种类汇总的数量（只含出现过的种类；无份额 ⇒ 空表）
    */
@@ -62,6 +66,14 @@ public final class ProductionProcessBook {
    */
   public static Map<AssetKind, Long> usableAssets(ProductionProcess unit, SettlementIndex index) {
     return index.usableAssetsOf(unit);
+  }
+
+  /** ★★ R2：读一次派生资产预算中该 unit 的分配表（共享 scope ⇒ 空表）。 */
+  public static Map<AssetKind, Long> usableAssets(
+      ProductionProcess unit, AssetBudgetBook.AssetBudget budget) {
+    Objects.requireNonNull(unit, "unit");
+    Objects.requireNonNull(budget, "budget");
+    return budget.allocationOf(unit.id());
   }
 
   /**
@@ -109,6 +121,12 @@ public final class ProductionProcessBook {
     return capacityScaleOf(index.usableAssetsOf(unit), industry);
   }
 
+  /** ★★ R2：产能规模读一次派生资产预算的分配表（共享 scope ⇒ 0）。 */
+  public static long capacityScaleOf(
+      ProductionProcess unit, IndustryDefinitionView industry, AssetBudgetBook.AssetBudget budget) {
+    return capacityScaleOf(usableAssets(unit, budget), industry);
+  }
+
   /**
    * ★★ <b>按 {@code (industry, operator)} 直接算产能规模</b>（E2 生产组织阶段的只读入口）：与 {@link
    * #capacityScaleOf(ProductionProcess, IndustryDefinitionView, Map)} 共用同一个私有算式；"规模 =
@@ -126,9 +144,8 @@ public final class ProductionProcessBook {
     return capacityScaleOf(usableAssets(industryId, operator, assetShares), industry);
   }
 
-  /** 产能规模的唯一算式（两个重载共用；避免“索引版”和“扫描版”各写一份）。 */
-  private static long capacityScaleOf(
-      Map<AssetKind, Long> usable, IndustryDefinitionView industry) {
+  /** 产能规模的唯一算式（各重载共用；避免“索引版”和“扫描版”各写一份）。 */
+  public static long capacityScaleOf(Map<AssetKind, Long> usable, IndustryDefinitionView industry) {
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       scale = Math.min(scale, usable.getOrDefault(entry.getKey(), 0L) / entry.getValue());
@@ -157,6 +174,18 @@ public final class ProductionProcessBook {
       SettlementIndex index,
       OperatorCondition condition) {
     return capacityScaleOf(unit, industry, index)
+        * StressPolicy.plannedScalePerMille(
+            condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
+        / 1_000L;
+  }
+
+  /** ★★ R2：计划规模读一次派生资产预算的分配表（共享 scope ⇒ 0，规划系数算式不变）。 */
+  public static long plannedCapacityScaleOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      AssetBudgetBook.AssetBudget budget,
+      OperatorCondition condition) {
+    return capacityScaleOf(unit, industry, budget)
         * StressPolicy.plannedScalePerMille(
             condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
         / 1_000L;

@@ -480,6 +480,12 @@ final class EconomyEntrySettlement {
       if (hasActiveDuplicate(actor, outputs, plan.id().value(), context)) {
         return Attempt.rejection(reject(context, household, plan, "ALREADY_ENTERED"));
       }
+      // ★★ R2：同一 (industry, operator) 已有 unit ⇒ 不自动创建第二个同 scope unit（旧档 opaque id 也要拦住）。
+      //   显式种子若已形成共享 scope，预计/执行仍按同一具名理由 fail-closed。
+      if (AssetBudgetBook.hasUnitInScope(context.tables.units, industryId, actor)) {
+        return Attempt.rejection(
+            reject(context, household, plan, AssetBudgetBook.SHARED_SCOPE_REJECTION));
+      }
       ProductionUnitId unitId = ProductionUnitId.idOf(industryId, actor);
       if (context.tables.units.containsKey(unitId)) {
         return Attempt.rejection(reject(context, household, plan, "UNIT_ID_EXISTS"));

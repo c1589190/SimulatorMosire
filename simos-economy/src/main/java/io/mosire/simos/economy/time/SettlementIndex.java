@@ -2,6 +2,8 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -21,6 +23,8 @@ import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -54,10 +58,10 @@ import java.util.Set;
  */
 final class SettlementIndex {
 
-  /** 资产聚合键：{@code ProductionProcessBook.usableAssets} 的归属判据是 (industry, operator)，不是 unit id。 */
-  private record AssetScope(IndustryId industry, ActorRef operator) {}
-
   // ── 资产生成 ─────────────────────────────────────────────────────────────────────────
+  /** ★★ R2：一次 revision 内只算一次的资产预算（单位实例/共享 scope 的唯一分配结果）。 */
+  private final AssetBudgetBook.AssetBudget assetBudget;
+
   private final Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit;
   private final Map<ProductionUnitId, Long> capacityScaleByUnit;
   private final Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess;
@@ -86,6 +90,7 @@ final class SettlementIndex {
   private final Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor;
 
   private SettlementIndex(
+      AssetBudgetBook.AssetBudget assetBudget,
       Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
       Map<ProductionUnitId, Long> capacityScaleByUnit,
       Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess,
@@ -104,6 +109,7 @@ final class SettlementIndex {
       Map<HouseholdId, List<DebtContract>> debtsByDebtor,
       Map<ActorRef, List<ProductionUnitId>> unitsByParty,
       Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor) {
+    this.assetBudget = Objects.requireNonNull(assetBudget, "assetBudget");
     this.usableAssetsByUnit = usableAssetsByUnit;
     this.capacityScaleByUnit = capacityScaleByUnit;
     this.ownershipStakeIdsByProcess = ownershipStakeIdsByProcess;
@@ -170,12 +176,16 @@ final class SettlementIndex {
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(enterprises, "organizations");
 
-    Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
+    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, assetShares);
+    logAssetBudget(assetBudget);
+    logAssetShares(assetShares, assetBudget);
+    Map<ProductionUnitId, Map<AssetKind, Long>> usable = assetBudget.allocations();
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
     Map<ProductionUnitId, List<AssetShareId>> shareIds =
         ownershipStakeIdsByProcess(units, assetShares);
     Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
+        assetBudget,
         usable,
         capacity,
         shareIds,
@@ -205,6 +215,7 @@ final class SettlementIndex {
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(laborCommitments, "allocations");
     return new SettlementIndex(
+        assetBudget,
         usableAssetsByUnit,
         capacityScaleByUnit,
         ownershipStakeIdsByProcess,
@@ -229,6 +240,7 @@ final class SettlementIndex {
   SettlementIndex withDebtContracts(Map<DebtContractId, DebtContract> debts) {
     Objects.requireNonNull(debts, "debts");
     return new SettlementIndex(
+        assetBudget,
         usableAssetsByUnit,
         capacityScaleByUnit,
         ownershipStakeIdsByProcess,
@@ -252,11 +264,25 @@ final class SettlementIndex {
   // ── 读口（一律 O(1) 查表；缺项返回空/0，与旧“无份额/无配额”口径同侧）────────────────────
 
   Map<AssetKind, Long> usableAssetsOf(ProductionProcess unit) {
-    return usableAssetsByUnit.getOrDefault(unit.id(), Map.of());
+    return assetBudget.allocationOf(unit.id());
   }
 
   Map<AssetKind, Long> usableAssetsOf(ProductionUnitId unit) {
-    return usableAssetsByUnit.getOrDefault(unit, Map.of());
+    return assetBudget.allocationOf(unit);
+  }
+
+  /** ★★ R2：该 unit 的共享 scope 业务拒绝；无拒绝 ⇒ empty（预计/排队/执行/读口同源）。 */
+  Optional<String> assetRejectionOf(ProductionUnitId unit) {
+    return assetBudget.rejectionOf(unit);
+  }
+
+  Optional<String> assetRejectionOf(ProductionProcess unit) {
+    return assetBudget.rejectionOf(unit.id());
+  }
+
+  /** ★★ R2：本 revision 的完整资产预算（共享 scope 的 unallocated/rejections 只读可见）。 */
+  AssetBudgetBook.AssetBudget assetBudget() {
+    return assetBudget;
   }
 
   Long capacityScaleOf(ProductionUnitId unit) {
@@ -345,40 +371,111 @@ final class SettlementIndex {
   // ── 构建（静态 helper；顺序口径都写在注释里）──────────────────────────────────────────
 
   /**
-   * 从 OwnershipStake 一次聚合出逐 unit 可用资产。
-   *
-   * <p>★ 一个 (industry, operator) 可以有多个 unit —— 旧 {@code usableAssets} 每次按 unit 的 (industry,
-   * operator) 现扫，故同 scope 的每个 unit 得到同一张表；这里一次算好、按 unit 各存一份。
+   * ★★ R2：共享 scope 的业务拒绝在索引建立时记 INFO（世界照常推进；每个 unit 一条具名理由）；逐 unit 分配 DEBUG； 逐作用域汇总 TRACE。日志只读到已冻结的
+   * {@code AssetBudget}，不改任何状态。
    */
-  private static Map<ProductionUnitId, Map<AssetKind, Long>> usableAssets(
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<AssetShareId, OwnershipStake> assetShares) {
-    Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
-    Map<ProductionUnitId, Map<AssetKind, Long>> raw = new LinkedHashMap<>();
-    for (ProductionProcess unit : units.values()) {
-      // ★ 每个 unit 都在表里（无份额 ⇒ 空表），与旧实现的“无份额 ⇒ 空表”逐值相同。
-      raw.put(unit.id(), new LinkedHashMap<>());
-      unitsByScope
-          .computeIfAbsent(
-              new AssetScope(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
-          .add(unit.id());
+  private static void logAssetBudget(AssetBudgetBook.AssetBudget budget) {
+    if (EconomyLog.settlement().isInfoEnabled()) {
+      for (String reason : new java.util.LinkedHashSet<>(budget.rejections().values())) {
+        long units = 0L;
+        for (String candidate : budget.rejections().values()) {
+          if (candidate.equals(reason)) {
+            units++;
+          }
+        }
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "ASSET_SCOPE_REJECTED",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "phase",
+                    "asset-budget-build",
+                    "reason",
+                    reason,
+                    "units",
+                    units));
+      }
+      for (Map.Entry<ProductionUnitId, String> rejection : budget.rejections().entrySet()) {
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "ASSET_SCOPE_REJECTED_UNIT",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "phase",
+                    "asset-budget-build",
+                    "unit",
+                    rejection.getKey().value(),
+                    "reason",
+                    rejection.getValue()));
+      }
+    }
+    if (EconomyLog.settlement().isDebugEnabled()) {
+      for (Map.Entry<ProductionUnitId, Map<AssetKind, Long>> allocation :
+          budget.allocations().entrySet()) {
+        EventLog.channel(EconomyLog.settlement())
+            .debug(
+                LogEvent.of(
+                    "ASSET_BUDGET_ALLOCATED",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "phase",
+                    "asset-budget-build",
+                    "unit",
+                    allocation.getKey().value(),
+                    "assets",
+                    allocation.getValue(),
+                    "rejected",
+                    budget.rejections().containsKey(allocation.getKey())));
+      }
+    }
+    if (EconomyLog.trace().isTraceEnabled()) {
+      for (Map.Entry<AssetBudgetBook.AssetScope, Map<AssetKind, Long>> entry :
+          budget.unallocated().entrySet()) {
+        EventLog.channel(EconomyLog.trace())
+            .trace(
+                LogEvent.of(
+                    "ASSET_BUDGET_UNALLOCATED",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "phase",
+                    "asset-budget-build",
+                    "industry",
+                    entry.getKey().industry().value(),
+                    "operator",
+                    entry.getKey().operator(),
+                    "assets",
+                    entry.getValue()));
+      }
+    }
+  }
+
+  /** ★★ R2：TRACE 逐份额记录它进入 allocations 还是 unallocated；只读、不影响状态。 */
+  private static void logAssetShares(
+      Map<AssetShareId, OwnershipStake> assetShares, AssetBudgetBook.AssetBudget assetBudget) {
+    if (!EconomyLog.trace().isTraceEnabled()) {
+      return;
     }
     for (OwnershipStake share : assetShares.values()) {
-      List<ProductionUnitId> scoped =
-          unitsByScope.get(new AssetScope(share.industry(), share.operator()));
-      if (scoped == null) {
-        continue; // 没有 unit 用这个 (industry, operator) ⇒ 旧实现也不会命中任何 unit
-      }
-      for (ProductionUnitId id : scoped) {
-        raw.get(id).merge(share.asset(), share.quantity(), Math::addExact);
-      }
+      AssetBudgetBook.AssetScope scope =
+          new AssetBudgetBook.AssetScope(share.industry(), share.operator());
+      EventLog.channel(EconomyLog.trace())
+          .trace(
+              LogEvent.of(
+                  "ASSET_SHARE_BUDGETED",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "phase",
+                  "asset-budget-build",
+                  "share",
+                  share.id().value(),
+                  "industry",
+                  share.industry().value(),
+                  "operator",
+                  share.operator(),
+                  "asset",
+                  share.asset().name(),
+                  "quantity",
+                  share.quantity(),
+                  "unallocated",
+                  assetBudget.unallocated().containsKey(scope)));
     }
-    Map<ProductionUnitId, Map<AssetKind, Long>> frozen = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, Map<AssetKind, Long>> entry : raw.entrySet()) {
-      frozen.put(
-          entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
-    }
-    return Collections.unmodifiableMap(frozen);
   }
 
   /**
@@ -390,18 +487,19 @@ final class SettlementIndex {
   private static Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess(
       Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, OwnershipStake> assetShares) {
-    Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
+    Map<AssetBudgetBook.AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
     Map<ProductionUnitId, List<AssetShareId>> raw = new LinkedHashMap<>();
     for (ProductionProcess unit : units.values()) {
       raw.put(unit.id(), new ArrayList<>());
       unitsByScope
           .computeIfAbsent(
-              new AssetScope(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
+              new AssetBudgetBook.AssetScope(unit.industry(), unit.operator()),
+              ignored -> new ArrayList<>())
           .add(unit.id());
     }
     for (OwnershipStake share : assetShares.values()) {
       List<ProductionUnitId> scoped =
-          unitsByScope.get(new AssetScope(share.industry(), share.operator()));
+          unitsByScope.get(new AssetBudgetBook.AssetScope(share.industry(), share.operator()));
       if (scoped == null) {
         continue;
       }
