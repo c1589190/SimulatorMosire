@@ -659,6 +659,38 @@ class DecisionAgentRunnerTest {
   // ── 权限：白名单外的工具调不动 ───────────────────────────────────────────────────
 
   /**
+   * ★★ **I6（2026-10-17 AgentLib 0.2.1 重写批新增判据）：每轮规则提醒只在内存窗口里，不落库。**
+   *
+   * <p>旧实现把提醒 {@code history.add(...)} 进内存列表（不 append 到 conversations）⇒ 落库里没有它；新实现把它作为第 1 轮 {@code
+   * turnInput} 交给库的 {@code LlmRoundTrip}（写回**窗口**）⇒ 同样不落库。两条路都必须满足"请求里有、库里没有"。
+   *
+   * <p>★ 判别力（变异实测）：把提醒改走 {@code conversations.append(...)} ⇒ 本用例当场红；把提醒从 turnInput 里去掉 ⇒
+   * 上一行「请求里有」的断言当场红。
+   */
+  @Test
+  void theRoundNoticeIsNeverPersisted() {
+    llm.enqueue(LlmResponse.text("第一轮"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+    llm.enqueue(LlmResponse.text("第二轮"));
+    runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
+
+    // ① 提醒**在请求里**（每轮都有：第二轮请求最后一条 user 就是它）
+    List<LlmMessage> secondRequest = llm.requests().get(1).messages();
+    assertThat(roles(secondRequest)).containsExactly("system", "user", "assistant", "user");
+    String notice = textOf(secondRequest.get(secondRequest.size() - 1));
+    assertThat(notice).as("每轮规则提醒的正文不该是空串").isNotBlank();
+    // ② 但它**不在落库的历史里**（两轮跑完都不在）
+    assertThat(
+            conversations.load(conversationId()).stream()
+                .map(DecisionAgentRunnerTest::textOf)
+                .anyMatch(notice::equals))
+        .as("落库的历史里不得出现每轮规则提醒（它只活在内存窗口里）")
+        .isFalse();
+  }
+
+  // ── 权限：白名单外的工具调不动 ───────────────────────────────────────────────────
+
+  /**
    * ★★ **白名单外的工具 ⇒ 拒，且不留 revision**。这里把注册表换成 **GM 桶**（里面**有** {@code simos.command.submit}） ⇒
    * 工具**存在**，"找不到工具"这条理由不成立，被拒只可能因为**权限组白名单**没放它（J3/J9 的同一条链）。
    */

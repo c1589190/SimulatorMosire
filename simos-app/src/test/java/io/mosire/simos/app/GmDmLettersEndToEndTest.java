@@ -186,8 +186,8 @@ class GmDmLettersEndToEndTest {
    * ★★ <b>N1：DM 调 {@code simos.gm.message.send} ⇒ 具名拒、世界零变化</b>（不在决策人可达面）。
    *
    * <p>★★ <b>实测与设计书 §6.1 N1 的预测不同（以实测为准；判据强度不降反升）</b>：设计书预测码是 {@code PERMISSION_DENIED}，<b>实际是
-   * {@code TOOL_NOT_FOUND}</b>。机制：{@code gm.message.send} 的 {@code roles()={GM}} ⇒ 它<b>不进决策人桶</b> ⇒
-   * 决策人那个 {@code ToolRegistry} 里根本没有这条工具 ⇒ 在 {@code ToolExecutionGuard}
+   * {@code TOOL_NOT_FOUND}</b>。机制：{@code gm.message.send} 的 {@code toolRoles()={GM}} ⇒
+   * 它<b>不进决策人桶</b> ⇒ 决策人那个 {@code ToolRegistry} 里根本没有这条工具 ⇒ 在 {@code ToolExecutionGuard}
    * 的<b>查表阶段</b>就被拒（比白名单/资源断言更早一层）。 ★ 为什么这更严：{@code PERMISSION_DENIED} 是"工具在你这、但你不许用"；{@code
    * TOOL_NOT_FOUND} 是"这条工具压根没发给你" —— 模型连它的名字都看不见，<b>没有可绕的路径</b>。 ★ 如实记：本条的码按<b>实测</b>写死（{@code
    * TOOL_NOT_FOUND}），并把"桶归属"这一机制侧判据同时钉住；台账 §7 单列这处偏差。

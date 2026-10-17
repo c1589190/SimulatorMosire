@@ -556,8 +556,8 @@ public final class SimosToolSource implements ToolSource {
   /**
    * 角色表里的「两桶共享」（U2：doc 系列在<b>指定工作区</b>的情况下给 DM 自用）。
    *
-   * <p>★ 与各工具自己的 {@code roles()} <b>同集</b>（{@code {DM, GM}}）；<b>顺序无语义</b>（{@code Set.of} 本就无序 ——
-   * 这里的元素序只是与多数派 {@code roles()} 的拼法对齐，让读代码的人一眼看出是同一个集合，D1 / 设计书 §3.3）。
+   * <p>★ 与各工具自己的 {@code toolRoles()} <b>同集</b>（{@code {DM, GM}}）；<b>顺序无语义</b>（{@code Set.of} 本就无序
+   * —— 这里的元素序只是与多数派 {@code toolRoles()} 的拼法对齐，让读代码的人一眼看出是同一个集合，D1 / 设计书 §3.3）。
    */
   private static final Set<ToolRole> ROLES_GM_DM = Set.of(ToolRole.DM, ToolRole.GM);
 
@@ -1216,7 +1216,7 @@ public final class SimosToolSource implements ToolSource {
     built.addAll(adaptExternal(DocsTools.all(ExternalWorkspaceHost.registry()), role));
     built.addAll(adaptExternal(WorkspaceTools.all(ExternalWorkspaceHost.registry()), role));
     // ★★ 2026-10-12 B4（设计书 §4.4 / 不变量 I-G3）：**装配完成处一次性校验本桶** —— 桶里每条工具都必须实现
-    //   SimosTool 且 roles() 含本桶角色；不一致**当场抛**（fail-closed），不是静默少注册、也不是 warn。
+    //   SimosTool 且 toolRoles() 含本桶角色；不一致**当场抛**（fail-closed），不是静默少注册、也不是 warn。
     //   ★ 双桶那一半（"标了 DM 却没注册进 DM 桶"）单桶看不见，由 Shell 用 ToolRoleAudit.requireFaces 校验
     //     （那里同时拿得到两桶）。★ 校验是 O(n) 一次，不是每条工具建的时候各查一遍。
     ToolRoleAudit.requireFace(built, role == Role.GM ? ToolRole.GM : ToolRole.DM);
@@ -1278,8 +1278,8 @@ public final class SimosToolSource implements ToolSource {
   /**
    * 把一批外来工具里<b>本桶该有的那些</b>逐条适配（{@link SimosToolAdapter}）：角色与 gate 都<b>逐条查表</b>。
    *
-   * <p>★ <b>分桶口径</b>：角色表里声明了本桶角色的才进本桶（{@code {GM}} 的只进 GM 桶、{@code {GM, DM}} 的两桶都进）。 这条判据是"roles()
-   * 是唯一拼写点"（I1）的直接后果——装配面不再手抄第二份"哪条进哪个桶"。
+   * <p>★ <b>分桶口径</b>：角色表里声明了本桶角色的才进本桶（{@code {GM}} 的只进 GM 桶、{@code {GM, DM}} 的两桶都进）。
+   * 这条判据是"toolRoles() 是唯一拼写点"（I1）的直接后果——装配面不再手抄第二份"哪条进哪个桶"。
    *
    * <p>★ 名字与其余七条行为由适配器<b>逐字委托</b>（I3）；本方法只补"角色"和"审批"这两件外来工具面没有的事。 ★ 查不到角色 ⇒ {@link #rolesOf}
    * 当场抛（I6）。★ 他们的工具实例每次 {@code all(...)} 都是新的，但都指向同一份注册表。
@@ -1702,7 +1702,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的窄写。
     //   ★★ 2026-10-15 批 L ②（设计书 §2 N2「乙 + 合并甲」/ §2.1）：原来"GM 一条 + 决策人一条"的两对**各自合并成一条**
-    //   —— roles()={DM, GM} ⇒ 在**两桶同名两处注册**（与 IssueDirectiveTool / SubmitVerdictTool 同制：GM 侧走
+    //   —— toolRoles()={DM, GM} ⇒ 在**两桶同名两处注册**（与 IssueDirectiveTool / SubmitVerdictTool 同制：GM 侧走
     //   GmAutoApproveGate、决策人侧走既有审批链）；目标解析按调用者身份分支（DM ⇒ 身份派生 + 署名判定；GM ⇒ 显式点名），
     //   分支判据与 GovToolSupport.resolveGov 逐字同形。下面 5 条 = 3 条 ga.* + 2 条 simos.gov.*。
     //   工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 ga（2026-10-14 批次 F 由 sd 改名）。──
@@ -1834,11 +1834,11 @@ public final class SimosToolSource implements ToolSource {
    * io.mosire.simos.ga.spi.DecisionProposable}（目录按 {@code instanceof} 派生，本方法不写任何名单语义）。
    *
    * <p>★ <b>顺序 = 内容</b>：与历史目录的成员序逐条一致（unit/social 三条旧的 + 批 3b 的九条 {@code simos.gov.*}
-   * 类2），便于与既往证据对读。★ 这 16 条**全部** {@code roles()} 含 DM：前 7 条是 2026-10-15 用户裁定「甲」补的 DM 标签
+   * 类2），便于与既往证据对读。★ 这 16 条**全部** {@code toolRoles()} 含 DM：前 7 条是 2026-10-15 用户裁定「甲」补的 DM 标签
    * （它们本来就是决策人的核心动作：造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调），后 9 条是批 3b 进目录的类2 世界写。
    *
-   * <p>★ <b>为什么前 7 条也必须进决策人桶</b>：{@code ToolRoleAudit.requireFaces} 把「桶 ⇔ {@code roles()}」双向钉死 ——
-   * 声明了 DM 却不注册进决策人桶 = 装配期当场抛。★ 注册进桶**不会**让 DM 绕过 GM：它们的 {@code gate()} 全是 {@code Ask} ⇒ 自动成**类2
+   * <p>★ <b>为什么前 7 条也必须进决策人桶</b>：{@code ToolRoleAudit.requireFaces} 把「桶 ⇔ {@code toolRoles()}」双向钉死
+   * —— 声明了 DM 却不注册进决策人桶 = 装配期当场抛。★ 注册进桶**不会**让 DM 绕过 GM：它们的 {@code gate()} 全是 {@code Ask} ⇒ 自动成**类2
    * {@code DM_APPROVAL}**（直写停在待批等 GM 点头；或走 {@code simos.ga.packet.propose} 由 GM 统一批）。
    *
    * <p>★ <b>依赖</b>：五类接缝束都在本方法里现建（窄写口 / 窄读口 / unit 五口 / gov 七口）——与两桶的装配同形， 不引入第二份适配器实现。
@@ -1908,8 +1908,8 @@ public final class SimosToolSource implements ToolSource {
    * simos.gov.recordDiplomaticEvent}（决策人调用时参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 = 调用者所属
    * GOV，身份派生；收款方由既有审批链把关）。
    *
-   * <p>★★ <b>2026-10-15 批 L ②</b>：两条外交写与 {@link #addGmWrites} 里的**同名工具是同一批类**（{@code roles()={DM,
-   * GM}} + {@code Ask(SENSITIVE)} ⇒ 类2）——GM 面显式点名、决策人面身份派生，差别只在审批链（G-4 的口径）。
+   * <p>★★ <b>2026-10-15 批 L ②</b>：两条外交写与 {@link #addGmWrites} 里的**同名工具是同一批类**（{@code
+   * toolRoles()={DM, GM}} + {@code Ask(SENSITIVE)} ⇒ 类2）——GM 面显式点名、决策人面身份派生，差别只在审批链（G-4 的口径）。
    *
    * <p>★ **无** `ga.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
    * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `ga.IssueDirective`（spec §八.2 的 D2
@@ -1938,7 +1938,7 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D5（2026-10-02 / D-003、D-005、R5、R6）：决策人侧的三条新增窄写——
     //   外交关系边（from 必须是调用者 Nation）、外交事件（participants 必须含调用者 Nation）、
     //   "给 XXX 政府钱"（付款人 = 调用者所属 GOV，身份派生；任意收款 GOV 由既有审批链把关）。
-    //   **桶**（本方法）就是 **权限组白名单**的来源——{@code Shell} 从本桶派生工具名，{@code roles()} 是唯一声明。
+    //   **桶**（本方法）就是 **权限组白名单**的来源——{@code Shell} 从本桶派生工具名，{@code toolRoles()} 是唯一声明。
     // ★★ 2026-10-12 乙收尾：署名判定要问"调用者以谁的名义"⇒ 注入归属读口（端口在 ga-spi、实现住 app，
     //   它同时服务决策人运行流的身份消息）。
     built.add(
@@ -1981,7 +1981,7 @@ public final class SimosToolSource implements ToolSource {
     built.addAll(proposable);
     // ★★ D2（2026-10-22 决策包计划）+ 2026-10-14 批 B（设计书 §3.2/§3.3）决策族定型：**七件套**
     //   propose / revise / drop / intent / confirm / reopen / my。
-    //   **只在决策人桶**；白名单即由该桶派生（roles() 是唯一声明）。
+    //   **只在决策人桶**；白名单即由该桶派生（toolRoles() 是唯一声明）。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；confirm/intent/reopen 走 own-packet 围栏。
     //   ★ 权限：写口六条全 gate=ALLOW（类3 DM_FREE）—— 决策表达**零世界效果**（不变量 I1：只写自己的 sd
     //     包/INFO 覆盖层），真正的闸门在 GM 侧（gm.packet.decide / mergedPlan.* / packet.execute 本批一处不放松）；
@@ -2122,7 +2122,7 @@ public final class SimosToolSource implements ToolSource {
         new SocialHouseholdsTool(query, calendarService, mapId),
         // ★★ Z3c-2（2026-10-23）：GOV 行政运行只读读口（GM + 该 GOV 决策人；决策人视野收窄到自己 GOV）。
         //   四桶共享（不标 GmOnlyRead）；资源断言 = unit:<govId> + 座位 map/social/actor；
-        //   白名单即由该桶派生（{@code roles()} 是唯一声明）。
+        //   白名单即由该桶派生（{@code toolRoles()} 是唯一声明）。
         new GovInfoTool(gov, mapId),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。

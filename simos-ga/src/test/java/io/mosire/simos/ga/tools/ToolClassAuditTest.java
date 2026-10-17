@@ -24,10 +24,10 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>{@link ToolClassAudit} 的判类语义 + 负向路径</b>（2026-10-15 批 3a 的测试面；设计书 {@code
  * 2026-10-15-tool-three-categories.md} §3.1 口径 / §3.2 审计 / §6 不变量 C2）。
  *
- * <p>★ <b>本类钉的是"合成工具面"上的规则</b>：三格判据（{@code roles()} × {@code gate()} 的**实得档**）、判不出类 ⇒ 装配期抛、{@code
- * gate()} 抛 ⇒ 包装但**保留原 cause**、{@code Partition} 的三份清单**真不可变**。 <b>真装配面</b>（194 条工具的三格计数
- * 140/17/37、类2 具名 17 条、逐条"分类 ⇔ 真 gate()"）由 {@code simos-app} 的 {@code ToolClassAuditAssemblyTest} 钉
- * —— 本类**不**重复那些数字（真装配夹具在 app 侧，本模块看不见）。
+ * <p>★ <b>本类钉的是"合成工具面"上的规则</b>：三格判据（{@code toolRoles()} × {@code gate()} 的**实得档**）、判不出类 ⇒
+ * 装配期抛、{@code gate()} 抛 ⇒ 包装但**保留原 cause**、{@code Partition} 的三份清单**真不可变**。 <b>真装配面</b>（194
+ * 条工具的三格计数 140/17/37、类2 具名 17 条、逐条"分类 ⇔ 真 gate()"）由 {@code simos-app} 的 {@code
+ * ToolClassAuditAssemblyTest} 钉 —— 本类**不**重复那些数字（真装配夹具在 app 侧，本模块看不见）。
  *
  * <p>★ <b>为什么用合成夹具</b>：这些判据的坏法都是"某条**特定的**坏声明悄悄过了"——真工具面里造不出它们（生产代码冻结， 也没有一条真工具是坏的），只能自己造。★
  * 每个负向用例都带<b>正向对照</b>（同一形状的合法工具不抛），否则"抛了"可能只是夹具本身坏了。
@@ -37,7 +37,7 @@ class ToolClassAuditTest {
   // ────────────────────────── ① §3.1 三格判据（正向） ──────────────────────────
 
   /**
-   * ★★ <b>类1 = {@code roles() == {GM}}，且 {@code gate()} <b>根本不参与判定</b></b>（设计书 §3.1 类1 行）。
+   * ★★ <b>类1 = {@code toolRoles() == {GM}}，且 {@code gate()} <b>根本不参与判定</b></b>（设计书 §3.1 类1 行）。
    *
    * <p>★ <b>判据怎么造才打得准</b>：给这条 {@code {GM}} 工具配一个<b>一调就炸</b>的 {@code gate()}。若审计判类1 时读了 {@code
    * gate()}，它会当场抛（{@link #PROBE_EXPLOSION}）；不抛 + 落类1 ⇒ 证明"类1 的 gate 不参与判定"。
@@ -63,7 +63,7 @@ class ToolClassAuditTest {
   }
 
   /**
-   * ★★ <b>类2 = {@code roles()} 含 DM 且 {@code gate()} 实得 {@code Ask}</b>，且 {@code {DM}} 与 {@code
+   * ★★ <b>类2 = {@code toolRoles()} 含 DM 且 {@code gate()} 实得 {@code Ask}</b>，且 {@code {DM}} 与 {@code
    * {DM,GM}} 在**分类这一维等价**</b>。
    *
    * <p>★ <b>这条就是用户原话的可执行形态</b>（2026-10-15 逐字）：「GMDM都能做那肯定是DM的需审批明命令啊」⇒ 「两者都能用」+「要问人」= DM
@@ -86,7 +86,7 @@ class ToolClassAuditTest {
   }
 
   /**
-   * ★ <b>类3 = {@code roles()} 含 DM 且 {@code gate()} 实得 {@code ALLOW}（<b>或无 {@code gate()} 覆写 =
+   * ★ <b>类3 = {@code toolRoles()} 含 DM 且 {@code gate()} 实得 {@code ALLOW}（<b>或无 {@code gate()} 覆写 =
    * 读口</b>）</b>。
    *
    * <p>★ 第三种形态（不覆写 {@code gate()}）单列：它走的不是"显式 ALLOW"，而是 {@code AgentTool.gate()} 的**接口缺省** ——
@@ -114,23 +114,23 @@ class ToolClassAuditTest {
   // ────────────────────────── ② 判不出类 ⇒ 装配期抛（负向，A4） ──────────────────────────
 
   /**
-   * ★★ <b>A4 负向：{@code roles()} 判不出 ⇒ 装配期当场抛 {@link IllegalStateException}，报文含工具名与原因</b>。
+   * ★★ <b>A4 负向：{@code toolRoles()} 判不出 ⇒ 装配期当场抛 {@link IllegalStateException}，报文含工具名与原因</b>。
    *
-   * <p>覆盖三条"取不到「属于谁」"的路径：{@code roles() = 空集}（= 谁都看不见）、{@code roles() = null}、以及 <b>根本不是 {@link
-   * SimosTool}</b>（忘了声明 {@code roles()} 的原生 {@code AgentTool}）。
+   * <p>覆盖三条"取不到「属于谁」"的路径：{@code toolRoles() = 空集}（= 谁都看不见）、{@code toolRoles() = null}、以及 <b>根本不是
+   * {@link SimosTool}</b>（忘了声明 {@code toolRoles()} 的原生 {@code AgentTool}）。
    */
   @Test
   void unclassifiableRolesThrowAtAssemblyWithToolNameAndReason() {
     // ① 空集：契约说"空集 = 谁都看不见 = 装配故障"（SimosTool#roles 的类注）
     assertThatThrownBy(() -> ToolClassAudit.requireClasses(List.of(emptyRolesTool()), List.of()))
-        .as("★ A4：roles() = 空集 ⇒ 判不出类 ⇒ 装配期当场抛")
+        .as("★ A4：toolRoles() = 空集 ⇒ 判不出类 ⇒ 装配期当场抛")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("fake.emptyRoles")
         .hasMessageContaining("空集");
 
     // ② null
     assertThatThrownBy(() -> ToolClassAudit.requireClasses(List.of(nullRolesTool()), List.of()))
-        .as("★ A4：roles() = null ⇒ 判不出类 ⇒ 装配期当场抛")
+        .as("★ A4：toolRoles() = null ⇒ 判不出类 ⇒ 装配期当场抛")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("fake.nullRoles")
         .hasMessageContaining("null");
@@ -142,12 +142,12 @@ class ToolClassAuditTest {
                 ToolClassAudit.requireClasses(
                     List.of(FakeTool.of("fake.unknownRole", unknownRole, ToolGate.ALLOW)),
                     List.of()))
-        .as("★ A4：roles() 非空但既不是 {GM}、也不含 DM ⇒ 判不出类 ⇒ 装配期当场抛（兜底分支，防将来加角色时静默漏判）")
+        .as("★ A4：toolRoles() 非空但既不是 {GM}、也不含 DM ⇒ 判不出类 ⇒ 装配期当场抛（兜底分支，防将来加角色时静默漏判）")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("fake.unknownRole")
         .hasMessageContaining("既不是 {GM}、也不含 DM");
 
-    // ④ 原生 AgentTool（没有 roles() 这个概念）
+    // ④ 原生 AgentTool（没有 toolRoles() 这个概念）
     assertThatThrownBy(
             () ->
                 ToolClassAudit.requireClasses(
@@ -155,7 +155,7 @@ class ToolClassAuditTest {
         .as("★ A4：未实现 SimosTool 的工具入面 ⇒ 「属于谁」取不到 ⇒ 装配期当场抛（不静默放行）")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("fake.rawAgentTool")
-        .hasMessageContaining("没有声明 SimosTool.roles()");
+        .hasMessageContaining("没有声明 SimosTool.toolRoles()");
 
     // ★ 正向对照：同一形状的**合法**工具不抛（否则上面四条"抛"可能只是夹具坏了）
     assertThatCode(
@@ -170,7 +170,7 @@ class ToolClassAuditTest {
   /**
    * ★★ <b>A4 负向（第二条判据）：{@code gate()} 实得第三态（{@code Block}）⇒ 装配期当场抛</b>。
    *
-   * <p>★ 为什么这条与上一条分开：失败信息指向的**修法不同** —— 上一条要补 {@code roles()}，这一条要改 {@code gate()} 的档位。★ 类2 与类3
+   * <p>★ 为什么这条与上一条分开：失败信息指向的**修法不同** —— 上一条要补 {@code toolRoles()}，这一条要改 {@code gate()} 的档位。★ 类2 与类3
    * 的差别全在 {@code gate()} 的实得档上，第三态必须**响亮失败**，不许被猜成其中一格。
    */
   @Test
@@ -265,7 +265,7 @@ class ToolClassAuditTest {
     }
   }
 
-  /** 合成工具：{@code roles()} 直接给，{@code gate()} 由函数给（含"一调就抛"形态）。 */
+  /** 合成工具：{@code toolRoles()} 直接给，{@code gate()} 由函数给（含"一调就抛"形态）。 */
   private static final class FakeTool implements SimosTool {
     private final String name;
     private final Set<ToolRole> roles;
@@ -296,7 +296,7 @@ class ToolClassAuditTest {
     }
 
     @Override
-    public Set<ToolRole> roles() {
+    public Set<ToolRole> toolRoles() {
       return roles;
     }
 
@@ -327,7 +327,7 @@ class ToolClassAuditTest {
     }
 
     @Override
-    public Set<ToolRole> roles() {
+    public Set<ToolRole> toolRoles() {
       return roles;
     }
 
@@ -337,7 +337,7 @@ class ToolClassAuditTest {
     }
   }
 
-  /** 原生 {@code AgentTool}：**没有** {@code roles()} 这个概念（A4 第 ④ 条）。 */
+  /** 原生 {@code AgentTool}：**没有** {@code toolRoles()} 这个概念（A4 第 ④ 条）。 */
   private record RawAgentTool(String name) implements AgentTool {
 
     @Override
@@ -361,7 +361,7 @@ class ToolClassAuditTest {
     List<AgentTool> gmFace = new ArrayList<>();
     List<AgentTool> decisionFace = new ArrayList<>();
     for (AgentTool tool : tools) {
-      Set<ToolRole> roles = ((SimosTool) tool).roles();
+      Set<ToolRole> roles = ((SimosTool) tool).toolRoles();
       if (roles.contains(ToolRole.GM)) {
         gmFace.add(tool);
       }

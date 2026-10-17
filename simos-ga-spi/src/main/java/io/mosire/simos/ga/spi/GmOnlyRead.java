@@ -12,7 +12,7 @@ package io.mosire.simos.ga.spi;
  * <p>实现它的工具类即声明：**只在 GM 桶里出现**，决策人桶剔除。★ 它**不**改变权限/资源判定， 只改"这张脸给谁看"。
  *
  * <p>★ <b>B1 的迁移口径</b>：本接口是 {@code app/tools/GmOnlyRead.java} 的**契约层副本**， 旧文件**保留不动**（本批不做全仓替换——那是
- * B4 的收口；两处并存是迁移中间态，语义逐字相同）。 ★ 收口方向：B4 起"只给 GM 看"由 {@link SimosTool#roles()} 表达（{@code {GM}}），
+ * B4 的收口；两处并存是迁移中间态，语义逐字相同）。 ★ 收口方向：B4 起"只给 GM 看"由 {@link SimosTool#toolRoles()} 表达（{@code {GM}}），
  * 本标记随旧文件一并退场；在那之前它仍是 app 侧桶装配的依据。
  */
 public interface GmOnlyRead {}

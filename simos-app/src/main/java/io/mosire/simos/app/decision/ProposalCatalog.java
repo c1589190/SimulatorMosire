@@ -42,8 +42,8 @@ import java.util.Set;
  * <p>★★ <b>批 K ①「让声明成为唯一真相」（用户 2026-10-15：「这玩意不是在程序代码上已经写死了吗……为啥额外要张表？」）</b>： 本类的名单**从工具面派生**——遍历
  * {@code face}，把实现了 {@link DecisionProposable} 的工具逐个包成 {@link Entry}； **源码里没有一个工具名字面量、也没有一条 {@code
  * new XxxTool(...)}**（「谁可被提议」的唯一拼写点 = 工具自己的 {@code implements} 声明，不变量 K1）。以前那张 16 条手写 {@code
- * List.of(...)} 是**第二处声明**：它与工具自己的 {@code roles()} 互不相干、漂移无症状（原始清单里 7 条是 GM-only
- * 却照样能被提议，没有任何东西拦）。装配期由 {@code ProposalDeclarationAudit} fail-closed 校验（实现者 {@code roles()} 必须含
+ * List.of(...)} 是**第二处声明**：它与工具自己的 {@code toolRoles()} 互不相干、漂移无症状（原始清单里 7 条是 GM-only
+ * 却照样能被提议，没有任何东西拦）。装配期由 {@code ProposalDeclarationAudit} fail-closed 校验（实现者 {@code toolRoles()} 必须含
  * DM，不变量 K2）。
  *
  * <p>★★ **为什么必须真调目标工具**：另写一套"预览推导"就是第二份业务真相（AGENTS 铁律 4 同族）——目标工具改口径时不会有人 记得同步它，且两边的漂移**不会报错**。本类的

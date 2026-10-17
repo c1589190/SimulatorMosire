@@ -66,7 +66,7 @@ import java.util.Set;
  * <p>{@code callIndex} 在包里不存在 ⇒ {@code BAD_REQUEST}（本 tick 没有包 ⇒ 同样是 {@code BAD_REQUEST}）。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5）：决策表达零世界效果（不变量 I1）⇒ {@code gate() = ALLOW}、 {@code
- * roles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）。
+ * toolRoles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）。
  */
 public final class ReviseCallTool implements SimosTool {
 
@@ -298,7 +298,7 @@ public final class ReviseCallTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

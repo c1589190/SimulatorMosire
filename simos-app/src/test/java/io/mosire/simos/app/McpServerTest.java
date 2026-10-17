@@ -155,7 +155,7 @@ class McpServerTest {
           "simos.army.assignGov",
           "simos.army.combat",
           "simos.army.combats",
-          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（roles() 只有 GM）
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（toolRoles() 只有 GM）
           "simos.army.contactWatch",
           "simos.army.formatUnit",
           "simos.army.recordCombat",
@@ -167,7 +167,8 @@ class McpServerTest {
           "simos.calendar.info",
           "simos.command.catalog",
           "simos.command.submit",
-          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；roles()={GM} ⇒ 只在 GM 面）。
+          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；toolRoles()={GM} ⇒ 只在 GM
+          // 面）。
           //   ★ 不登记 ⇒ 本条真跑红在「unexpected elements: ["simos.command.submitBatch"]」（批 U 台账 §1）。
           "simos.command.submitBatch",
           "simos.economy.adjust",
@@ -194,7 +195,7 @@ class McpServerTest {
           "simos.gm.adjustPopulation",
           "simos.gm.approvals",
           "simos.gm.approve",
-          // ★★ 2026-10-14 批 G（GM 代打）：写，非窄写（只 implements SimosTool）；roles()={GM} ⇒ 只在 GM 面
+          // ★★ 2026-10-14 批 G（GM 代打）：写，非窄写（只 implements SimosTool）；toolRoles()={GM} ⇒ 只在 GM 面
           "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           "simos.gm.mergedPlan.apply",
@@ -376,7 +377,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 178 条（★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 178 条（★★ 2026-10-13 急停协议：三条新工具且 toolRoles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

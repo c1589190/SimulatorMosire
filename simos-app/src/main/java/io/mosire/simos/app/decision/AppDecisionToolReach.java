@@ -11,7 +11,7 @@ import java.util.Objects;
  * <p>★★ <b>唯一真相 = {@link DecisionCallerFactory#whitelistFor(DecisionMaker)}</b>（全局决策人面 ∩ 该决策人的
  * {@code allowedTools}）——**同一份数据**也是"给模型看的工具面"（{@code DecisionAgentService} 把它作为 {@code
  * toolWhitelist} 传给运行流）与执行期权限组（{@code permissionsFor}）的来源。★ 本类**不另算**任何东西：它的整个实现就是转问那一个方法，
- * 故"消息里点名的"与"模型清单里有的"不可能各说各话（三处同源）。 ★ 反过来，若在这里另立一份判断（读 {@code roles()}、 读注册表、或抄一份清单），两份就会漂移 ——
+ * 故"消息里点名的"与"模型清单里有的"不可能各说各话（三处同源）。 ★ 反过来，若在这里另立一份判断（读 {@code toolRoles()}、 读注册表、或抄一份清单），两份就会漂移 ——
  * 而漂移的症状是**静默的**：消息点名一件模型清单里没有的工具，模型不报错， 它只会去别处找（真机实测的 35 连撞，见 {@link DecisionToolReach} 类注）。
  *
  * <p>★ <b>为什么是"转问工厂"而不是把白名单抄进来</b>：白名单是**按决策人现算**的（{@code allowedTools} 会随 revision 变），

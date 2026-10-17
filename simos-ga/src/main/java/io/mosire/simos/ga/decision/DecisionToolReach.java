@@ -16,7 +16,7 @@ import java.util.Set;
  *
  * <p>★★ <b>谁是可达面的唯一真相</b>：{@code simos-app} 的 {@code DecisionCallerFactory}（{@code
  * whitelistFor(DecisionMaker)} = 全局决策人面 ∩ 该决策人的 {@code allowedTools}）。本接口只**问**， 绝不自己算 ——
- * 运行流若从工具声明（{@code roles()}）、注册表或某个字面量清单推出第二份"可达面"，两份就会各说各话，
+ * 运行流若从工具声明（{@code toolRoles()}）、注册表或某个字面量清单推出第二份"可达面"，两份就会各说各话，
  * 而症状是**静默的**：消息里点名一件模型清单里没有的工具，模型不会报错，它只会去别处找（正是上面那次 35 连撞）。
  *
  * <p>★ <b>为什么是接口而不是直接读白名单</b>（照 {@link DecisionToolNames} 那套形制：接口在 {@code simos-ga}、实现在 {@code

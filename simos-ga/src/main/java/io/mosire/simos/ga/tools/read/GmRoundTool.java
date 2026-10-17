@@ -243,7 +243,7 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**GM 面**（决策人自己看包用 {@code simos.ga.packet.my}）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

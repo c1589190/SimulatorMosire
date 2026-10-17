@@ -101,7 +101,7 @@ class AgentLibDocsWiringTest {
    * ★ <b>P1 + P5</b>：适配后的两个面<b>能装配</b>（{@code requireFaces} 不抛、双向成员⇔声明一致）， 且角色表把 {@code doc_*}
    * 放进决策人桶、把 {@code mount_workspace} 挡在决策人桶外（GM-only）。
    *
-   * <p>★ 为什么这条同时是 P1 与 P5：{@code requireFaces} 校验的是"桶成员 ⇔ roles() 声明"的**双向**一致 —— 一条工具多标了 DM
+   * <p>★ 为什么这条同时是 P1 与 P5：{@code requireFaces} 校验的是"桶成员 ⇔ toolRoles() 声明"的**双向**一致 —— 一条工具多标了 DM
    * 却没进决策人桶、或没标 DM 却进了桶，都会当场红。所以"能装配"本身就证明了角色表自洽。
    */
   @Test
@@ -111,7 +111,7 @@ class AgentLibDocsWiringTest {
       List<AgentTool> dmFace = shell.toolsFor(SimosToolSource.Role.DECISION_AGENT);
 
       assertThatCode(() -> ToolRoleAudit.requireFaces(gmFace, dmFace))
-          .as("P1：适配后两桶装配通过（roles() ⇔ 桶成员双向一致；外来工具已套 SimosToolAdapter）")
+          .as("P1：适配后两桶装配通过（toolRoles() ⇔ 桶成员双向一致；外来工具已套 SimosToolAdapter）")
           .doesNotThrowAnyException();
 
       List<String> gmNames = namesOf(gmFace);
@@ -241,7 +241,7 @@ class AgentLibDocsWiringTest {
   /**
    * ★ <b>N1（负向）</b>：把<b>原生</b> {@code AgentTool}（不套适配层）塞进桶 ⇒ <b>装配当场抛</b>。
    *
-   * <p>⇒ 证明适配层是<b>必需</b>的，不是"可选包装"：原生工具面没有 {@code roles()} 这个概念 （{@code ToolRole} 在隔壁 jar 里 0
+   * <p>⇒ 证明适配层是<b>必需</b>的，不是"可选包装"：原生工具面没有 {@code toolRoles()} 这个概念 （{@code ToolRole} 在隔壁 jar 里 0
    * 命中），而"这个工具能被谁用"缺唯一拼写点 ⇒ 必须响亮失败。
    */
   @Test
@@ -252,9 +252,9 @@ class AgentLibDocsWiringTest {
     assertThatThrownBy(() -> ToolRoleAudit.requireFace(natives, ToolRole.GM))
         .as("★ N1：原生工具（未套适配层）入桶 ⇒ 装配当场抛（这就是「适配层必需」的证明）")
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("没有声明 SimosTool.roles()");
+        .hasMessageContaining("没有声明 SimosTool.toolRoles()");
 
-    // ★ 对照：同一批工具**套上**适配层之后就能过（证明上面抛的是"缺 roles()"，不是别的）
+    // ★ 对照：同一批工具**套上**适配层之后就能过（证明上面抛的是"缺 toolRoles()"，不是别的）
     List<AgentTool> adapted =
         natives.stream()
             .map(
@@ -638,7 +638,7 @@ class AgentLibDocsWiringTest {
   private static java.util.Set<ToolRole> rolesOf(List<AgentTool> face, String name) {
     return face.stream()
         .filter(tool -> tool.name().equals(name))
-        .map(tool -> ((SimosTool) tool).roles())
+        .map(tool -> ((SimosTool) tool).toolRoles())
         .findFirst()
         .orElseThrow(() -> new AssertionError("桶里没有 " + name));
   }

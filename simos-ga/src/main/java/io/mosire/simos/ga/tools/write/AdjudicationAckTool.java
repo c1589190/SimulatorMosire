@@ -49,8 +49,8 @@ import java.util.Set;
  * }</pre>
  *
  * <p>★★ <b>它属于类3 {@code DM_FREE}</b>（设计书 §5 权限表）：这是 DM 的**一次表态**，<b>零世界效果</b>——产物只是一条 INFO， 要 **经
- * GM 才生效**（GM 用 {@code simos.gm.round} 看谁确认了推演）。故 {@code gate() = ALLOW}、{@code roles() = {DM}}， 与
- * DM 侧其余"写自己的包 / 自己的信 / 自己的确认"同制。
+ * GM 才生效**（GM 用 {@code simos.gm.round} 看谁确认了推演）。故 {@code gate() = ALLOW}、{@code toolRoles() =
+ * {DM}}， 与 DM 侧其余"写自己的包 / 自己的信 / 自己的确认"同制。
  *
  * <p>★★ <b>天然幂等一次，不用自建限流器</b>：条目 id 是**显式**的 {@code ack-<tick>-<dm>}，而 {@code PutInfoHandler} 对显式
  * id **命令期查重**（{@code containsInfoId} 命中即拒、不留 revision）⇒ 同一个 {@code (tick, dm)} 的**第二条**
@@ -302,7 +302,7 @@ public final class AdjudicationAckTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**决策人面**（GM 的表态面是 {@code simos.gm.round}，它只读）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

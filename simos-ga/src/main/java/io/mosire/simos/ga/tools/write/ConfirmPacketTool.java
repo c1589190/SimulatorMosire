@@ -56,7 +56,7 @@ import java.util.Set;
  * PacketDraftSupport#rejectIfDecided} 两侧，因为 {@code ga.UpsertDecisionPacket} 本身**没有状态机**。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5 权限表、用户同日裁定「决策-提交流程属无条件执行」）：本工具 **零世界效果**（只写自己的包）⇒
- * {@code gate() = ALLOW}、{@code roles() = {DM}}。★ 闸门在 GM 侧 （{@code gm.packet.decide} / {@code
+ * {@code gate() = ALLOW}、{@code toolRoles() = {DM}}。★ 闸门在 GM 侧 （{@code gm.packet.decide} / {@code
  * mergedPlan.*} / {@code packet.execute} 保持 GM-only，本批一处不放松）。
  *
  * <p>★ 身份从 {@code context.identity()} 派生（不采信载荷）；只写自己的 {@code sd:decision-packet/<自己>} 前缀。
@@ -236,7 +236,7 @@ public final class ConfirmPacketTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

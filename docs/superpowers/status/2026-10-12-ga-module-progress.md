@@ -281,7 +281,7 @@ map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 
 
 | 轮 | 提交 | 交付 |
 |---|---|---|
-| **B4a** | `6e04849a` | **176 个具体工具类**实现 `SimosTool.roles()`（唯一拼写点）：`{GM}` 132 / `{DM}` 10 / `{GM,DM}` 34；GM 桶 166 / DM 桶 44。新增 `ga.tools.ToolRoleAudit`（装配完成处 O(n) fail-closed 审计：单桶 `requireFace` + 双桶双向 `requireFaces`）。`Shell` 从决策人桶派生名字注入 `DecisionCallerFactory.forDecisionFace(...)`。 |
+| **B4a** | `6e04849a` | **176 个具体工具类**实现 `SimosTool.toolRoles()`（唯一拼写点）：`{GM}` 132 / `{DM}` 10 / `{GM,DM}` 34；GM 桶 166 / DM 桶 44。新增 `ga.tools.ToolRoleAudit`（装配完成处 O(n) fail-closed 审计：单桶 `requireFace` + 双桶双向 `requireFaces`）。`Shell` 从决策人桶派生名字注入 `DecisionCallerFactory.forDecisionFace(...)`。 |
 | **B4b** | `e2ef67f1` | **删掉静态 44 条 `WHITELIST`**（128 行）+ 其专属 2 参构造器 + 38 行 import；`defaults(...)` 改吃入参；删 `requireSameNames`（其唯一理由是比对手抄清单）；**新增"派生白名单为空 ⇒ 当场抛"**；`grep WHITELIST simos-*/src/main` = **0 命中**、`DecisionCallerFactory` 对工具类 import = **0**（结构上无法持有清单）。测试迁到**测试侧金名单** `DecisionFaceGolden`（11 文件 + 1 新规格）。 |
 
 ### 9.2 关键判据（本批真正的价值）

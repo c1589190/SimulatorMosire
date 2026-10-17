@@ -18,23 +18,24 @@ import java.util.Set;
 /**
  * ★★ <b>工具三分类的装配期 fail-closed 分区</b>（2026-10-15 批次 3a；设计书 §3.1 口径 / §3.2 接线 / 不变量 C1–C3）。
  *
- * <p>★ <b>它补的是哪一块</b>：三分类此前是**两处互不相干的手写声明**（{@code roles()} 说"谁能用"、{@code gate()} 说"要不要问人"），
+ * <p>★ <b>它补的是哪一块</b>：三分类此前是**两处互不相干的手写声明**（{@code toolRoles()} 说"谁能用"、{@code gate()} 说"要不要问人"），
  * 没有任何东西检查两者是否自洽、也没有东西检查"每一条工具都落进了三格之一" ⇒ 漂移**无症状**（漏一条 {@code Ask}、{@code roles}
  * 写反，装配期照样过）。本类把它变成**装配完成处一次 O(n) 的分区**：判不出类的工具<b>当场抛</b>， 与会话里已解决的 {@link
- * ToolRoleAudit#requireFaces} 同一类问题、同一形制（那里钉"桶 ⇔ {@code roles()}"，这里钉"{@code roles()} × {@code
- * gate()} ⇒ 类"）。
+ * ToolRoleAudit#requireFaces} 同一类问题、同一形制（那里钉"桶 ⇔ {@code toolRoles()}"，这里钉"{@code toolRoles()} ×
+ * {@code gate()} ⇒ 类"）。
  *
- * <p>★★ <b>判据只来自 {@code gate()} 的实得档，不引入"第二个声明"</b>（设计书 §3.2 的要害）：{@code roles()} 是 context-free 的
- * ⇒ 直接读；{@code gate(ToolContext)} 需要上下文 ⇒ 用**探针上下文**（{@link #PROBE}：{@code arguments()} = 空 {@code
- * Map}）真调它、判 {@code Ask} / {@code ALLOW}。★ 只有读**真的** {@code gate()}，"分类"才不可能与**行为**漂移；
- * 若改成让每条工具再声明一个 {@code toolClass()}，那就是**第二处会漂移的声明**——与 {@code ToolRoleAudit} 存在的理由（消灭第二处声明） 正好相反。★
- * 若某条工具的 {@code gate()} 在空参下抛异常，本类**不兜、不降级、不跳过**：当场抛（把工具名与真实异常附上）。
+ * <p>★★ <b>判据只来自 {@code gate()} 的实得档，不引入"第二个声明"</b>（设计书 §3.2 的要害）：{@code toolRoles()} 是
+ * context-free 的 ⇒ 直接读；{@code gate(ToolContext)} 需要上下文 ⇒ 用**探针上下文**（{@link #PROBE}：{@code
+ * arguments()} = 空 {@code Map}）真调它、判 {@code Ask} / {@code ALLOW}。★ 只有读**真的** {@code
+ * gate()}，"分类"才不可能与**行为**漂移； 若改成让每条工具再声明一个 {@code toolClass()}，那就是**第二处会漂移的声明**——与 {@code
+ * ToolRoleAudit} 存在的理由（消灭第二处声明） 正好相反。★ 若某条工具的 {@code gate()}
+ * 在空参下抛异常，本类**不兜、不降级、不跳过**：当场抛（把工具名与真实异常附上）。
  *
  * <p>★ <b>为什么本类住在 {@code simos-ga}</b>：它只认 {@link AgentTool} / {@link ToolContext} / {@link
  * ToolGate} （agentlib 契约）与 {@link SimosTool} / {@link ToolRole} / {@link ToolClass}（本仓契约），不认任何域类型与
  * app 的桶枚举 —— 与 {@link ToolBuckets} / {@link ToolRoleAudit} 同款（"工具运作"的纯规则）。{@code app} 负责把两桶递进来。
  *
- * <p>★ <b>本批只读</b>：审计不删任何 {@code Ask}、不改任何 {@code roles()} 的集合内容（设计书 §6 C1）。
+ * <p>★ <b>本批只读</b>：审计不删任何 {@code Ask}、不改任何 {@code toolRoles()} 的集合内容（设计书 §6 C1）。
  */
 public final class ToolClassAudit {
 
@@ -65,13 +66,13 @@ public final class ToolClassAudit {
    * IllegalStateException}（装配期抛，不静默）。
    *
    * <p>★ 遍历序 = GM 桶注册序 + 决策人桶里 GM 桶没有的那些（两桶共享的工具只算一条）⇒ 三份清单的顺序是**内容的纯函数**、可复核。 桶内重名与"桶 ⇔ {@code
-   * roles()}"的成员关系**不归本类**（那是 {@link ToolRoleAudit#requireFaces} 的活，本类一个字不放松它）。
+   * toolRoles()}"的成员关系**不归本类**（那是 {@link ToolRoleAudit#requireFaces} 的活，本类一个字不放松它）。
    *
    * @param gmFace GM 桶工具面（含急停协议那三条；非 null）
    * @param decisionFace 决策人桶工具面（非 null）
    * @return 三份**不可变**清单（类1 / 类2 / 类3），供后续批次与测试取用
-   * @throws IllegalStateException 任一工具判不出类（{@code roles()} 判不出、或 {@code gate()} 实得档既非 {@code Ask}
-   *     也非 {@code ALLOW}、或 {@code gate()} 在探针上下文下抛异常）
+   * @throws IllegalStateException 任一工具判不出类（{@code toolRoles()} 判不出、或 {@code gate()} 实得档既非 {@code
+   *     Ask} 也非 {@code ALLOW}、或 {@code gate()} 在探针上下文下抛异常）
    */
   public static Partition requireClasses(List<AgentTool> gmFace, List<AgentTool> decisionFace) {
     Objects.requireNonNull(gmFace, "gmFace");
@@ -97,7 +98,7 @@ public final class ToolClassAudit {
       AgentTool tool, List<AgentTool> gmOnly, List<AgentTool> dmApproval, List<AgentTool> dmFree) {
     String name = tool.name();
     Set<ToolRole> roles = rolesOf(tool, name);
-    // 类1：roles() == {GM}。★ gate() **不参与判定**：DM 够不着 ⇒ 问不问人都一样；用户 2026-10-15 裁定保留它们既有的 Ask，
+    // 类1：toolRoles() == {GM}。★ gate() **不参与判定**：DM 够不着 ⇒ 问不问人都一样；用户 2026-10-15 裁定保留它们既有的 Ask，
     //   故"GM-only 却有 Ask"不是异常（设计书 §3.1 类1 行）。
     if (roles.size() == 1 && roles.contains(ToolRole.GM)) {
       gmOnly.add(tool);
@@ -107,10 +108,10 @@ public final class ToolClassAudit {
       throw new IllegalStateException(
           "工具三分类装配故障："
               + name
-              + " 的 roles() = "
+              + " 的 toolRoles() = "
               + roles
               + " 既不是 {GM}、也不含 DM —— 判不出它属于三格里的哪一格（设计书 §3.1「✗ 其余 ⇒ 当场抛」）。"
-              + "★ 不要把它跳过或降级成日志：改它的 roles() 声明才是对的修法。");
+              + "★ 不要把它跳过或降级成日志：改它的 toolRoles() 声明才是对的修法。");
     }
     ToolGate gate = gateOf(tool, name);
     if (gate instanceof ToolGate.Ask) {
@@ -124,7 +125,7 @@ public final class ToolClassAudit {
     throw new IllegalStateException(
         "工具三分类装配故障："
             + name
-            + " 的 roles() = "
+            + " 的 toolRoles() = "
             + roles
             + "（含 DM），但 gate() 的**实得档** = "
             + gate
@@ -133,10 +134,10 @@ public final class ToolClassAudit {
   }
 
   /**
-   * {@code roles()} 的契约守卫：必须是 {@link SimosTool}，且返回**非 null、非空**（空集 = 谁都看不见 = 装配故障）。
+   * {@code toolRoles()} 的契约守卫：必须是 {@link SimosTool}，且返回**非 null、非空**（空集 = 谁都看不见 = 装配故障）。
    *
    * <p>★ 这里与 {@link ToolRoleAudit} 各查一遍不是重复：那道审计钉的是"桶 ⇔ 声明"，本类钉的是"声明 × 闸位 ⇒ 类"，两处的失败信息 指向不同的修法（补
-   * {@code roles()} vs 补/改 {@code gate()}）。
+   * {@code toolRoles()} vs 补/改 {@code gate()}）。
    */
   private static Set<ToolRole> rolesOf(AgentTool tool, String name) {
     if (!(tool instanceof SimosTool simosTool)) {
@@ -145,15 +146,15 @@ public final class ToolClassAudit {
               + name
               + "（"
               + tool.getClass().getName()
-              + "）没有声明 SimosTool.roles() —— 三分类的两个判据（属于谁 / 要不要问人）里，"
-              + "「属于谁」取不到 ⇒ 判不出类。不要静默跳过：给它补上 roles()。");
+              + "）没有声明 SimosTool.toolRoles() —— 三分类的两个判据（属于谁 / 要不要问人）里，"
+              + "「属于谁」取不到 ⇒ 判不出类。不要静默跳过：给它补上 toolRoles()。");
     }
-    Set<ToolRole> roles = simosTool.roles();
+    Set<ToolRole> roles = simosTool.toolRoles();
     if (roles == null || roles.isEmpty()) {
       throw new IllegalStateException(
           "工具三分类装配故障："
               + name
-              + " 的 roles() 返回"
+              + " 的 toolRoles() 返回"
               + (roles == null ? " null" : "空集")
               + " —— 空集 = 谁都看不见 = 装配故障，判不出类（SimosTool#roles 的契约：必须是 {GM} / {DM} / {GM, DM} 之一）。");
     }

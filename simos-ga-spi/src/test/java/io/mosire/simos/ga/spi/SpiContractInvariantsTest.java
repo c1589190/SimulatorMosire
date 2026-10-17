@@ -24,11 +24,11 @@ import org.junit.jupiter.api.Test;
  * <p>这一层是<b>契约</b>：它的坏法全都"编译得过、运行期没有症状"，因为契约的消费方（桶装配、判类审计、决策包执行器） 各自按自己的读法理解它：
  *
  * <ul>
- *   <li>{@link ToolRole} 是 {@code roles()} 的<b>取值域</b>，而全仓到处是 {@code Set<ToolRole>}（类型系统拦不住新常量） ⇒
- *       加一个角色<b>不会</b>让任何一处编译失败，却会让"谁属于决策人面"的口径分叉（判类只看"含不含 DM"）；
+ *   <li>{@link ToolRole} 是 {@code toolRoles()} 的<b>取值域</b>，而全仓到处是 {@code Set<ToolRole>}（类型系统拦不住新常量）
+ *       ⇒ 加一个角色<b>不会</b>让任何一处编译失败，却会让"谁属于决策人面"的口径分叉（判类只看"含不含 DM"）；
  *   <li>{@link DecisionProposable} 的两个方法都是 {@code default}：默认值就是 fail-closed 的方向，改宽了<b>所有</b>提议
  *       工具一起放宽；而它故意<b>没有</b> {@code toolName()} / {@code tool()}（本类注：那是冗余的第三处声明）；
- *   <li>{@link GmOnlyRead} 是迁移中间态的<b>纯标记</b>（B4 起由 {@code roles() = {GM}} 表达）：它一旦长出成员，就多一处
+ *   <li>{@link GmOnlyRead} 是迁移中间态的<b>纯标记</b>（B4 起由 {@code toolRoles() = {GM}} 表达）：它一旦长出成员，就多一处
  *       可漂的声明面，而实现者一行都不用改（没有编译期提醒）；
  *   <li>{@link DecisionMakerAffiliationPort#NONE} 是"什么都不报"的缺省实现：它的空答复正是外交写入的 fail-closed 依据。
  * </ul>
@@ -45,7 +45,7 @@ class SpiContractInvariantsTest {
   @Test
   void theToolRoleValueDomainIsExactlyGmAndDm() {
     assertThat(ToolRole.values())
-        .as("★★ 判据 C：roles() 的取值域就是这两个（加第三个 = 桶装配/判类口径静默分叉，且无编译错误）")
+        .as("★★ 判据 C：toolRoles() 的取值域就是这两个（加第三个 = 桶装配/判类口径静默分叉，且无编译错误）")
         .containsExactly(ToolRole.GM, ToolRole.DM);
   }
 
@@ -99,14 +99,14 @@ class SpiContractInvariantsTest {
   /**
    * ★ <b>判据 C：{@link GmOnlyRead} 保持<b>纯标记</b>（零成员）</b>。
    *
-   * <p>它是 2026-10-12 B1 迁入的<b>迁移中间态</b>：类注写明"B4 起『只给 GM 看』由 {@code roles()} 表达（{@code {GM}}），
+   * <p>它是 2026-10-12 B1 迁入的<b>迁移中间态</b>：类注写明"B4 起『只给 GM 看』由 {@code toolRoles()} 表达（{@code {GM}}），
    * 本标记随旧文件一并退场"。守的坏法：它长出成员（哪怕 default）就变成第二处可漂的"归属"声明，而实现它的工具类 <b>一行都不用改</b>（default 方法不强制实现）⇒
    * 没有编译期提醒。
    */
   @Test
   void gmOnlyReadStaysAPureMarker() {
     assertThat(GmOnlyRead.class.getDeclaredMethods())
-        .as("★ 判据 C：GmOnlyRead 是纯标记（零方法）——归属由 roles() = {GM} 表达，这里多一个方法就是第二处声明")
+        .as("★ 判据 C：GmOnlyRead 是纯标记（零方法）——归属由 toolRoles() = {GM} 表达，这里多一个方法就是第二处声明")
         .isEmpty();
     assertThat(GmOnlyRead.class.getDeclaredFields()).as("★ 判据 C：纯标记也不该带常量（常量会长成第二处口径）").isEmpty();
   }

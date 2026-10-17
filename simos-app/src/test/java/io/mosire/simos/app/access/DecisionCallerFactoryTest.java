@@ -233,8 +233,8 @@ class DecisionCallerFactoryTest {
    * 面上的其他写工具一个都不许在**。
    *
    * <p>★★ 2026-10-12 B4b：判别力的载体换成了**测试侧金名单**（{@link DecisionFaceGolden#ALL}）——生产里那份静态 44 条白名单已删
-   * （"能被谁用"只写在 {@code SimosTool.roles()} 里，白名单是决策人桶的纯派生量）。本用例现在把**真装配派生出来的**决策人面钉在
-   * 金名单上：往决策人桶加/删任何一条工具而不同步规格 ⇒ 当场红；改了规格而没改 {@code roles()} / 没挂桶 ⇒ 装配期 {@code
+   * （"能被谁用"只写在 {@code SimosTool.toolRoles()} 里，白名单是决策人桶的纯派生量）。本用例现在把**真装配派生出来的**决策人面钉在
+   * 金名单上：往决策人桶加/删任何一条工具而不同步规格 ⇒ 当场红；改了规格而没改 {@code toolRoles()} / 没挂桶 ⇒ 装配期 {@code
    * ToolRoleAudit.requireFaces} 当场抛。
    */
   @Test

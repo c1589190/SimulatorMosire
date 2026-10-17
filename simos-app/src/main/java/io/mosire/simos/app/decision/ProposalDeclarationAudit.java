@@ -17,15 +17,15 @@ import java.util.Set;
  * io.mosire.simos.ga.tools.ToolClassAudit} 同址同制：装配完成处一次 O(n)、判不出<b>当场抛</b>、不降级成日志）。
  *
  * <p>★ <b>它补的是哪一块</b>：{@link ProposalCatalog} 的名单此前是**第二处手写清单**（16 条 {@code new XxxTool(...)}），
- * 与工具自己的 {@code roles()} 互不相干 —— 原始清单里 7 条只有 {@code {GM}} 却照样能被提议，**没有任何东西拦**。批 K ①
+ * 与工具自己的 {@code toolRoles()} 互不相干 —— 原始清单里 7 条只有 {@code {GM}} 却照样能被提议，**没有任何东西拦**。批 K ①
  * 把名单改成从工具面派生（{@code instanceof DecisionProposable}）之后，本类把那两处声明**钉在一起**：
  *
  * <table>
  *   <caption>判据</caption>
  *   <tr><th>#</th><th>判据</th><th>违反时</th></tr>
- *   <tr><td>C1</td><td>工具面上每个 {@link DecisionProposable} 实现者的 {@code roles()} <b>必须含 {@link
+ *   <tr><td>C1</td><td>工具面上每个 {@link DecisionProposable} 实现者的 {@code toolRoles()} <b>必须含 {@link
  *       ToolRole#DM}</b>（= 用户口径「没有 DM 标签的工具不该出现在提议名单里」）</td><td>{@link IllegalStateException}（含工具名 + 实际
- *       {@code roles()} + 指路）</td></tr>
+ *       {@code toolRoles()} + 指路）</td></tr>
  *   <tr><td>C2</td><td>目录成员 <b>⇔</b> 工具面上实现了该接口的工具，<b>双向逐条相等</b>（不重不漏）：目录里每条工具都必须**在工具面上**（否则取不到实例
  *       —— 预览与执行都无从谈起），工具面上每个实现者也必须**在目录里**（否则"声明了可提议"却进不去，是静默的能力丢失）</td><td>{@link
  *       IllegalStateException}</td></tr>
@@ -40,7 +40,7 @@ import java.util.Set;
  * 契约）、{@link ProposalCatalog}（住 app 的决策包）、以及两桶的工具面（装配面）。{@code simos-ga} 看不见 {@code
  * ProposalCatalog}（那是 {@code app → ga → app} 环）⇒ 与 {@code ToolClassAudit} 不同址，但**同制**。
  *
- * <p>★ <b>本类只读</b>：不删任何 {@code Ask}、不改任何 {@code roles()}、不动任何桶的成员；它唯一的动作是"判 + 抛"。
+ * <p>★ <b>本类只读</b>：不删任何 {@code Ask}、不改任何 {@code toolRoles()}、不动任何桶的成员；它唯一的动作是"判 + 抛"。
  */
 public final class ProposalDeclarationAudit {
 
@@ -53,7 +53,7 @@ public final class ProposalDeclarationAudit {
    * @param decisionFace 决策人桶工具面（非 null）
    * @param gmCatalog GM 档的可提议目录（{@code SimosToolSource.proposalCatalog()}；非 null）
    * @param decisionCatalog 决策人档的可提议目录（同上；非 null）
-   * @throws IllegalStateException C1 或 C2 被违反（消息里带工具名、实际 {@code roles()} 与修法指向）
+   * @throws IllegalStateException C1 或 C2 被违反（消息里带工具名、实际 {@code toolRoles()} 与修法指向）
    */
   public static void requireProposable(
       List<AgentTool> gmFace,
@@ -65,7 +65,7 @@ public final class ProposalDeclarationAudit {
     Objects.requireNonNull(gmCatalog, "gmCatalog");
     Objects.requireNonNull(decisionCatalog, "decisionCatalog");
     // C1：先扫两桶并集（**声明**那一侧）——把"实现者却不含 DM"当场拦下。★ 与 ToolClassAudit 同款：
-    //   桶内重名/「桶 ⇔ roles()」不归本类（那是 ToolRoleAudit.requireFaces 的活），本类一个字不放松它。
+    //   桶内重名/「桶 ⇔ toolRoles()」不归本类（那是 ToolRoleAudit.requireFaces 的活），本类一个字不放松它。
     requireDmRole(unionOf(gmFace, decisionFace));
     // C2：再把目录与工具面**双向**对上（C2 的两个方向各一次，两个档都查）。
     requireCatalogMatchesFace(gmCatalog, gmFace, "GM");
@@ -86,13 +86,14 @@ public final class ProposalDeclarationAudit {
   }
 
   /**
-   * ★★ <b>C1</b>：工具面上每个 {@link DecisionProposable} 实现者的 {@code roles()} 必须含 {@link ToolRole#DM}。
+   * ★★ <b>C1</b>：工具面上每个 {@link DecisionProposable} 实现者的 {@code toolRoles()} 必须含 {@link
+   * ToolRole#DM}。
    *
    * <p>★ <b>为什么判据取自工具自己的两处声明而不是任何名单</b>：「我能不能被提议」= {@code implements DecisionProposable}； 「DM
-   * 够不够得着」= {@code roles()}。两者都住在工具类里 ⇒ 本判据没有可以漂移的第三方。
+   * 够不够得着」= {@code toolRoles()}。两者都住在工具类里 ⇒ 本判据没有可以漂移的第三方。
    *
-   * <p>★ {@code roles()} 的契约守卫（非 null、非空、必须实现 {@link SimosTool}）**不在这里重查**：那是 {@code ToolRoleAudit}
-   * 与 {@code ToolClassAudit} 已经钉死的前置（同一个装配点、同一次 O(n)）；本类只在那两个前置之后追加"实现者必须含 DM"这一条。
+   * <p>★ {@code toolRoles()} 的契约守卫（非 null、非空、必须实现 {@link SimosTool}）**不在这里重查**：那是 {@code
+   * ToolRoleAudit} 与 {@code ToolClassAudit} 已经钉死的前置（同一个装配点、同一次 O(n)）；本类只在那两个前置之后追加"实现者必须含 DM"这一条。
    */
   private static void requireDmRole(Map<String, AgentTool> union) {
     List<String> faults = new ArrayList<>();
@@ -100,17 +101,17 @@ public final class ProposalDeclarationAudit {
       if (!(tool instanceof DecisionProposable)) {
         continue;
       }
-      Set<ToolRole> roles = tool instanceof SimosTool simosTool ? simosTool.roles() : Set.of();
+      Set<ToolRole> roles = tool instanceof SimosTool simosTool ? simosTool.toolRoles() : Set.of();
       if (!roles.contains(ToolRole.DM)) {
-        faults.add(tool.name() + "（" + tool.getClass().getName() + "）的 roles() = " + roles);
+        faults.add(tool.name() + "（" + tool.getClass().getName() + "）的 toolRoles() = " + roles);
       }
     }
     if (!faults.isEmpty()) {
       throw new IllegalStateException(
-          "可提议工具装配故障（C1）：下列工具实现了 DecisionProposable（= 声明自己可被决策人 propose），但 roles() **不含 DM** —— "
+          "可提议工具装配故障（C1）：下列工具实现了 DecisionProposable（= 声明自己可被决策人 propose），但 toolRoles() **不含 DM** —— "
               + String.join("；", faults)
               + "。★ 用户口径（2026-10-15）：「有 DM 标签的工具」才谈得上 DM 提议；没有 DM 标签的工具不该出现在提议名单里。"
-              + "★ 不要把它从工具面或目录里静默跳过、也不要把本审计降级成日志：要么给它的 roles() 补上 DM（若它本来就该由 DM 提议），"
+              + "★ 不要把它从工具面或目录里静默跳过、也不要把本审计降级成日志：要么给它的 toolRoles() 补上 DM（若它本来就该由 DM 提议），"
               + "要么让它**别再实现** DecisionProposable（若它不该被提议）—— 两条路都在工具类里，别在装配面绕。");
     }
   }

@@ -83,7 +83,7 @@ import java.util.Set;
  * 每条各自说了什么仍然看得见（本规则的可见性保证）。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5；用户 2026-10-14 原话「这些命令允许 DM 进行基本的决策-提交流程， 很显然属于 DM
- * 无条件执行」）：决策表达**零世界效果**（不变量 I1，只写 {@code sd} 命名空间的包）⇒ {@code gate() = ALLOW}、{@code roles() =
+ * 无条件执行」）：决策表达**零世界效果**（不变量 I1，只写 {@code sd} 命名空间的包）⇒ {@code gate() = ALLOW}、{@code toolRoles() =
  * {DM}}。
  *
  * <p>★ 旧名 {@code simos.sd.propose} **不做兼容**（Alpha 不兼容旧档，{@code docs/agents/02-一-并发.md} §一.11）。 ★
@@ -578,7 +578,7 @@ public final class ProposeCallTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

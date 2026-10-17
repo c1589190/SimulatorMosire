@@ -53,7 +53,7 @@ import java.util.Set;
  * 非空白"判定这一点，从而**不再**追加「【最后陈述】」（补缺口 G10）。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5）：决策表达零世界效果（不变量 I1）⇒ {@code gate() = ALLOW}、 {@code
- * roles() = {DM}}。
+ * toolRoles() = {DM}}。
  *
  * <p>★ 身份从 {@code context.identity()} 派生；身份派生的 proposer 不采信载荷。★ 旧名 {@code simos.sd.packet.intent}
  * 不做兼容（Alpha 不兼容旧档）；命令类型仍是 {@code ga.UpsertDecisionPacket}。
@@ -223,7 +223,7 @@ public final class PacketIntentTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

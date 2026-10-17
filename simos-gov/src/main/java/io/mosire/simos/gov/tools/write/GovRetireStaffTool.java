@@ -44,7 +44,7 @@ import java.util.UUID;
  * <p>★★ <b>目标家户必须明确</b>：{@code toHouseholdId} 精确指定（必须存在于 Social、≠ 政府家户）；或给 {@code reinsertQ}/{@code
  * reinsertR} 成对坐标，在该 hex 按 household id 升序取第一个有人口的家户；两者都没给 ⇒ plan 级具名拒（人不能凭空消失，也不再合并进最小批次）。
  *
- * <p>★★ <b>两桶都注册</b>（{@code roles()} 含 DM 与 GM）：GM 桶在 {@code SimosToolSource.addGmWrites}、决策人桶在
+ * <p>★★ <b>两桶都注册</b>（{@code toolRoles()} 含 DM 与 GM）：GM 桶在 {@code SimosToolSource.addGmWrites}、决策人桶在
  * {@code addDecisionAgentWrites} 的**可提议工具族**里。★ 2026-10-15 用户裁定「甲」：本工具本来就是**决策人的核心动作**，当年只是**漏打了 DM
  * 标签** ⇒ 补上；它本来就是 {@code gate=Ask} ⇒ 自动成**类2 {@code DM_APPROVAL}**——DM 直写停在待批等 GM 点头（超时 {@code
  * APPROVAL_DENIED}），或走 {@code simos.ga.packet.propose} 由 GM 统一批（零审批、不阻塞）。★ 它**不是一条命令类型** ⇒
@@ -345,10 +345,10 @@ public final class GovRetireStaffTool implements SimosTool, DecisionProposable {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     // ★★ 2026-10-15 用户裁定「甲」：本工具**本来就该是决策人能提议的**（决策人的核心动作），当年只是**漏打了 DM 标签** ⇒ 补上。
     //   它本来就是 gate=Ask ⇒ 补上后自动成**类2 DM_APPROVAL**（「DM/GM 混合就是要交给 GM 审核」，与用户口径一致）；
-    //   装配面同步注册进**决策人桶**（`SimosToolSource` 的可提议工具族）⇒ `ToolRoleAudit` 的「桶 ⇔ roles()」逐条一致。
+    //   装配面同步注册进**决策人桶**（`SimosToolSource` 的可提议工具族）⇒ `ToolRoleAudit` 的「桶 ⇔ toolRoles()」逐条一致。
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

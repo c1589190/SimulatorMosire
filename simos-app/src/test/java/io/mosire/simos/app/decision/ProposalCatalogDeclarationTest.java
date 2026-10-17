@@ -33,7 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
  *   <tr><td>{@link #catalogMembersAreExactlyTheProposableImplementersOnBothFaces}</td><td><b>V1</b>：目录成员 ⇔
  *       工具面上 {@link DecisionProposable} 的实现者（逐条、两档各一次、不重不漏）</td></tr>
  *   <tr><td>{@link #everyProposableImplementerOnTheRealFacesDeclaresDm}</td><td><b>C1 的真装配读回</b>：凡实现者
- *       {@code roles()} 必含 DM —— <b>直接断言</b>，不是"靠审计抛"</td></tr>
+ *       {@code toolRoles()} 必含 DM —— <b>直接断言</b>，不是"靠审计抛"</td></tr>
  *   <tr><td>{@link #theCatalogSourceCarriesNoToolNamesAndConstructsNoTool}</td><td><b>V4</b>：{@code
  *       ProposalCatalog} 源码里工具名字面量 0 处、{@code new XxxTool(} 0 处</td></tr>
  * </table>
@@ -133,7 +133,7 @@ class ProposalCatalogDeclarationTest {
   // ────────────────────────── C1 的真装配读回 ──────────────────────────
 
   /**
-   * ★★ <b>C1 在真装配上的读回：凡实现 {@link DecisionProposable} 的工具，{@code roles()} 必含 {@link
+   * ★★ <b>C1 在真装配上的读回：凡实现 {@link DecisionProposable} 的工具，{@code toolRoles()} 必含 {@link
    * ToolRole#DM}</b>（用户口径「没有 DM 标签的工具不该出现在提议名单里」）。
    *
    * <p>★★ <b>为什么这条不能只靠"审计会抛"</b>：装配期抛是<b>运行时</b>判据，它在今天恒不触发（16 条实现者都含 DM）⇒
@@ -161,9 +161,9 @@ class ProposalCatalogDeclarationTest {
           }
           assertThat(rolesOf(tool))
               .as(
-                  "★★ C1：%s 实现了 DecisionProposable（= 声明自己可被决策人 propose）⇒ roles() 必须含 DM。"
+                  "★★ C1：%s 实现了 DecisionProposable（= 声明自己可被决策人 propose）⇒ toolRoles() 必须含 DM。"
                       + "★ 用户口径（2026-10-15）：「有 DM 标签的工具」才谈得上 DM 提议；"
-                      + "要么给它的 roles() 补 DM，要么让它别再实现 DecisionProposable —— 两条路都在工具类里",
+                      + "要么给它的 toolRoles() 补 DM，要么让它别再实现 DecisionProposable —— 两条路都在工具类里",
                   tool.name())
               .contains(ToolRole.DM);
         }
@@ -283,14 +283,15 @@ class ProposalCatalogDeclarationTest {
   }
 
   /**
-   * {@code roles()} 的读口（★ 与 {@code ToolClassAuditAssemblyTest.rolesOf} 同法）：真装配面上的每条工具都必须实现 {@link
-   * SimosTool}（否则它过不了装配期的角色审计）⇒ 这里先**显式断言**再转，免得失败退化成一次裸 {@link ClassCastException}（"哪条工具、为什么"就丢了）。
+   * {@code toolRoles()} 的读口（★ 与 {@code ToolClassAuditAssemblyTest.rolesOf} 同法）：真装配面上的每条工具都必须实现
+   * {@link SimosTool}（否则它过不了装配期的角色审计）⇒ 这里先**显式断言**再转，免得失败退化成一次裸 {@link
+   * ClassCastException}（"哪条工具、为什么"就丢了）。
    */
   private static Set<ToolRole> rolesOf(AgentTool tool) {
     assertThat(tool)
         .as("★ 真装配面里的 %s 必须实现 SimosTool（否则它过不了装配期的角色审计）", tool.name())
         .isInstanceOf(SimosTool.class);
-    return ((SimosTool) tool).roles();
+    return ((SimosTool) tool).toolRoles();
   }
 
   /** 剥掉块注释与行注释（★ 只用于"工具名/构造点"这类 token 判据，不解析字符串字面量里的注释符）。 */

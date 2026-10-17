@@ -54,7 +54,7 @@ ToolRoleAudit.requireFace(built, role == Role.GM ? ToolRole.GM : ToolRole.DM);
 
 两者**正交**，必须一致：
 - 他们：`WorkspacePermissions` / `DefaultWorkspaceRegistry`（13 处权限引用）+ `DocVisibility.canSee`（全仓唯一一处可见性判据）。
-- 我们：`SimosTool.roles()` → 两桶 → `ToolRoleAudit.requireFaces` 双向钉死。
+- 我们：`SimosTool.toolRoles()` → 两桶 → `ToolRoleAudit.requireFaces` 双向钉死。
 
 ### 2.4 ★ **审批口在适配层手里**（决定 U3 的可行性）
 

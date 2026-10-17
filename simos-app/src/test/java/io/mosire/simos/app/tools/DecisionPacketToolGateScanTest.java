@@ -36,8 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ <b>§6.1 N10（I2 的机械判据）：决策人面的工具源码扫描 —— {@code gate()} 出现 {@code Ask} ⇒ 当场红； {@code roles()} 不是
- * {@code {DM}} ⇒ 当场红</b>。
+ * ★★ <b>§6.1 N10（I2 的机械判据）：决策人面的工具源码扫描 —— {@code gate()} 出现 {@code Ask} ⇒ 当场红； {@code toolRoles()}
+ * 不是 {@code {DM}} ⇒ 当场红</b>。
  *
  * <p>★ <b>为什么必须是「扫源码」而不是「跑一遍看行为」</b>（设计书 §6.1 N10 的原话："源码扫描当场红"）：行为用例只能证明 "这一条路径上没走到 Ask"；而 {@code
  * gate()} 是一段**声明**，它的坏法恰恰是"在某个分支下返回 As k" ——那个分支可能只在无人值守/未绑定 provider 时走到（{@code
@@ -57,7 +57,7 @@ class DecisionPacketToolGateScanTest {
 
   @TempDir Path tempDir;
 
-  /** 决策包七件套 + 推演确认：**必须** {@code gate()=ALLOW}、{@code roles()={DM}}（设计书 §5 类3 DM_FREE）。 */
+  /** 决策包七件套 + 推演确认：**必须** {@code gate()=ALLOW}、{@code toolRoles()={DM}}（设计书 §5 类3 DM_FREE）。 */
   private static final List<String> DM_FREE_TOOLS =
       List.of(
           ProposeCallTool.NAME,
@@ -98,7 +98,7 @@ class DecisionPacketToolGateScanTest {
   }
 
   /**
-   * ★★ <b>N10 主体：逐文件的 {@code gate()} / {@code roles()} 源码扫描</b>。
+   * ★★ <b>N10 主体：逐文件的 {@code gate()} / {@code toolRoles()} 源码扫描</b>。
    *
    * <p>三条判据，每条都在**源码文本**上：
    *
@@ -107,8 +107,8 @@ class DecisionPacketToolGateScanTest {
    *       ALLOW；
    *   <li>{@code gate()} 方法体里必须有 {@code ToolGate.ALLOW}（★ 防"把 gate() 整个删掉" ⇒ 删掉后默认是什么？ 默认不是 ALLOW
    *       而是走审批链的缺省 ⇒ 必须显式写出来）；
-   *   <li>{@code roles()} 方法体里必须是 {@code Set.of(ToolRole.DM)}（**恰好一条** DM）—— 出现 {@code ToolRole.GM}
-   *       或出现第二个角色 ⇒ 当场红。
+   *   <li>{@code toolRoles()} 方法体里必须是 {@code Set.of(ToolRole.DM)}（**恰好一条** DM）—— 出现 {@code
+   *       ToolRole.GM} 或出现第二个角色 ⇒ 当场红。
    * </ol>
    */
   @Test
@@ -159,12 +159,12 @@ class DecisionPacketToolGateScanTest {
 
       String rolesBody = methodBody(source, "roles");
       assertThat(rolesBody)
-          .as("★★ N10：%s 的 roles() 必须是 {DM}（进 GM 桶 = 决策人面被放大）", toolName)
+          .as("★★ N10：%s 的 toolRoles() 必须是 {DM}（进 GM 桶 = 决策人面被放大）", toolName)
           .contains("ToolRole.DM")
           .doesNotContain("ToolRole.GM")
           .doesNotContain("ToolRole.SYSTEM");
       assertThat(countOccurrences(rolesBody, "ToolRole."))
-          .as("★★ N10：%s 的 roles() 必须**恰好一条**角色（多一条 = 可达面被静默放大）", toolName)
+          .as("★★ N10：%s 的 toolRoles() 必须**恰好一条**角色（多一条 = 可达面被静默放大）", toolName)
           .isEqualTo(1);
 
       scanned++;
@@ -186,7 +186,7 @@ class DecisionPacketToolGateScanTest {
   /**
    * ★★ <b>N10 的行为侧对照（防止"源码扫过了、装配却没挂上"）</b>：这一族工具必须**真的**在决策人桶里、且**不在** GM 桶。
    *
-   * <p>★ 为什么源码扫描之外还要这一条：扫描证的是"声明是对的"，装配证的是"声明真的被用上了"。两者之间那条缝 （{@code roles()} 写对但忘了 {@code
+   * <p>★ 为什么源码扫描之外还要这一条：扫描证的是"声明是对的"，装配证的是"声明真的被用上了"。两者之间那条缝 （{@code toolRoles()} 写对但忘了 {@code
    * addDecisionReads}/{@code addDecisionWrites}）**不会有任何报错**， 只会让工具静默消失（{@code DecisionFaceGolden}
    * 的金名单相等断言也会红，但那条的失败信息不如这里点名清楚）。
    */

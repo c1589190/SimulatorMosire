@@ -1277,9 +1277,9 @@ public final class Shell implements AutoCloseable {
     //   两档的读工具装配都要求它非 null（GM-only 读工具虽会被决策人桶过滤，仍先被构造）。
     GmToolUsage gmToolUsage = new GmToolUsage();
     // ★★ 2026-10-12 B4/B4b（设计书 §4.4「一处声明、三处派生」/ I-G3）：**决策人桶先建、权限组白名单从它派生**
-    //   —— 白名单不再手抄 44 条（唯一拼写点是每条工具自己的 SimosTool.roles()），生产里**没有第二份工具名清单**
+    //   —— 白名单不再手抄 44 条（唯一拼写点是每条工具自己的 SimosTool.toolRoles()），生产里**没有第二份工具名清单**
     //   （B4 留下的静态 44 条副本已在 B4b 删除：那种"启动期校验过的副本"仍是第二处声明）。
-    //   下面由 ToolRoleAudit.requireFaces 把**桶 ⇔ roles() 声明**双向全量钉死：漏一条/多一条**当场抛**，不会静默成旁路。
+    //   下面由 ToolRoleAudit.requireFaces 把**桶 ⇔ toolRoles() 声明**双向全量钉死：漏一条/多一条**当场抛**，不会静默成旁路。
     SimosToolSource decisionToolSource =
         new SimosToolSource(
             coreSimos,
@@ -1383,7 +1383,7 @@ public final class Shell implements AutoCloseable {
             new StopReportTool(stopReports),
             new AdvanceWithStopTool(advanceStopPort, config.mapId()));
     // ★★ 2026-10-12 B4（设计书 §4.4 / I-G3）：**装配完成处的校验，一次 O(n)** ——
-    //   两桶 ⇔ roles() 声明（双向全量）：抓"标了 DM 却没注册进决策人桶""只在 GM 桶的窄写却标了 DM"
+    //   两桶 ⇔ toolRoles() 声明（双向全量）：抓"标了 DM 却没注册进决策人桶""只在 GM 桶的窄写却标了 DM"
     //   "加了工具忘了标角色"。**fail-closed：当场抛**，不是静默跳过、不是 warn。
     //   ★ B4b 起这里只剩这一段：白名单 = 上面那个派生集合本身（同一份数据，不可能不一致），
     //     原先"派生集合 ⇔ 静态白名单"的第二段比对随静态清单一起删除。
@@ -1393,18 +1393,18 @@ public final class Shell implements AutoCloseable {
     gmToolFace.addAll(stopProtocolGmTools);
     ToolRoleAudit.requireFaces(gmToolFace, decisionAgentFace);
     // ★★ 2026-10-15 批次 3a（设计书 §3.1 口径 / §3.2 接线）：**工具三分类的装配期 fail-closed 分区** ——
-    //   遍历两桶并集，按 (roles(), gate() 的**实得档**) 判类；判不出类的工具**当场抛**（不静默、不跳过）。
+    //   遍历两桶并集，按 (toolRoles(), gate() 的**实得档**) 判类；判不出类的工具**当场抛**（不静默、不跳过）。
     //   ★ 判据只来自真 gate()（探针上下文 = arguments() 空 Map，见 ToolClassAudit 的类注），**没有**第二处声明。
     //   ★ 返回值是三份不可变清单（类1 GM_ONLY / 类2 DM_APPROVAL / 类3 DM_FREE），供后续批次（3b）与测试取用；
     //     这里只取它"每条工具都落进三格之一"的装配期必过效果。
     ToolClassAudit.requireClasses(gmToolFace, decisionAgentFace);
     // ★★ 2026-10-15 批 K ①（设计书 §3.3 / 不变量 K2）：**可提议声明的装配期 fail-closed 审计**（照上面 ToolClassAudit
     // 的接线形制）。
-    //   C1：工具面上每个实现了 `DecisionProposable` 的工具，其 `roles()` 必须含 DM（用户口径「没有 DM 标签的工具不该出现在
+    //   C1：工具面上每个实现了 `DecisionProposable` 的工具，其 `toolRoles()` 必须含 DM（用户口径「没有 DM 标签的工具不该出现在
     //       提议名单里」）——以前没东西拦，现在装配期当场拦；
     //   C2：两个档的目录成员 ⇔ 各自工具面上实现了该接口的工具（双向、不重不漏）——「声明了可提议」与「装配面注册了它」
     //       必须逐条一致，缺一条就是静默的能力丢失（目录里没有实参可预览/执行）。
-    //   ★ 判据只来自两处**活的**声明（工具面的 instanceof + 工具自己的 roles()），没有第二处名单；违反 ⇒ 当场抛，不降级成日志。
+    //   ★ 判据只来自两处**活的**声明（工具面的 instanceof + 工具自己的 toolRoles()），没有第二处名单；违反 ⇒ 当场抛，不降级成日志。
     ProposalDeclarationAudit.requireProposable(
         gmToolFace,
         decisionAgentFace,

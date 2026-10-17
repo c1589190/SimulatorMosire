@@ -26,14 +26,14 @@ import java.util.Set;
  * <p>★★ <b>2026-10-15 批 L ②：原来的"两面"合并成一条</b>（设计书 §2 N2「乙 + 合并甲」/ §2.1）。合并前是<b>两个类、两个工具名</b>：
  *
  * <ul>
- *   <li>{@code simos.sd.record-diplomatic-event}（{@code roles()={GM}}，<b>显式点名</b>：participants
+ *   <li>{@code simos.sd.record-diplomatic-event}（{@code toolRoles()={GM}}，<b>显式点名</b>：participants
  *       由载荷直接给）；
- *   <li>{@code gov.RecordDiplomaticEvent}（{@code roles()={DM}}，<b>身份派生</b>：participants 必须含调用者
+ *   <li>{@code gov.RecordDiplomaticEvent}（{@code toolRoles()={DM}}，<b>身份派生</b>：participants 必须含调用者
  *       Nation）。
  * </ul>
  *
- * ⇒ 现在是一条：{@code roles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2 DM_APPROVAL</b>
- * （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
+ * ⇒ 现在是一条：{@code toolRoles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2
+ * DM_APPROVAL</b> （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
  * GovToolSupport.resolveGov}（"身份解得出来就从身份解，否则要求显式点名"）——不造第三套：
  *
  * <ul>
@@ -145,7 +145,7 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

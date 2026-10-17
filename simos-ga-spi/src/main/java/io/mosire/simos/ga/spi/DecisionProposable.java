@@ -7,9 +7,9 @@ import java.util.Set;
  * 为啥额外要张表？」）。
  *
  * <p>★ <b>为什么是本接口（而不是一张名单）</b>：工具的**可提议性**此前是 {@code ProposalCatalog} 里的**第二处手写清单**（16 条 {@code new
- * XxxTool(...)}）——它与工具自己的 {@code roles()} 是两处互不相干的声明，漂移**无症状**（原始清单里 7 条是 GM-only，
+ * XxxTool(...)}）——它与工具自己的 {@code toolRoles()} 是两处互不相干的声明，漂移**无症状**（原始清单里 7 条是 GM-only，
  * 却照样能被提议，没有任何东西拦）。本接口把「我能不能被提议」变成**工具自己的声明**：实现了它 ⇒ 进可提议面； 没实现 ⇒ 不进。装配期由 {@code
- * ProposalDeclarationAudit} 做 fail-closed 校验（实现者 {@code roles()} 必须含 {@link ToolRole#DM}）。
+ * ProposalDeclarationAudit} 做 fail-closed 校验（实现者 {@code toolRoles()} 必须含 {@link ToolRole#DM}）。
  *
  * <p>★★ <b>本接口只有"配置"，没有"怎么提议"</b>：预览与目标提取是**通用**的（跑真 {@code preview=true}、从 args + preview 递归提目标），
  * 唯一实现住 {@code simos-app} 的 {@code ProposalCatalog}（不变量 K3）——本接口只声明各工具**自己的**那点差异。

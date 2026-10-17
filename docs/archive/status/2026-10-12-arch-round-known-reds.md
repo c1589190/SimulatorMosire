@@ -437,7 +437,7 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
 ⑤ 残留通道（须显式记）：`social.SubmitHouseholdWorkOrder` 仍可嵌令，且其 plan 含 `CREATE_HOUSEHOLD` / `ADD_MEMBERS` / `REMOVE_MEMBERS` / `TRANSFER_MEMBERS` / `ADJUST_POPULATION` ⇒ **DM 经工单仍能改人口**（带 reason + source 审计）——这是本批**有意保留**的设计点，不是漏网。
 
 **D. 本批未动的面（如实记，控制方复核项）**
-1. **工具面 `SimosTool.roles()` 一字未动**（派单书 ④：留给批次 5）⇒ DM 侧窄工具仍能**直接提交**被摘命令（不经可嵌令面）；本批只收窄「令里能嵌 / 效果可入队」。
+1. **工具面 `SimosTool.toolRoles()` 一字未动**（派单书 ④：留给批次 5）⇒ DM 侧窄工具仍能**直接提交**被摘命令（不经可嵌令面）；本批只收窄「令里能嵌 / 效果可入队」。
 2. **边界保留 12 条**未再收紧（GOV 行政 / 政策 9 + 家户经济角色配置 3）—— 若按判据 ① 的最严读法可再收紧，留给控制方 / 用户。
 3. **`simos-ga/**` 的过时「66 条」文案未改**（写权外）：`RegisterEffectHandler.java:50-51` · `CommandFaces.java:22` · `DirectiveWhitelist.java` 类注。
    ★ 另有**先于本批就存在**的失真（本批未动、如实报）：`SimosToolSource.java:749` 称 `unit.AdjustComposition`「命令本身打 `DmUsableCommand`」，而它**从来不在** DM 面。

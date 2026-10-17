@@ -43,8 +43,8 @@ import java.util.Set;
  *
  * <p>★★ <b>它补的是缺口 G2</b>：{@code gm.*} 一族里此前**没有任何**能读 INFO 或发信的工具（{@code gm.packets} / {@code
  * gm.packet} / {@code gm.approvals} / {@code gm.tool-usage} 全是别的用途），而 {@code simos.ga.message.send}
- * 的 {@code roles()={DM}} 不进 GM 桶 ⇒ GM 收不到也回不了话。DM 侧的收件箱是 {@code simos.ga.message.inbox}，GM 侧的是
- * {@code simos.gm.inbox}——**两条各有各的角色**（本工具 {@code roles()={GM}}， <b>不是</b> {@code {DM,GM}}：DM
+ * 的 {@code toolRoles()={DM}} 不进 GM 桶 ⇒ GM 收不到也回不了话。DM 侧的收件箱是 {@code simos.ga.message.inbox}，GM 侧的是
+ * {@code simos.gm.inbox}——**两条各有各的角色**（本工具 {@code toolRoles()={GM}}， <b>不是</b> {@code {DM,GM}}：DM
  * 侧有它自己的那条）。
  *
  * <p>★★ <b>形状与 DM 侧同源</b>（不复制第二份）：地址 {@code ga:message.<gm>.<to>.<tick>.<n>}、条目 id {@code
@@ -291,7 +291,7 @@ public final class GmMessageSendTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**GM 面**（DM 侧那条是 {@link GaMessageSendTool}，两条各有各的角色）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

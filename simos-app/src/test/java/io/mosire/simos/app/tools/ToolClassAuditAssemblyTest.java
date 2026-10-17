@@ -73,9 +73,9 @@ class ToolClassAuditAssemblyTest {
    * list_workspaces}）。
    *
    * <p>★ <b>它不是"按文件 grep 数出来的"</b>：控制方原稿的 137/15/32 是文件级 {@code git grep} 的**系统性低估**
-   * （看不见逐条表声明角色的外来工具、看不见具名常量写的 {@code roles()}、还把自己数成一条工具）—— 本类钉的是**真装配的分区**，理由见类注的自洽硬证据。
+   * （看不见逐条表声明角色的外来工具、看不见具名常量写的 {@code toolRoles()}、还把自己数成一条工具）—— 本类钉的是**真装配的分区**，理由见类注的自洽硬证据。
    *
-   * <p>★★ <b>谁要改这个数</b>：工具面增删一条、或某条工具的 {@code roles()}/{@code gate()} 改了类归属 ⇒ 这里当场红。
+   * <p>★★ <b>谁要改这个数</b>：工具面增删一条、或某条工具的 {@code toolRoles()}/{@code gate()} 改了类归属 ⇒ 这里当场红。
    * 那时应当<b>显式</b>改本行并在提交说明里写清"哪一条、为什么换格"，<b>不是</b>把断言删掉/放宽。
    *
    * <p>★★ <b>本次变化（{@code 133 → 131}）来自批 L ②「两对外交工具合并」</b>（设计书 §2.1 裁定 N2「乙 + 合并甲」）：原来 <b>GM
@@ -86,7 +86,7 @@ class ToolClassAuditAssemblyTest {
    * 桶**不动**，见 {@link #GM_BUCKET_SIZE}）。
    *
    * <p>★★ <b>2026-10-15 批 U（{@code 131 → 132}）：批 O 的 {@code simos.command.submitBatch}</b>（{@code
-   * 12f23e68}）是 {@code roles()={GM}} 的通用写（<b>不继承</b>窄写基类）⇒ 只进类1、只进 GM 桶、<b>不进</b>共享。★ 本值 =
+   * 12f23e68}）是 {@code toolRoles()={GM}} 的通用写（<b>不继承</b>窄写基类）⇒ 只进类1、只进 GM 桶、<b>不进</b>共享。★ 本值 =
    * <b>本条真跑实测</b>：红在「{@code 类1 GM_ONLY 条数锚点 … Expected size: 131 but was: 132}」（批 U 台账 §1）；★
    * 修后自洽：{@code 132 + 48(共享) = 180(GM 桶)}。
    */
@@ -102,7 +102,7 @@ class ToolClassAuditAssemblyTest {
   private static final int DM_FREE_SIZE = 37;
 
   /**
-   * ★ <b>共享 = 46</b>：既在 GM 桶、又在决策人桶的工具（内部 38 + 外来 8，{@code roles()} 含 {@code {GM, DM}} 两者）。
+   * ★ <b>共享 = 46</b>：既在 GM 桶、又在决策人桶的工具（内部 38 + 外来 8，{@code toolRoles()} 含 {@code {GM, DM}} 两者）。
    *
    * <p>★ 裁定「甲」把 7 条从「只在 GM 桶」搬进「两桶共享」⇒ {@code 39 → 46}。★ 它与 {@link #GM_ONLY_SIZE} 的算术是
    * <b>双向钉死</b>的：GM 桶 = 类1 + 共享（{@code 133 + 46 = 179}）——只改一个数就会在下面的自洽断言里红。
@@ -189,7 +189,7 @@ class ToolClassAuditAssemblyTest {
    * simos.gov.setDiplomaticRelation} 原本与 {@code simos.gov.pay} 同为"纯 {@code {DM}} + {@code Ask}"的三条；
    * 合并之后那两条**拿到了 GM 那一半**（{@code roles={DM,GM}}，设计书 §2.1 裁定 N2）⇒ 它们**不再是**"纯 {@code {DM}}"。 ★
    * 这不是放宽：本清单只负责"纯 {@code {DM}} ⇒ 落类2"这一维，而**合并后那两条仍在类2**这一事实由新增的 {@link #MERGED_DIPLOMATIC_NAMES}
-   * 断言逐条钉住（{@code roles()} 必须**恰好** {@code {DM,GM}}、{@code gate} 必须 {@code Ask}）。
+   * 断言逐条钉住（{@code toolRoles()} 必须**恰好** {@code {DM,GM}}、{@code gate} 必须 {@code Ask}）。
    */
   private static final List<String> PURE_DM_APPROVAL_NAMES = List.of("simos.gov.pay");
 
@@ -198,7 +198,7 @@ class ToolClassAuditAssemblyTest {
    * gate=Ask(SENSITIVE)} ⇒ 落类2。
    *
    * <p>★ 它钉的是合并的**直接可执行后果**：① 旧 GM 面工具名（{@code simos.sd.*}）与旧 DM 面工具名（{@code gov.*}）都不得再出现； ②
-   * 新名**恰好**在类2；③ {@code roles()} 恰好 {@code {DM,GM}}（多一个/少一个都在这里红）；④ {@code gate()} 实得档是 {@code
+   * 新名**恰好**在类2；③ {@code toolRoles()} 恰好 {@code {DM,GM}}（多一个/少一个都在这里红）；④ {@code gate()} 实得档是 {@code
    * Ask}（"DM/GM 混合就是要交给 GM 审核"）。
    */
   private static final List<String> MERGED_DIPLOMATIC_NAMES =
@@ -209,7 +209,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★ <b>为什么这里要"重建"而不是引用生产的那个</b>：A1 的判据是"分类 ⇔ 真 {@code gate()}"，若本测试复用生产侧的判类函数，
    * 那条断言就退化成"生产等于它自己"。⇒ 判类逻辑（{@link #classifyIndependently}）与探针都在本类里**独立重写**；两者只用
-   * <b>公开契约</b>（{@code roles()} / {@code gate(ToolContext)}）对话。
+   * <b>公开契约</b>（{@code toolRoles()} / {@code gate(ToolContext)}）对话。
    */
   private static final ToolContext PROBE =
       new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), Map.of(), Map.of());
@@ -223,7 +223,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★ <b>为什么这是本批的核心</b>：三分类的口径是"由 {@code (roles, gate)} **纯派生**"，不许有第二处声明。若审计的判类 与真 {@code
    * gate()} 分叉（例如它自己查了张表、或把 {@code Ask} 判成 ALLOW），行为与分类就**各说各话**且无症状。本用例 用**独立重写的判类函数**（{@link
-   * #classifyIndependently}：{@code roles()} + 真 {@code gate()}）覆盖全部 194 条。
+   * #classifyIndependently}：{@code toolRoles()} + 真 {@code gate()}）覆盖全部 194 条。
    *
    * <p>★ <b>三条"不重不漏"的腿</b>（缺一条这条判据就是假的）：
    *
@@ -305,7 +305,7 @@ class ToolClassAuditAssemblyTest {
         }
       }
       assertThat(shared)
-          .as("★ 共享（既在 GM 桶又在决策人桶，= roles() 含 {GM, DM} 两者）条数锚点")
+          .as("★ 共享（既在 GM 桶又在决策人桶，= toolRoles() 含 {GM, DM} 两者）条数锚点")
           .isEqualTo(SHARED_SIZE);
       assertThat(partition.toolsOf(ToolClass.GM_ONLY).size() + shared)
           .as("★★ 自洽：GM 桶 = 类1 + 共享（%d + %d = %d）", GM_ONLY_SIZE, SHARED_SIZE, GM_BUCKET_SIZE)
@@ -324,7 +324,7 @@ class ToolClassAuditAssemblyTest {
           .as("★ 并集条数锚点（两桶共享的工具只算一条）")
           .hasSize(TOOL_UNION_SIZE);
 
-      // ③ 格与 roles() 的关系（类1 是 {GM}；类2/类3 都含 DM）—— 判类只看"属于谁 × 要不要问人"
+      // ③ 格与 toolRoles() 的关系（类1 是 {GM}；类2/类3 都含 DM）—— 判类只看"属于谁 × 要不要问人"
       for (AgentTool tool : partition.toolsOf(ToolClass.GM_ONLY)) {
         assertThat(rolesOf(tool))
             .as("★ 类1 的 %s 必须**恰好**是 {GM}（多一个 DM 就该被算成「DM 能用」）", tool.name())
@@ -382,7 +382,7 @@ class ToolClassAuditAssemblyTest {
             .contains(name);
         assertThat(classThree).as("★ A3：%s 既然落类2，就**不许**同时出现在类3", name).doesNotContain(name);
         assertThat(rolesOf(classTwoTools.get(name)))
-            .as("★★ A3：%s 的 roles() 必须是**纯 {DM}**（它没有 GM 那一半 —— 这正是「四格」里多出来的那一格）", name)
+            .as("★★ A3：%s 的 toolRoles() 必须是**纯 {DM}**（它没有 GM 那一半 —— 这正是「四格」里多出来的那一格）", name)
             .containsExactly(ToolRole.DM);
         assertThat(classTwoTools.get(name).gate(PROBE))
             .as("★ A3：%s 的 gate() 实得档必须是 Ask（要问人 ⇒ 类2 而不是类3）", name)
@@ -396,7 +396,7 @@ class ToolClassAuditAssemblyTest {
             .contains(name);
         assertThat(classThree).as("★ A3-合并：%s 落类2 ⇒ 不许同时出现在类3", name).doesNotContain(name);
         assertThat(rolesOf(classTwoTools.get(name)))
-            .as("★★ A3-合并：%s 的 roles() 必须**恰好** {DM,GM}（合并后两个面都能用，多一个/少一个都在这里红）", name)
+            .as("★★ A3-合并：%s 的 toolRoles() 必须**恰好** {DM,GM}（合并后两个面都能用，多一个/少一个都在这里红）", name)
             .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
         assertThat(classTwoTools.get(name).gate(PROBE))
             .as("★★ A3-合并：%s 的 gate() 实得档必须是 Ask（DM/GM 混合 ⇒ 交给 GM 审核）", name)
@@ -475,7 +475,7 @@ class ToolClassAuditAssemblyTest {
       assertThat(union).as("★ 扫描器自证之三：真装配并集非空（否则「没有任何工具名出现」是空 == 空）").hasSize(TOOL_UNION_SIZE);
       for (String toolName : union.keySet()) {
         assertThat(source)
-            .as("★★ A7/C3：审计源码里出现了工具名 %s —— 分类只能从 roles()×gate() 派生，**不许**有第二处清单", toolName)
+            .as("★★ A7/C3：审计源码里出现了工具名 %s —— 分类只能从 toolRoles()×gate() 派生，**不许**有第二处清单", toolName)
             .doesNotContain(toolName);
       }
     }
@@ -505,7 +505,7 @@ class ToolClassAuditAssemblyTest {
   }
 
   /**
-   * ★★ <b>独立重写的判类函数</b>（只用公开契约 {@code roles()} / {@code gate(ToolContext)}）—— A1 的判据就是它与 {@code
+   * ★★ <b>独立重写的判类函数</b>（只用公开契约 {@code toolRoles()} / {@code gate(ToolContext)}）—— A1 的判据就是它与 {@code
    * Partition} 的归属逐条相等。★ 判据与设计书 §3.1 一字对应：{@code {GM}} ⇒ 类1（不调 {@code gate}）；含 DM 时看 {@code gate}
    * 的**实得档**：{@code Ask} ⇒ 类2、{@code Allow} ⇒ 类3、其余（含 {@code Block}）⇒ 判不出（本测试里直接红）。
    */
@@ -515,7 +515,7 @@ class ToolClassAuditAssemblyTest {
       return ToolClass.GM_ONLY;
     }
     assertThat(roles)
-        .as("★ A1：%s 的 roles() 既不是 {GM} 也不含 DM ⇒ 真装配里不该存在（判不出类）", tool.name())
+        .as("★ A1：%s 的 toolRoles() 既不是 {GM} 也不含 DM ⇒ 真装配里不该存在（判不出类）", tool.name())
         .contains(ToolRole.DM);
     ToolGate gate = tool.gate(PROBE);
     if (gate instanceof ToolGate.Ask) {
@@ -563,12 +563,12 @@ class ToolClassAuditAssemblyTest {
     return byName;
   }
 
-  /** {@code roles()} 的读口（本测试只面对真工具面：每条都必须是 {@link SimosTool}）。 */
+  /** {@code toolRoles()} 的读口（本测试只面对真工具面：每条都必须是 {@link SimosTool}）。 */
   private static Set<ToolRole> rolesOf(AgentTool tool) {
     assertThat(tool)
         .as("★ 真装配面里的 %s 必须实现 SimosTool（否则它过不了装配期的角色审计）", tool.name())
         .isInstanceOf(SimosTool.class);
-    return ((SimosTool) tool).roles();
+    return ((SimosTool) tool).toolRoles();
   }
 
   /** {@code simos-ga} 里三分类审计的源码（surefire 工作目录 = {@code simos-app/}）。 */

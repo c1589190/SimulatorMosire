@@ -611,13 +611,13 @@ class RaiseUnitToolTest {
    * <ol>
    *   <li>GM 桶里<b>仍然有</b>它（补标签**没有**把它从 GM 面挪走 —— 它是"两桶共享"，不是"搬家"）；
    *   <li>决策人桶里<b>现在有</b>它（旧断言的反面，正是裁定「甲」的落点）；
-   *   <li>它的 {@code roles()} <b>恰好</b>是 {@code {DM, GM}}（不是 {@code {DM}} 单标签 —— 那会变成"DM 与 GM
+   *   <li>它的 {@code toolRoles()} <b>恰好</b>是 {@code {DM, GM}}（不是 {@code {DM}} 单标签 —— 那会变成"DM 与 GM
    *       等价"的另一种口径）；
    *   <li>真装配的分区把它判成类2、且<b>不在</b>类1/类3（{@code Ask} 而不是 {@code ALLOW} ⇒ "要问人"，与用户口径一致）。
    * </ol>
    *
-   * <p>★ <b>为什么第 4 件不能只看 {@code roles()}</b>：{@code roles()} 含 DM 只说明"DM 够得着"；它落类2 还是类3 完全由 {@code
-   * gate()} 决定 —— 只看标签会把"要 GM 审核"误读成"DM 随便用"。
+   * <p>★ <b>为什么第 4 件不能只看 {@code toolRoles()}</b>：{@code toolRoles()} 含 DM 只说明"DM 够得着"；它落类2 还是类3 完全由
+   * {@code gate()} 决定 —— 只看标签会把"要 GM 审核"误读成"DM 随便用"。
    */
   @Test
   void toolSitsInBothBucketsAndClassifiesAsClassTwoDmApproval() {
@@ -635,8 +635,8 @@ class RaiseUnitToolTest {
             .filter(tool -> RaiseUnitTool.NAME.equals(tool.name()))
             .findFirst()
             .orElseThrow();
-    assertThat(((SimosTool) onDecisionFace).roles())
-        .as("★★ 它的 roles() 恰好是 {DM, GM}（漏打标签的那一半补上了；多一个少一个都不行）")
+    assertThat(((SimosTool) onDecisionFace).toolRoles())
+        .as("★★ 它的 toolRoles() 恰好是 {DM, GM}（漏打标签的那一半补上了；多一个少一个都不行）")
         .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
     assertThat(onDecisionFace.gate(PROBE))
         .as("★★ 它的 gate() 实得档必须是 Ask（= 类2「交给 GM 审核」）—— 若成 ALLOW 就是「DM 随便用」，与裁定「甲」的口径不符")

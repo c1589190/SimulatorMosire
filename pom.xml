@@ -91,8 +91,12 @@
          落地后再升固定版本。**如今在途工作已落地**（R8 的 doc_guide / workspace_info 等新工具就随
          首个公开发布 0.1.0 一并发出），用户 2026-10-14 指示改走**远程仓库 + 固定版本** ⇒
          不再依赖本机 ~/.m2 里拷来的 SNAPSHOT（跨机器可重建、不需要凭据）。
-         本条属性是这三个库版本的**唯一拼写点**（simos-app 亦引它）。 -->
-    <agentlib-mosire.version>0.1.0</agentlib-mosire.version>
+         本条属性是这三个库版本的**唯一拼写点**（simos-app 亦引它）。
+         ★★ 2026-10-17 升级 0.1.0 → 0.2.1（分支 agentlib/dock-0.2.1）：0.2.1 新增
+         io.mosire.agentlib.runtime（AgentLoop 等 8 类）/ context（ContextWindow 等 3 类）/
+         agent.AgentConfig，并给 AgentTool 加了角色维 roles()——本分支正是为了「ga 的 Agent 实现
+         改为复用这些标准件」，详见 docs/superpowers/specs/ 下本分支设计书。 -->
+    <agentlib-mosire.version>0.2.1</agentlib-mosire.version>
 
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>

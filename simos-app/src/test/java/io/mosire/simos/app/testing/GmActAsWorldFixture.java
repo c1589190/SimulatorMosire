@@ -278,7 +278,7 @@ public final class GmActAsWorldFixture {
       return shell.toolsFor(io.mosire.simos.app.tools.SimosToolSource.Role.DECISION_AGENT).stream()
           .filter(tool -> tool.name().equals(name))
           .findFirst()
-          .orElseThrow(() -> new AssertionError("决策人面上必须有 " + name + "（roles() 声明与桶装配不一致？）"));
+          .orElseThrow(() -> new AssertionError("决策人面上必须有 " + name + "（toolRoles() 声明与桶装配不一致？）"));
     }
 
     /** 决策人面上的工具名（快照）。 */

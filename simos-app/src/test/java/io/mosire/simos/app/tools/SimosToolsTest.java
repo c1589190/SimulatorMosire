@@ -201,8 +201,8 @@ class SimosToolsTest {
    *
    * <p>★★ <b>2026-10-14 决策人互致消息 −1</b>：旧读口 {@code simos.sd.reports} **整条删除**（旧上报族废弃）⇒ 36 →
    * <b>35</b>。★ 减的是**本名单**（GM 桶的读侧），**不是**"读工具覆盖"本身：新批次的读工具 {@code simos.ga.message.inbox}
-   * 是**决策人专属**（{@code roles()={DM}}）⇒ 它不进本名单；它的可达性与最小形状 （{@code messages}/{@code count}）由 {@code
-   * DmMessagingEndToEndTest} 用**真决策人身份**覆盖（比在这里用 GM 身份调更强）。
+   * 是**决策人专属**（{@code toolRoles()={DM}}）⇒ 它不进本名单；它的可达性与最小形状 （{@code messages}/{@code count}）由
+   * {@code DmMessagingEndToEndTest} 用**真决策人身份**覆盖（比在这里用 GM 身份调更强）。
    */
   private static final List<String> READ_TOOL_NAMES =
       List.of(
@@ -313,7 +313,7 @@ class SimosToolsTest {
           //   ★ 不登记它 ⇒ 它以"孤儿窄写"身份出现在 everyNarrowWriteToolClassIsWiredIntoTheGmBucket
           //     的差集里（真跑实测：unexpected elements: ["simos.command.submitBatch"]）；
           //     NARROW_WRITE_NAMES / 磁盘窄写扫描面（66）一条不动。
-          //   ★ 它 roles()={GM} ⇒ 决策人面一条不动；★ 与它同族的 simos.command.submit 就在上一行。
+          //   ★ 它 toolRoles()={GM} ⇒ 决策人面一条不动；★ 与它同族的 simos.command.submit 就在上一行。
           "simos.command.submitBatch",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
@@ -329,7 +329,7 @@ class SimosToolsTest {
           //     的**扣减面**；不登记 ⇒ 它以"孤儿窄写"身份出现在
           //     everyNarrowWriteToolClassIsWiredIntoTheGmBucket 的差集里（实测原文：but the following
           //     elements were unexpected: ["simos.gm.actAs"]）；登记进 NARROW_WRITE_NAMES 则会与磁盘扫描面
-          //     （那里根本没有它）对不上。⇒ 它的位置只有这一个。★ 它 roles()={GM} ⇒ 决策人面一条不动。
+          //     （那里根本没有它）对不上。⇒ 它的位置只有这一个。★ 它 toolRoles()={GM} ⇒ 决策人面一条不动。
           "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           "simos.gm.govMarketMandate",
@@ -1242,7 +1242,7 @@ class SimosToolsTest {
                 + "★★ W10 的 simos.economy.setEconomyPolicy 同样是窄写 ⇒ 165 → 166（实测：本轮真跑该类的 tool 面计数 166 = 37 读 + 129 写）；"
                 + "★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条（共享读）⇒ 161 → 160（按实测桶大小显式改本条；设计书 §4.1「工具面只减一条，且恰好是那一条 Skill 工具」）；"
                 + "★★ 2026-10-13 急停协议：新增 3 条工具且**只在 GM 桶**（simos.army.stopReport 读 + simos.army.contactWatch 窄写 + simos.emergency.advance 通用写）⇒ 160 → **163**"
-                + "（逐条核过：决策人桶一条都不进 ⇒ 下面那条 42 **不动**；三条的 roles() 只有 GM）；"
+                + "（逐条核过：决策人桶一条都不进 ⇒ 下面那条 42 **不动**；三条的 toolRoles() 只有 GM）；"
                 + "★★ 2026-10-14 AgentLib Docs/Workspace 接入：GM 面 **+10**（7 条 doc_* + 3 条工作区；"
                 + "doc_void 与 3 条工作区工具只有 GM）⇒ 163 → **173**（实测：真壳 GM_SIZE=173）；"
                 + "★★ 2026-10-14 上游 R8：{@code doc_guide} / {@code workspace_info} 两条能力自述工具 {GM, DM} + ALLOW"
@@ -1253,10 +1253,10 @@ class SimosToolsTest {
                 + "（实测：真壳 GM 桶 178 = 37 读 + 141 写；本条与 {@code everyToolClassOnDiskIsRegisteredInSomeBucket} "
                 + "的 174 → 181、{@code McpServerTest}/{@code McpPortTopologyTest} 的 175 → 178、"
                 + "{@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次真跑读数）；"
-                + "★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）：该工具 {@code roles()={GM}} 且是**非窄写**"
+                + "★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）：该工具 {@code toolRoles()={GM}} 且是**非窄写**"
                 + "（不继承 AbstractNarrowWriteTool）⇒ GM 面 **178 → 179**（= 37 读 + 142 写），决策人面 **54 一条不动**"
                 + "（★ 实测：本条真跑红在「Expected size: 178 but was: 179」；下面那条决策人桶断言同一次跑**没红**）；"
-                + "★★ 2026-10-15 批 U（同步批 O）：批 O 的 {@code simos.command.submitBatch}（{@code roles()={GM}}、"
+                + "★★ 2026-10-15 批 U（同步批 O）：批 O 的 {@code simos.command.submitBatch}（{@code toolRoles()={GM}}、"
                 + "非窄写）⇒ GM 面 **179 → 180**，决策人面 **61 一条不动**"
                 + "（★ 实测：本条真跑红在「Expected size: 179 but was: 180」；下面那条决策人桶断言同一次跑**没红**）")
         .hasSize(180);
@@ -1635,7 +1635,7 @@ class SimosToolsTest {
             // ★ D0–D4 新读口：GM 决策包清单/单包、家户聚合查询。
             new Case("simos.gm.packets", Map.of(), "packets"),
             // ★★ 2026-10-14 决策人互致消息：旧跨区上报读口 simos.sd.reports **整条删除** ⇒ 本表删掉那一行。
-            //   ★ 不是漏测：取代它的读工具 simos.ga.message.inbox 是**决策人专属**（roles()={DM}），
+            //   ★ 不是漏测：取代它的读工具 simos.ga.message.inbox 是**决策人专属**（toolRoles()={DM}），
             //     本表用的是 SYSTEM 身份 ⇒ 在这里调它只会得到 FORBIDDEN（身份里没有 decision-maker: 前缀），
             //     测不到任何东西。它的可达性 + 最小形状（messages/count）+ 身份派生由
             //     DmMessagingEndToEndTest 用**真决策人身份**覆盖 —— 覆盖面只增不减。
@@ -2208,7 +2208,7 @@ class SimosToolsTest {
                 + "4 条只有 DM（{@code adjudication.ack} + 批 B 三件套）⇒ 与 GM 桶 175→178、决策人桶 50→51 三条读数自洽；"
                 + "扫到 0/漏文件是『扫描器静默』陷阱）；"
                 + "★★ 2026-10-14 批 G（GM 代打）：磁盘上 **+1 个 *Tool.java ⇒ 实测 181 → 182** —— "
-                + "{@code simos-ga/.../tools/write/GmActAsTool.java}（{@code roles()={GM}}，只 implements SimosTool）"
+                + "{@code simos-ga/.../tools/write/GmActAsTool.java}（{@code toolRoles()={GM}}，只 implements SimosTool）"
                 + "（★ 实测：本条真跑红在「Expected size: 181 but was: 182」）；"
                 + "★★ 2026-10-15 批 L ②（设计书 §2.1 裁定 N2「两对外交工具合并成一条」）：磁盘上 **净 −2 个 *Tool.java ⇒ "
                 + "实测 182 → 180** —— 两条被合并掉的 GM 面实现类整类删除（{@code SdRecordDiplomaticEventTool} / "
@@ -2217,7 +2217,7 @@ class SimosToolsTest {
                 + "（★ 实测：本条真跑红在「Expected size: 182 but was: 180」）；"
                 + "★★ 2026-10-15 批 U（同步批 O）：磁盘上 **+1 个 *Tool.java ⇒ 实测 180 → 181** —— "
                 + "{@code simos-app/.../tools/write/CommandSubmitBatchTool.java}（批 O 的 GM 薄工具，"
-                + "{@code roles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）")
+                + "{@code toolRoles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）")
         .hasSize(181);
 
     List<String> union =
@@ -2412,7 +2412,7 @@ class SimosToolsTest {
     assertThat(covered)
         .as("★ I7 边界：simos.ga.message.send 不是窄写（gate=ALLOW）⇒ 写闸覆盖集必须**不含**它")
         .doesNotContain(GaMessageSendTool.NAME);
-    // ★★ 查找面（2026-10-14 实测修）：★ 这条断言判的是**决策人面**上的 send，而它的 roles()={DM} ⇒ 它
+    // ★★ 查找面（2026-10-14 实测修）：★ 这条断言判的是**决策人面**上的 send，而它的 toolRoles()={DM} ⇒ 它
     //   **不在** GM 的 MCP 注册表里（{@code shell.toolRegistry()} 只装 GM 面，见 Shell 的 toolBridge 装配）
     //   —— 旧写法在 GM 注册表里 find 它 ⇒ NoSuchElementException（实测：本条在基线里正是那个 Error）。
     //   ★ 这不是"改找得到一个替身"，而是**按 toolsFor(DECISION_AGENT) 取真身**：与 DmMessagingEndToEndTest
@@ -2426,7 +2426,7 @@ class SimosToolsTest {
                     new AssertionError(
                         "★ 决策人面上必须有 "
                             + GaMessageSendTool.NAME
-                            + "（roles()={DM} ⇒ GM 的 MCP 注册表里必然没有它）"));
+                            + "（toolRoles()={DM} ⇒ GM 的 MCP 注册表里必然没有它）"));
     assertThat(messageSend.gate(context(messageSend, Map.of())))
         .as("★ I7：send 的闸门是 ALLOW（事先授权在 accessLimit.peer，不是逐条审批）")
         .isEqualTo(ToolGate.ALLOW);

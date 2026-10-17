@@ -207,7 +207,7 @@ public List<Map<String, Object>> docs(
 | 身份规则：`id` 派生、可重放、追加序号 | **自定义字段的内容**（worldid / branch / revision / 业务字段）—— R-C2 |
 | 可见性判据（含 GM 无条件通过、owner-only、fail-closed） | **谁在什么时候写**（GM 工具 / DM 工具 / 启动注入） |
 | 顺序契约（tick 降序 + 有序列升序，先排后截） | **正文语义**（docId 命名、正文是否为 JSON 字符串） |
-| 限流 + "查询不抛异常" | **工具面的角色声明**（Simos 侧 `SimosTool.roles()` 仍是唯一拼写点） |
+| 限流 + "查询不抛异常" | **工具面的角色声明**（Simos 侧 `SimosTool.toolRoles()` 仍是唯一拼写点） |
 | 并发/原子性 | **审批挂哪条链**（Simos 侧按装配决定，不进接口） |
 
 ★ Simos 侧的工具契约现状（供对接参考）：工具必须 `implements SimosTool`，其 `roles()` 返回非空不可变集合，取值 `{GM}` / `{DM}` / `{GM,DM}`；装配期与桶逐条比对，不一致**当场抛**。类注明确「审批链按**装配**决定……工具只声明"谁能用"……把它写进接口 = 第二处真相」（`simos-ga-spi/.../spi/SimosTool.java:22-23`）。

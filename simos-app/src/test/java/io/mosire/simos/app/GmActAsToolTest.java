@@ -537,7 +537,7 @@ class GmActAsToolTest {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════════
-  // G9 / G10 —— 「只能干那个 DM 能干的」+ roles()={GM}
+  // G9 / G10 —— 「只能干那个 DM 能干的」+ toolRoles()={GM}
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
   /**
@@ -579,7 +579,7 @@ class GmActAsToolTest {
         .as("★★ G9-①：%s 必须在 GM 面（= 运行时 MCP 口）", GM_ONLY_READ)
         .isPresent();
     assertThat(world.decisionToolNames())
-        .as("★★ G9-①：%s **不在**决策人面（roles() 只有 GM ⇒ 决策人的注册表里根本没有它）", GM_ONLY_READ)
+        .as("★★ G9-①：%s **不在**决策人面（toolRoles() 只有 GM ⇒ 决策人的注册表里根本没有它）", GM_ONLY_READ)
         .doesNotContain(GM_ONLY_READ);
     // 先证"用真决策人桶代打它 ⇒ TOOL_NOT_FOUND"（G2-① 的同一机制，此处作对照基线）。
     ToolResult baseline =
@@ -671,9 +671,9 @@ class GmActAsToolTest {
   }
 
   /**
-   * ★★ <b>G10：{@code roles()={GM}} ⇒ 代打<b>不进决策人桶</b></b>（设计书 §3.7「它不进 DM 桶」+ §4 I2「闸门在 GM 侧」）。
+   * ★★ <b>G10：{@code toolRoles()={GM}} ⇒ 代打<b>不进决策人桶</b></b>（设计书 §3.7「它不进 DM 桶」+ §4 I2「闸门在 GM 侧」）。
    *
-   * <p>★ 形制照 {@code DecisionPacketToolGateScanTest}：<b>源码扫描</b>（{@code roles()} 的唯一声明点）+
+   * <p>★ 形制照 {@code DecisionPacketToolGateScanTest}：<b>源码扫描</b>（{@code toolRoles()} 的唯一声明点）+
    * <b>装配侧桶对照</b> （派生面里没有它）两侧都钉。★ 只扫源码会漏「声明对了但挂错桶」；只查桶会漏「声明被改成 {GM,DM} 但桶没跟上」 （后者会在 {@code
    * ToolRoleAudit.requireFaces} 装配期抛，但那条不在本用例的可见面里）。
    */
@@ -694,10 +694,10 @@ class GmActAsToolTest {
         .as("★★ G10：决策人白名单（从决策人桶派生）里不得有 %s", GmActAsTool.NAME)
         .doesNotContain(GmActAsTool.NAME);
 
-    // ② 源码侧：roles() 的唯一拼写点是 {GM}（不是 {GM, DM}）。
+    // ② 源码侧：toolRoles() 的唯一拼写点是 {GM}（不是 {GM, DM}）。
     String source = Files.readString(actAsSource());
     assertThat(source)
-        .as("★★ G10：%s 的源码里 roles() 必须返回 Set.of(ToolRole.GM)", GmActAsTool.NAME)
+        .as("★★ G10：%s 的源码里 toolRoles() 必须返回 Set.of(ToolRole.GM)", GmActAsTool.NAME)
         .contains("return Set.of(ToolRole.GM);");
     assertThat(source)
         .as("★★ G10：★ 反证 —— 不许出现 {GM, DM} 那种双角色声明")

@@ -45,9 +45,9 @@ import java.util.TreeSet;
  * ToolCallAuthorizer.standard()}（不带编排器）会在审批段一律拒。
  *
  * <p>★ **白名单是决策人桶的纯派生量**（2026-10-12 B4b；设计书 §4.4 / 不变量 I-G3）：工具"能被谁用"**只**写在每条工具自己的 {@code
- * SimosTool.roles()} 里（用户 2026-09-22：「决策人不能直接改地图等数据」）；装配方 {@code Shell} 从**决策人桶**派生工具名 （{@code
+ * SimosTool.toolRoles()} 里（用户 2026-09-22：「决策人不能直接改地图等数据」）；装配方 {@code Shell} 从**决策人桶**派生工具名 （{@code
  * ToolBuckets.namesOf}）经 {@link #forDecisionFace} 注入本类，桶本身再由 {@code ToolRoleAudit.requireFaces} 与
- * {@code roles()} **双向全量**钉死。★ 生产里**没有**第二份工具名清单：B4 曾留过一份静态 44 条白名单当"启动期校验过的副本"， B4b
+ * {@code toolRoles()} **双向全量**钉死。★ 生产里**没有**第二份工具名清单：B4 曾留过一份静态 44 条白名单当"启动期校验过的副本"， B4b
  * 已删——那种副本仍是**第二处声明**（每加一个决策人工具就得改两个地方），而它要防的漂移已由那两段审计当场抓住。 名单的**独立规格**只住在测试里（{@code
  * DecisionFaceGolden}）。
  *
@@ -123,7 +123,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * 看不见桶的装配（那要 core/query/16 个模块的工具构造）。{@code Shell} 是唯一同时拿得到"桶"与"权限组"的地方。
    *
    * <p>★ <b>传进来的集合必须已经过校验</b>：{@code Shell} 在调本方法前先跑 {@code ToolRoleAudit.requireFaces}（桶 ⇔ {@code
-   * roles()} 声明，双向全量），不一致当场抛 —— 所以这里拿到的名字就是"声明说能给决策人用"的那一份。
+   * toolRoles()} 声明，双向全量），不一致当场抛 —— 所以这里拿到的名字就是"声明说能给决策人用"的那一份。
    *
    * <p>★ <b>空集合当场抛</b>（fail-closed）：派生集合为空 = 决策人一条工具都看不见，能力**静默消失**且不报错 —— 那是装配故障， 不是"合法的空面"（与
    * {@code DecisionToolDefs.requireAll} 的"响亮失败"同一条口径）。
@@ -137,7 +137,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     Objects.requireNonNull(derivedDecisionFaceNames, "derivedDecisionFaceNames");
     if (derivedDecisionFaceNames.isEmpty()) {
       throw new IllegalStateException(
-          "决策人工具面装配故障：从决策人桶派生的白名单是**空集** —— 工具\"能被谁用\"只写在 SimosTool.roles() 里"
+          "决策人工具面装配故障：从决策人桶派生的白名单是**空集** —— 工具\"能被谁用\"只写在 SimosTool.toolRoles() 里"
               + "（设计书 §4.4 / I-G3），空集只可能是装配坏了（决策人桶没建起来，或全体工具都漏了 DM 声明）。"
               + "不静默放行：空面会让模型一个工具都看不见，且不报错。");
     }

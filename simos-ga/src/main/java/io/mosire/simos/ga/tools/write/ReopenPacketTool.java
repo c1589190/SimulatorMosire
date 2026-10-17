@@ -64,7 +64,7 @@ import java.util.Set;
  * **之前**，被拒时世界（含包）逐字段不变。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5）：撤回零世界效果（不变量 I1，只写自己的包）⇒ {@code gate() =
- * ALLOW}、{@code roles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）——
+ * ALLOW}、{@code toolRoles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）——
  * "撤回**自己的**确认"是这条的唯一语义，替别人撤回既没必要也不该有入口。
  */
 public final class ReopenPacketTool implements SimosTool {
@@ -257,7 +257,7 @@ public final class ReopenPacketTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }
