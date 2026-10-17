@@ -492,3 +492,19 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
   2. `ParticipantAttributeLookup` 仍 Unavailable（真实 Social 属性源不存在）；生产条件 fail-closed。
   3. `PLANTING_DRAWS_BEFORE_CONSUMPTION=true` 使抽料仍在劳动匹配前，与 D3 §7.1“匹配→抽料”表冲突；D2 v2 冻结未改，需用户/设计裁定。
 - **下一步**：W5 独立测试 owner：全量 test-compile 迁移 + `simos-app -am clean verify`/前端门禁；只改测试，生产 bug/BLOCKED 如实报告；通过后才可写全项目验收。
+
+## 三十四、2026-10-17 23:xx W5 全量测试侦察：verify BLOCKED
+
+> **性质**：W5 测试迁移与 W3/W4 判据已绿；全仓 `clean verify` 未绿，阻塞在生产 bug，不是测试未写。
+
+- **提交**：`075bfc59 test(economy,production,app): W5 全量迁移与W3/W4判据（verify待生产bug修复）`（已推送）。
+- **测试结果**：test-compile rc=0；economy 全量 452/0/0/0；targeted economy 88/0/0/0、app 70/0/0/0；6 个新 W3/W4 类全绿；4 组变异自证（0‰→20‰、同日排除删除、抵物数量序→id 序、缺 survival→静默空需求）全部红后 md5 复原再绿。
+- **`clean verify` 真实 rc=1**：
+  1. `simos-production:spotbugs-check` 6 bugs（EI_EXPOSE_REP）在 `ProductionDayRequest.java:74`、`ProductionExecutionRequest.java:52`、`RoleDistributionRequest.java:23`。
+  2. `EconomySettlement.java:4410-4416` 把 GOV_SERVICE 承诺当生产承诺要求 role；app 24 errors/4 failures 主因。
+  3. `WageSettlement.java:517-521` + `EconomySettlement.java:2064-2067` 使用过期 unit 快照，tick 内新建 unit 回执缺 wage posting。
+  4. `simos-core/.../timeline/Timeline.java:389` 缺 `ProductionParticipantKey` Map key deserializer，破坏 ChangeSet 回放往返（N9/GovCreateOffice/ProvinceApply/N20）。
+  5. `MarketReport.java:103-104,462-470` WeakHashMap 键为每次临时 IdentityKey，GC 后可丢税读数（全量偶发红）。
+  6. `EconomyOwnershipTimeParticipant` 无 Social/facts 注入口，`EconomyOwnershipFixtureProductionSliceTest` 遇劳动候选 `survival-need-missing`（测试侧无法修）。
+- **未做**：未得绿色 clean verify；未跑 tools/gate.sh；未改生产代码。
+- **下一步**：串行修 A（economy：GOV_SERVICE skip、WageSettlement 最新 unit 快照、MarketReport 稳定 key）→ B（production/core：3 个 record 防御性 copy + Timeline key deserializer）→ C（app：EconomyOwnershipTimeParticipant Social/facts 注入）；每批只编译/格式，不写/不跑测试、不提交；之后 W5 重跑 targeted + clean verify。
