@@ -150,15 +150,23 @@ class UnifiedBudgetNoDoubleBookingTest {
     ProductionProcess farmUnit = unit(FARM, "unit-n9-farm");
     ProductionProcess weaveUnit = unit(WEAVE, "unit-n9-weave");
 
-    assertThat(ProductionProcessBook.capacityScaleOf(farmUnit, farmPlan, stakes))
+    AssetOccupancyBudget budget =
+        ProductionProcessBook.assetOccupancyBudget(
+            Map.of(farmUnit.id(), farmUnit, weaveUnit.id(), weaveUnit),
+            stakes,
+            Map.of(),
+            Map.of(FARM, farmPlan, WEAVE, weavePlan),
+            Map.of(),
+            0L);
+    assertThat(ProductionProcessBook.capacityScaleOf(farmUnit, farmPlan, budget))
         .as("farm：1,000 千分亩 ÷ 每规模 1,000 = 规模 1")
         .isEqualTo(1L);
-    assertThat(ProductionProcessBook.capacityScaleOf(weaveUnit, weavePlan, stakes))
+    assertThat(ProductionProcessBook.capacityScaleOf(weaveUnit, weavePlan, budget))
         .as("★★ weave 看到同一张 LAND 数量表却拿不到它（份额的 industry 是 FARM）⇒ 规模 0" + "（同一份资产没有被第二个方案再算一遍）")
         .isZero();
     assertThat(
-            ProductionProcessBook.capacityScaleOf(farmUnit, farmPlan, stakes)
-                + ProductionProcessBook.capacityScaleOf(weaveUnit, weavePlan, stakes))
+            ProductionProcessBook.capacityScaleOf(farmUnit, farmPlan, budget)
+                + ProductionProcessBook.capacityScaleOf(weaveUnit, weavePlan, budget))
         .as("两份'产能规模'之和 = 1 + 0（不是 1 + 1：只有一份 1,000 LAND）")
         .isEqualTo(1L);
   }

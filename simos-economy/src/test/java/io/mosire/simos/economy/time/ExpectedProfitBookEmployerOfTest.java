@@ -56,7 +56,7 @@ import org.junit.jupiter.api.Test;
  *   <li>{@code base.productionOrganizations()} 为空 + 当天 units 有 farm 主 unit ⇒ wage prospect 可行，规模 =
  *       {@link
  *       io.mosire.simos.economy.time.ProductionProcessBook#capacityScaleOf(ProductionProcess,
- *       IndustryDefinitionView, Map)}；
+ *       IndustryDefinitionView, AssetOccupancyBudget)}；
  *   <li>本户自己的 unit 被排除（只有自有 unit ⇒ NO_EMPLOYER）；
  *   <li>错格 / 错产业 unit 被排除；
  *   <li>同秩同规模取 unitId 升序第一个（用两条不同的 FIXED_MONEY_WAGE 关系从收入反证选中哪条）；
@@ -263,7 +263,10 @@ class ExpectedProfitBookEmployerOfTest {
     assertThat(base.productionOrganizations())
         .as("夹具：没有任何既有 ProductionEnterprise（旧 employerOf 的过期读数来源为空）")
         .isEmpty();
-    long expectedScale = ProductionProcessBook.capacityScaleOf(estateUnit, industry, shares);
+    AssetOccupancyBudget budget =
+        ProductionProcessBook.assetOccupancyBudget(
+            units, shares, Map.of(), Map.of(FARM, industry), Map.of(), 0L);
+    long expectedScale = ProductionProcessBook.capacityScaleOf(estateUnit, industry, budget);
     assertThat(expectedScale).as("LAND 5 ÷ capacityPerUnit 1").isEqualTo(5L);
 
     ExpectedProfitBook.Prospect p = prospect(base, industry, shares, units, Map.of());

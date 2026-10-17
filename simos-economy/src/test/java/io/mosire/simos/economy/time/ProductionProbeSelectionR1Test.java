@@ -424,7 +424,18 @@ class ProductionProbeSelectionR1Test {
     HouseholdEconomy row = row(MASTER_LOW, 10_000L, Map.of());
     Map<HouseholdId, HouseholdEconomy> households = Map.of(MASTER_LOW, row);
     SettlementIndex index =
-        SettlementIndex.build(units, industries, shares, Map.of(), households, Map.of(), Map.of());
+        SettlementIndex.build(
+            units,
+            industries,
+            shares,
+            Map.of(),
+            households,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            0L);
     MarketTable market = market();
     ProductionData definitions =
         ProductionData.empty()

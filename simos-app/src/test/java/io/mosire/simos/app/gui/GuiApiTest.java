@@ -959,7 +959,7 @@ class GuiApiTest {
             io.mosire.simos.production.contract.ProductionLocation.ofPlan(farm).orElseThrow(),
             farmOperator,
             farm.value(),
-            33L,
+            7L,
             Map.of() /* cycleContributions：旧 long 周期劳动已替换；字面 0 ⇒ 空表逐值等价 */,
             Map.of(new CommodityId("grain"), 40L)));
     // 第二条 unit 的 operator 刻意非派生（见 workshopIndustry）；第一条让 WORKSHOP 配额有 unit 可挂。
@@ -1079,12 +1079,14 @@ class GuiApiTest {
     JsonNode farmUnit = industry.get("units").get(0);
     assertThat(farmUnit.get("operator").get("kind").asText()).isEqualTo("ORGANIZATION");
     assertThat(farmUnit.get("operator").get("id").asText()).isEqualTo("farm@1_1");
-    assertThat(farmUnit.get("progressDays").asLong()).as("unit 的周期进度真值").isEqualTo(33L);
+    assertThat(farmUnit.get("progressDays").asLong())
+        .as("unit 的周期进度真值（D4：progressDays 不得大于当前世界日 7）")
+        .isEqualTo(7L);
     assertThat(farmUnit.get("assets").get("LAND").asLong())
         .as("unit 的可用资产来自 OwnershipStake 总账")
         .isEqualTo(1_000_000L);
     assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
-    assertThat(industry.get("progressDays").asLong()).as("周期进度（unit 聚合）").isEqualTo(33L);
+    assertThat(industry.get("progressDays").asLong()).as("周期进度（unit 聚合）").isEqualTo(7L);
     assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
     // ★★ R3（T6）：**V7 配方读得出来**（"每单位什么"是数据 ⇒ 报表里也要看得见）：
     //   {capacityPerUnit, capacity, inputPerUnit, laborPerUnit, outputPerUnit} + 本周期实际扣到的投入。

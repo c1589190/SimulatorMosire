@@ -51,6 +51,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
@@ -65,7 +66,7 @@ import org.slf4j.event.Level;
  *   <caption>判据 → 本类载体</caption>
  *   <tr><th>#</th><th>判据</th><th>载体</th></tr>
  *   <tr><td>P1</td><td>单 unit、LAND=100 ⇒ 该 unit 得到 100（与改前逐值相同）</td><td>{@link #singleUnitKeepsTheWholeOwnedPool()}</td></tr>
- *   <tr><td>P2</td><td>同 scope 两 unit、LAND=100 ⇒ 两边 allocations 空、unallocated=100、都具名拒绝，不再 100+100</td><td>{@link #twoUnitsInTheSameScopeNeverSeeThePoolTwice()}</td></tr>
+ *   <tr><td>P2</td><td>同 scope 两 unit、LAND=100、各请求 50 ⇒ 50/50、unallocated=0；缺请求事实 ⇒ 具名拒绝且 unallocated=100，不再 100+100</td><td>{@link #twoUnitsInTheSameScopeShareByExplicitRequest()} / {@link #twoUnitsWithoutRequestFactsKeepThePoolUnallocated()}</td></tr>
  *   <tr><td>P3</td><td>两 unit 不同 (industry, operator)，各有 100 ⇒ 各得 100</td><td>{@link #differentScopesEachKeepTheirOwnPool()}</td></tr>
  *   <tr><td>P4</td><td>共享 scope 的预计/排队：无可生产 offer、无劳动分配</td><td>{@link #sharedScopeOfferIsNamedInfeasibleAndGetsNoLabor()}</td></tr>
  *   <tr><td>P4</td><td>共享 scope 的预计（ExpectedProfitBook）不把整池复制给现有 unit</td><td>{@link #sharedScopeExistingUnitProspectIsNamedInfeasible()}</td></tr>
@@ -73,10 +74,10 @@ import org.slf4j.event.Level;
  *   <tr><td>P7</td><td>同输入同输出、稳定序、纯函数可复算</td><td>{@link #assetBudgetIsAPureStableDerivation()}</td></tr>
  * </table>
  *
- * <p>★★ <b>D4-Ib2a 迁移口径</b>：{@link AssetBudgetBook} 的 {@code asset-scope-shared:awaiting-D4} 仍只作为
- * <b>纯预算派生</b>的历史边界读数（P2 的 {@code AssetBudgetBook} 层），<b>不再</b>被当作新多实例路径的唯一结果。预计/排队路径按 D4-Ib2a
- * 的当刻语义断言具名 {@code asset-occupancy-request-missing:<unit>}；执行路径则断言真实 D4 授予（500/500）与 逐 unit
- * progress=1，且不得把旧 guard 当成通过结论。
+ * <p>★★ <b>D4 迁移口径</b>：本文件不再引用已删除的 {@code AssetBudgetBook}/{@code usableAssets}。纯预算是 {@link
+ * AssetOccupancyBook#allocate} 的真实 D4 结果：有显式请求时按请求量分配并保留 {@code unallocated}；没有非资产请求事实的多实例 scope
+ * 必须具名 {@code asset-occupancy-request-missing:<unit>} 且整池留在 {@code unallocated}。执行路径继续断言真实 D4
+ * 授予（500/500）与逐 unit progress=1，且不得把旧 guard 当成通过结论。
  */
 class R2SharedAssetScopeTest {
 
@@ -92,7 +93,7 @@ class R2SharedAssetScopeTest {
   private static final CurrencyId SILVER = new CurrencyId("silver");
   private static final ProductionModeId MODE = DefaultProductionModes.HANDICRAFT_WORKSHOP;
   private static final long LAND = 100L;
-  private static final String SHARED = AssetBudgetBook.SHARED_SCOPE_REJECTION;
+  private static final String FORBIDDEN_SHARED = "asset-scope-shared:awaiting-D4";
   private static final String OCCUPANCY_REQUEST_MISSING_PREFIX = "asset-occupancy-request-missing:";
 
   // ── P1：单实例逐值不变 ───────────────────────────────────────────────────────────────
@@ -101,80 +102,129 @@ class R2SharedAssetScopeTest {
   void singleUnitKeepsTheWholeOwnedPool() {
     ProductionProcess unit = unit(FARM, OPERATOR_A, "unit-r2-single");
     Map<ProductionUnitId, ProductionProcess> units = Map.of(unit.id(), unit);
-    Map<AssetShareId, OwnershipStake> shares =
-        Map.of(share(FARM, OPERATOR_A, LAND).id(), share(FARM, OPERATOR_A, LAND));
+    OwnershipStake land = share(FARM, OPERATOR_A, LAND);
+    Map<AssetShareId, OwnershipStake> shares = Map.of(land.id(), land);
 
-    AssetBudgetBook.AssetBudget budget = AssetBudgetBook.allocate(units, shares);
+    AssetOccupancyBudget budget =
+        AssetOccupancyBook.allocate(
+            List.of(request(unit, 0L, 3L, Map.of(AssetKind.LAND, 30L))),
+            Map.of(),
+            shares,
+            Map.of(),
+            units,
+            0L);
 
     assertThat(budget.allocationOf(unit.id()))
         .as("P1：单 unit scope 沿用整池 100（不得因 R2 收口被清零）")
         .containsExactly(Map.entry(AssetKind.LAND, LAND));
-    assertThat(budget.unallocated())
+    assertThat(budget.unallocatedOf(scope(FARM, OPERATOR_A, 0L, 3L)))
         .as("P1：单 unit scope 没有未分配量")
-        .doesNotContainKey(new AssetBudgetBook.AssetScope(FARM, OPERATOR_A));
-    assertThat(budget.rejectionOf(unit.id())).as("P1：单 unit scope 不产生共享拒绝").isEmpty();
+        .containsExactly(Map.entry(AssetKind.LAND, 0L));
+    assertThat(budget.rejectionOf(unit.id())).as("P1：单 unit scope 不产生拒绝").isEmpty();
 
-    SettlementIndex index = settlementIndex(Map.of(unit.id(), unit), shares);
-    assertThat(index.usableAssetsOf(unit))
+    SettlementIndex index = settlementIndex(units, shares);
+    assertThat(index.assetAllocationOf(unit))
         .as("P1：索引读口与纯函数逐值一致（100）")
         .containsExactly(Map.entry(AssetKind.LAND, LAND));
     assertThat(index.assetRejectionOf(unit.id())).isEmpty();
     assertThat(ProductionProcessBook.capacityScaleOf(unit, plan(FARM, LAND), index))
         .as("P1：capacityPerUnit=100、LAND=100 ⇒ 规模 1（与改前一致）")
         .isEqualTo(1L);
-
-    // ★ 单实例回归的第二条腿：份额扫描版窄入口与索引版逐值相等（证明"单 unit 不等于被清零"）。
-    assertThat(ProductionProcessBook.usableAssets(unit, shares))
-        .as("P1：单 unit 窄入口（份额扫描）仍返回整池 100")
-        .containsExactly(Map.entry(AssetKind.LAND, LAND));
   }
 
   // ── P2：原 R2 复现 ──────────────────────────────────────────────────────────────────
 
   @Test
-  void twoUnitsInTheSameScopeNeverSeeThePoolTwice() {
+  void twoUnitsInTheSameScopeShareByExplicitRequest() {
     ProductionProcess first = unit(FARM, OPERATOR_A, "unit-r2-first");
     ProductionProcess second = unit(FARM, OPERATOR_A, "unit-r2-second");
     Map<ProductionUnitId, ProductionProcess> units = orderedUnits(first, second);
     OwnershipStake land = share(FARM, OPERATOR_A, LAND);
     Map<AssetShareId, OwnershipStake> shares = Map.of(land.id(), land);
 
-    AssetBudgetBook.AssetBudget budget = AssetBudgetBook.allocate(units, shares);
+    AssetOccupancyBudget budget =
+        AssetOccupancyBook.allocate(
+            List.of(
+                request(first, 0L, 3L, Map.of(AssetKind.LAND, 50L)),
+                request(second, 0L, 3L, Map.of(AssetKind.LAND, 50L))),
+            Map.of(),
+            shares,
+            Map.of(),
+            units,
+            0L);
 
-    assertThat(budget.allocations())
-        .as("P2：共享 scope 的每个 unit 分配表为空（不是各拿整份 100）")
-        .containsEntry(first.id(), Map.of())
-        .containsEntry(second.id(), Map.of());
-    assertThat(budget.unallocated())
+    assertThat(budget.allocationOf(first.id()))
+        .as("P2/P22：共享 scope 按显式请求真实分配，A 得 50")
+        .containsExactly(Map.entry(AssetKind.LAND, 50L));
+    assertThat(budget.allocationOf(second.id()))
+        .as("P2/P22：共享 scope 按显式请求真实分配，B 得 50")
+        .containsExactly(Map.entry(AssetKind.LAND, 50L));
+    assertThat(
+            budget.allocationOf(first.id()).getOrDefault(AssetKind.LAND, 0L)
+                + budget.allocationOf(second.id()).getOrDefault(AssetKind.LAND, 0L))
+        .as("★★ 原 R2 复现：Σ实占 = 100 = 实有量（旧缺陷是 100+100=200）")
+        .isEqualTo(LAND);
+    assertThat(budget.grantsToWrite()).hasSize(2);
+    assertThat(budget.grantsToWrite().stream().mapToLong(g -> g.quantity()).sum())
+        .as("两条 grant 引用同一份 share，但合计不得超占")
+        .isEqualTo(LAND);
+    assertThat(budget.unallocatedOf(scope(FARM, OPERATOR_A, 0L, 3L)))
+        .as("P2：显式请求分完后 unallocated=0")
+        .containsExactly(Map.entry(AssetKind.LAND, 0L));
+    assertThat(budget.rejectionOf(first.id())).isEmpty();
+    assertThat(budget.rejectionOf(second.id())).isEmpty();
+    assertThat(budget.rejections()).doesNotContainValue(FORBIDDEN_SHARED);
+
+    // ★ R2-I5：份额总账一字不改（只读派生，不搬走、不清零）。
+    assertThat(shares.get(land.id()))
+        .as("P2：OwnershipStake 的 quantity/owner/operator/kind/location 一字不改")
+        .isEqualTo(land);
+  }
+
+  @Test
+  void twoUnitsWithoutRequestFactsKeepThePoolUnallocated() {
+    ProductionProcess first = unit(FARM, OPERATOR_A, "unit-r2-first");
+    ProductionProcess second = unit(FARM, OPERATOR_A, "unit-r2-second");
+    Map<ProductionUnitId, ProductionProcess> units = orderedUnits(first, second);
+    OwnershipStake land = share(FARM, OPERATOR_A, LAND);
+    Map<AssetShareId, OwnershipStake> shares = Map.of(land.id(), land);
+
+    AssetOccupancyBudget budget =
+        AssetOccupancyBook.allocate(
+            List.of(request(first, 0L, 3L, Map.of()), request(second, 0L, 3L, Map.of())),
+            Map.of(),
+            shares,
+            Map.of(),
+            units,
+            0L);
+
+    assertThat(budget.rejectionOf(first.id()))
+        .as("P2/P23：缺非资产请求事实 ⇒ 具名 request-missing，不默认 1/整池")
+        .contains(OCCUPANCY_REQUEST_MISSING_PREFIX + first.id().value());
+    assertThat(budget.rejectionOf(second.id()))
+        .contains(OCCUPANCY_REQUEST_MISSING_PREFIX + second.id().value());
+    assertThat(budget.allocationOf(first.id())).isEmpty();
+    assertThat(budget.allocationOf(second.id())).isEmpty();
+    assertThat(budget.grantsToWrite()).isEmpty();
+    assertThat(budget.unallocatedOf(scope(FARM, OPERATOR_A, 0L, 3L)))
         .as("P2：整池 100 保留在 unallocated（只读可见，不静默丢弃）")
-        .containsEntry(
-            new AssetBudgetBook.AssetScope(FARM, OPERATOR_A), Map.of(AssetKind.LAND, LAND));
-    assertThat(budget.rejectionOf(first.id())).contains(SHARED);
-    assertThat(budget.rejectionOf(second.id())).contains(SHARED);
+        .containsExactly(Map.entry(AssetKind.LAND, LAND));
 
     SettlementIndex index = settlementIndex(units, shares);
-    assertThat(index.usableAssetsOf(first)).as("P2：unit1 可用资产为空").isEmpty();
-    assertThat(index.usableAssetsOf(second)).as("P2：unit2 可用资产为空").isEmpty();
+    assertThat(index.assetAllocationOf(first)).as("P2：索引 unit1 可用资产为空").isEmpty();
+    assertThat(index.assetAllocationOf(second)).as("P2：索引 unit2 可用资产为空").isEmpty();
+    assertThat(index.assetRejectionOf(first.id()))
+        .contains(OCCUPANCY_REQUEST_MISSING_PREFIX + first.id().value());
     assertThat(ProductionProcessBook.capacityScaleOf(first, plan(FARM, LAND), index))
         .as("P2：unit1 规模 0（不是 1）")
         .isZero();
     assertThat(ProductionProcessBook.capacityScaleOf(second, plan(FARM, LAND), index))
         .as("P2：unit2 规模 0（不是 1）")
         .isZero();
-    assertThat(
-            ProductionProcessBook.capacityScaleOf(first, plan(FARM, LAND), index)
-                + ProductionProcessBook.capacityScaleOf(second, plan(FARM, LAND), index))
-        .as("★★ 原 R2 复现：Σ规模 = 0（旧实现是 1 + 1 = 2；实有只有 100）")
-        .isZero();
-    assertThat(index.assetBudget().unallocated())
+    AssetOccupancyBudget indexBudget = index.d4AssetOccupancyBudget().orElseThrow();
+    assertThat(indexBudget.unallocatedOf(scope(FARM, OPERATOR_A, 0L, 1L)))
         .as("P2：索引持有的同一份预算也保留 unallocated=100")
-        .containsEntry(
-            new AssetBudgetBook.AssetScope(FARM, OPERATOR_A), Map.of(AssetKind.LAND, LAND));
-
-    // ★ R2-I5：份额总账一字不改（只读派生，不搬走、不清零）。
-    assertThat(shares.get(land.id()))
-        .as("P2：OwnershipStake 的 quantity/owner/operator/kind 一字不改")
-        .isEqualTo(land);
+        .containsExactly(Map.entry(AssetKind.LAND, LAND));
   }
 
   // ── P3：不同 scope 互不影响 ──────────────────────────────────────────────────────────
@@ -188,19 +238,32 @@ class R2SharedAssetScopeTest {
     OwnershipStake shareB = share(FARM, OPERATOR_B, LAND);
     Map<AssetShareId, OwnershipStake> shares = orderedShares(shareA, shareB);
 
-    AssetBudgetBook.AssetBudget budget = AssetBudgetBook.allocate(units, shares);
+    AssetOccupancyBudget budget =
+        AssetOccupancyBook.allocate(
+            List.of(
+                request(farmA, 0L, 3L, Map.of(AssetKind.LAND, 10L)),
+                request(farmB, 0L, 3L, Map.of(AssetKind.LAND, 10L))),
+            Map.of(),
+            shares,
+            Map.of(),
+            units,
+            0L);
     assertThat(budget.allocationOf(farmA.id()))
         .as("P3：scope A 得自己的 100")
         .containsExactly(Map.entry(AssetKind.LAND, LAND));
     assertThat(budget.allocationOf(farmB.id()))
         .as("P3：scope B 得自己的 100")
         .containsExactly(Map.entry(AssetKind.LAND, LAND));
-    assertThat(budget.rejections()).as("P3：不同 scope 不产生共享拒绝").isEmpty();
-    assertThat(budget.unallocated()).as("P3：不同 scope 没有未分配量").isEmpty();
+    assertThat(budget.rejections()).as("P3：不同 scope 不产生拒绝").isEmpty();
+    assertThat(budget.unallocated())
+        .as("P3：不同 scope 的未分配量逐项为 0（预算读口保留 0 值行是合法形状）")
+        .hasSize(2)
+        .allSatisfy(
+            (scope, kinds) -> assertThat(kinds).containsExactly(Map.entry(AssetKind.LAND, 0L)));
 
     SettlementIndex index = settlementIndex(units, shares);
-    assertThat(index.usableAssetsOf(farmA)).containsExactly(Map.entry(AssetKind.LAND, LAND));
-    assertThat(index.usableAssetsOf(farmB)).containsExactly(Map.entry(AssetKind.LAND, LAND));
+    assertThat(index.assetAllocationOf(farmA)).containsExactly(Map.entry(AssetKind.LAND, LAND));
+    assertThat(index.assetAllocationOf(farmB)).containsExactly(Map.entry(AssetKind.LAND, LAND));
     assertThat(ProductionProcessBook.capacityScaleOf(farmA, plan(FARM, LAND), index)).isEqualTo(1L);
     assertThat(ProductionProcessBook.capacityScaleOf(farmB, plan(FARM, LAND), index)).isEqualTo(1L);
   }
@@ -233,8 +296,8 @@ class R2SharedAssetScopeTest {
     LaborQueueBook.Plan plan = LaborQueueBook.plan(HOUSEHOLD, 10_000L, 0L, List.of(offer));
     assertThat(plan.decisions()).hasSize(1);
     assertThat(plan.decisions().get(0).outcome())
-        .as("P4：队列把它记为具名零吸收结局，而不是静默保留旧配额")
-        .isEqualTo("IDLE_MAX_ABSORBABLE_ZERO");
+        .as("P4：队列把它记为具名 D4 请求缺失拒绝，而不是静默保留旧配额")
+        .isEqualTo("REJECTED:" + occupancyReason);
     assertThat(plan.decisions().get(0).grantedLaborMilli()).as("P4：共享 scope 不分配任何劳动").isZero();
     assertThat(plan.allocatedLaborMilli()).as("P4：本 tick 劳动分配总量为 0").isZero();
   }
@@ -319,7 +382,7 @@ class R2SharedAssetScopeTest {
           .hasSize(1);
       assertThat(log.lines())
           .as("D4 新多实例路径不得把 asset-scope-shared:awaiting-D4 当唯一通过结果")
-          .noneMatch(line -> line.contains(SHARED));
+          .noneMatch(line -> line.contains(FORBIDDEN_SHARED));
     }
   }
 
@@ -347,30 +410,42 @@ class R2SharedAssetScopeTest {
     ProductionProcess first = unit(FARM, OPERATOR_A, "unit-r2-first");
     ProductionProcess second = unit(FARM, OPERATOR_A, "unit-r2-second");
     OwnershipStake landA = share(FARM, OPERATOR_A, LAND);
-    OwnershipStake landB = share(FARM, OPERATOR_B, 250L);
-    Map<AssetShareId, OwnershipStake> shares = orderedShares(landA, landB);
+    Map<AssetShareId, OwnershipStake> shares = orderedShares(landA);
 
     // 反向插入 unit，结果仍按稳定 id 升序：顺序只影响遍历，不影响结果。
     LinkedHashMap<ProductionUnitId, ProductionProcess> reversed = new LinkedHashMap<>();
     reversed.put(second.id(), second);
     reversed.put(first.id(), first);
 
-    AssetBudgetBook.AssetBudget firstRun = AssetBudgetBook.allocate(reversed, shares);
-    AssetBudgetBook.AssetBudget secondRun = AssetBudgetBook.allocate(reversed, shares);
+    AssetOccupancyBudget firstRun =
+        AssetOccupancyBook.allocate(
+            List.of(
+                request(first, 0L, 3L, Map.of(AssetKind.LAND, 40L)),
+                request(second, 0L, 3L, Map.of(AssetKind.LAND, 40L))),
+            Map.of(),
+            shares,
+            Map.of(),
+            reversed,
+            0L);
+    AssetOccupancyBudget secondRun =
+        AssetOccupancyBook.allocate(
+            List.of(
+                request(second, 0L, 3L, Map.of(AssetKind.LAND, 40L)),
+                request(first, 0L, 3L, Map.of(AssetKind.LAND, 40L))),
+            Map.of(),
+            shares,
+            Map.of(),
+            reversed,
+            0L);
 
     assertThat(firstRun).as("P7：同输入同输出（纯函数可复算）").isEqualTo(secondRun);
     assertThat(firstRun.allocations().keySet())
         .as("P7：共享 scope 的 unit 按 id 升序稳定排列")
         .containsExactly(first.id(), second.id());
-    assertThat(firstRun.rejections().keySet())
-        .as("P7：拒绝表也按同一稳定序")
-        .containsExactly(first.id(), second.id());
-    assertThat(firstRun.unallocated())
-        .as("P7：两个 scope 都保留在 unallocated，且 scope A 的整池为 100")
-        .containsEntry(
-            new AssetBudgetBook.AssetScope(FARM, OPERATOR_A), Map.of(AssetKind.LAND, LAND))
-        .containsEntry(
-            new AssetBudgetBook.AssetScope(FARM, OPERATOR_B), Map.of(AssetKind.LAND, 250L));
+    assertThat(firstRun.rejections()).as("P7：显式请求路径不产生拒绝").isEmpty();
+    assertThat(firstRun.unallocatedOf(scope(FARM, OPERATOR_A, 0L, 3L)))
+        .as("P7：40/40 请求后余量 20 留在 unallocated")
+        .containsExactly(Map.entry(AssetKind.LAND, 20L));
   }
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
@@ -427,7 +502,37 @@ class R2SharedAssetScopeTest {
     Map<IndustryId, IndustryDefinitionView> industries =
         Map.of(FARM, plan(FARM, 1L), WEAVE, plan(WEAVE, 1L));
     return SettlementIndex.build(
-        units, industries, shares, Map.of(), householdRows(), Map.of(), Map.of());
+        units,
+        industries,
+        shares,
+        Map.of(),
+        householdRows(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        0L);
+  }
+
+  private static AssetOccupancyRequest request(
+      ProductionProcess unit, long from, long to, Map<AssetKind, Long> quantities) {
+    return new AssetOccupancyRequest(
+        unit.id(),
+        unit.industry(),
+        unit.operator(),
+        unit.location(),
+        from,
+        to,
+        quantities,
+        OptionalLong.empty(),
+        Optional.empty());
+  }
+
+  private static AssetOccupancyScope scope(
+      IndustryId industry, ActorRef operator, long from, long to) {
+    return new AssetOccupancyScope(
+        industry, operator, ProductionLocation.parse(HEX_KEY), AssetKind.LAND, from, to);
   }
 
   private static Map<HouseholdId, HouseholdEconomy> householdRows() {

@@ -454,7 +454,11 @@ class GovServiceCommitmentC7Test {
         data.allocations(),
         data.classes(),
         null,
-        data.relations());
+        data.relations(),
+        Map.of(),
+        data.assetOccupancies(),
+        data.productionRosters(),
+        0L);
   }
 
   private static Map<HouseholdId, Map<PeopleLotId, Long>> composition() {
@@ -485,7 +489,17 @@ class GovServiceCommitmentC7Test {
       long capacityScale) {
     OwnershipStake land = share(capacityScale);
     return SettlementIndex.build(
-        units, industries, Map.of(land.id(), land), commitments, households, null, Map.of());
+        units,
+        industries,
+        Map.of(land.id(), land),
+        commitments,
+        households,
+        null,
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        0L);
   }
 
   // ── 反射入口（private static 生产方法；签名找不到会当场抛）────────────────────────────

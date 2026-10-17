@@ -128,7 +128,7 @@ class R2AssetBudgetReadoutTest {
         .containsEntry("unit", FIRST.value())
         .containsEntry("quantity", 4L)
         .containsEntry("fromTick", 2L)
-        .containsEntry("toTickExclusive", 20L)
+        .containsEntry("toTickExclusive", 10L)
         .containsEntry("status", "ACTIVE");
     assertThat(fieldNames((Map<String, Object>) occupancies.get(0).get("owner")))
         .as("嵌套主体键序固定")
@@ -226,7 +226,7 @@ class R2AssetBudgetReadoutTest {
     OwnershipStake secondShare = share(SECOND, HEX_LOCATION, 1L);
     OwnershipStake otherShare = share(OTHER, OTHER_LOCATION, 2L);
 
-    AssetOccupancyGrant firstAtTwo = occupancy(firstShare.id(), FIRST, 4L, 2L, 20L);
+    AssetOccupancyGrant firstAtTwo = occupancy(firstShare.id(), FIRST, 4L, 2L, 10L);
     AssetOccupancyGrant firstAtTen = occupancy(firstShare.id(), FIRST, 6L, 10L, 30L);
     AssetOccupancyGrant secondAtFive = occupancy(secondShare.id(), SECOND, 8L, 5L, 15L);
     AssetOccupancyGrant otherAtOne = occupancy(otherShare.id(), OTHER, 9L, 1L, 11L);

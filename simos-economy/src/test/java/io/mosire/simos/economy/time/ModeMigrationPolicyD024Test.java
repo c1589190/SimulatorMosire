@@ -477,6 +477,14 @@ class ModeMigrationPolicyD024Test {
   }
 
   private static MarketDemandBook.Book demandOf(Fixture fixture) {
+    AssetOccupancyBudget budget =
+        ProductionProcessBook.assetOccupancyBudget(
+            fixture.definitions().instances(),
+            fixture.base().assetShares(),
+            fixture.base().assetOccupancies(),
+            fixture.definitions().industries(),
+            fixture.base().productionRosters(),
+            10L);
     return MarketDemandBook.build(
         List.of(),
         fixture.topology(),
@@ -488,7 +496,8 @@ class ModeMigrationPolicyD024Test {
         fixture.accounts(),
         fixture.marketTables(),
         10L,
-        10L);
+        10L,
+        budget);
   }
 
   private static final ProductionModeId FAMILY = DefaultProductionModes.FAMILY_FARM;

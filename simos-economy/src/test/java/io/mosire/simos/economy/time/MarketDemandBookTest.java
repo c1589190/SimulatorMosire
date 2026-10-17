@@ -61,6 +61,11 @@ class MarketDemandBookTest {
   private static final HouseholdId HOUSE = HouseholdId.parse("hh-demand");
   private static final ActorRef ACTOR = HouseholdActors.of(HOUSE);
 
+  private static AssetOccupancyBudget emptyBudget() {
+    return new AssetOccupancyBudget(
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of(), List.of());
+  }
+
   private static HouseholdEconomy row(
       long population, long laborMilli, Map<CommodityId, Long> needs) {
     return new HouseholdEconomy(
@@ -143,7 +148,8 @@ class MarketDemandBookTest {
             accounts,
             markets,
             5L,
-            10L);
+            10L,
+            emptyBudget());
     MarketDemandBook.Demand demand = book.byMarketHex().get(H).get(GRAIN);
 
     assertThat(demand.consumerNeedMilli()).as("基本需求 = 100 × 10").isEqualTo(1_000L);
@@ -166,7 +172,8 @@ class MarketDemandBookTest {
             accounts,
             markets,
             5L,
-            10L);
+            10L,
+            emptyBudget());
     MarketDemandBook.Demand secondDemand = second.byMarketHex().get(H).get(GRAIN);
     assertThat(secondDemand.addressableMilli())
         .as("★ max(100, 1,000) = 1,000；不是 1,100")
@@ -228,6 +235,15 @@ class MarketDemandBookTest {
             400L,
             List.of(new ShipmentAllocation(ACTOR, ACTOR, H, 400L, LossBearer.BUYER)));
 
+    AssetOccupancyBudget budget =
+        ProductionProcessBook.assetOccupancyBudget(
+            Map.of(unitId, unit),
+            Map.of(shareId, share),
+            Map.of(),
+            Map.of(CRAFT, craft),
+            Map.of(),
+            7L);
+
     MarketDemandBook.Book book =
         MarketDemandBook.build(
             List.of(),
@@ -240,7 +256,8 @@ class MarketDemandBookTest {
             accounts,
             markets,
             7L,
-            10L);
+            10L,
+            budget);
 
     MarketDemandBook.Demand grain = book.byMarketHex().get(H).get(GRAIN);
     assertThat(grain.consumerNeedMilli()).isEqualTo(1_000L);
@@ -283,7 +300,8 @@ class MarketDemandBookTest {
             AccountSession.empty(),
             markets,
             5L,
-            10L);
+            10L,
+            emptyBudget());
     MarketDemandBook.Book second =
         MarketDemandBook.build(
             java.util.Arrays.asList(reportWithUnfilled(1_500L), null),
@@ -296,7 +314,8 @@ class MarketDemandBookTest {
             AccountSession.empty(),
             markets,
             5L,
-            10L);
+            10L,
+            emptyBudget());
 
     assertThat(second).as("record 值相等").isEqualTo(first);
     assertThat(new ArrayList<>(second.byMarketHex().keySet()))

@@ -737,7 +737,11 @@ final class MarketSettlementFixtures {
             world.allocations(),
             world.rows(),
             Map.of(),
-            world.relations());
+            world.relations(),
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            DAY);
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(DAY);
     MarketSettlement.MarketRound round =
         new MarketSettlement.MarketRound(
