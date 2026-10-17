@@ -11,19 +11,29 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.BarterDiscountPolicy;
+import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.ExperienceTrackId;
 import io.mosire.simos.production.contract.ExpressionDefinition;
+import io.mosire.simos.production.contract.GrowthBasis;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ProductionAvailabilityCondition;
 import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionSkillKey;
 import io.mosire.simos.production.contract.RestrictedExpression;
+import io.mosire.simos.production.contract.RolePayment;
+import io.mosire.simos.production.contract.RoleShareRemainder;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -43,7 +53,42 @@ final class ProductionDefinitionPayloads {
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
+  private static final Set<String> ROLE_FIELDS =
+      Set.of(
+          "id",
+          "name",
+          "socialClass",
+          "sharePerMille",
+          "intraRoleSplit",
+          "standardLaborMilliPerCycle",
+          "experienceGrowth",
+          "conditions",
+          "payment");
+  private static final Set<String> EXPERIENCE_GROWTH_FIELDS =
+      Set.of("track", "basis", "coefficientPerMille", "maxPerTickValue", "countsManagement");
+  private static final Set<String> PAYMENT_FIELDS = Set.of("kind", "currency", "barterDiscount");
+  private static final Set<String> BARTER_DISCOUNT_FIELDS =
+      Set.of("referencePrice", "discountPerMille");
+
   private ProductionDefinitionPayloads() {}
+
+  /** 对象形状守卫（角色/支付等嵌套节点用；顶层仍沿用既有“多余键不读”的 Seed 习惯）。 */
+  private static void requireObject(JsonNode node, String field) {
+    if (node == null || !node.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是对象: " + node);
+    }
+  }
+
+  /** 白名单拒未知键：新配置节点不静默吞字段（D1 §2.8）。 */
+  private static void requireKnownFields(JsonNode node, Set<String> allowed, String field) {
+    Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+    while (fields.hasNext()) {
+      String key = fields.next().getKey();
+      if (!allowed.contains(key)) {
+        throw new IllegalArgumentException("字段 " + field + " 含未知键: " + key);
+      }
+    }
+  }
 
   /** 产业节点：完整 {@link IndustryDefinitionView}（技能可选；缺省 = 未绑技能键）。 */
   static IndustryDefinitionView industry(JsonNode node) {
@@ -98,6 +143,11 @@ final class ProductionDefinitionPayloads {
     ProductionExperienceUse experience = experienceUse(node.get("experience"));
     List<ProductionAvailabilityCondition> availability =
         availabilityConditions(node.get("availability"));
+    List<ProductionRoleDefinition> roles = roles(node.get("roles"));
+    RoleShareRemainder roleShareRemainderRule =
+        roleShareRemainder(node.get("roleShareRemainderRule"));
+    List<IndustryId> upgradesTo = upgradesTo(node.get("upgradesTo"));
+    Optional<ProductionModeId> mode = optionalText(node, "mode").map(ProductionModeId::parse);
     return new IndustryDefinitionView(
         id,
         name,
@@ -116,7 +166,179 @@ final class ProductionDefinitionPayloads {
         new MoneyOutput(moneyOutput),
         experience,
         availability,
-        acceptedRightKinds);
+        acceptedRightKinds,
+        roles,
+        roleShareRemainderRule,
+        upgradesTo,
+        mode);
+  }
+
+  /**
+   * ★★ <b>D1：{@code roles} 数组 → 角色定义表</b>。
+   *
+   * <p>缺键 / JSON null ⇒ 单角色 {@code operator}（D1 §2.8 的同版本缺省形态）；显式空数组 ⇒ 拒绝
+   * （方案必须至少有一个角色）。角色节点按白名单拒未知键，id 重复与份额合计由 {@link IndustryDefinitionView} 构造期再守一次。
+   */
+  private static List<ProductionRoleDefinition> roles(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return List.of(ProductionRoleDefinition.defaultOperator());
+    }
+    if (!node.isArray()) {
+      throw new IllegalArgumentException("字段 roles 必须是数组: " + node);
+    }
+    List<ProductionRoleDefinition> roles = new ArrayList<>();
+    for (JsonNode role : node) {
+      roles.add(role(role));
+    }
+    if (roles.isEmpty()) {
+      throw new IllegalArgumentException("字段 roles 不得为空数组（至少给一个经营者角色）");
+    }
+    return roles;
+  }
+
+  private static ProductionRoleDefinition role(JsonNode node) {
+    requireObject(node, "roles[]");
+    requireKnownFields(node, ROLE_FIELDS, "roles[]");
+    ProductionRoleId id = ProductionRoleId.parse(requireText(node, "id"));
+    String name = requireText(node, "name");
+    Optional<SocialClassId> socialClass =
+        optionalText(node, "socialClass").map(SocialClassId::parse);
+    long sharePerMille = requireLong(node, "sharePerMille");
+    IntraRoleSplitRule intraRoleSplit = intraRoleSplit(requireText(node, "intraRoleSplit"));
+    long standardLaborMilliPerCycle = requireLong(node, "standardLaborMilliPerCycle");
+    Optional<ExperienceGrowth> experienceGrowth = experienceGrowth(node.get("experienceGrowth"));
+    List<ProductionAvailabilityCondition> conditions =
+        availabilityConditions(node.get("conditions"));
+    RolePayment payment = payment(node.get("payment"));
+    return new ProductionRoleDefinition(
+        id,
+        name,
+        socialClass,
+        sharePerMille,
+        intraRoleSplit,
+        standardLaborMilliPerCycle,
+        experienceGrowth,
+        conditions,
+        payment);
+  }
+
+  private static IntraRoleSplitRule intraRoleSplit(String text) {
+    IntraRoleSplitRule rule = IntraRoleSplitRule.fromKey(text);
+    if (rule == null) {
+      throw new IllegalArgumentException(
+          "字段 intraRoleSplit 不是已知规则（合法值：by_recognized_labor / by_rights / equal / configured_weights）: "
+              + text);
+    }
+    return rule;
+  }
+
+  private static Optional<ExperienceGrowth> experienceGrowth(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return Optional.empty();
+    }
+    requireObject(node, "experienceGrowth");
+    requireKnownFields(node, EXPERIENCE_GROWTH_FIELDS, "experienceGrowth");
+    ExperienceTrackId track = ExperienceTrackId.parse(requireText(node, "track"));
+    GrowthBasis basis = growthBasis(requireText(node, "basis"));
+    long coefficientPerMille = requireLong(node, "coefficientPerMille");
+    long maxPerTickValue = optionalLong(node, "maxPerTickValue", 0L);
+    boolean countsManagement = optionalBoolean(node, "countsManagement", false);
+    return Optional.of(
+        new ExperienceGrowth(track, basis, coefficientPerMille, maxPerTickValue, countsManagement));
+  }
+
+  private static GrowthBasis growthBasis(String text) {
+    GrowthBasis basis = GrowthBasis.fromKey(text);
+    if (basis == null) {
+      throw new IllegalArgumentException(
+          "字段 experienceGrowth.basis 不是已知基准（合法值：actual_labor / normalized_participation）: " + text);
+    }
+    return basis;
+  }
+
+  private static RolePayment payment(JsonNode node) {
+    if (node == null || node.isNull()) {
+      throw new IllegalArgumentException("字段 payment 不得缺省（product_share 或 money_wage）");
+    }
+    if (node.isTextual()) {
+      String text = node.asText();
+      if ("product_share".equals(text) || "PRODUCT_SHARE".equals(text)) {
+        return new RolePayment.ProductShare();
+      }
+      throw new IllegalArgumentException("字段 payment 的文本形式只允许 product_share: " + text);
+    }
+    requireObject(node, "payment");
+    requireKnownFields(node, PAYMENT_FIELDS, "payment");
+    String kind = requireText(node, "kind");
+    if ("product_share".equals(kind) || "PRODUCT_SHARE".equals(kind)) {
+      return new RolePayment.ProductShare();
+    }
+    if (!"money_wage".equals(kind) && !"MONEY_WAGE".equals(kind)) {
+      throw new IllegalArgumentException("字段 payment.kind 不是已知支付形态: " + kind);
+    }
+    JsonNode currency = node.get("currency");
+    if (currency != null && !currency.isNull()) {
+      if (!currency.isTextual()
+          || !("LOCAL_MARKET_AREA".equals(currency.asText())
+              || "local_market_area".equals(currency.asText()))) {
+        throw new IllegalArgumentException(
+            "字段 payment.currency 只允许 LOCAL_MARKET_AREA（工资结算在本地市场区）: " + currency);
+      }
+    }
+    return new RolePayment.MoneyWage(barterDiscount(node.get("barterDiscount")));
+  }
+
+  private static BarterDiscountPolicy barterDiscount(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return BarterDiscountPolicy.defaultPolicy();
+    }
+    requireObject(node, "payment.barterDiscount");
+    requireKnownFields(node, BARTER_DISCOUNT_FIELDS, "payment.barterDiscount");
+    BarterReferencePrice referencePrice =
+        barterReferencePrice(optionalText(node, "referencePrice").orElse("local_bid"));
+    long discountPerMille = optionalLong(node, "discountPerMille", 1000L);
+    return new BarterDiscountPolicy(referencePrice, discountPerMille);
+  }
+
+  private static BarterReferencePrice barterReferencePrice(String text) {
+    BarterReferencePrice price = BarterReferencePrice.fromKey(text);
+    if (price == null) {
+      throw new IllegalArgumentException(
+          "字段 payment.barterDiscount.referencePrice 只允许 local_bid / local_ask: " + text);
+    }
+    return price;
+  }
+
+  private static RoleShareRemainder roleShareRemainder(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return RoleShareRemainder.UNALLOCATED;
+    }
+    if (!node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 roleShareRemainderRule 必须是非空文本: " + node);
+    }
+    RoleShareRemainder rule = RoleShareRemainder.fromKey(node.asText());
+    if (rule == null) {
+      throw new IllegalArgumentException(
+          "字段 roleShareRemainderRule 不是已知规则（合法值：unallocated / to_last_role）: " + node.asText());
+    }
+    return rule;
+  }
+
+  private static List<IndustryId> upgradesTo(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return List.of();
+    }
+    if (!node.isArray()) {
+      throw new IllegalArgumentException("字段 upgradesTo 必须是数组: " + node);
+    }
+    List<IndustryId> upgrades = new ArrayList<>();
+    for (JsonNode item : node) {
+      if (!item.isTextual() || item.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 upgradesTo 的元素必须是非空文本: " + node);
+      }
+      upgrades.add(IndustryId.parse(item.asText()));
+    }
+    return upgrades;
   }
 
   /**
@@ -311,6 +533,17 @@ final class ProductionDefinitionPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + node);
     }
     return value.asInt();
+  }
+
+  private static boolean optionalBoolean(JsonNode node, String field, boolean fallback) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔值: " + node);
+    }
+    return value.asBoolean();
   }
 
   private static Optional<String> optionalText(JsonNode node, String field) {

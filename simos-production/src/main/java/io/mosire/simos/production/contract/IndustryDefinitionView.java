@@ -4,8 +4,10 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -45,8 +47,8 @@ import java.util.Set;
  *     与旧候选口径逐字相同（见 {@code EconomyEntrySettlement} 类注）。
  * @param capacityPerUnit 每 1 单位规模需要的生产资料（LAND 千分亩、其余件）；非空、逐值 &gt; 0
  * @param dailyInputPerUnit 每 1 单位规模的每日原料需求（按生产资料种类归类）
- * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（千分劳动）
- * @param laborPerUnit 每 1 单位规模需要的劳动（千分劳动）
+ * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（毫小时/区域/日；1 小时 = 1000 毫小时）
+ * @param laborPerUnit 每 1 单位规模需要的劳动（毫小时/区域；200 = 0.2 小时/区域）
  * @param outputPerUnit 每 1 单位规模的基准产出（商品单位）
  * @param cycleInputPerUnit 每 1 单位规模每周期一次性投入（按生产资料种类归类）
  * @param slots 该制度允许的阶层槽位；非空、id 不重复
@@ -60,6 +62,11 @@ import java.util.Set;
  * @param acceptedRightKinds ★★ <b>D-032 B2c 新增</b>（裁定八：候选的 {@code acceptedRightKinds} 搬进方案定义）：
  *     本方案声明可接受的<b>资产权利性质</b>（{@link AssetRightKind}）；不得为 null（空集合法 = 不接受任何权利， 采用算法据此具名拒绝 {@code
  *     NO_RIGHT_KIND}）。★ economy 分配资产时按它过滤份额的 {@code kind}
+ * @param roles ★★ <b>D1 新增</b>：角色定义；非空、id 唯一、产品份额合计 ≤ 1000（纯单户方案也要有一个经营者角色）
+ * @param roleShareRemainderRule ★★ <b>D1 新增</b>：份额不足 1000 时的余数规则；{@code UNALLOCATED} 最终归 organizer
+ *     residual
+ * @param upgradesTo ★★ <b>D1 新增</b>：技术升级元数据（可空；只登记/读口/选择参考，不产生行为；未知 id 在使用处 fail-closed）
+ * @param mode ★★ <b>D1 新增</b>：绑定的生产方式/阶层结构（仅元数据；可缺）
  */
 public record IndustryDefinitionView(
     IndustryId id,
@@ -79,7 +86,67 @@ public record IndustryDefinitionView(
     MoneyOutput moneyOutputPerUnit,
     ProductionExperienceUse experience,
     List<ProductionAvailabilityCondition> availability,
-    Set<AssetRightKind> acceptedRightKinds) {
+    Set<AssetRightKind> acceptedRightKinds,
+    List<ProductionRoleDefinition> roles,
+    RoleShareRemainder roleShareRemainderRule,
+    List<IndustryId> upgradesTo,
+    Optional<ProductionModeId> mode) {
+
+  /**
+   * ★★ <b>单户默认 operator 便利构造器</b>（C0 下游机械收口；不是第二定义权威）。
+   *
+   * <p>仅供仍以“单户/单经营者”构造方案的既有调用点使用：它把 D1 新增的四个组件固定为 {@code roles =
+   * List.of(ProductionRoleDefinition.defaultOperator())}、{@code roleShareRemainderRule =
+   * UNALLOCATED}、{@code upgradesTo = []}、{@code mode = empty}。其中默认 operator 角色是 D1 §2.8 的缺省形态：
+   * id={@code operator}、share=1000、{@code intraRoleSplit=EQUAL}（单角色下 EQUAL/BY_RECOGNIZED_LABOR 对
+   * 1000 份额无差别；取 D1 缺省明写的 EQUAL，避免凭空引入劳动语义）、payment=PRODUCT_SHARE、无经验增长。
+   *
+   * <p>★★ <b>边界</b>：多角色方案必须显式使用 canonical 构造器传 {@code roles}；本构造器不会吞掉显式 roles， 也不代表 economy
+   * 已建立名册。C2 会把生产名册显式落成 participant，并改走带 roles 的构造路径。
+   */
+  public IndustryDefinitionView(
+      IndustryId id,
+      String name,
+      RegimeId regime,
+      Optional<ProductionSkillKey> skill,
+      long cycleDays,
+      long buildDays,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
+      long dailyLaborPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
+      List<ClassSlot> slots,
+      AllocationRule allocation,
+      MoneyOutput moneyOutputPerUnit,
+      ProductionExperienceUse experience,
+      List<ProductionAvailabilityCondition> availability,
+      Set<AssetRightKind> acceptedRightKinds) {
+    this(
+        id,
+        name,
+        regime,
+        skill,
+        cycleDays,
+        buildDays,
+        capacityPerUnit,
+        dailyInputPerUnit,
+        dailyLaborPerUnit,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        slots,
+        allocation,
+        moneyOutputPerUnit,
+        experience,
+        availability,
+        acceptedRightKinds,
+        List.of(ProductionRoleDefinition.defaultOperator()),
+        RoleShareRemainder.UNALLOCATED,
+        List.of(),
+        Optional.empty());
+  }
 
   public IndustryDefinitionView {
     if (id == null) {
@@ -122,6 +189,50 @@ public record IndustryDefinitionView(
       rightsCopy.add(right);
     }
     acceptedRightKinds = Collections.unmodifiableSet(rightsCopy); // ★ 冻在赋值处
+    // ★★ D1：角色/份额/升级/mode 的冻结与校验（保序不可变；id 唯一、份额合计 ≤ 1000）。
+    if (roleShareRemainderRule == null) {
+      throw new IllegalArgumentException("IndustryDefinitionView.roleShareRemainderRule 不得为 null");
+    }
+    if (roles == null) {
+      throw new IllegalArgumentException("IndustryDefinitionView.roles 不得为 null（至少一个经营者角色）");
+    }
+    List<ProductionRoleDefinition> rolesCopy = new ArrayList<>();
+    Set<ProductionRoleId> roleIds = new LinkedHashSet<>();
+    long shareTotal = 0L;
+    for (ProductionRoleDefinition role : roles) {
+      if (role == null) {
+        throw new IllegalArgumentException("IndustryDefinitionView.roles 不得含 null");
+      }
+      if (!roleIds.add(role.id())) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.roles 的 id 不得重复: " + role.id().value());
+      }
+      shareTotal += role.sharePerMille();
+      rolesCopy.add(role);
+    }
+    if (rolesCopy.isEmpty()) {
+      throw new IllegalArgumentException("IndustryDefinitionView.roles 不得为空（纯单户方案也要有一个经营者角色）");
+    }
+    if (shareTotal > 1000L) {
+      throw new IllegalArgumentException(
+          "IndustryDefinitionView.roles 的 sharePerMille 合计不得 > 1000: " + shareTotal);
+    }
+    roles = Collections.unmodifiableList(rolesCopy);
+    if (upgradesTo == null) {
+      throw new IllegalArgumentException("IndustryDefinitionView.upgradesTo 不得为 null（无升级用空 list）");
+    }
+    List<IndustryId> upgradesCopy = new ArrayList<>();
+    for (IndustryId upgrade : upgradesTo) {
+      if (upgrade == null) {
+        throw new IllegalArgumentException("IndustryDefinitionView.upgradesTo 不得含 null");
+      }
+      upgradesCopy.add(upgrade);
+    }
+    upgradesTo = Collections.unmodifiableList(upgradesCopy);
+    if (mode == null) {
+      throw new IllegalArgumentException(
+          "IndustryDefinitionView.mode 不得为 null（可缺请给 Optional.empty()）");
+    }
     // ★ 可用性条件的冻结与校验：逐条非 null，保序不可变（迭代序是内容的纯函数）。
     List<ProductionAvailabilityCondition> availabilityCopy = new ArrayList<>();
     for (ProductionAvailabilityCondition condition : availability) {

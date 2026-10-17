@@ -23,9 +23,14 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.contract.BarterDiscountPolicy;
 import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionAvailabilityCondition;
 import io.mosire.simos.production.contract.ProductionConsumerPort;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.production.spi.IndustryUpserts;
 import io.mosire.simos.production.spi.UpsertIndustryHandler;
 import io.mosire.simos.util.state.BranchId;
@@ -105,7 +110,14 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
         + " 不铸币；铸币产出走账户余额，组织者 = unit.operator，另受 Government.mintScalePerCycle"
         + " 上限约束（★ W5-fix5：决策人预期即权威，实铸 = min(产出请求, 该旋钮)，没有第二条闸门）),"
         + " cycleInputPerUnit?,"
-        + " slots[{id,name,laborParticipationPerMille}], allocation({@class:split,两权重和=1000})}。"
+        + " slots[{id,name,laborParticipationPerMille}], allocation({@class:split,两权重和=1000}),"
+        + " roles?[{id,name,socialClass?,sharePerMille,intraRoleSplit,standardLaborMilliPerCycle,"
+        + " experienceGrowth?{track,basis,coefficientPerMille,maxPerTickValue?,countsManagement?},"
+        + " conditions?,payment(product_share|{kind:money_wage,currency?:LOCAL_MARKET_AREA,"
+        + " barterDiscount?:{referencePrice?:local_bid|local_ask,discountPerMille?:1000}})}],"
+        + " roleShareRemainderRule?(unallocated|to_last_role), upgradesTo?[planId], mode?}。"
+        + "roles 缺省 = 单 operator 角色（share=1000/product_share）；份额合计≤1000、id 不重复；"
+        + "PRODUCT_SHARE ⇒ share>0，MONEY_WAGE ⇒ share=0。"
         + "id 不存在 ⇒ 创建（格必须已有已激活经济状态；同格同 kind 版本不得倒退/撞号）；"
         + "id 已存在 ⇒ 仅当无 units/assetShares/relations 引用时原地全量替换，被引用 ⇒ 具名拒并指路新版本 id；"
         + "逐值相同的重放 = 幂等 noop（不落空 revision）。preview=true（缺省）只算前后差异、不写；"
@@ -121,7 +133,9 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
             "string",
             "产业模板 JSON 文本（与生产定义种子的 industries[] 节点同形，逐字透传给命令）："
                 + "{id,name,regime,cycleDays,capacityPerUnit,dailyInputPerUnit?,dailyLaborPerUnit?,"
-                + "laborPerUnit?,outputPerUnit?,moneyOutputPerUnit?,cycleInputPerUnit?,slots,allocation}；"
+                + "laborPerUnit?,outputPerUnit?,moneyOutputPerUnit?,cycleInputPerUnit?,slots,allocation,"
+                + "roles?,roleShareRemainderRule?,upgradesTo?,mode?}；roles 缺省 = operator 单角色；"
+                + "money_wage 的 barterDiscount 参考价仅 local_bid/local_ask、系数>0（可<1000）；"
                 + "id=<kind>@<q>_<r>，新版本 = 新 kind 后缀 id（office_v2@0_0）"));
     props.put(
         "preview",
@@ -308,6 +322,70 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
     }
     view.put("slots", List.copyOf(slots));
     view.put("allocation", industry.allocation());
+    List<Map<String, Object>> roles = new ArrayList<>(industry.roles().size());
+    for (ProductionRoleDefinition role : industry.roles()) {
+      roles.add(roleView(role));
+    }
+    view.put("roles", List.copyOf(roles));
+    view.put("roleShareRemainderRule", industry.roleShareRemainderRule().key());
+    List<String> upgradesTo = new ArrayList<>(industry.upgradesTo().size());
+    for (io.mosire.simos.economy.api.id.IndustryId upgrade : industry.upgradesTo()) {
+      upgradesTo.add(upgrade.value());
+    }
+    view.put("upgradesTo", List.copyOf(upgradesTo));
+    view.put(
+        "mode",
+        industry.mode().map(io.mosire.simos.economy.api.id.ProductionModeId::value).orElse(null));
+    return view;
+  }
+
+  /** 角色的只读视图（与载荷同形；支付策略只读展示，不在这里解释/结算）。 */
+  private static Map<String, Object> roleView(ProductionRoleDefinition role) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("id", role.id().value());
+    row.put("name", role.name());
+    row.put("socialClass", role.socialClass().map(sc -> sc.value()).orElse(null));
+    row.put("sharePerMille", role.sharePerMille());
+    row.put("intraRoleSplit", role.intraRoleSplit().key());
+    row.put("standardLaborMilliPerCycle", role.standardLaborMilliPerCycle());
+    row.put(
+        "experienceGrowth",
+        role.experienceGrowth().map(EconomyUpsertIndustryTool::experienceGrowthView).orElse(null));
+    List<Map<String, Object>> conditions = new ArrayList<>(role.conditions().size());
+    for (ProductionAvailabilityCondition condition : role.conditions()) {
+      Map<String, Object> conditionView = new LinkedHashMap<>();
+      conditionView.put("type", condition.getClass().getSimpleName());
+      conditionView.put("description", condition.describe());
+      conditions.add(conditionView);
+    }
+    row.put("conditions", List.copyOf(conditions));
+    row.put("payment", paymentView(role.payment()));
+    return row;
+  }
+
+  private static Map<String, Object> experienceGrowthView(ExperienceGrowth growth) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("track", growth.track().value());
+    view.put("basis", growth.basis().key());
+    view.put("coefficientPerMille", growth.coefficientPerMille());
+    view.put("maxPerTickValue", growth.maxPerTickValue());
+    view.put("countsManagement", growth.countsManagement());
+    return view;
+  }
+
+  private static Object paymentView(RolePayment payment) {
+    if (payment instanceof RolePayment.ProductShare) {
+      return "product_share";
+    }
+    RolePayment.MoneyWage wage = (RolePayment.MoneyWage) payment;
+    BarterDiscountPolicy discount = wage.barterDiscount();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("kind", "money_wage");
+    view.put("currency", "LOCAL_MARKET_AREA");
+    Map<String, Object> barter = new LinkedHashMap<>();
+    barter.put("referencePrice", discount.referencePrice().key());
+    barter.put("discountPerMille", discount.discountPerMille());
+    view.put("barterDiscount", barter);
     return view;
   }
 

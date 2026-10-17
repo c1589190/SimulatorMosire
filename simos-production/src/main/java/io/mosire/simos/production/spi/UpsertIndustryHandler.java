@@ -4,6 +4,7 @@ import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionLog;
 import io.mosire.simos.production.ProductionLogSource;
 import io.mosire.simos.production.contract.ProductionConsumerPort;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -21,7 +22,10 @@ import org.slf4j.Logger;
  *  "cycleDays":30, "capacityPerUnit":{"SMALL_TOOL":1}, "dailyInputPerUnit":{}, "dailyLaborPerUnit":0,
  *  "laborPerUnit":16000, "outputPerUnit":{}, "moneyOutputPerUnit":{}, "cycleInputPerUnit":{},
  *  "slots":[{"id":"...","name":"...","laborParticipationPerMille":1000}],
- *  "allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500}}
+ *  "allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500},
+ *  "roles":[{"id":"operator","name":"经营者","sharePerMille":1000,"intraRoleSplit":"equal",
+ *            "standardLaborMilliPerCycle":0,"payment":"product_share"}],
+ *  "roleShareRemainderRule":"unallocated", "upgradesTo":[], "mode":"..."}
  * }</pre>
  *
  * <p>★ 业务规则见 {@link IndustryUpserts#project}；跨域引用/激活检查经 {@link ProductionConsumerPort}（★★ D-032 B4
@@ -72,6 +76,10 @@ public final class UpsertIndustryHandler implements CommandHandler {
   private static void logApplied(IndustryUpserts.Projection projection) {
     boolean changed = !projection.changeSet().isEmpty();
     String mode = projection.created() ? "created" : (changed ? "in_place" : "noop");
+    long moneyWageRoles =
+        projection.industry().roles().stream()
+            .filter(role -> role.payment() instanceof RolePayment.MoneyWage)
+            .count();
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -87,6 +95,16 @@ public final class UpsertIndustryHandler implements CommandHandler {
                 projection.industry().capacityPerUnit().size(),
                 "outputCommodities",
                 projection.industry().outputPerUnit().size(),
+                "roles",
+                projection.industry().roles().size(),
+                "moneyWageRoles",
+                moneyWageRoles,
+                "roleShareRemainderRule",
+                projection.industry().roleShareRemainderRule().key(),
+                "upgradesTo",
+                projection.industry().upgradesTo().size(),
+                "mode",
+                projection.industry().mode().map(value -> value.value()).orElse("-"),
                 "units",
                 projection.references().units(),
                 "assetShares",

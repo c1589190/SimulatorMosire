@@ -42,10 +42,11 @@ import org.slf4j.Logger;
  * toString()}，与各自的 {@code static parse} 互逆 ⇒ <b>只注册读侧</b>（写侧 Jackson 默认键序列化器调 {@code toString()}
  * 恰好就对）。漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故 往返夹具必须让每张表非空）。
  *
- * <p>★ <b>值类型一个注解都不加</b>：{@code ProductionData} / {@code IndustryDefinitionView} / {@code
- * ProductionProcess} / {@code ExperienceTrack} / {@code ProductionEfficiencyState} 都是零 Jackson
- * 注解的（record 或带类型级多态注解的 sealed 接口）；{@code Jdk8Module} 已在共享基座 {@link SimosObjectMapper#create}
- * 里注册（{@code Optional} 字段走它）。
+ * <p>★ <b>值类型不靠 mapper mixin</b>：{@code ProductionData} / {@code IndustryDefinitionView} / {@code
+ * ProductionProcess} / {@code ExperienceTrack} / {@code ProductionEfficiencyState} 都是
+ * record；多态子形状（如 {@code RolePayment} / {@code ProductionAvailabilityCondition}）把类型注解钉在 sealed 接口上。
+ * {@code Jdk8Module} 已在共享基座 {@link SimosObjectMapper#create} 里注册（{@code Optional} 字段走它）。 D1 新增的
+ * {@code roles} 等字段随 {@code IndustryDefinitionView} 的 record 组件自动读写，没有第二份 wire shape。
  *
  * <p>★ <b>字节是内容的纯函数</b>：各表一律 {@code LinkedHashMap} 保插入序（冻在状态构造器赋值处）；共享基座没有开 {@code
  * ORDER_MAP_ENTRIES_BY_KEYS} ⇒ 同一份状态编码两次逐字节相同。

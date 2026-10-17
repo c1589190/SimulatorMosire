@@ -32,7 +32,9 @@ import java.util.Set;
  * production.contract.ProductionRuntime#changeSet()} 交出的 {@link ChangeSet} 原样汇入同一次提案。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生——{@code between(base, target)} 是唯一生产者，差异/重建语义一律委托 {@link FieldDelta#diff}
- * / {@link FieldDelta#rebuild}。
+ * / {@link FieldDelta#rebuild}。★ D1 的 {@code roles}/{@code roleShareRemainderRule}/{@code
+ * upgradesTo}/{@code mode} 全部是 {@link IndustryDefinitionView} 的 record 组件：整值 equals 即逐字段比较，故 {@code
+ * industries} 维无需第二套 diff。
  *
  * <p>★★ <b>A′ 批的结转状态全在这 8 个组件之内</b>（§13.8 末段）：经验侧的结转 = {@code householdExperience} 的值 {@link
  * ProductionExperienceFeature#remainder()}（键 = 家户 × 经验条）；实例侧的结转 = {@code instances} 里的逐家户加权劳动与
