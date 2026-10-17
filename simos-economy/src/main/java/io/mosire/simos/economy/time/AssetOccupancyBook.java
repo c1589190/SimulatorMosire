@@ -294,6 +294,102 @@ public final class AssetOccupancyBook {
     return released;
   }
 
+  /**
+   * ★★★ <b>W5-F：份额被非 D4 写者改写后的 grant 数量收口</b>。
+   *
+   * <p>D4 分配器生成 grant 时已按 {@code share.quantity - committed} 逐 share 上限切分；但同一 revision 内
+   * 后面的产权写者（例如迁移拆分份额）仍可能让已 ACTIVE 的 grant 大于该 share 的当前 {@code quantity}。 本方法只做数量收口：<b>不</b>改 grant
+   * 的 id/share/unit/区间/状态，只把超过当前 {@link OwnershipStake#quantity()} 的那部分截掉；截掉量以 {@code
+   * asset-short:<kind>} 具名记录。
+   *
+   * <p>★ 单条上限必须成立（不是只看同 share 的总和）：{@code EconomyReferenceValidation} 对每一条 grant 都 直接比较 {@code
+   * grant.quantity() <= share.quantity()}。share 已降到 0 时无法保留任何正数 grant，只能移除该行 （并同样具名记录）。
+   *
+   * @return 实际被收口/移除的 grant 条数
+   */
+  static int reconcileGrantQuantitiesWithShares(
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> grants,
+      Map<AssetShareId, OwnershipStake> assetShares) {
+    Objects.requireNonNull(grants, "grants 不得为 null（无占用用空表）");
+    Map<AssetShareId, OwnershipStake> shares = validatedShares(assetShares);
+    List<AssetOccupancyGrant> ordered = new ArrayList<>(grants.values());
+    ordered.sort(GRANT_ORDER);
+    int adjusted = 0;
+    for (AssetOccupancyGrant grant : ordered) {
+      if (grant == null) {
+        contractFault("asset-occupancy-null-grant", "assetOccupancies 的值不得为 null", null);
+      }
+      OwnershipStake share = shares.get(grant.shareId());
+      if (share == null) {
+        contractFault(
+            "asset-occupancy-share-missing",
+            "grant 指名的 share 不存在: " + grant.id().value() + " → " + grant.shareId().value(),
+            grant.unitId());
+      }
+      if (grant.quantity() <= share.quantity()) {
+        continue;
+      }
+      if (share.quantity() <= 0L) {
+        grants.remove(grant.id());
+        adjusted++;
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ASSET_OCCUPANCY_GRANT_REMOVED_WITHOUT_SHARE_QUANTITY",
+                    EconomyLogSource.ECONOMY_ASSET_OCCUPANCY,
+                    "grant",
+                    grant.id().value(),
+                    "unit",
+                    grant.unitId().value(),
+                    "share",
+                    grant.shareId().value(),
+                    "kind",
+                    share.asset().name(),
+                    "previousQuantity",
+                    grant.quantity(),
+                    "shareQuantity",
+                    share.quantity(),
+                    "why",
+                    "asset-short:" + share.asset().name()));
+        continue;
+      }
+      AssetOccupancyGrant capped =
+          new AssetOccupancyGrant(
+              grant.id(),
+              grant.shareId(),
+              grant.unitId(),
+              share.quantity(),
+              grant.fromTick(),
+              grant.toTickExclusive(),
+              grant.status(),
+              grant.releasedAtTick());
+      grants.put(capped.id(), capped);
+      adjusted++;
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ASSET_OCCUPANCY_GRANT_QUANTITY_CAPPED_TO_SHARE",
+                  EconomyLogSource.ECONOMY_ASSET_OCCUPANCY,
+                  "grant",
+                  grant.id().value(),
+                  "unit",
+                  grant.unitId().value(),
+                  "share",
+                  grant.shareId().value(),
+                  "kind",
+                  share.asset().name(),
+                  "previousQuantity",
+                  grant.quantity(),
+                  "quantity",
+                  capped.quantity(),
+                  "shareQuantity",
+                  share.quantity(),
+                  "why",
+                  "asset-short:" + share.asset().name()));
+    }
+    return adjusted;
+  }
+
   private static void processKind(
       RequestGroupKey group,
       List<AssetOccupancyRequest> groupRequests,
@@ -731,11 +827,25 @@ public final class AssetOccupancyBook {
         continue;
       }
       long alreadyCommitted = committedByShare.getOrDefault(share.id(), 0L);
-      long availableOnShare = share.quantity() - alreadyCommitted;
+      long availableOnShare = Math.max(0L, share.quantity() - alreadyCommitted);
       if (availableOnShare <= 0L) {
         continue;
       }
-      long take = Math.min(remaining, availableOnShare);
+      // ★★★ W5-F：逐 grant 硬上限 = **这一条** share 的 quantity（不是只保证同 share 总和）。
+      //   请求量大于可用份额时只取 availableOnShare，剩余留在 remaining ⇒ 由调用方记 unallocated /
+      //   asset-short:<kind>。显式再夹一次 share.quantity，避免未来任何 committed 读口漂移造出非法 grant。
+      long take = Math.min(remaining, Math.min(availableOnShare, share.quantity()));
+      if (take <= 0L || take > share.quantity()) {
+        contractFault(
+            "asset-occupancy-quantity-exceeds-share",
+            "份额 "
+                + share.id().value()
+                + " 的本次授予量 "
+                + take
+                + " 超过 share.quantity "
+                + share.quantity(),
+            unit);
+      }
       AssetOccupancyGrantId id = AssetOccupancyGrantId.idOf(unit, share.id(), scope.fromTick());
       if (existingGrantIds.contains(id)) {
         contractFault(

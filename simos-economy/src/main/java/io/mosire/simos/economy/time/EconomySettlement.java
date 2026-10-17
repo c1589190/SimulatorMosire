@@ -3570,6 +3570,11 @@ public final class EconomySettlement {
       }
       profitCycle.resetForNextCycle();
     }
+    // ★★★ W5-F：迁移/组织等非 D4 写者可能在本日更早的预算之后拆分份额。grant 一旦大于其 share.quantity，
+    //   候选态就会被 EconomyReferenceValidation 整批拒绝；在日结算收尾处按当前份额表统一收口 grant 数量。
+    //   ★ 只截掉不可用的超出量并记 asset-short:<kind>；不改变 D4 分配/释放/整池/最大余数语义，也不放宽校验。
+    AssetOccupancyBook.reconcileGrantQuantitiesWithShares(
+        session.sheet().assetOccupancies(), session.sheet().assetShares());
     long dayEndPopulation = 0L;
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       dayEndPopulation += householdEconomy.population();
@@ -4406,8 +4411,11 @@ public final class EconomySettlement {
     // ① 按名册/配额表把实际劳动贡献汇总成**逐 (家户 × 角色)** 列表（D2 §6.1/§6.2）。
     //   ★ 角色只从 `HouseholdLaborCommitment.productionRole()` 读（D2 §5.6 的唯一权威）；
     //     漏角色 = 多角色同户静默合并，故这里 fail-closed。
-    Map<String, List<io.mosire.simos.production.contract.ParticipantContribution>>
-        contributionsByUnit = new LinkedHashMap<>();
+    //   ★★★ W5-F：同户可有多个 PeopleLot（commitment id 含 group），故同一个 `(activity, household,
+    //     productionRole)` 可能有多行合法承诺。生产契约的贡献键只有 `(household, role)` —— 必须先在
+    //     本适配层按该键稳定聚合（首见序 = 输出序），否则合法多 lot 户会被 Step 构造期当成重复键拒掉。
+    Map<String, LinkedHashMap<io.mosire.simos.production.contract.ProductionParticipantKey, Long>>
+        aggregatedByUnit = new LinkedHashMap<>();
     for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
       // ★★★ W5-A（缺陷：GOV_SERVICE 被当成生产承诺）：本驱动只接 `LaborCommitmentKind.PRODUCTION`。
       //   `GOV_SERVICE` 按契约**禁止** productionRole（见 HouseholdLaborCommitment 的 kind 注），也不喂任何生产
@@ -4427,11 +4435,34 @@ public final class EconomySettlement {
                 + " activity="
                 + commitment.activity());
       }
-      contributionsByUnit
-          .computeIfAbsent(commitment.activity(), ignored -> new ArrayList<>())
-          .add(
-              new io.mosire.simos.production.contract.ParticipantContribution(
-                  commitment.household(), commitment.productionRole().get(), amount));
+      io.mosire.simos.production.contract.ProductionParticipantKey participantKey =
+          new io.mosire.simos.production.contract.ProductionParticipantKey(
+              commitment.household(), commitment.productionRole().get());
+      LinkedHashMap<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+          byParticipant =
+              aggregatedByUnit.computeIfAbsent(
+                  commitment.activity(), ignored -> new LinkedHashMap<>());
+      Long previous = byParticipant.get(participantKey);
+      byParticipant.put(
+          participantKey, previous == null ? amount : Math.addExact(previous, amount));
+    }
+    Map<String, List<io.mosire.simos.production.contract.ParticipantContribution>>
+        contributionsByUnit = new LinkedHashMap<>();
+    for (Map.Entry<
+            String,
+            LinkedHashMap<io.mosire.simos.production.contract.ProductionParticipantKey, Long>>
+        unitEntry : aggregatedByUnit.entrySet()) {
+      List<io.mosire.simos.production.contract.ParticipantContribution> contributions =
+          new ArrayList<>();
+      for (Map.Entry<io.mosire.simos.production.contract.ProductionParticipantKey, Long>
+          participantEntry : unitEntry.getValue().entrySet()) {
+        contributions.add(
+            new io.mosire.simos.production.contract.ParticipantContribution(
+                participantEntry.getKey().household(),
+                participantEntry.getKey().role(),
+                participantEntry.getValue()));
+      }
+      contributionsByUnit.put(unitEntry.getKey(), contributions);
     }
     // ② 按**稳定序**（实例 id 升序）建步表 —— 序是内容的纯函数（引擎不重排）。
     List<ProductionUnitId> ordered = new ArrayList<>(stepUnits.keySet());
