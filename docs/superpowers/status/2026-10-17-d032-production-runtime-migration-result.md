@@ -106,3 +106,29 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - `[frontend-gate] OK tests=412 pass=412 fail=0`；`[shaded-guard] 结论：OK（8123 个条目；7 条运行期类 + Main-Class 全在）`；Spotless/Checkstyle/SpotBugs 全过（BUILD SUCCESS 含 spotbugs:check 策略门）。
 - 注：一次**被污染**的门禁（T9 变异体在树时）已作废并留痕 `f4-final-verify-VOID-collided-with-t9-mutation.log`；本次是 F5/T9 全退、main md5 基线核对后的干净树读数。`spotless:apply` 后 F5 文件格式变化（md5 `5c2868b7…` → 格式化后 `8a736dfc…`），语义未变（全量测试与检查全绿）。
 - **口径**：本门禁只覆盖 F 修复轮限定范围（R1/R3/R4/R5/R6 + F5）；**R2 仍具名未修**（A 阶段关闭），不写成"全无已知缺陷"。
+
+## 八、2026-10-17 19:xx 工作状态恢复与 D2 设计落盘（侧线工作树）
+
+> **性质**：本次只恢复工作状态、补 D2 设计文档；未改业务/测试、未编译、未跑门禁、未提交/同步。
+
+- **实际当前基线**：侧线工作树 `parallel/side-module` HEAD = `0128b0cc`，工作区在本次文档修改前干净，且该提交已推送 `origin/parallel/side-module`。§六/§七 中“HEAD `03faf0a3`、未 commit/merge”的句子是 15:22 之前的历史口径；15:23 的五个提交 `5217ec57`/`347c288b`/`6dfd1505`/`c0194084`/`0128b0cc` 已把 D-031 P1/D-032 实现与文档入账。主树仍停在 `03faf0a3`，另有 2026-10-16 的旧未提交 D-031 P0 改动；**本次未触碰主树**。
+- **D2 设计已落盘**：`docs/superpowers/specs/2026-10-17-d032-cooperative-production-design.md`（对应重规划 §4 D2 / 设计书 §16）。内容覆盖参与名册、按户预计所得、角色两层分配、资格/组织主体、经验增长与迁移/合户、C2 状态/命令/ChangeSet/codec、不变量、验收与负向判据、文件所有权。
+- **D1 局部更正**：`docs/superpowers/specs/2026-10-17-d032-production-definition-v2-freeze.md` 顶部已加 D2 更正注：`ProductionRoleId` 改落 `simos-economy-api`（避免 Maven 环）；补 `MONEY_WAGE ⇒ share=0`、`PRODUCT_SHARE ⇒ share>0`；`NORMALIZED_PARTICIPATION` 公式固定为 `laborMilli × 1000 / householdLaborBudgetMilli`（不再要求 `standardLabor>0`）；执行请求的逐参与户属性/劳动预算/管理劳动输入见 D2 §6；量纲统一为毫小时。
+- **用户裁定状态**：D2 不需要新增用户业务裁定。经验规模效应按重规划 §5 的工程默认 (c)：可配置、默认按参与强度归一化；D2 固定分母为家户当日可用劳动。R2 仍具名未修，归 D4/A；D3 工资报价/支付与 D4 资产占用仍待各自设计书。
+- **下一步**：D3 工资链设计书 → D4 资产/占用设计书 → C0/C1/C2 设计与实现复核；在用户明确授权前不提交/不合并/不推送。
+- **本次未做/未验证**：只写了文档；没有编译、测试、门禁、仿真；没有证明 D2 设计可编译或判据已通过。
+
+## 九、2026-10-17 19:55 D3 工资链设计落盘（侧线工作树）
+
+> **性质**：本段是 D3 设计交付记录；未改业务/测试、未编译、未跑门禁、未提交/同步。
+
+- **新增设计书**：`docs/superpowers/specs/2026-10-17-d032-wage-chain-design.md`（1052 行，未跟踪）。内容覆盖 U15–U21 逐字原话、工资 posting/quote/进位余数/allowIdle 状态、U20 非对称调价、角色级劳动匹配与 idle、W1 工资前置、U21 直付/抵物/成债、tick 时序、失败词表、不变量、正向/负向判据与 W1–W5 文件所有权。
+- **用户原话核对**：U15–U21 与 D2 §1 逐字比对一致；U13/U14 不在 D3 范围，未重复收录。
+- **D3 对 D2 的最小修正**（D3 文档 §0.3；未直接改 D2）：回执需逐 tick 逐 `(household, role)` 实际劳动；MONEY_WAGE 角色改用 posting 表达需求、不强制 roster participant；`candidateHouseholdsOf` 按角色类型分流；D2 §8.2 工资预计改用 posting target；W2 自动候选资格失败是 skip、roster 内 PRODUCT_SHARE 资格失败仍整实例拒绝。
+- **控制方复核结论**：设计结构完整，未发现与用户原话/五条铁律/模块边界的直接冲突；以下实现前置项需在 W1/W2/W3 派单前由 D3 局部补充或由派单书明确：
+  1. W1 依赖 quote 读口、W2 才落真实 posting 状态；W1/W2 的验收拆分与 fixture/依赖顺序须写死，避免 W1 以空读口“编译过但无能力”交账。
+  2. W2 在 W3 未接时必须明确“含 MONEY_WAGE 角色的执行在何处 fail-closed”，防止匹配写入 allocations 后生产执行、形成无工资实际劳动。
+  3. W3 的“可支付活动库存”在 D4 未接时如何取得“已投入/占用”事实须写死；不得把账户余额未经证明地当全部可支付，也不得静默跳过 U16 的再生产权益排除。
+- **当前 git status**：2 个已跟踪文档修改（D1 更正注、本 status）+ 2 个未跟踪设计书（D2、D3）。无 Java/XML/POM/测试改动。
+- **下一步**：先请用户审 D3 设计/工程默认；D2/D3 接受且用户授权提交/同步后，才可按 C0→C1→C2→W 顺序派实现。**当前不派 W1–W5 代码单**：C 批尚未实现，且设计书未提交/未获提交授权。
+- **本次未做/未验证**：只写文档；没有编译、测试、门禁、仿真；没有证明工资链可实现或判据已通过。

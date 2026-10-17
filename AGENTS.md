@@ -102,6 +102,8 @@
 | `docs/superpowers/reports/2026-10-17-d032-final-independent-review.md` | **D-032 最终独立审核（发现待修复问题）**：预计/实际脱节、共享资产重复占用、执行绕过条件、零经验迁移平均、原始经验公式顺序依赖；含最终 JAR 独立复现及验证限度（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-production-line-replan-review.md` | **D-032 重规划 v1 审核（历史）**：旧公式复活、资产效力、写面与验收依赖冲突；后续 v2 已处置，见 v2 复核（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-production-line-replan-v2-review.md` | **D-032 重规划 v2 复核通过**：可冻结规划基线、继续详细设计；经验归一化为可配置工程默认、R2 仍未修，未验收 F1/F2 实现（2026-10-17） |
+| `docs/superpowers/reports/2026-10-17-d032-d3-integration-precheck.md` | **D-032 D3 衔接预审与 U22 bug-first 决定**：§5 顺序为 R2 必需最小设计→修复→独立验证；工资三项后由 U23 裁定，原衔接问题保留，未验收实现（2026-10-17） |
+| `docs/superpowers/specs/2026-10-17-d032-wage-idle-barter-decision.md` | **D-032 U23 最新工资裁决与模块边界**：欠薪零息、按下一 tick 生存条件裁决不从业、抵物折价可更低且可配置；production 定规则、economy 判定/估值/结算，Social 管生存需求与劳动，未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-cooperative-production-proposal.md` | **D-032 多家户合作生产提案（待用户修改/确认）**：现有多人劳动/分账事实、共同经验、角色分配模型、参与名册、资格主体与本地资产占用建议；未实施（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-distribution-wage-offer-proposal.md` | **D-032 产品分配/现金与抵物/自主工资报价调查提案**：地主权益不要求下地劳动；角色经验量独立配置；工资报价、家户比较与本地反馈机制待确认，未实现（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-wage-settlement-simplification-decision.md` | **D-032 工资简化裁决**：直接支付、库存不足成债、再生产权益不入活动库存仍有效；定价公式建议已被后续选业前定价分析取代，未实现（2026-10-17） |

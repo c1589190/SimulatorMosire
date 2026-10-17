@@ -4,6 +4,8 @@
 > **效力**：重规划 v2 已冻结（`2026-10-17-d032-production-line-replan-v2-review.md`）；本分册是 C0 派单前置。**仅冻结本分册不代表可派 C/W/A 全部实现**；C0 之外仍须对应设计书。
 > **输入**：用户设计原稿 D-032/U13–U21（逐字，§7 附录）；重规划 v2 §1/§4；当前代码（`IndustryDefinitionView`/`ProductionModeDefinitionView`/`ProductionData`/`ProductionDefinitionPayloads`/`ProductionChangeSet`/`ProductionCodec`）。
 > **边界（审核已定）**：经验归一化 = **可配置工程默认**（不得写成用户唯一公式）；角色产品份额 = **直接产品份额**（不以劳动为条件，U15）；工资 = 地主报价+逐 tick 调价+直接结算（U17–U21，D3）；资产 = 现有权益/占用上表达（不另建土地账，D4）；R2 仍具名未修。
+>
+> **2026-10-17 D2 局部更正注**：后续 `docs/superpowers/specs/2026-10-17-d032-cooperative-production-design.md` §5.1 把 `ProductionRoleId` 的落点改为 `simos-economy-api`（否则 `HouseholdLaborCommitment` 无法携带角色而不形成 Maven 环）；§7.1 补充 `MONEY_WAGE ⇒ share=0`、`PRODUCT_SHARE ⇒ share>0` 的交叉校验；§9.1 固定 `NORMALIZED_PARTICIPATION` 的实际公式为 `laborMilli × 1000 / householdLaborBudgetMilli`（不以人口或 `standardLaborMilliPerCycle` 作经验分母；后者 0 仍表示未定）；§8.3 明确 `UNALLOCATED` = 不进入角色池、但为守恒归 organizer residual，不是无主池；§6 扩展执行请求的逐参与户属性/劳动预算/管理劳动输入；并统一 `laborMilli`/`standardLaborMilliPerCycle`/`householdLaborBudgetMilli` 为**毫小时**口径（旧“千分劳动·日”注释作废）。D1 其余冻结形状不变；C0 落形时以 D2 这些条目为准。
 
 ## §1 目标与总不变量
 
