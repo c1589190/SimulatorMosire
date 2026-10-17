@@ -4732,7 +4732,7 @@ public final class EconomySettlement {
             .info(
                 LogEvent.of(
                     "HOUSEHOLD_LABOR_CAPPED",
-                    EconomyLogSource.ECONOMY_POPULATION,
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
                     "stage",
                     "settlement-budget-rescale",
                     "household",
