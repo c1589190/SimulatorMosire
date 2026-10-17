@@ -4725,6 +4725,29 @@ public final class EconomySettlement {
       if (productionSum <= availableForProduction || productionSum <= 0L) {
         continue; // GOV_SERVICE 已整额装下（或 over-budget 但没有可缩 PRODUCTION）：防御性 no-op
       }
+      // ★★ D-032 W5-E：实际既有 PRODUCTION 配额超过**当刻**预算 ⇒ 按比例缩到预算内，并留具名读数。
+      //   这是实际 labor 不超预算的兜底点之一（另一处是 LaborQueueBook.plan 的预算封顶）。
+      if (EconomyLog.settlement().isInfoEnabled()) {
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "HOUSEHOLD_LABOR_CAPPED",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "stage",
+                    "settlement-budget-rescale",
+                    "household",
+                    entry.getKey().value(),
+                    "productionLaborMilli",
+                    productionSum,
+                    "availableForProductionMilli",
+                    availableForProduction,
+                    "budgetMilli",
+                    budget,
+                    "govServiceLaborMilli",
+                    govServiceSum,
+                    "reason",
+                    "household-labor-capped"));
+      }
       List<LaborAllocationId> productionIds = new ArrayList<>();
       long[] productionWeights = new long[ids.size()];
       int productionCount = 0;

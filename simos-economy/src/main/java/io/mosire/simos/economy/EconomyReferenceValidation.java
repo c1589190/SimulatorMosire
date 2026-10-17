@@ -62,12 +62,37 @@ public final class EconomyReferenceValidation {
    * EconomyData} 删除 ⇒ 本方法改从 production 切片的只读投影取它们 （{@link
    * io.mosire.simos.production.contract.ProductionStateLookup}）。判据<b>一条没删</b>， 只是"读哪一份"从 economy
    * 本地表换成 production 的权威候选态（I1/I13）。
+   *
+   * <p>★★ <b>D-032 W5-E：本入口 = 运行时（每 tick）语义</b> —— 名册的 {@code plannedLaborByHousehold} 是
+   * <b>历史计划快照</b>：人口/户结构逐日变化后，它可能大于当刻 {@code HouseholdEconomy.laborMilli()}。运行时若因此硬拒， 整次 {@code
+   * AdvanceTime} 会被一份过期计划挡住（W5-3 实测 tick 停在第 4/18 天）。故本入口对"计划 &gt; 预算"只做结构校验 （参与户必须存在），<b>不</b>抛
+   * {@code household-labor-overcommitted}；实际劳动分配由 {@code LaborQueueSettlement}/{@code
+   * EconomySettlement.applyLaborBudgetsInto} 按当刻预算封顶，绝不让实际 labor 超预算。 <b>写入/seed 入口</b>（{@code
+   * EconomySetProductionRosterHandler} / {@code EconomySeedHandler}）必须走 {@link
+   * #validateProductionRosters(ProductionDefinitionLookup,
+   * io.mosire.simos.production.contract.ProductionStateLookup, EconomyData, String, boolean)} 并传
+   * {@code true}，保留 D2 的写入口拒绝语义。
    */
   public static void validate(
       ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionStateLookup production,
       EconomyData candidate,
       String label) {
+    validate(definitions, production, candidate, label, false);
+  }
+
+  /**
+   * 全量候选态校验（显式选择是否强制名册计划劳动预算）。
+   *
+   * @param enforcePlannedLaborBudget {@code true} = 写入口语义（计划超过当刻家户预算 ⇒ 具名拒 {@code
+   *     household-labor-overcommitted}）；{@code false} = 运行时语义（只校验参与户存在，实际分配另行按预算封顶）
+   */
+  public static void validate(
+      ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label,
+      boolean enforcePlannedLaborBudget) {
     Objects.requireNonNull(definitions, "definitions");
     Objects.requireNonNull(production, "production");
     Objects.requireNonNull(candidate, "candidate");
@@ -80,7 +105,7 @@ public final class EconomyReferenceValidation {
     validateLaborActorIndustryCollision(definitions, candidate, label);
     validateFlowsOnIndustryHex(definitions, candidate, label);
     validateDemandHexes(definitions, candidate, label);
-    validateProductionRosters(definitions, production, candidate, label);
+    validateProductionRosters(definitions, production, candidate, label, enforcePlannedLaborBudget);
     validateProductionWages(definitions, production, candidate, label);
     validateAssetOccupancies(production, candidate, label);
     validateInventoryReservations(production, candidate, label);
@@ -342,7 +367,8 @@ public final class EconomyReferenceValidation {
    *   <li>恰好一个 organizer（{@link ProductionRoster} 构造期已判）；organizer 的角色必须是 {@code PRODUCT_SHARE}；
    *   <li>{@code unit.operator == HouseholdActors.of(organizerHousehold)}；
    *   <li>role 级 {@code standardLaborPerCycle>0} 的非工资角色至少一名 participant {@code plannedLabor>0}；
-   *   <li>逐户名册计划劳动之和 ≤ 该户当刻 {@code HouseholdEconomy.laborMilli}（D2-I13）；
+   *   <li>逐户名册计划劳动之和 ≤ 该户当刻 {@code HouseholdEconomy.laborMilli}（D2-I13；<b>仅写入口</b>强制， 运行时见 {@code
+   *       enforcePlannedLaborBudget}）；
    *   <li>{@code BY_RIGHTS}：份额存在、industry == plan、owner == 该户 actor，且不得跨 participant 重复引用；
    *   <li>{@code CONFIGURED_WEIGHTS}：权重只在该规则下允许非零且角色内至少一项 &gt; 0；其余规则必须 rights 空/weight 0；
    *   <li>名册方案 {@code ProductionRules.rules} 必须为空（D2-I17；否则具名 {@code
@@ -350,12 +376,34 @@ public final class EconomyReferenceValidation {
    *   <li>有组织时 {@code ProductionEnterprise.laborSources} 必须等于名册全户派生集（否则 {@code
    *       enterprise-roster-mismatch}）。
    * </ul>
+   *
+   * <p>★★ <b>D-032 W5-E：默认入口 = 写入口语义</b>（强制 D2-I13；{@code EconomySetProductionRosterHandler} /
+   * {@code EconomySeedHandler} 用它，写坏预算的候选态仍具名拒 {@code household-labor-overcommitted}）。运行时全量校验请走
+   * {@link #validateProductionRosters(ProductionDefinitionLookup,
+   * io.mosire.simos.production.contract.ProductionStateLookup, EconomyData, String, boolean)} 并传
+   * {@code false}。
    */
   public static void validateProductionRosters(
       ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionStateLookup production,
       EconomyData candidate,
       String label) {
+    validateProductionRosters(definitions, production, candidate, label, true);
+  }
+
+  /**
+   * 名册跨片校验（显式选择是否强制名册计划劳动预算）。
+   *
+   * @param enforcePlannedLaborBudget {@code true} = 写入口语义：逐户计划劳动之和 &gt; 当刻预算 ⇒ 具名拒 {@code
+   *     household-labor-overcommitted}；{@code false} = 运行时语义：仍校验参与户存在于家户行表，但把"历史计划 &gt; 当刻预算"
+   *     交给实际分配处的预算封顶（不改 roster 计划值、不缩短 AdvanceTime）。
+   */
+  public static void validateProductionRosters(
+      ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionStateLookup production,
+      EconomyData candidate,
+      String label,
+      boolean enforcePlannedLaborBudget) {
     Objects.requireNonNull(definitions, "definitions");
     Objects.requireNonNull(production, "production");
     Objects.requireNonNull(candidate, "candidate");
@@ -578,7 +626,9 @@ public final class EconomyReferenceValidation {
         }
       }
     }
-    // 全局预算（D2-I13）：逐户跨全部名册合计 ≤ 当日 laborMilli。
+    // 全局预算（D2-I13）：逐户跨全部名册合计 ≤ 当日 laborMilli —— **只在写入口强制**。
+    //   ★ D-032 W5-E：运行时（enforce=false）仍校验"参与户必须存在"，但不把历史计划快照当成硬拒条件：
+    //     实际劳动分配由 LaborQueueSettlement / EconomySettlement.applyLaborBudgetsInto 按当刻预算封顶。
     Map<HouseholdId, Long> plannedByHousehold = new java.util.LinkedHashMap<>();
     for (ProductionRoster roster : candidate.productionRosters().values()) {
       for (Map.Entry<HouseholdId, Long> planned : roster.plannedLaborByHousehold().entrySet()) {
@@ -590,7 +640,7 @@ public final class EconomyReferenceValidation {
       if (row == null) {
         throw new IllegalArgumentException(label + " 的名册参与户不在家户行表里: " + entry.getKey().value());
       }
-      if (entry.getValue() > row.laborMilli()) {
+      if (enforcePlannedLaborBudget && entry.getValue() > row.laborMilli()) {
         throw new IllegalArgumentException(
             label
                 + " 的名册计划劳动超过家户当日预算（household-labor-overcommitted）: household="

@@ -90,8 +90,9 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
               // ★★★ D-032 W2a：工资 default/posting 的市场区/法定币必须对当前 economy 区表校验。
               base.marketZones());
       // ★★★ D-032 C2（D2 §5.5 / §7.1）：创世名册的跨切片校验（角色存在/份额 owner/全局预算/旧规则禁用）。
+      //   ★ W5-E：seed 是**写入口** ⇒ 显式 enforcePlannedLaborBudget=true，保留 D2-I13 的拒绝语义。
       io.mosire.simos.economy.EconomyReferenceValidation.validateProductionRosters(
-          definitions, production, seeded, "economy.Seed");
+          definitions, production, seeded, "economy.Seed", true);
       // ★★★ D-032 W2a：候选 default / 执行期 posting 的 plan/role/币种/范围跨切片校验。
       io.mosire.simos.economy.EconomyReferenceValidation.validateProductionWages(
           definitions, production, seeded, "economy.Seed");

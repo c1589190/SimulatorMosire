@@ -692,6 +692,9 @@ public final class GovWorldBootstrap {
     // ★★★ D-032 C3（D1 §2.2）：官署方案也是生产方案 ⇒ 显式单 operator 角色（唯一拼写点 =
     //   EconomySeeder.singleOperatorRoleNodes，值来自 production 的 defaultOperator）。
     payload.put("roles", EconomySeeder.singleOperatorRoleNodes());
+    // ★★★ D-032 W5-E：官署方案的资产份额只物化 OWNED（economy.UpsertGovUnit）⇒ 显式声明接受面；
+    //   production 缺键 = 空集 ⇒ 采用侧具名拒 asset-right-kind-missing。
+    payload.put("acceptedRightKinds", EconomySeeder.SEED_ACCEPTED_RIGHT_KINDS_OWNED);
     Map<String, Object> allocation = new LinkedHashMap<>();
     allocation.put("@class", "split");
     allocation.put("meansWeightPerMille", 500);

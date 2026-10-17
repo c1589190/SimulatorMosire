@@ -70,6 +70,10 @@ public final class EconomyProductionReferenceValidator implements CandidateState
               + productionSlice.getClass().getName());
     }
     try {
+      // ★★ D-032 W5-E：本校验器每 tick / 每次候选提交都跑 ⇒ 走**运行时语义**（四参 validate 显式传 false）。
+      //   名册 plannedLabor 是历史计划快照；人口/户结构变化后计划 &gt; 当刻预算不再硬拒整次 AdvanceTime。
+      //   实际劳动分配由 LaborQueueSettlement / EconomySettlement.applyLaborBudgetsInto 按当刻预算封顶。
+      //   写名册 / seed 的严格 D2-I13 语义在各自 handler 里以 enforcePlannedLaborBudget=true 单独执行。
       EconomyReferenceValidation.validate(
           definitions, productionState, economySnapshot.data(), NAME);
     } catch (IllegalArgumentException e) {

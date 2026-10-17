@@ -163,8 +163,9 @@ public final class EconomySetProductionRosterHandler implements CommandHandler {
         projected = base.withProductionRoster(roster);
       }
       // 跨切片完整校验（角色存在/份额 owner/预算/旧规则禁用/组织派生一致性）。
+      // ★ W5-E：写名册是**写入口** ⇒ 显式 enforcePlannedLaborBudget=true，保留 D2-I13 的拒绝语义。
       EconomyReferenceValidation.validateProductionRosters(
-          definitions, production, projected, TYPE);
+          definitions, production, projected, TYPE, true);
       ProductionRoster written = projected.productionRosters().get(unit);
       EventLog.channel(LOG)
           .info(

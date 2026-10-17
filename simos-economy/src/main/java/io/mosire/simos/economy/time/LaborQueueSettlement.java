@@ -319,6 +319,17 @@ final class LaborQueueSettlement {
     }
     Map<ProductionUnitId, ProductionRoster> productionRosters =
         session.sheet().productionRostersOrBase();
+    // ★★ D-032 W5-E：名册 plannedLabor 是历史计划快照（人口/户结构变化后可能 &gt; 当刻预算）。
+    //   运行时不硬拒（见 EconomyReferenceValidation 的运行时/写入口分流），但要在分配处留下具名读数：
+    //   下面逐户 begin 时若 planned &gt; budget，记一条具名读数：
+    //   HOUSEHOLD_LABOR_CAPPED（reason=household-labor-capped）；
+    //   实际授予量仍由 LaborQueueBook.plan 用 budget 封顶，绝不让实际 labor 超预算。
+    Map<HouseholdId, Long> plannedLaborByHousehold = new LinkedHashMap<>();
+    for (ProductionRoster roster : productionRosters.values()) {
+      for (Map.Entry<HouseholdId, Long> planned : roster.plannedLaborByHousehold().entrySet()) {
+        plannedLaborByHousehold.merge(planned.getKey(), planned.getValue(), Math::addExact);
+      }
+    }
     for (ProductionProcess unit : units.values()) {
       for (LaborSlot slot :
           candidateSlotsOf(
@@ -387,6 +398,27 @@ final class LaborQueueSettlement {
         continue; // 没有可挂批次 ⇒ 不猜、不重排（既有配额原样保留；预算不变量不动）
       }
       long budget = Math.max(0L, householdEconomy.laborMilli());
+      // ★★ D-032 W5-E：历史名册计划 &gt; 当刻预算 ⇒ **不硬拒、按预算封顶**，并留具名读数。
+      //   ★ 不改 roster 的 plannedLabor 值（那是历史计划快照）；实际授予量由 LaborQueueBook.plan(household, budget, …)
+      //     封顶，EconomyData 构造期再守 Σ PRODUCTION ≤ budget，故实际 labor 不会超预算。
+      long plannedLaborMilli = plannedLaborByHousehold.getOrDefault(household, 0L);
+      if (plannedLaborMilli > budget && EconomyLog.population().isInfoEnabled()) {
+        EventLog.channel(EconomyLog.population())
+            .info(
+                LogEvent.of(
+                    "HOUSEHOLD_LABOR_CAPPED",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "day",
+                    day,
+                    "household",
+                    household.value(),
+                    "plannedLaborMilli",
+                    plannedLaborMilli,
+                    "budgetMilli",
+                    budget,
+                    "reason",
+                    "household-labor-capped"));
+      }
       // ★★ C7：GOV_SERVICE 承诺是**最高优先级、不可缩**。先按 activity 建索引（队列既不排队、也不覆盖它），
       //   再整额校验"Σ GOV_SERVICE ≤ 家户 laborMilli"——★ Z7d-1 起越界是**饥饿导致的 underfed 合法态**
       //   （职位行保留；有效供给由 app 桥 cap），队列对本户整体跳过、不给 PRODUCTION 任何小时，绝不静默缩/丢 GOV_SERVICE。

@@ -195,6 +195,25 @@ public final class EconomySeeder {
   /** ★★ <b>城市贸易/承运产业标签</b>（P11.7/D-024；每个有城镇人口的格一个）：制度 = {@link RegimeOperators#MERCHANT}。 */
   public static final String TRADE = "trade";
 
+  /**
+   * ★★★ <b>D-032 W5-E：创世方案显式声明的资产权利接受面</b>（production 的 {@code
+   * IndustryDefinitionView.acceptedRightKinds}）。
+   *
+   * <p>★★ <b>为什么必须显式写</b>：production 解析器对缺键按<b>空集</b>解析（B2c 冻结语义）—— 空集 = 不接受任何资产权利 ⇒ 采用算法在 {@code
+   * asset-right-kind-missing} 处具名拒绝，所有生产日都会停。因此每个 seed 方案都必须按它实际物化的份额 kind 列出接受面：主 unit 的 {@code
+   * capacity} 恒 {@code OWNED}；农业/手工业的家户副 unit 是 {@code TENANCY}；家庭纺织的家户副 unit 是 {@code
+   * OWNED}；铸币与官署只物化 {@code OWNED}。
+   *
+   * <p>★ <b>唯一拼写点</b>：两个常量覆盖全部 seed 方案，四处 payload 构造点只引用它们，避免逐点漂移。值 = wire 词表名 （{@link
+   * AssetRightKind#name()}），不是枚举对象。
+   */
+  public static final List<String> SEED_ACCEPTED_RIGHT_KINDS_OWNED =
+      List.of(AssetRightKind.OWNED.name());
+
+  /** 见 {@link #SEED_ACCEPTED_RIGHT_KINDS_OWNED}：同时接受自营与租佃份额的方案（farm / craft）。 */
+  public static final List<String> SEED_ACCEPTED_RIGHT_KINDS_OWNED_OR_TENANCY =
+      List.of(AssetRightKind.OWNED.name(), AssetRightKind.TENANCY.name());
+
   /** ★★ 每 1 单位贸易规模的劳动（千分劳动/日）：{@code 1000} = 1 个标准劳动（与作坊口径同量级）。 */
   public static final long LABOR_MILLI_PER_TRADE_UNIT = MerchantTradeTemplate.LABOR_MILLI_PER_UNIT;
 
@@ -4223,6 +4242,8 @@ public final class EconomySeeder {
     payload.put("slots", slots);
     // ★★★ D-032 C3：铸币同样是生产方案 ⇒ 显式单 operator 角色（source = production defaultOperator）。
     payload.put("roles", singleOperatorRoleNodes());
+    // ★★★ D-032 W5-E：铸币的产能份额整额 OWNED 物化（见下方 ownershipStakeNode）⇒ 显式声明接受面。
+    payload.put("acceptedRightKinds", SEED_ACCEPTED_RIGHT_KINDS_OWNED);
     ProductionUnitId mintUnitId = ProductionUnitId.idOf(mintId, operator);
     Map<String, Object> unit = new LinkedHashMap<>();
     unit.put("id", mintUnitId.value());
@@ -5127,6 +5148,10 @@ public final class EconomySeeder {
     //   ★ 多角色方案必须显式 roles（本播种器当前没有多角色方案；若将来出现，见
     //   {@link #requireRostersForMultiRoleUnits} 的 seed-roster-missing 守卫）。
     payload.put("roles", singleOperatorRoleNodes());
+    // ★★★ D-032 W5-E：方案必须显式声明资产权利接受面 —— production 缺键 = 空集 ⇒ 采用侧
+    //   {@code asset-right-kind-missing}，所有生产日都会停。本播种器按 kind 的实际份额给出（唯一映射点见
+    //   {@link #seedAcceptedRightKinds(String)}）。
+    payload.put("acceptedRightKinds", seedAcceptedRightKinds(kind));
     // ★★ R3B.2：**模板不再带 operator/capacity/progress/cycleState** —— 这些是 unit/份额的事实：
     //   经营者 = RegimeOperators 的默认（与 operatorSeed 同源）；进度/劳动/投入由 unitOf(plan) 显式发出；
     //   产能总量由 ownershipStakesOf(plan) 整额 OWNED 物化。这样新载荷不会触发"旧形状"兼容路径。
@@ -5148,6 +5173,26 @@ public final class EconomySeeder {
     }
     return new IndustryPlan(
         kind, id, regime, operator, capacityLongs, capacityPerUnitLongs, payload);
+  }
+
+  /**
+   * ★★★ <b>D-032 W5-E：seed 方案的产业 kind → 它实际物化的份额权利性质</b>（唯一映射点）。
+   *
+   * <p>★ <b>按实播份额精确列出</b>（不是"能多接受就多写"）：farm / craft 的主 unit {@code capacity} 物化为 {@code OWNED}、家户副
+   * unit 物化为 {@code TENANCY}；weave / trade 只物化 {@code OWNED}。新增 seed 产业 kind 时必须在这里 显式给映射 —— 未知
+   * kind 直接 {@link IllegalStateException}，绝不静默落成空集。
+   */
+  private static List<String> seedAcceptedRightKinds(String kind) {
+    return switch (kind) {
+      case FARM, CRAFT -> SEED_ACCEPTED_RIGHT_KINDS_OWNED_OR_TENANCY;
+      case WEAVE, TRADE -> SEED_ACCEPTED_RIGHT_KINDS_OWNED;
+      default ->
+          throw new IllegalStateException(
+              "seed 产业 kind="
+                  + kind
+                  + " 没有声明 acceptedRightKinds（production 缺键会落成空集，"
+                  + "采用侧将具名拒 asset-right-kind-missing）");
+    };
   }
 
   /**
