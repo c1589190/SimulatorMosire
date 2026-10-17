@@ -5284,9 +5284,9 @@ public final class EconomySeeder {
             organizerCovered = true;
           }
         }
-        case FIXED_IN_KIND_PER_LABOR, FIXED_IN_KIND_RENT, FIXED_MONEY_RENT -> {
-          return LegacyRoleMapping.blocked(rule.type().name());
-        }
+        // ★ 其余一切 kind（FIXED_IN_KIND_PER_LABOR / FIXED_IN_KIND_RENT / FIXED_MONEY_RENT，以及未来
+        //   新增而本方法尚不识别的档）都走同一条 legacy 回退：旧规则不可表示 ⇒ 不建角色，具名 block
+        //   后由 applyLegacyRoleMapping 原样保留旧 rules（不抛异常、不静默成功）。
         default -> {
           return LegacyRoleMapping.blocked(rule.type().name());
         }
