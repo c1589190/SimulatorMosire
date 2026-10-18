@@ -79,13 +79,15 @@
 | `docs/agents/12-十一-运行时操作原则.md` | §十一 直接用工具、不先读代码；有异常只记录 |
 | `docs/agents/13-十二-推演Skill文档规则.md` | §十二 推演 Skill 的文档规则（★ 它所指的**运行期 Skill 机制已于 2026-10-13 取缔**，本文只作历史留痕与用户裁定记录；取代者见 `.agents/notes/implemented/architecture/2026-10-13-retire-runtime-skill-system.md`） |
 | `docs/agents/14-十三-战损概率表先审后录.md` | §十三 概率/战损表先审后录、掷点可复现、错误落库后的回滚口径 |
+| `docs/agents/15-十四-目标运行设计与子设计嵌入.md` | **目标运行设计先行**：先写模块实际运行顺序，再写裁定/子设计嵌入与影响；模块/类型细化规范；责任区子 Agent 的中期设定也必须遵循 |
 
 **② 文档系统与台账形制**
 
 - `docs/AGENTS.md` —— 文档系统本身的用法：**六层归宿表** · 口径优先级 · 「取代关系」怎么写 · `file:line` 与"生成命令"要求 · **日期口径规则**。
 - `.superpowers/AGENTS.md` —— **SDD 台账/证据的落点与形制**：`impl-ledger.md` 落 `.superpowers/sdd/<topic>/`，`evidence/` 同目录，**该目录被 `.gitignore` 的 `*` 忽略（不进 git）**。
 - 决策记录 → `.agents/notes/{proposed,implemented,archived}/<分类>/YYYY-MM-DD-<slug>.md`（为什么这么定、被谁取代）。
-- 技能 → `.agents/skills/<name>/SKILL.md`（**跨运行时**：Codex / Copilot CLI / Gemini CLI 也认）。
+- 技能 → `.agents/skills/<name>/SKILL.md`（**跨运行时**：Codex / Copilot CLI / Gemini CLI 也认）；
+  当前项目技能：`.agents/skills/target-runtime-design/SKILL.md`（目标运行设计 + 子设计嵌入 + 责任区中期设定）。
 - 机械强制 → `tools/gate.sh`（门禁组合 · `-pl` 强制 `-am` · `git add` 白名单）。
 
 **③ 关键长文（既有，本批未搬动）**
@@ -100,6 +102,7 @@
 | `docs/superpowers/specs/2026-10-17-d032-stage1-deviation-review-decision.md` | **D-032 阶段 1 偏离复核（已定，修正未实现）**：方案多地复用不降级；熟练度不能偷换成只加劳动；经验须结转、逐 tick 增长，整周期贡献不能只看收获日；取代迁移设计 §12 对应处置（2026-10-17） |
 | `docs/superpowers/specs/2026-10-17-d032-stage2-handoff-review-decision.md` | **D-032 阶段 2 交接复核（工程已定，集成待验）**：接受 A/B 重排；统一 tick 生效条件，批次故障零半提交，允许不可变回执，旧无效构造器须收口；补充/修正迁移设计 §13（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-final-independent-review.md` | **D-032 最终独立审核（发现待修复问题）**：预计/实际脱节、共享资产重复占用、执行绕过条件、零经验迁移平均、原始经验公式顺序依赖；含最终 JAR 独立复现及验证限度（2026-10-17） |
+| `docs/superpowers/reports/2026-10-18-d032-original-intent-audit.md` | **D-032 按用户原始口径审核当前实现**：缺工调价未进日循环、合作试算经验/雇工劳动断路、角色所得选业待接、抵物初始顺序偏差；附独立复现、已落地范围及绿色构建的验收边界（2026-10-18） |
 | `docs/superpowers/reports/2026-10-17-d032-production-line-replan-review.md` | **D-032 重规划 v1 审核（历史）**：旧公式复活、资产效力、写面与验收依赖冲突；后续 v2 已处置，见 v2 复核（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-production-line-replan-v2-review.md` | **D-032 重规划 v2 复核通过**：可冻结规划基线、继续详细设计；经验归一化为可配置工程默认、R2 仍未修，未验收 F1/F2 实现（2026-10-17） |
 | `docs/superpowers/reports/2026-10-17-d032-d3-integration-precheck.md` | **D-032 D3 衔接预审与 U22 bug-first 决定**：§5 顺序为 R2 必需最小设计→修复→独立验证；工资三项后由 U23 裁定，原衔接问题保留，未验收实现（2026-10-17） |
@@ -166,3 +169,8 @@
     **不许把"没跑"写成"通过"**；测试与变异自证**留到最后统一做**。→ 详见 `docs/agents/04-三-验证.md`
 11. **提交与关账**：不擅自 `git commit`；提交/推送/留痕/密钥纪律 → 详见 `docs/agents/06-五-提交与协作.md`；
     关账跑 `tools/gate.sh`（门禁组合 · `-pl` 强制 `-am` · `git add` 白名单）→ 详见 `docs/agents/08-七-门禁与关账命令.md`。
+12. **目标运行设计先行（2026-10-19 用户裁定）**：改任何模块/类型前，先读该主题的「目标运行序列」；
+    派单/设计/中期确认文档必须先写“目标世界里代码实际怎么跑”（阶段、顺序、读写、所有权、失败、日志/测试锚点），
+    再写裁定、子设计嵌入与影响；**责任区子 Agent 写中期设定也必须遵循**。
+    缺目标运行设计/影响表 ⇒ 派单无效。→ 详见 `docs/agents/15-十四-目标运行设计与子设计嵌入.md`
+    与 `.agents/skills/target-runtime-design/SKILL.md`。
