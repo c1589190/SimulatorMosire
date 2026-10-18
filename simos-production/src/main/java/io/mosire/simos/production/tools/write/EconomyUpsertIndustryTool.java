@@ -23,7 +23,6 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -113,8 +112,7 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
         + " slots[{id,name,laborParticipationPerMille}], allocation({@class:split,两权重和=1000}),"
         + " roles?[{id,name,socialClass?,sharePerMille,intraRoleSplit,standardLaborMilliPerCycle,"
         + " experienceGrowth?{track,basis,coefficientPerMille,maxPerTickValue?,countsManagement?},"
-        + " conditions?,payment(product_share|{kind:money_wage,currency?:LOCAL_MARKET_AREA,"
-        + " barterDiscount?:{referencePrice?:local_bid|local_ask,discountPerMille?:1000}})}],"
+        + " conditions?,payment(product_share|{kind:money_wage,currency?:LOCAL_MARKET_AREA})}],"
         + " roleShareRemainderRule?(unallocated|to_last_role), upgradesTo?[planId], mode?}。"
         + "roles 缺省 = 单 operator 角色（share=1000/product_share）；份额合计≤1000、id 不重复；"
         + "PRODUCT_SHARE ⇒ share>0，MONEY_WAGE ⇒ share=0。"
@@ -135,7 +133,7 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
                 + "{id,name,regime,cycleDays,capacityPerUnit,dailyInputPerUnit?,dailyLaborPerUnit?,"
                 + "laborPerUnit?,outputPerUnit?,moneyOutputPerUnit?,cycleInputPerUnit?,slots,allocation,"
                 + "roles?,roleShareRemainderRule?,upgradesTo?,mode?}；roles 缺省 = operator 单角色；"
-                + "money_wage 的 barterDiscount 参考价仅 local_bid/local_ask、系数>0（可<1000）；"
+                + "money_wage 只接受 kind/currency（currency 仅 LOCAL_MARKET_AREA）；"
                 + "id=<kind>@<q>_<r>，新版本 = 新 kind 后缀 id（office_v2@0_0）"));
     props.put(
         "preview",
@@ -377,15 +375,9 @@ public final class EconomyUpsertIndustryTool implements SimosTool {
     if (payment instanceof RolePayment.ProductShare) {
       return "product_share";
     }
-    RolePayment.MoneyWage wage = (RolePayment.MoneyWage) payment;
-    BarterDiscountPolicy discount = wage.barterDiscount();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("kind", "money_wage");
     view.put("currency", "LOCAL_MARKET_AREA");
-    Map<String, Object> barter = new LinkedHashMap<>();
-    barter.put("referencePrice", discount.referencePrice().key());
-    barter.put("discountPerMille", discount.discountPerMille());
-    view.put("barterDiscount", barter);
     return view;
   }
 

@@ -13,8 +13,6 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.production.contract.AllocationRule;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
-import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.ExperienceTrackId;
@@ -66,9 +64,7 @@ final class ProductionDefinitionPayloads {
           "payment");
   private static final Set<String> EXPERIENCE_GROWTH_FIELDS =
       Set.of("track", "basis", "coefficientPerMille", "maxPerTickValue", "countsManagement");
-  private static final Set<String> PAYMENT_FIELDS = Set.of("kind", "currency", "barterDiscount");
-  private static final Set<String> BARTER_DISCOUNT_FIELDS =
-      Set.of("referencePrice", "discountPerMille");
+  private static final Set<String> PAYMENT_FIELDS = Set.of("kind", "currency");
 
   private ProductionDefinitionPayloads() {}
 
@@ -285,28 +281,7 @@ final class ProductionDefinitionPayloads {
             "字段 payment.currency 只允许 LOCAL_MARKET_AREA（工资结算在本地市场区）: " + currency);
       }
     }
-    return new RolePayment.MoneyWage(barterDiscount(node.get("barterDiscount")));
-  }
-
-  private static BarterDiscountPolicy barterDiscount(JsonNode node) {
-    if (node == null || node.isNull()) {
-      return BarterDiscountPolicy.defaultPolicy();
-    }
-    requireObject(node, "payment.barterDiscount");
-    requireKnownFields(node, BARTER_DISCOUNT_FIELDS, "payment.barterDiscount");
-    BarterReferencePrice referencePrice =
-        barterReferencePrice(optionalText(node, "referencePrice").orElse("local_bid"));
-    long discountPerMille = optionalLong(node, "discountPerMille", 1000L);
-    return new BarterDiscountPolicy(referencePrice, discountPerMille);
-  }
-
-  private static BarterReferencePrice barterReferencePrice(String text) {
-    BarterReferencePrice price = BarterReferencePrice.fromKey(text);
-    if (price == null) {
-      throw new IllegalArgumentException(
-          "字段 payment.barterDiscount.referencePrice 只允许 local_bid / local_ask: " + text);
-    }
-    return price;
+    return new RolePayment.MoneyWage();
   }
 
   private static RoleShareRemainder roleShareRemainder(JsonNode node) {
