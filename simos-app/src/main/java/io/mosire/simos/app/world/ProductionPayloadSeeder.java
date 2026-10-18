@@ -205,7 +205,7 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
           AssetKind.SHIP,
           AssetKind.CATTLE);
 
-  /** P2 基线资产规则的默认租金分成率（‰；沿用旧 COMPLETE 地基的 300‰ 制度量级）。 */
+  /** 非 {@code grain_farm × LAND} 资产规则的默认租金分成率（‰；沿用旧 COMPLETE 地基的制度量级）。 */
   private static final int PRODUCTION_RUNTIME_RENT_SHARE_PER_MILLE = 300;
 
   /**
@@ -214,8 +214,12 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
    *
    * <p>★★ <b>id 是派生值、不是手写第二份身份</b>：逐条经 {@link AssetRuleId#idOf(ProductionModeId, AssetKind)} 生成（与
    * {@code EconomyPayloads.parseAssetRules} 的判据同一处），并有 {@code idMatchesIdentity} 的同一条 {@code (mode,
-   * assetKind)} 唯一性。{@code rentRule}/{@code transferRule} 的形状与旧 COMPLETE 地基逐字段同源： LAND
-   * 分成粮、SMALL_TOOL/WORKSHOP 分成布；转移需所有权人同意、不许转租。
+   * assetKind)} 唯一性。{@code rentRule}/{@code transferRule} 的形状与旧 COMPLETE 地基逐字段同源： SMALL_TOOL/WORKSHOP
+   * 分成布；转移需所有权人同意、不许转租。
+   *
+   * <p>★★ <b>P5a：{@code grain_farm × LAND} 不生成 rentRule</b>。农村土地不是租佃标的：{@code grain_farm} 的组织/经营
+   * 不靠从别人闲置份额里拆 TENANCY、不产生 300‰ 地租或 TENANT/SERF/lease 规则；土地只能整块买卖/抵债。
+   * 其余 mode（工坊/商人/流民）的资产规则保持原样，不误删。
    *
    * <p>★ 键序 = mode 目录序 × {@link #PRODUCTION_RUNTIME_ASSET_KINDS} 声明序；纯函数、可复现。
    */
@@ -229,7 +233,11 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
         node.put("modeId", mode.id().value());
         node.put("assetKind", assetKind.name());
         node.put("isCoreMeans", true);
-        node.put("rentRule", productionRuntimeRentRuleNode(assetKind));
+        // ★★ P5a：grain_farm 的 LAND 是产能资产，不是租佃标的 ⇒ 不发 rentRule（缺键 = Optional.empty()，
+        //   与 EconomyPolicyPayloads.parseAssetRules 的“不产生租金”同一口径）。其他 mode/assetKind 逐字不变。
+        if (!(DefaultProductionModes.GRAIN_FARM.equals(mode.id()) && assetKind == AssetKind.LAND)) {
+          node.put("rentRule", productionRuntimeRentRuleNode(assetKind));
+        }
         node.put("transferRule", productionRuntimeTransferRuleNode());
         nodes.add(node);
       }
@@ -237,7 +245,10 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
     return nodes;
   }
 
-  /** 一条资产规则的租金模板：产出分成 300‰；LAND 分成粮，其余（SMALL_TOOL/WORKSHOP/SHIP/CATTLE）分成布。 */
+  /**
+   * 一条资产规则的租金模板：产出分成 {@link #PRODUCTION_RUNTIME_RENT_SHARE_PER_MILLE}‰；非 grain_farm 的 LAND 分成粮，
+   * 其余（SMALL_TOOL/WORKSHOP/SHIP/CATTLE）分成布。★ {@code grain_farm × LAND} 不调用本方法（见上方 rentRule 的 P5a 分支）。
+   */
   private static Map<String, Object> productionRuntimeRentRuleNode(AssetKind assetKind) {
     String commodity = assetKind == AssetKind.LAND ? COMMODITY_GRAIN : COMMODITY_CLOTH;
     Map<String, Object> leg = new LinkedHashMap<>();

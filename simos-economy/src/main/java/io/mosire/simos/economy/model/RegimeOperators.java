@@ -124,9 +124,13 @@ public final class RegimeOperators {
   }
 
   /**
-   * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code tenancy_* → tenant}、{@code wage_farm → feudal}、
-   * {@code handicraft_workshop → handicraft}、{@code family_farm → household}、{@code merchant →
-   * merchant}； 其余（{@code displaced}/GM 自定义 mode）⇒ 空（调用方按自己的 fail-closed 回退）。
+   * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code handicraft_workshop → handicraft}、{@code
+   * merchant → merchant}；其余 mode ⇒ 空（调用方按自己的 fail-closed 回退）。
+   *
+   * <p>★★ <b>P5a：农村 {@code grain_farm} 不映射到任何旧制度模板</b>。旧 {@code tenancy_* → tenant}、{@code wage_farm →
+   * feudal}、{@code family_farm → household} 的农村分支已删除：{@code grain_farm} 的默认关系是<b>空规则 + SELF</b>
+   * （产出全归 operator；雇工工资走 MONEY_WAGE 工资锚），不产生 TENANT/SERF/地租/租约。此处返回空 ⇒ 调用方不得回头读产业
+   * regime（农场产业的 {@code feudal} 是旧庄园模板，不能当 {@code grain_farm} 的默认）。
    *
    * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyEnterpriseSettlement.selectIndustry}、 {@code
    * ModeMigrationPolicy.industriesForMode}、{@code ModeMigrationSettlement} 都读它，免得三处各写一遍 if 链。
@@ -135,19 +139,12 @@ public final class RegimeOperators {
     if (modeId == null) {
       throw new IllegalArgumentException("defaultRegimeForMode 的 modeId 不得为 null");
     }
-    if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(modeId)
-        || DefaultProductionModes.TENANCY_SHARE.equals(modeId)
-        || DefaultProductionModes.TENANCY_CASH.equals(modeId)) {
-      return Optional.of(TENANT);
-    }
-    if (DefaultProductionModes.WAGE_FARM.equals(modeId)) {
-      return Optional.of(FEUDAL);
+    if (DefaultProductionModes.GRAIN_FARM.equals(modeId)) {
+      // ★ P5a 具名：grain_farm 无租佃/雇农/家庭农场制度模板；空 = 走空规则 SELF（不是“没登记所以随便猜”）。
+      return Optional.empty();
     }
     if (DefaultProductionModes.HANDICRAFT_WORKSHOP.equals(modeId)) {
       return Optional.of(HANDICRAFT);
-    }
-    if (DefaultProductionModes.FAMILY_FARM.equals(modeId)) {
-      return Optional.of(HOUSEHOLD);
     }
     if (DefaultProductionModes.MERCHANT.equals(modeId)) {
       return Optional.of(MERCHANT);

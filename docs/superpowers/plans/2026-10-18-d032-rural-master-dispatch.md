@@ -284,8 +284,8 @@ simos-app/.../time/
 | P1 | Social 先 + 单槽 `PendingFamineFacts` | W1 `app-tick` | T1 | **完成（app 1017/0/0/7、reactor 3572/0/0/7 绿）** |
 | P2 | 统一市场（商品+土地）+ 债务最先 + 删 Pledge | W2 `economy-market-debt` | T1 | **完成（P2a–P2f；economy 452/0/0/0、app 1017/0/0/7、reactor 3572/0/0/7 绿）** |
 | P3 | 两阶段单家户生产 + 雇佣锁 + 纯库存财富 | W3 `economy-production-tick` | T1 | **P3a–P3c3 完成；P3e 已修 5 tick/零劳动/WageDemand target/roster-only fallback/lock过滤/全链路日志；P3d 土地意向已生成，`MarketLandMatcher` 已并入 `MarketMatcher`，runner 只调 `matchAll` 一次；economy/app 编译绿；测试待 T1** |
-| P4 | 工资现金支付 + 普通债 + U20 工资锚 | W4 `economy-wage` | T1 | **P4a/P4b1/P4c1/P4c2 完成，reactor 3574/0/0/7 绿；P4c3 旧工资表/命令/fallback 已删除且 economy/app 编译绿（34 组件）；P4d production barter schema 清理进行中；测试待 T1 迁移** |
-| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | 未开始 |
+| P4 | 工资现金支付 + 普通债 + U20 工资锚 | W4 `economy-wage` | T1 | **P4a/P4b1/P4c1/P4c2 完成，reactor 3574/0/0/7 绿；P4c3 旧工资表/命令/fallback 已删除且 economy/app 编译绿（34 组件）；P4d production barter schema 已清理，production/app 编译绿；P5 `grain_farm`/Seeder 进行中；测试待 T1 迁移** |
+| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | **进行中：P5a mode/法规/rent/class 映射收口 → P5b 初始土地/锚/demands/roster/unit** |
 | P6 | 独立测试、变异自证、全量门禁 | T1 `verification` | T1 | 未开始 |
 
 > 任一时刻只允许一个写代码 owner；上一阶段编译/既有回归通过、控制方验收后才进入下一阶段。**P0.5 必须先于 P1 全部完成**；不允许边改行为边拆文件。
@@ -872,6 +872,30 @@ record EmploymentLock(HouseholdId employer, HouseholdId worker, ProductionRoleId
 报告改动文件、编译结果、数值行为变化、旧测试可能失效项、未完成/未验证项。
 ```
 
+### 11.7 P5b — 完整新数据结构小世界的 Seeder 接线
+
+> P5a 只收口 mode/角色/旧 rent/阶级映射；P5b 才播种初始土地、unit、roster、锚、地价。用户已确认：测试迁移完后直接做一个“完整新数据结构的小世界”跑真实链路。
+
+**目标**
+- `grain_farm` 是唯一农村生产 mode；有地户默认 operator，无地户可作为 hired_laborer 参与他人农场，也可保留零土地 unit 等待下一轮买地后组织。
+- 初始土地：
+  - 每个农村 hex 的可耕地总量 = `LandOwnershipSeeder`/`IndustrySeeder` 的 LAND capacity；
+  - 逐农村家户生成 LAND `OwnershipStake`（owner=operator=家户），数量按确定性工程权重分配；Σ = 该 hex 可分配土地；
+  - 允许 landless 家户土地=0；不得用 ESTATE/TENANCY/rent 关系；
+  - 标准预设土地有差异；0 元公共土地只作测试预设。
+- unit/roster：
+  - 每个有地农村家户在所在 hex 有稳定 `grain_farm` unit（operator=家户 actor）；
+  - 无地家户也保留一个零土地 `grain_farm` unit（下一轮买地后可组织），**不伪造**其土地/劳动；
+  - 单元 roster 至少 organizer/operator；有真实雇工关系时才写 hired_laborer participant，不得塞假 worker；
+  - 多角色 unit 必须显式 `productionRosters`，不能依赖单角色自动补。
+- 初始工资锚：
+  - 对每个实际 `grain_farm` 产业 id + `hired_laborer` role，按市场区写 `wageAnchors[]`；
+  - currency = 市场区 legalTender；wage 由工程标定；缺锚不得用 0 冒充；
+- 初始地价：
+  - 每个市场区 `MarketTable.landPrice` 给工程默认（可为 0；0 与 empty 分开）；没有地价则不生成土地订单；
+- 初始 `demands` 可以为空（本 Seeder 直接建 unit/roster，不靠 entry）；若后续要 entry，再单独立项。
+- 不改 P2/P3d/P4 语义；不改测试/POM；economy/app 编译绿；所有 economy main Java ≤1000。
+
 ## §13 P6 — 独立测试、变异自证、全量门禁
 
 ### 13.1 测试 owner 任务
@@ -984,6 +1008,7 @@ tools/gate.sh
 - **P3 约束设计书已落盘**：`docs/superpowers/specs/2026-10-18-d032-p3-two-pass-production-constraint.md`；**P3a 完成**：production roster probe 增量；production/app compile 绿。**P3.0 完成**：`prepareMarketRound`/`executeMarketRound` + MarketIntent；旧 `settleMarket` 行为不变；app 1017/0/0/7 绿。**P3b 完成**：商品+土地买方共用纯库存财富快照；生产资产预算排除新土地；app 1017/0/0/7、reactor 3572/0/0/7 绿。**P3c1 完成**：EmploymentLock/PositionEconomics/Expected/Actual plan 类型；economy/app compile 绿。**P3c2 完成**：`prepareProductionBase`/`drawInputsAndPlanLabor`/`settleConsumption` 拆分；旧 `prepareConsumption` 同序；app 1017/0/0/7、reactor 3572/0/0/7 绿。当前执行 **P3c3 两遍日序 + EmploymentLock + roster probe/A2–A4 + 土地 intent**。
 - **P4c2 完成**：市场日 M8 后按 M3 target/M8 matched 聚合观测并调 U20 锚；逐义务 readout 带锚键；app 增锚级只读列表；app 1017/0/0/7、reactor 3574/0/0/7 绿（2026-10-19）。
 - **P3e 完成**：5 tick 基础消费、零劳动 organizer 入选、WageDemand target 改用 roster 实际雇工、legacy fallback 只按 roster 存在性、M6 不可行锁过滤、`D032_TICK_CHAIN`；economy/app 编译绿（2026-10-19）。
+- **P4d 完成**：`MoneyWage` 无字段、Barter* 删除、旧 payload barterDiscount 按未知键 fail-closed；production/app 编译绿（2026-10-19）。
 - **P3d 代码完成（测试待迁移）**：`PositionPlan.landQuantityMilliMu` 从 production probe 的 `assetRequired[LAND]` 写入；`MarketLandIntentBook` 生成 LAND BUY/SELL；`MarketRoundRunner.clearOncePerCycle` 只调 `MarketMatcher.matchAll` 一次；`MarketLandMatcher` 已并入 `MarketMatcher`，全仓 main 旧引用清零；商品/土地仍同一 `MarketRound`、同轮、同预算/冻结（2026-10-19）。
 - **P4c3 代码完成（测试待迁移）**：删除旧 `productionWageDefaults`/`productionWagePostings`、旧两条工资命令与 seed/codec 表、报价 fallback 注入链；工资报价改为锚唯一权威，缺锚不得按 0 或旧表兜底；组件 36→34；economy/app `-DskipTests compile` 均 BUILD SUCCESS。P4d（production barter schema）待做。
 - **2026-10-19 原始设计复核**：P3 仍缺 M3 LAND intent（正常 tick 无土地买卖订单），且统一市场是“同一 clearOncePerCycle + 独立商品/土地 matcher”而非字面同一订单簿/同一撮合器；新增 P3d 补齐。报告：`docs/superpowers/reports/2026-10-19-d032-original-design-reaudit.md`。

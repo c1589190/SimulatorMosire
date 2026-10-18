@@ -139,15 +139,15 @@ actor / Social / 其他持账方
 | **P3c1 两遍计划类型** | M3/M6 | `ExpectedProductionPlan`/`ActualProductionPlan`/`EmploymentLock`/`PositionPlan`/`WageDemand` | economy 瞬态 | 两遍同公式；锁不可改；第二轮不下单 | 已完成 |
 | **P3c2 生产阶段机械拆分** | M3–M7 | 拆分 prepare/draw/consume/execute；保持旧行为 | economy | 编译 + 既有回归 | 已完成 |
 | **P3c3 两遍日序 + 雇佣锁** | M3/M4/M5/M6/M7 | 新链 M3→市场→M5→M6→M7；legacy fallback 仅旧世界 | economy | A2/A3/A4；锁只读；失败转无业 | 已完成（零劳动/锁过滤由 P3e 修） |
-| **P3d 土地意向 + 统一撮合** | M3/M4 | 从生产位置产生 LAND BUY；未使用土地 LAND SELL；商品/土地统一订单序列/统一 matcher 入口；整块、区级价、新土地标记 | economy 轮内瞬态 | 有生产缺口⇒有土地需求；未使用土地⇒供给；同轮同预算；一个 matcher 入口 | 进行中 |
+| **P3d 土地意向 + 统一撮合** | M3/M4 | 从生产位置产生 LAND BUY；未使用土地 LAND SELL；商品/土地统一订单序列/统一 matcher 入口；整块、区级价、新土地标记 | economy 轮内瞬态 | 有生产缺口⇒有土地需求；未使用土地⇒供给；同轮同预算；一个 matcher 入口 | 代码完成、编译过；测试待迁移 |
 | **P3e 日常计划纠错** | M3/M5/M6/M8 | 5 tick 基础消费；零劳动位置入选；WageDemand 用 roster 实际雇工；roster-only fallback；不可行锁不 materialize；全链日志 | economy | 5 tick、A3/A4、锁过滤、D032_TICK_CHAIN | 已完成（编译过；测试待迁移） |
 | **P4a 工资只现金 + 普通债** | M8/M2 | 只付货币；未付成 `WAGE_ARREARS` 0‰ 普通货币债；删工资抵物/库存 lookup | economy | 部分/零现金、库存零变化、债 source/terms、下一轮 M2 | 已完成 |
 | **P4b1 工资锚状态/命令/seed** | M3/M8b | `productionWageAnchors` 状态/命令/seed；旧 posting/default 逐渐退役 | economy | 0 合法；缺锚≠0；跨雇主共享 | 已完成 |
 | **P4c1 WageDemand + 锚消费** | M3/M6/M8 | M3 生成 WageDemand；M3/M6/M8 读同一 tick 锚快照 | economy | target 公式、同 tick 不追改、缺锚拒绝 | 已完成 |
 | **P4c2 U20 观测/调价** | M8b | 市场日 M8 后聚合 target/matched；调下一 tick 锚；非市场日不变 | economy | 缺工加价、招满延迟降价、本 tick due 不变 | 已完成 |
 | **P4c3 旧工资表/命令/fallback 退役** | 全状态/M3/M8 | 只留 `productionWageAnchors` + carry；删旧两表/两命令/seed/codec/fallback；组件 36→34 | economy | 旧标识符 0；锚唯一报价；编译绿 | 代码完成；测试待迁移 |
-| **P4d production barter schema 清理** | M3/M7/M8 定义面 | 删 `RolePayment.MoneyWage.barterDiscount`、`BarterDiscountPolicy`、`BarterReferencePrice`、payload/tool schema | production | 旧 payload fail-closed；无 barter 字段 | 未开始 |
-| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | 未开始 |
+| **P4d production barter schema 清理** | M3/M7/M8 定义面 | 删 `RolePayment.MoneyWage.barterDiscount`、`BarterDiscountPolicy`、`BarterReferencePrice`、payload/tool schema | production | 旧 payload fail-closed；无 barter 字段 | 代码完成、编译过；测试待迁移 |
+| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | P5a mode 收口进行中；P5b Seeder 待做 |
 | **P6 独立测试/变异/小世界** | 全阶段 | T1 迁移测试；文件大小守卫；变异自证；`clean verify`；小世界全链日志模拟 | 测试/控制方 | 每条不变量正负用例；真实链路日志可诊断 | 未开始 |
 | **T1 测试迁移** | P3e/P3d/P4d/P5 后 | 迁移旧类型/旧 seed/组件计数/命令清单；不动生产代码 | 测试 | testCompile/全量测试绿 | 待代码收口 |
 
@@ -229,9 +229,9 @@ INFO 只放阶段汇总/业务拒绝；DEBUG 放逐户原因；TRACE 放逐笔�
 
 | 项 | 目标 | 当前事实 |
 |---|---|---|
-| 土地需求从生产位置产生 | M3 从 `assetRequired[LAND]`/scale 计算，正缺口挂买盘 | `PositionPlan.landQuantityMilliMu` 仍固定 0；`MarketIntentBook` 当前只生成 COMMODITY；P3d 正在补 |
-| 未使用土地供给 | M3 自动生成 LAND SELL | 未实现；只有显式/夹具订单可见 |
-| 同一订单簿/同一撮合器 | 商品/土地一个 matcher 入口 | 当前商品 matcher 后另调 `MarketLandMatcher.match(ctx)`；P3d 正在收口 |
+| 土地需求从生产位置产生 | M3 从 `assetRequired[LAND]`/scale 计算，正缺口挂买盘 | P3d 已写入 `landQuantityMilliMu` 并生成 LAND BUY/SELL；测试待迁移 |
+| 未使用土地供给 | M3 自动生成 LAND SELL | P3d 已生成；测试待迁移 |
+| 同一订单簿/同一撮合器 | 商品/土地一个 matcher 入口 | P3d 已将 `MarketLandMatcher` 并入 `MarketMatcher`；runner 只调 `matchAll` 一次 |
 | 5 tick 基础消费 | 市场买盘只到下一市场轮 | P3e 已修（`MARKET_RESTOCK_INTERVAL_DAYS=5`）；测试待迁移 |
 | 零劳动 organizer/产品份额 | 正收益可入选且不占劳动预算 | P3e 已修 M3/M6；测试待迁移 |
 | WageDemand target | 先 roster 实际计划雇工，0 才回退工程默认 | P3e 已修；测试待迁移 |
@@ -243,8 +243,8 @@ INFO 只放阶段汇总/业务拒绝；DEBUG 放逐户原因；TRACE 放逐笔�
 | 买地后自动建 unit | 无地户买地后下一轮可组织 | entry 依赖非空 `demands`；P5 需播种 demands 或显式 candidate unit |
 | 文件 ≤1000 | 所有 economy main Java ≤1000 | P3e 后最大 997；P3d/P5 新文件必须继续守住 |
 | 测试 | 全量迁移/绿 | 当前 testCompile 在 5 个 economy 测试红；app 未到 |
-| P4d barter | production 无 barter schema | 仍在；P4d 未做 |
-| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | 仍在旧 modes/rent/阶级映射；P5 未做 |
+| P4d barter | production 无 barter schema | P4d 已删除；production/app 编译绿；测试待迁移 |
+| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | P5a mode/rent/阶级映射收口进行中；P5b Seeder 待做 |
 
 ## 8. 待用户审阅/裁定的边界
 

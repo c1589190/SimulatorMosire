@@ -637,7 +637,9 @@ public final class ModeMigrationSettlement {
     String reason =
         DefaultProductionModes.MERCHANT.equals(move.targetMode())
             ? "merchant-regime-unregistered"
-            : "target-regime-unregistered";
+            : DefaultProductionModes.GRAIN_FARM.equals(move.targetMode())
+                ? "grain-farm-relation-empty"
+                : "target-regime-unregistered";
     recordRelationFallbackAudit(auditLedger, day, move, reason);
     return new MigrationRelationPlan(
         fallbackMigrationRelation(unitId, targetActor),
@@ -653,25 +655,13 @@ public final class ModeMigrationSettlement {
    */
   static Optional<RegimeId> migrationTemplateRegime(
       ProductionModeId mode, IndustryId industryId, EconomyDayView base) {
-    if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(mode)
-        || DefaultProductionModes.TENANCY_SHARE.equals(mode)
-        || DefaultProductionModes.TENANCY_CASH.equals(mode)) {
-      return Optional.of(new RegimeId(RegimeOperators.TENANT));
-    }
-    if (DefaultProductionModes.WAGE_FARM.equals(mode)) {
-      return Optional.of(new RegimeId(RegimeOperators.FEUDAL));
+    if (DefaultProductionModes.GRAIN_FARM.equals(mode)) {
+      // ★ P5a：农村 grain_farm 没有租佃/雇农/家庭农场模板；默认关系 = 空规则 + SELF（见
+      //   planMigrationRelation 的 grain-farm-relation-empty 分支），不得回读产业 regime=feudal 的旧庄园模板。
+      return Optional.empty();
     }
     if (DefaultProductionModes.HANDICRAFT_WORKSHOP.equals(mode)) {
       return Optional.of(new RegimeId(RegimeOperators.HANDICRAFT));
-    }
-    if (DefaultProductionModes.FAMILY_FARM.equals(mode)) {
-      // ★ family_farm 没有自己的产业模板（复用农场的产业 regime=feudal）；HOUSEHOLD 默认规则的
-      //   CLOTH 不在农场产出表里（harvest 的 E14 会当场拒）⇒ 有已登记产业 regime 时用它，否则退回 household。
-      IndustryDefinitionView industry = base.industries().get(industryId);
-      if (industry != null && RegimeRelations.registered().containsKey(industry.regime().value())) {
-        return Optional.of(industry.regime());
-      }
-      return Optional.of(new RegimeId(RegimeOperators.HOUSEHOLD));
     }
     if (DefaultProductionModes.MERCHANT.equals(mode)) {
       return RegimeRelations.registered().containsKey(RegimeOperators.MERCHANT)

@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -51,15 +52,22 @@ final class ProspectArithmetic {
     if (explicit != null) {
       return explicit;
     }
-    // ★ 制度默认的 regime 先取 mode 的默认制度（租佃 mode ⇒ tenant 规则——farm@hex 的产业 regime 是 feudal，
-    //   直接按产业会错配成庄园规则）；mode 未登记（如 merchant）或该 regime 无默认表 ⇒ 退回产业 regime。
-    // ★ family_farm 是桥接 mode：它的产业是复用的农场（regime=feudal），household 默认规则的
-    //   CLOTH 不在农场产出表里（E14 会拒）⇒ 这一档一律用产业 regime，与 EconomyEnterpriseSettlement 同口径。
+    // ★★ P5a：农村只有一个 grain_farm。它没有租佃/雇农/家庭农场制度模板；默认关系 = 空规则 + SELF
+    //   （产出全归 operator），雇工只走 MONEY_WAGE 工资锚。不得回读产业 regime=feudal 的旧庄园模板，
+    //   也不得因 mode 未登记而落到 TENANT/SERF。
+    if (DefaultProductionModes.GRAIN_FARM.equals(modeId)) {
+      return new ProductionRules(
+          unitId,
+          operator,
+          new Payee.ToActor(operator),
+          List.of(),
+          operator,
+          LaborSource.SELF);
+    }
+    // ★ 制度默认的 regime 先取 mode 的默认制度；mode 未登记（如 merchant）或该 regime 无默认表 ⇒ 退回产业 regime。
     Optional<String> modeRegime = RegimeOperators.defaultRegimeForMode(modeId);
     boolean useModeRegime =
-        !DefaultProductionModes.FAMILY_FARM.equals(modeId)
-            && modeRegime.isPresent()
-            && RegimeRelations.registered().containsKey(modeRegime.get());
+        modeRegime.isPresent() && RegimeRelations.registered().containsKey(modeRegime.get());
     RegimeId regime = useModeRegime ? new RegimeId(modeRegime.get()) : industry.regime();
     try {
       return RegimeRelations.defaultRelation(

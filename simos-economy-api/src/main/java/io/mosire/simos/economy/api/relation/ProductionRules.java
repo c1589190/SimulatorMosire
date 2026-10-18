@@ -81,7 +81,8 @@ import java.util.List;
  * @param operator 经营主体（必须与 {@code Industry.operator} 一致，跨表守卫在 {@code EconomyData}）
  * @param inputSupplier ★★ <b>投入由谁出</b>（H3/C3）：周期第一天要扣的投入从<b>它的账</b>上划给该产业； <b>缺省（null）⇒ {@code
  *     ToActor(operator)}</b>；四档的默认见 {@code RegimeRelations}
- * @param rules 补偿规则（**一张表、保序、不可变**；空表 = 全部自留）
+ * @param rules 补偿规则（**一张表、保序、不可变**；空表 = 全部自留）。★ P5a 农村 {@code grain_farm} 的默认关系就是空表：
+ *     产出全归 {@code operator}，不生成 TENANT/SERF/地租/租约规则；雇工工资走 MONEY_WAGE 工资锚。
  * @param residualOwner 余额归谁（一般是 {@code operator}；不产生任何条目）
  * @param laborSource ★★ <b>这份生产的劳动来源</b>（S1；SELF/FAMILY/TENANT/SERF/WAGE）。旧档缺该键 ⇒ {@link
  *     LaborSource#SELF}（见构造期兜底）；显式档位由 {@code RegimeRelations} 与载荷给出。
