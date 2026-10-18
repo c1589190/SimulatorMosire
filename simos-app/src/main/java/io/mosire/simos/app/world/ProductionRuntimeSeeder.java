@@ -10,13 +10,14 @@ import static io.mosire.simos.app.world.IndustrySeeder.handicraft;
 import static io.mosire.simos.app.world.IndustrySeeder.householdWeaving;
 import static io.mosire.simos.app.world.IndustrySeeder.planOf;
 import static io.mosire.simos.app.world.IndustrySeeder.trade;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.chooseHiredFarmUnit;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.collectiveRelation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.grainFarmRosterNode;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.grainFarmUnits;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.organizerRelation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.ownershipStakeNode;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.ownershipStakesOf;
-import static io.mosire.simos.app.world.LandOwnershipSeeder.plannedLaborOf;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.plannedLaborOfHousehold;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.retargetFarmAllocation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.secondaryAllocation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.splitIndustry;
@@ -33,6 +34,7 @@ import static io.mosire.simos.app.world.RuralLaborSeeder.industryDailyLabor;
 import static io.mosire.simos.app.world.RuralLaborSeeder.laborBudget;
 import static io.mosire.simos.app.world.RuralLaborSeeder.laborMilli;
 import static io.mosire.simos.app.world.RuralLaborSeeder.landMilliMuOf;
+import static io.mosire.simos.app.world.RuralLaborSeeder.participationAdjustedLaborMilli;
 import static io.mosire.simos.app.world.RuralLaborSeeder.populationOf;
 import static io.mosire.simos.app.world.RuralLaborSeeder.toolPerWorkshopMilli;
 import static io.mosire.simos.app.world.SeederPayloadSupport.mintAllocationsOf;
@@ -51,6 +53,7 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.Government;
@@ -371,11 +374,94 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         }
       }
       allocations.addAll(splitAllocations);
-      // ★★★ P5b1：farm 名册必须在配额落定后生成（plannedLabor = 本 unit 的配额合计）。
-      //   多角色模板必须显式名册；没有真实 hired_laborer 参与项时不塞假 worker。
+      // ★★★ P5b2：真实初始雇工关系 —— 每个有流民户的 hex 选 1 个**有地** grain_farm unit，把该流民户作为
+      //   hired_laborer 参与项加入其显式名册；plannedLabor = 该户真实批次按参与率折算后的可用劳动（≤ 劳动预算）。
+      //   ★ 实际工资劳动由运行期劳动队列按名册 plannedLabor 物化成配额（M3/M6→M7/M8）；创世不重复种第二份配额。
+      //   ★ 流民户自己的零土地 unit 仍是 operator planned=0（它没有自己的农场劳动），避免同户劳动双计。
+      Map<ProductionUnitId, List<HiredLaborerParticipant>> hiredByUnit = new LinkedHashMap<>();
+      HouseholdId displacedHousehold = ruralCohorts.displacedHousehold();
+      if (hasRural && displacedHousehold != null) {
+        List<PopulationGroup> displacedPool = new ArrayList<>();
+        long displacedAvailableLabor = 0L;
+        for (PopulationGroup group : ruralAll) {
+          if (!displacedHousehold.equals(ruralCohorts.householdOfGroup(group))) {
+            continue;
+          }
+          displacedPool.add(group);
+          displacedAvailableLabor =
+              Math.addExact(displacedAvailableLabor, participationAdjustedLaborMilli(group));
+        }
+        GrainFarmUnit hiredFarm = chooseHiredFarmUnit(farmUnits);
+        String skipReason = null;
+        if (hiredFarm == null) {
+          skipReason = "no-land-owning-grain-farm-unit";
+        } else if (displacedAvailableLabor <= 0L) {
+          skipReason = "no-available-labor";
+        }
+        if (skipReason != null) {
+          io.mosire.simos.util.log.EventLog.channel(LOG)
+              .info(
+                  io.mosire.simos.util.log.LogEvent.of(
+                      "D032_P5B2_HIRED_LABOR_SKIPPED",
+                      io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                      "hex",
+                      hex,
+                      "household",
+                      displacedHousehold,
+                      "reason",
+                      skipReason));
+        } else {
+          // ★★ 只写**名册参与项**，不重复播种配额：雇工的实际劳动由运行期劳动队列按 roster 的
+          //   plannedLabor 物化成 HouseholdLaborCommitment（M3/M6）。若这里再种一份配额，劳动队列会把它
+          //   当成"已有承诺"之外的另一份需求再加一次 ⇒ M8 实付按 2× 计划劳动计（实测 due 翻倍）。
+          //   plannedLabor = 该户真实批次按参与率折算后的可用劳动（≤ 劳动预算），不是虚构 worker。
+          long plannedLabor = displacedAvailableLabor;
+          if (plannedLabor <= 0L) {
+            io.mosire.simos.util.log.EventLog.channel(LOG)
+                .info(
+                    io.mosire.simos.util.log.LogEvent.of(
+                        "D032_P5B2_HIRED_LABOR_SKIPPED",
+                        io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                        "hex",
+                        hex,
+                        "household",
+                        displacedHousehold,
+                        "reason",
+                        "no-real-labor"));
+          } else {
+            hiredByUnit.put(
+                hiredFarm.unitId(),
+                List.of(new HiredLaborerParticipant(displacedHousehold, plannedLabor)));
+            io.mosire.simos.util.log.EventLog.channel(LOG)
+                .info(
+                    io.mosire.simos.util.log.LogEvent.of(
+                        "D032_P5B2_HIRED_LABOR",
+                        io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                        "hex",
+                        hex,
+                        "unit",
+                        hiredFarm.unitId(),
+                        "employer",
+                        hiredFarm.operator(),
+                        "worker",
+                        displacedHousehold,
+                        "plannedLaborMilliPerDay",
+                        plannedLabor,
+                        "availableLaborMilliPerDay",
+                        displacedAvailableLabor));
+          }
+        }
+      }
+      // ★★★ P5b1/P5b2：farm 名册必须在配额落定后生成（operator plannedLabor 只算 organizer 自己那部分；
+      //   hired_laborer plannedLabor 只算真实雇工配额，避免把同一 unit 上别人的劳动算进 organizer）。
       for (GrainFarmUnit unit : farmUnits) {
+        long operatorPlanned =
+            plannedLaborOfHousehold(allocations, unit.unitId(), unit.household());
         productionRosters.add(
-            grainFarmRosterNode(unit, plannedLaborOf(allocations, unit.unitId())));
+            grainFarmRosterNode(
+                unit,
+                operatorPlanned,
+                hiredByUnit.getOrDefault(unit.unitId(), List.of())));
       }
       // ★★★ D-032 C3：plan 级映射/回退（可映射 ⇒ roles + 清空旧 rules；不可表示 ⇒ 原样保留旧 rules + INFO BLOCKED）。
       //   ★ P5b1：farm 的 roles 是显式两角色、且 unit 已有显式名册 ⇒ 不进入旧规则映射（否则会被单 operator 覆盖）。

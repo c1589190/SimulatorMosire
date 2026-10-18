@@ -26,6 +26,7 @@ import io.mosire.simos.production.contract.RolePayment;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /** 市场价表与 U20 工资锚的机械解析 helper（P0.5-C2 / P4c3）。 */
@@ -45,23 +46,39 @@ final class EconomyMarketPayloads {
    * </pre>
    *
    * <p>★ 空数组 / 缺键 = 空表。重复三元组、未知 zone/industry/role、非 MONEY_WAGE、
-   * 负工资、负 streak/观测值、{@code lastAdjustedTick < -1} 都 fail-closed；currency 省略时取该区 legalTender，
+   * 负工资、负 streak/观测值、{@code lastAdjustedTick < -1} 都 fail-closed；currency 省略时取该区法定币，
    * 给了就必须一致。历史字段缺省 = 0（{@code lastAdjustedTick} 缺省 = -1 = 从未改价）。
+   *
+   * <p>★★ <b>P5b2：派生市场世界的 zone/法定币来源</b>：若 {@code marketZone} 不在持久区表
+   * {@code knownMarketZones}，但命中同一份 seed 载荷已解析的派生市场表 {@code seededMarkets}（{@code
+   * MarketTable.id == marketZone}），则取该表的 {@code numeraire} 作为法定币。两条来源都不命中 ⇒
+   * 仍然 {@code wage-anchor-market-zone-missing}（不猜 single-region、不兜底任意默认）。
    */
   static Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors(
       JsonNode payload,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
-      Map<MarketZoneId, MarketZone> knownMarketZones) {
+      Map<MarketZoneId, MarketZone> knownMarketZones,
+      Map<MarketZoneId, MarketTable> seededMarkets) {
     Map<WageAnchorKey, ProductionWageAnchor> anchors = new LinkedHashMap<>();
     for (JsonNode node : optionalArray(payload, "wageAnchors")) {
       if (node == null || !node.isObject()) {
         throw new IllegalArgumentException("wageAnchors 的元素必须是对象: " + node);
       }
       MarketZoneId marketZone = MarketZoneId.parse(requireText(node, "marketZone"));
+      // ★★ P5b2：zone/法定币的合法来源 = 已有持久区表 **或** 同一份 seed 载荷里已解析的派生市场表。
+      //   派生世界（SmallWorld：marketZones=[]、一张 single-region 价表）没有持久区记录，但派生表自带
+      //   id/numeraire，就是该格的"市场区 + 法定币"。显式未知 zone 仍然 fail-closed（不兜底 single-region）。
       MarketZone zone = knownMarketZones.get(marketZone);
-      if (zone == null) {
-        throw new IllegalArgumentException(
-            "wage-anchor-market-zone-missing:" + marketZone.value());
+      CurrencyId legalTender;
+      if (zone != null) {
+        legalTender = zone.legalTender();
+      } else {
+        MarketTable seeded = seededMarkets == null ? null : seededMarkets.get(marketZone);
+        if (seeded == null) {
+          throw new IllegalArgumentException(
+              "wage-anchor-market-zone-missing:" + marketZone.value());
+        }
+        legalTender = seeded.numeraire();
       }
       IndustryId industry = IndustryId.parse(requireText(node, "industry"));
       IndustryDefinitionView definition =
@@ -86,8 +103,8 @@ final class EconomyMarketPayloads {
         throw new IllegalArgumentException("wage-role-not-money:" + role.value());
       }
       CurrencyId currency =
-          optionalText(node, "currency").map(CurrencyId::parse).orElseGet(zone::legalTender);
-      if (!currency.equals(zone.legalTender())) {
+          optionalText(node, "currency").map(CurrencyId::parse).orElse(legalTender);
+      if (!currency.equals(legalTender)) {
         throw new IllegalArgumentException(
             "wage-anchor-currency-mismatch:"
                 + marketZone.value()
@@ -185,8 +202,11 @@ final class EconomyMarketPayloads {
   /**
    * ★★ <b>一个市场的价表</b>（{@code {"numeraire":"<币种>","hexes":["<q>_<r>",…],"prices":{"<商品>":<单价>}}}）。
    *
-   * <p>★ <b>三个键的口径</b>：{@code numeraire} 必填（每区恰一种计价货币）；{@code hexes} 可缺（持久的市场区由区记录给成员格）； {@code
+   * <p>★ <b>键的口径</b>：{@code numeraire} 必填（每区恰一种计价货币）；{@code hexes} 可缺（持久的市场区由区记录给成员格）； {@code
    * prices} 可缺（⇒ 空表）；单价**逐值 ≥ 0** 由 {@link MarketTable} 的构造期守卫判死（本层不重复实现那条规则，只做形状）。
+   *
+   * <p>★★ <b>P5b2：{@code landPrice} 三态</b>：缺键 / {@code null} ⇒ {@link OptionalLong#empty()}（<b>未定价</b>）；
+   * 给 {@code 0} ⇒ 明确免费；给正数 ⇒ 明确有价（毫计价货币 / 整亩）。负值由 {@link MarketTable} 构造期 fail-closed 拒。
    */
   static MarketTable market(JsonNode node, Set<HexCoord> entryHexes, String marketId) {
     CurrencyId numeraire = CurrencyId.parse(requireText(node, "numeraire"));
@@ -209,6 +229,17 @@ final class EconomyMarketPayloads {
       hexes.add(hex);
     }
     Map<CommodityId, Long> prices = commodityMap(optionalObject(node, "prices"), "prices");
-    return new MarketTable(numeraire, hexes, prices);
+    // ★★ P5b2：landPrice 三态 —— 缺键/null = empty（未定价）；0 = 明确免费；正数 = 明确有价。负值由构造期拒。
+    OptionalLong landPrice = OptionalLong.empty();
+    if (node.has("landPrice") && !node.get("landPrice").isNull()) {
+      landPrice = OptionalLong.of(requireLong(node, "landPrice"));
+    }
+    return new MarketTable(
+        numeraire,
+        hexes,
+        prices,
+        landPrice,
+        MarketTable.DEFAULT_LOAN_RATE_PER_MILLE,
+        MarketTable.DEFAULT_LOAN_RATE_ALPHA_PER_MILLE);
   }
 }

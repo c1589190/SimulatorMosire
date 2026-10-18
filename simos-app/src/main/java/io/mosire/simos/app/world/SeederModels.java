@@ -161,6 +161,26 @@ record GrainFarmUnit(
     Map<String, Object> unitNode,
     Map<String, Object> shareNode) {}
 
+/**
+ * ★★ <b>P5b2：一条真实初始雇工关系</b>（非 organizer 的 {@code hired_laborer} 参与项）。
+ *
+ * <p>{@code plannedLaborMilliPerDay} = 该户真实人口批次按参与率折算后的可用劳动（≤ 该户
+ * {@code HouseholdEconomy.laborMilli} 预算）；运行期劳动队列据此物化成实际配额。它不得为 0：0 的参与项不应被造出来
+ * （调用方跳过并记具名原因）。
+ */
+record HiredLaborerParticipant(HouseholdId household, long plannedLaborMilliPerDay) {
+  HiredLaborerParticipant {
+    if (household == null) {
+      throw new IllegalArgumentException("HiredLaborerParticipant.household 不得为 null");
+    }
+    if (plannedLaborMilliPerDay <= 0L) {
+      throw new IllegalArgumentException(
+          "HiredLaborerParticipant.plannedLaborMilliPerDay 必须为正（0 参与项不应存在）: "
+              + plannedLaborMilliPerDay);
+    }
+  }
+}
+
 /** 拆分**中间态**：一条候选配额行（household/moved 已算好，副 unit 是否建尚未定）。 */
 record MovedRow(Map<String, Object> row, HouseholdId household, long moved) {}
 

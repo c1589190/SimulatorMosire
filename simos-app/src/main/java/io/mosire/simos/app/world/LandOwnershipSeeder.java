@@ -121,24 +121,75 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   }
 
   /**
-   * ★★ <b>P5b1：一个家户 grain_farm unit 的显式生产名册</b>（多角色模板必须显式，不能依赖单角色自动名册）。
+   * ★★ <b>P5b1/P5b2：一个 grain_farm unit 的显式生产名册</b>（多角色模板必须显式，不能依赖单角色自动名册）。
    *
-   * <p>当前只写一个 {@code operator} 参与项（organizer=true）。**不塞假雇工**：没有真实 {@code hired_laborer} 关系时，
-   * {@code hired_laborer} 角色保持无参与项；等 M3/M6 产生真实雇佣并锁定时再由运行期名册写入。
+   * <p>★ <b>organizer 参与项</b> = 该 unit 所有者家户的 {@code operator}，{@code plannedLabor} = 该户真实分到本 unit 的配额合计
+   * （无地户 / 未被分配到本 unit ⇒ 0，合法：它不靠名册二次计劳动）。
+   *
+   * <p>★ <b>hired_laborer 参与项</b> = 只有真实初始雇工关系时才写（{@link HiredLaborerParticipant}）；没有就**不塞假 worker**。
+   * 每个参与项的 {@code plannedLabor} 都来自该户的真实配额行，{@code rightsStakes} 空、{@code configuredWeight=0}（EQUAL 角色）。
    */
   static Map<String, Object> grainFarmRosterNode(
-      GrainFarmUnit unit, long plannedLaborMilliPerDay) {
+      GrainFarmUnit unit,
+      long operatorPlannedLaborMilliPerDay,
+      List<HiredLaborerParticipant> hiredLaborers) {
+    List<Map<String, Object>> participants = new ArrayList<>();
+    participants.add(
+        rosterParticipantNode(
+            unit.household(),
+            DefaultProductionModes.ROLE_OPERATOR,
+            true,
+            operatorPlannedLaborMilliPerDay));
+    if (hiredLaborers != null) {
+      for (HiredLaborerParticipant hired : hiredLaborers) {
+        participants.add(
+            rosterParticipantNode(
+                hired.household(),
+                DefaultProductionModes.ROLE_HIRED_LABORER,
+                false,
+                hired.plannedLaborMilliPerDay()));
+      }
+    }
+    Map<String, Object> roster = new LinkedHashMap<>();
+    roster.put("unit", unit.unitId().value());
+    roster.put("participants", List.copyOf(participants));
+    return roster;
+  }
+
+  /** 一个名册参与项节点（organizer / hired_laborer 共用同一 wire 形状）。 */
+  private static Map<String, Object> rosterParticipantNode(
+      HouseholdId household, String role, boolean organizer, long plannedLaborMilliPerDay) {
     Map<String, Object> participant = new LinkedHashMap<>();
-    participant.put("household", unit.household().value());
-    participant.put("role", DefaultProductionModes.ROLE_OPERATOR);
-    participant.put("organizer", true);
+    participant.put("household", household.value());
+    participant.put("role", role);
+    participant.put("organizer", organizer);
     participant.put("plannedLaborMilliPerDay", plannedLaborMilliPerDay);
     participant.put("rightsStakes", List.of());
     participant.put("configuredWeight", 0L);
-    Map<String, Object> roster = new LinkedHashMap<>();
-    roster.put("unit", unit.unitId().value());
-    roster.put("participants", List.of(participant));
-    return roster;
+    return participant;
+  }
+
+  /**
+   * ★★ <b>P5b2：选择一个有地 grain_farm unit 承接真实初始雇工</b>——确定性规则 = LAND 份额最大者；同额按家户 id 升序。
+   * 没有任何有地 unit（全 0 土地）⇒ 返回 {@code null}（调用方记具名原因、不塞假雇工）。
+   */
+  static GrainFarmUnit chooseHiredFarmUnit(List<GrainFarmUnit> farmUnits) {
+    GrainFarmUnit chosen = null;
+    long chosenLand = 0L;
+    for (GrainFarmUnit unit : farmUnits) {
+      long land = ((Number) unit.shareNode().get("quantity")).longValue();
+      if (land <= 0L) {
+        continue;
+      }
+      if (chosen == null
+          || land > chosenLand
+          || (land == chosenLand
+              && unit.household().value().compareTo(chosen.household().value()) < 0)) {
+        chosen = unit;
+        chosenLand = land;
+      }
+    }
+    return chosen;
   }
 
   /** 某 unit 在配额表里的计划劳动合计（毫小时/日）—— 名册 plannedLabor 的唯一取数口。 */
@@ -148,6 +199,23 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
       if (unitId.value().equals(allocation.get("activity"))) {
         total =
             Math.addExact(total, ((Number) allocation.get("laborMilli")).longValue());
+      }
+    }
+    return total;
+  }
+
+  /**
+   * ★★ <b>P5b2：某户在某 unit 上的计划劳动</b>——名册 operator/hired_laborer 参与项的共同取数口。
+   *
+   * <p>按 {@code (activity, household)} 过滤配额行：同一 unit 上的雇工劳动不会被误算进 organizer 的 plannedLabor（反之亦然）。
+   */
+  static long plannedLaborOfHousehold(
+      List<Map<String, Object>> allocations, ProductionUnitId unitId, HouseholdId household) {
+    long total = 0L;
+    for (Map<String, Object> allocation : allocations) {
+      if (unitId.value().equals(allocation.get("activity"))
+          && household.value().equals(allocation.get("household"))) {
+        total = Math.addExact(total, ((Number) allocation.get("laborMilli")).longValue());
       }
     }
     return total;

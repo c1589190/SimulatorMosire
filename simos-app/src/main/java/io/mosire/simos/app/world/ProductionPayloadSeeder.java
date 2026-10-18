@@ -4,6 +4,7 @@ import static io.mosire.simos.app.world.MarketSeeder.governmentNodes;
 import static io.mosire.simos.app.world.MarketSeeder.issuanceNodes;
 import static io.mosire.simos.app.world.MarketSeeder.marketNode;
 import static io.mosire.simos.app.world.MarketSeeder.productionRuntimeRulesVersion;
+import static io.mosire.simos.app.world.MarketSeeder.wageAnchorNodes;
 import static io.mosire.simos.app.world.ProductionRoleSeeder.productionRuntimeClassMemberships;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -90,6 +91,10 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
     // ★★★ D-032 C3（D2 §5.5）：顶层 productionRosters[]（每项与 §5.4 同形；plan 不由载荷给）。
     //   空表 = 单角色 unit 走 C2 自动名册；多角色 unit 必须显式（上面的守卫已判）。
     payload.put("productionRosters", productionRosters == null ? List.of() : productionRosters);
+    // ★★★ D-032 P5b2：初始工资锚（每个带 hired_laborer 角色的实际 plan × 它所在派生市场区一条）。
+    //   币种 = 该市场表 numeraire；历史字段取 P4b1 默认（streak=0 / lastAdjustedTick=-1 / 观测=0 / delta=0）。
+    //   缺锚不得用 0 兜底：这里是创世唯一写点，值与市场区都来自同一份 entries/markets。
+    payload.put("wageAnchors", wageAnchorNodes(entries, markets));
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
     payload.put("governments", governmentNodes(governments));
     List<Map<String, Object>> issuances =

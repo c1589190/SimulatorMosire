@@ -147,7 +147,7 @@ actor / Social / 其他持账方
 | **P4c2 U20 观测/调价** | M8b | 市场日 M8 后聚合 target/matched；调下一 tick 锚；非市场日不变 | economy | 缺工加价、招满延迟降价、本 tick due 不变 | 已完成 |
 | **P4c3 旧工资表/命令/fallback 退役** | 全状态/M3/M8 | 只留 `productionWageAnchors` + carry；删旧两表/两命令/seed/codec/fallback；组件 36→34 | economy | 旧标识符 0；锚唯一报价；编译绿 | 代码完成；测试待迁移 |
 | **P4d production barter schema 清理** | M3/M7/M8 定义面 | 删 `RolePayment.MoneyWage.barterDiscount`、`BarterDiscountPolicy`、`BarterReferencePrice`、payload/tool schema | production | 旧 payload fail-closed；无 barter 字段 | 代码完成、编译过；测试待迁移 |
-| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | P5a mode 收口进行中；P5b Seeder 待做 |
+| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | P5a/P5b1 完成；P5b2 初始锚/地价/雇工名册进行中 |
 | **P6 独立测试/变异/小世界** | 全阶段 | T1 迁移测试；文件大小守卫；变异自证；`clean verify`；小世界全链日志模拟 | 测试/控制方 | 每条不变量正负用例；真实链路日志可诊断 | 未开始 |
 | **T1 测试迁移** | P3e/P3d/P4d/P5 后 | 迁移旧类型/旧 seed/组件计数/命令清单；不动生产代码 | 测试 | testCompile/全量测试绿 | 待代码收口 |
 
@@ -244,7 +244,7 @@ INFO 只放阶段汇总/业务拒绝；DEBUG 放逐户原因；TRACE 放逐笔�
 | 文件 ≤1000 | 所有 economy main Java ≤1000 | P3e 后最大 997；P3d/P5 新文件必须继续守住 |
 | 测试 | 全量迁移/绿 | 当前 testCompile 在 5 个 economy 测试红；app 未到 |
 | P4d barter | production 无 barter schema | P4d 已删除；production/app 编译绿；测试待迁移 |
-| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | P5a mode/rent/阶级映射收口进行中；P5b Seeder 待做 |
+| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | P5a/P5b1 完成（mode、初始 LAND/unit/roster）；P5b2 锚/地价/雇工名册进行中 |
 
 ## 8. 待用户审阅/裁定的边界
 

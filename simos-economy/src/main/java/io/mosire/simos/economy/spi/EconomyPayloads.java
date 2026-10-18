@@ -361,8 +361,10 @@ final class EconomyPayloads {
     Map<ProductionUnitId, ProductionRoster> productionRosters =
         productionRosters(payload, definitions, productionInstances);
     // ★★★ D-032 P4c3：U20 工资锚是唯一工资报价数组；空/缺省 = 空表。
+    //   ★★ P5b2：派生市场世界（marketZones=[]）的锚 zone/法定币由**同一载荷已解析的 markets** 提供；
+    //      持久区表仍优先，显式未知 zone 仍 fail-closed。
     Map<WageAnchorKey, ProductionWageAnchor> wageAnchors =
-        productionWageAnchors(payload, definitions, knownMarketZones);
+        productionWageAnchors(payload, definitions, knownMarketZones, markets);
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");

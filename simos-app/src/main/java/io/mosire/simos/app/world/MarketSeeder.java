@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketTable;
@@ -31,6 +32,30 @@ import java.util.Set;
 
 /** 创世市场、货币禀赋、政府/发行载荷节点。 */
 class MarketSeeder extends WorldBalanceSeeder {
+
+  /**
+   * ★★ <b>P5b2：创世区级地价的工程默认（毫计价货币 / 整亩）</b> = {@value #GENESIS_LAND_PRICE_MILLI_PER_MU}。
+   *
+   * <p>★ <b>单位与三态</b>：{@link MarketTable#landPrice()} 是 {@link java.util.OptionalLong}；本常量给出 {@code
+   * OptionalLong.of(10)}（<b>明确有价</b>，不是 empty）。empty 仍只用于"未定价"，{@code 0} 仍只用于"明确免费"。
+   * 所有派生市场表（{@code single-region} / {@code currency:<币>}）都取本值 ⇒ 土地市场在创世就有区级参考价、能生成土地订单。
+   *
+   * <p>★ <b>标定口径（为什么是 10，不是 0/1000）</b>：农户手持粮食财富约 3,000–4,500 毫、创世钱包约 100–1,000 毫；本世界一个
+   * 1,085 亩的农场按出厂价一周期净产约 3.3 万毫。10 毫/亩让"整块 1,085 亩 ≈ 1.085 万毫"落在可交易量级（约为该农场一周期净产的
+   * 1/3），既不把土地订单永远挡在预算外，也不把土地估值抬到与商品账完全脱节。★ 它是工程默认，不是用户裁定；P2 的市场轮地价自适应
+   * alpha/结算语义一字不动。
+   */
+  static final long GENESIS_LAND_PRICE_MILLI_PER_MU = 10L;
+
+  /**
+   * ★★ <b>P5b2：创世工资锚的工程默认（毫计价货币 / 毫劳动）</b> = {@value #GENESIS_WAGE_PER_LABOR_MILLI}。
+   *
+   * <p>★ <b>非 0、可观测</b>：工资锚 quote 走 {@code due = quote × laborMilli / 1000}；本值让本世界一支"真实初始雇工"
+   * 的日工资 = {@code 20 × plannedLaborMilliPerDay / 1000}，在已播种的农场净产（出厂价）内保持正收益。★ 具体标定见 P5b2 台账：
+   * 被雇流民户的参与率折算劳动约 4–6 千毫/日；最大农场（1,085 亩）一周期净产约 3.3 万毫 ⇒ 工资账单约占净产 20–30%。★ 它是工程默认，
+   * 不是用户裁定；U20 的调价公式与 policy 不改。
+   */
+  static final long GENESIS_WAGE_PER_LABOR_MILLI = 20L;
 
   /**
    * ★★ <b>B1：给定计价币的一格市场</b>（价格表恒为 {@link #MARKET_PRICES_FACTORY}，只有计价币换）。
@@ -63,7 +88,9 @@ class MarketSeeder extends WorldBalanceSeeder {
       Map.Entry<CurrencyId, Set<HexCoord>> only = hexesByNumeraire.entrySet().iterator().next();
       tables.put(
           new MarketZoneId(SINGLE_REGION_MARKET_ID),
-          new MarketTable(only.getKey(), only.getValue(), MARKET_PRICES_FACTORY));
+          new MarketTable(only.getKey(), only.getValue(), MARKET_PRICES_FACTORY)
+              // ★★ P5b2：创世派生市场表 = 明确有价（不是 empty、也不是 0）。
+              .withLandPrice(GENESIS_LAND_PRICE_MILLI_PER_MU));
       return Collections.unmodifiableMap(tables);
     }
     List<CurrencyId> currencies = new ArrayList<>(hexesByNumeraire.keySet());
@@ -71,7 +98,8 @@ class MarketSeeder extends WorldBalanceSeeder {
     for (CurrencyId currency : currencies) {
       tables.put(
           new MarketZoneId("currency:" + currency.value()),
-          new MarketTable(currency, hexesByNumeraire.get(currency), MARKET_PRICES_FACTORY));
+          new MarketTable(currency, hexesByNumeraire.get(currency), MARKET_PRICES_FACTORY)
+              .withLandPrice(GENESIS_LAND_PRICE_MILLI_PER_MU));
     }
     return Collections.unmodifiableMap(tables);
   }
@@ -184,7 +212,12 @@ class MarketSeeder extends WorldBalanceSeeder {
     return min == null ? "none" : min;
   }
 
-  /** 一格市场的载荷节点：{@code {numeraire, prices}}（键序固定 ⇒ 载荷字节可复现）。 */
+  /**
+   * 一格市场的载荷节点：{@code {numeraire, hexes, prices, landPrice?}}（键序固定 ⇒ 载荷字节可复现）。
+   *
+   * <p>★ <b>P5b2 三态</b>：{@code landPrice} 只在 {@link MarketTable#landPrice()} 为 present 时发出；缺键 ⇒ 解析侧读成
+   * {@code OptionalLong.empty()}（未定价），值 {@code 0} ⇒ 明确免费。绝不把 empty 写成 0。
+   */
   static Map<String, Object> marketNode(MarketTable market) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("numeraire", market.numeraire().value());
@@ -198,6 +231,97 @@ class MarketSeeder extends WorldBalanceSeeder {
       prices.put(price.getKey().value(), price.getValue());
     }
     node.put("prices", prices);
+    market.landPrice().ifPresent(price -> node.put("landPrice", price));
+    return node;
+  }
+
+  /**
+   * ★★★ <b>P5b2：创世工资锚节点（{@code economy.Seed.wageAnchors[]}）</b>——逐实际带 {@code hired_laborer} 角色的
+   * plan，按该 plan 所在派生市场表生成一条。
+   *
+   * <p>键 = {@code (marketZone, industry, role)}：{@code marketZone} 取该 hex 所属派生价表的 id，{@code industry} =
+   * plan id，{@code role} = {@link DefaultProductionModes#ROLE_HIRED_LABORER}；币种 = 该市场表的 {@code numeraire}。
+   * 历史字段按 P4b1 默认：streak=0、{@code lastAdjustedTick=-1}、观测=0、delta=0。★ 不生成 0 兜底：工资值取具名工程常量
+   * {@link #GENESIS_WAGE_PER_LABOR_MILLI}。
+   *
+   * <p>★ <b>为什么从 plan 节点识别角色</b>：本方法只读 {@code entries[].plans[].roles} 的线格式，不复制 production 定义；
+   * 只有显式带 {@code hired_laborer} 角色的 plan（当前 = 每个 hex 的 {@code grain_farm}）会得到锚。
+   */
+  static List<Map<String, Object>> wageAnchorNodes(
+      List<Map<String, Object>> entries, Map<MarketZoneId, MarketTable> markets) {
+    List<Map<String, Object>> nodes = new ArrayList<>();
+    for (Map<String, Object> entry : entries) {
+      Object q = entry.get("q");
+      Object r = entry.get("r");
+      if (!(q instanceof Number qNumber) || !(r instanceof Number rNumber)) {
+        continue;
+      }
+      HexCoord hex = new HexCoord(qNumber.intValue(), rNumber.intValue());
+      MarketZoneId zone = marketZoneAt(markets, hex);
+      MarketTable table = markets.get(zone);
+      Object rawPlans = entry.get("plans");
+      if (!(rawPlans instanceof List<?> plans)) {
+        continue;
+      }
+      for (Object rawPlan : plans) {
+        if (!(rawPlan instanceof Map<?, ?> plan)) {
+          continue;
+        }
+        Object rawId = plan.get("id");
+        if (!(rawId instanceof String planId) || planId.isBlank()) {
+          continue;
+        }
+        if (!hasHiredLaborerRole(plan)) {
+          continue;
+        }
+        nodes.add(wageAnchorNode(zone, planId, table.numeraire()));
+      }
+    }
+    return nodes;
+  }
+
+  /** plan 节点的 {@code roles[]} 里是否显式有 {@code hired_laborer}（只读线格式，不猜缺省角色）。 */
+  private static boolean hasHiredLaborerRole(Map<?, ?> plan) {
+    Object rawRoles = plan.get("roles");
+    if (!(rawRoles instanceof List<?> roles)) {
+      return false;
+    }
+    for (Object rawRole : roles) {
+      if (rawRole instanceof Map<?, ?> role
+          && DefaultProductionModes.ROLE_HIRED_LABORER.equals(role.get("id"))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * ★★ 一格所属的派生市场表 id（成员格唯一权威）；不属于任何创世市场表 ⇒ 装配故障 fail-closed（不猜 single-region）。
+   */
+  static MarketZoneId marketZoneAt(Map<MarketZoneId, MarketTable> markets, HexCoord hex) {
+    for (Map.Entry<MarketZoneId, MarketTable> table : markets.entrySet()) {
+      if (table.getValue().hexes().contains(hex)) {
+        return table.getKey();
+      }
+    }
+    throw new IllegalStateException("格 " + hex + " 不属于任何创世派生市场表（seed 内部不一致）");
+  }
+
+  /** 一条工资锚载荷节点（键序固定、历史字段取 P4b1 默认）。 */
+  static Map<String, Object> wageAnchorNode(
+      MarketZoneId zone, String industry, CurrencyId currency) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("marketZone", zone.value());
+    node.put("industry", industry);
+    node.put("role", DefaultProductionModes.ROLE_HIRED_LABORER);
+    node.put("currency", currency.value());
+    node.put("wagePerLaborMilli", GENESIS_WAGE_PER_LABOR_MILLI);
+    node.put("shortageStreak", 0L);
+    node.put("satisfiedStreak", 0L);
+    node.put("lastAdjustedTick", -1L);
+    node.put("lastObservedMatchedLaborMilli", 0L);
+    node.put("lastObservedTargetLaborMilli", 0L);
+    node.put("lastAdjustmentDelta", 0L);
     return node;
   }
 

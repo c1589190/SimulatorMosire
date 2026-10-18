@@ -421,21 +421,36 @@ class IndustrySeeder extends WorldBalanceSeeder {
   }
 
   /**
-   * ★★★ <b>P5b1：{@code grain_farm} 的显式角色目录（operator + hired_laborer）</b> —— 与 {@link
+   * ★★★ <b>P5b2：{@code hired_laborer} 的标准劳动工程默认（毫劳动/周期）</b>。
+   *
+   * <p>值 = <b>120,000 毫劳动/周期</b>；{@code cycleDays = 120} ⇒ <b>1,000 毫劳动/日</b>的正日目标。它是 {@code
+   * WageDemand} 在 roster 没有实际雇工计划时的 fallback（{@code floor(standardLaborMilliPerCycle / cycleDays)}）；
+   * <b>不得为 0</b>：0 会让 {@code WageDemand} 静默不生成（0 = 未定 ⇒ 无招工需求 ⇒ 工资链断在 M3）。
+   *
+   * <p>★ 为什么不是 operator 缺省的 0：operator 是组织者/剩余索取者，标准劳动 0 合法；{@code hired_laborer} 是工资角色，
+   * 必须有一个正的招工边界。★ 标定口径：与 {@code LABOR_MILLI_PER_MU=143} 同量纲（毫劳动），1,000/日 ≈ 7 亩/日的耕地当量
+   * （与 {@code LAND_MU_PER_LABOR=7} 同一条工程口径）。这是工程默认，不是用户裁定。
+   */
+  static final long HIRED_LABORER_STANDARD_LABOR_MILLI_PER_CYCLE = 120_000L;
+
+  /**
+   * ★★★ <b>P5b1/P5b2：{@code grain_farm} 的显式角色目录（operator + hired_laborer）</b> —— 与 {@link
    * #singleOperatorRoleNodes()} 同一套 wire 字段名，逐字段对应 {@code
    * ProductionDefinitionPayloads.role}。
    *
    * <pre>
    * operator      PRODUCT_SHARE  sharePerMille=1000  standardLaborMilliPerCycle=defaultOperator() 的工程默认（0）
-   * hired_laborer MONEY_WAGE     sharePerMille=0     standardLaborMilliPerCycle=工程默认（0，0 = 未定）
+   * hired_laborer MONEY_WAGE     sharePerMille=0     standardLaborMilliPerCycle=120_000（= 1_000/日；P5b2）
    * </pre>
    *
    * <p>★ <b>为什么 hired_laborer 必须显式存在</b>：否则同一 {@code grain_farm} 实例只能表达"单 operator"，雇工只能靠旧
-   * posting/default；D-032 要求工资劳动是同一个模板内的角色。★ <b>不塞标准劳动数字</b>：角色目录只表达形态；实际雇工目标由
-   * M3/M6 的 roster 实际计划劳动或 P5b2 的工资锚给出（0 = 未定，不当成 0 工资）。
+   * posting/default；D-032 要求工资劳动是同一个模板内的角色。★ <b>hired_laborer 的标准劳动必须为正</b>：{@link
+   * #HIRED_LABORER_STANDARD_LABOR_MILLI_PER_CYCLE} 是 {@code WageDemand} fallback 的唯一来源；实际雇工目标优先取
+   * M3/M6 的 roster 实际计划劳动，只有确实没有计划雇工时才回退这个工程默认。
    */
   public static List<Map<String, Object>> grainFarmRoleNodes() {
-    long standardLabor = ProductionRoleDefinition.defaultOperator().standardLaborMilliPerCycle();
+    long operatorStandardLabor =
+        ProductionRoleDefinition.defaultOperator().standardLaborMilliPerCycle();
     List<Map<String, Object>> roles = new ArrayList<>(2);
     // operator：组织者/自家劳动/剩余索取；支付形态 = 产品份额。
     Map<String, Object> operator = new LinkedHashMap<>();
@@ -443,10 +458,10 @@ class IndustrySeeder extends WorldBalanceSeeder {
     operator.put("name", "农场经营者");
     operator.put("sharePerMille", 1000L);
     operator.put("intraRoleSplit", IntraRoleSplitRule.EQUAL.key());
-    operator.put("standardLaborMilliPerCycle", standardLabor);
+    operator.put("standardLaborMilliPerCycle", operatorStandardLabor);
     operator.put("payment", "product_share");
     roles.add(Collections.unmodifiableMap(operator));
-    // hired_laborer：只拿市场工资，不拿产品份额。
+    // hired_laborer：只拿市场工资，不拿产品份额。★ P5b2：标准劳动必须是正数（WageDemand fallback 不得得 0）。
     Map<String, Object> wagePayment = new LinkedHashMap<>();
     wagePayment.put("kind", "money_wage");
     Map<String, Object> hired = new LinkedHashMap<>();
@@ -454,7 +469,7 @@ class IndustrySeeder extends WorldBalanceSeeder {
     hired.put("name", "雇农");
     hired.put("sharePerMille", 0L);
     hired.put("intraRoleSplit", IntraRoleSplitRule.EQUAL.key());
-    hired.put("standardLaborMilliPerCycle", standardLabor);
+    hired.put("standardLaborMilliPerCycle", HIRED_LABORER_STANDARD_LABOR_MILLI_PER_CYCLE);
     hired.put("payment", Collections.unmodifiableMap(wagePayment));
     roles.add(Collections.unmodifiableMap(hired));
     return Collections.unmodifiableList(roles);
