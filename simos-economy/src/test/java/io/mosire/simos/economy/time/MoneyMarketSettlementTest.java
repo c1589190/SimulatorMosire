@@ -89,8 +89,14 @@ class MoneyMarketSettlementTest {
   /** 借款合同的到期周期（只进合同的 {@code dueCycle} 字段）。 */
   private static final long DUE_CYCLE = 9L;
 
-  /** 本区牌价（毫银 / 商品单位）：货款 = ⌈数量 × 10 ÷ 1000⌉ ⇒ 数量 2905 的货款恰 30 毫。 */
+  /** 本区牌价（毫银 / 商品单位）：货款 = ⌈数量 × 10 ÷ 1000⌉ ⇒ 数量 2915 的货款恰 30 毫。 */
   private static final long GRAIN_PRICE = 10L;
+
+  /**
+   * P2a：5 tick 生活保留窗口下，1 人户缺口只有 415 毫粮（货款 5 毫），不足以让本端到端用例保持原来的借款/成交量级。 买方提高到 7 人 ⇒ 7 × 583 × 5 =
+   * 2,915 毫粮，货款仍为 30 毫；世界形状与判据都保持原义。
+   */
+  private static final long BUYER_POPULATION = 7L;
 
   /** 出厂利率 / α（与 {@code MarketTable} 的两个缺省同值；对照用例显式给别的值）。 */
   private static final long DEFAULT_RATE = MarketTable.DEFAULT_LOAN_RATE_PER_MILLE;
@@ -410,9 +416,9 @@ class MoneyMarketSettlementTest {
    * 的"钱清零仍拿货"在**有放贷池**时的正向形态）</b>。
    *
    * <p>★ <b>装置</b>：一格、一个市场（牌价 10 毫/单位）、三个家户 —— 卖方（有粮无钱）、买方（<b>现金 0</b>、当日有口粮需求）、 放贷人（0 人口、只有 200
-   * 毫银）。买方的那张买单的目标量 = 生活保留（35 天口粮 = {@code lifeReserveGrain(1)}）。
+   * 毫银）。买方的那张买单的目标量 = 生活保留（5 tick 口粮 = {@code lifeReserveGrain(7)} = 2,915 毫粮）。
    *
-   * <p>★ <b>逐值预期</b>：需求 = 应付货款 = ⌈2905 × 10 ÷ 1000⌉ = 30；供给 = 200 − 12×0 − 0 = 200 ⇒ 借 30 ⇒ 买方 账户
+   * <p>★ <b>逐值预期</b>：需求 = 应付货款 = ⌈2915 × 10 ÷ 1000⌉ = 30；供给 = 200 − 12×0 − 0 = 200 ⇒ 借 30 ⇒ 买方 账户
    * <b>0 → +30 → −30</b>（先借后付，结算后归 0），贷方 200 → 170，卖方 0 → 30，成交价<b>仍是牌价 10</b>。
    */
   @Test
@@ -426,7 +432,7 @@ class MoneyMarketSettlementTest {
     // ★ 非空转守卫：买方真的现金 0（否则"借钱才买得到"这句话什么都没验）。
     assertThat(world.silverOf(BUYER)).as("装置前提：买方现金 0").isZero();
     assertThat(world.grainOf(BUYER)).as("装置前提：买方无粮").isZero();
-    long expectedQuantity = MarketSettlementFixtures.lifeReserveGrain(1L);
+    long expectedQuantity = MarketSettlementFixtures.lifeReserveGrain(BUYER_POPULATION);
     long expectedPayment = payment(expectedQuantity, GRAIN_PRICE);
     assertThat(expectedPayment)
         .as("复算：应付货款 = ⌈%d × %d ÷ 1000⌉ = %d", expectedQuantity, GRAIN_PRICE, expectedPayment)
@@ -456,7 +462,7 @@ class MoneyMarketSettlementTest {
       MarketReport.Fill fill = outcome.report().fills().get(0);
       assertThat(fill.buyer()).as("买方").isEqualTo(HouseholdActors.of(BUYER));
       assertThat(fill.seller()).as("卖方").isEqualTo(HouseholdActors.of(SELLER));
-      assertThat(fill.quantity()).as("数量只受需求约束（35 天口粮）").isEqualTo(expectedQuantity);
+      assertThat(fill.quantity()).as("数量只受需求约束（5 tick 口粮 = 2,915）").isEqualTo(expectedQuantity);
       assertThat(fill.unitPriceMilli()).as("★ 成交价 = 本节牌价，借钱不改价").isEqualTo(GRAIN_PRICE);
       assertThat(fill.goodsPaymentMilli())
           .as("★ 实付现金 = 借入额（借到的钱在同一轮真被花掉）")
@@ -549,7 +555,7 @@ class MoneyMarketSettlementTest {
     Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
     MarketSettlementFixtures.Round base = MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketRound round = base.round().withDeferredPayments(DUE_CYCLE, debts);
-    long expectedQuantity = MarketSettlementFixtures.lifeReserveGrain(1L);
+    long expectedQuantity = MarketSettlementFixtures.lifeReserveGrain(BUYER_POPULATION);
     long expectedPayment = payment(expectedQuantity, GRAIN_PRICE);
 
     try (TestLogCapture market =
@@ -766,10 +772,10 @@ class MoneyMarketSettlementTest {
         .household(
             BUYER,
             H1,
-            1L,
+            BUYER_POPULATION,
             Map.of(),
             Map.of(),
-            Map.of(GRAIN, MarketSettlementFixtures.dailyRationGrain(1L)))
+            Map.of(GRAIN, MarketSettlementFixtures.dailyRationGrain(BUYER_POPULATION)))
         .household(LENDER, H1, 0L, Map.of(), Map.of(SILVER, lenderCash), Map.of())
         .build();
   }

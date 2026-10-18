@@ -21,14 +21,15 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.WageAnchorReadout;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.ExpectedProfitBook;
 import io.mosire.simos.economy.time.ExpectedProfitBook.RosterHouseholdIncome;
+import io.mosire.simos.economy.time.WageAnchorBook;
 import io.mosire.simos.economy.time.WageSettlementReadout;
 import io.mosire.simos.economy.time.WageSettlementReadoutFeed;
 import io.mosire.simos.production.ProductionData;
@@ -188,19 +189,12 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
         modeTransitions.add(transition.id().value() + "(to)");
       }
     }
-    List<String> pledges = new ArrayList<>();
-    for (Pledge pledge : economy.pledges().values()) {
-      if (pledge.modeId().equals(id)) {
-        pledges.add(pledge.id().value());
-      }
-    }
     return new ModeReferenceReport(
         classStructures,
         classPositions,
         productionOrganizations,
         assetRules,
-        modeTransitions,
-        pledges);
+        modeTransitions);
   }
 
   /**
@@ -208,7 +202,7 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
    *
    * <p>唯一来源 = {@link WageSettlementReadoutFeed} 里 {@link
    * io.mosire.simos.economy.time.WageSettlement} 已算出的 readout；本方法只按本格 unit 过滤并按 {@code (unit, role,
-   * worker)} 稳定排序，<b>不重算</b>支付/抵物/债、不写状态。 读不到（未结算/进程重启/tick 不一致）返回 {@link Optional#empty()}，由读口报具名
+   * worker)} 稳定排序，<b>不重算</b>支付/债、不写状态。 读不到（未结算/进程重启/tick 不一致）返回 {@link Optional#empty()}，由读口报具名
    * unavailable，不填空数组冒充。
    */
   public Optional<List<Map<String, Object>>> wageSettlementReadouts(
@@ -244,11 +238,47 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
     return Optional.of(Collections.unmodifiableList(rows));
   }
 
+  /**
+   * ★★★ <b>D-032 P4c2：U20 工资锚的只读视图（锚级，不是逐义务值）</b>。
+   *
+   * <p>来源 = economy 切片持久化的 {@code productionWageAnchors}（唯一锚账）；按
+   * {@code (marketZone, industry, role)} 稳定排序，原样输出工资/streak/最近观测/最近调价。
+   * {@code wagePerLaborMilli=0} 是合法值；空表 = 世界还没有锚（不是错误）。本方法不重算、不写状态。
+   */
+  public List<Map<String, Object>> productionWageAnchors(SimulationState state) {
+    Objects.requireNonNull(state, "state");
+    EconomyData economy = economyOf(state);
+    if (economy.meta().isEmpty()) {
+      return List.of();
+    }
+    List<WageAnchorReadout> readouts = new WageAnchorBook(economy).readouts();
+    List<Map<String, Object>> rows = new ArrayList<>(readouts.size());
+    for (WageAnchorReadout readout : readouts) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("marketZone", readout.key().marketZone().value());
+      row.put("industry", readout.key().industry().value());
+      row.put("role", readout.key().role().value());
+      row.put("currency", readout.currency().value());
+      row.put("wagePerLaborMilli", readout.wagePerLaborMilli());
+      row.put("shortageStreak", readout.shortageStreak());
+      row.put("satisfiedStreak", readout.satisfiedStreak());
+      row.put("lastObservedTargetLaborMilli", readout.lastObservedTargetLaborMilli());
+      row.put("lastObservedMatchedLaborMilli", readout.lastObservedMatchedLaborMilli());
+      row.put("lastAdjustmentDelta", readout.lastAdjustmentDelta());
+      row.put("lastAdjustedTick", readout.lastAdjustedTick());
+      rows.add(Collections.unmodifiableMap(row));
+    }
+    return Collections.unmodifiableList(rows);
+  }
+
   /** 一条工资 readout 的稳定 JSON 形（字段名与 D3 §6.7 同源；不新增/不改写任何金额）。 */
   private static Map<String, Object> wageSettlementReadoutView(WageSettlementReadout readout) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("unit", readout.unit().value());
     row.put("role", readout.role().value());
+    row.put(
+        "anchor",
+        readout.anchorKey().map(key -> key.toString()).orElse(null));
     row.put("worker", readout.worker().value());
     row.put("payer", readout.payer().value());
     row.put("currency", readout.currency().value());
@@ -258,12 +288,6 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
     row.put("carryAfter", readout.carryAfter());
     row.put("dueMilli", readout.dueMilli());
     row.put("paidMoneyMilli", readout.paidMoneyMilli());
-    row.put("barterQuantity", new LinkedHashMap<>(readout.barterQuantity()));
-    row.put("barterPaidValueMilli", new LinkedHashMap<>(readout.barterPaidValueMilli()));
-    Map<String, Object> barter = new LinkedHashMap<>();
-    barter.put("qPay", new LinkedHashMap<>(readout.barterQuantity()));
-    barter.put("paidValueMilli", new LinkedHashMap<>(readout.barterPaidValueMilli()));
-    row.put("barter", Collections.unmodifiableMap(barter));
     row.put("arrearsMilli", readout.arrearsMilli());
     row.put(
         "debtContractId",
@@ -337,8 +361,8 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
    * <p>★★ <b>不复制任何公式</b>：角色份额 / 两层分配 / 产品估值 / 工资应收应付 / 投入负担全部由 economy 的 {@code rosterIncomes}
    * 一处算出；本类只负责**装配输入**（state → 定义/实例/名册/账户会话/市场表/只读 lookup） 与**形状化输出**。不写任何状态、不产生变更集。
    *
-   * <p>★★ <b>D4-Ib2b 起</b>：资产占用与工资报价都经 {@link AppProductionLookups} 注入同一 revision 的真实只读实现；
-   * 读口只装配输入，不复写工资/分配/估值公式。账户/占用不可用时仍由 economy 具名拒绝（{@code asset-occupancy-unavailable} / {@code
+   * <p>★★ <b>P4c3</b>：资产占用经 {@link AppProductionLookups} 注入；工资报价直接读 U20 锚表。读口只装配输入，
+   * 不复写工资/分配/估值公式。账户/占用/锚不可用时仍由 economy 具名拒绝（{@code asset-occupancy-unavailable} / {@code
    * wage-quote-missing:<role>}），<b>不按 0 冒充</b>。
    *
    * @param state 当刻状态（只读）
@@ -390,7 +414,7 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
                               + instance.plan().value()));
       AccountSession accounts = readOnlyAccounts(economy, actors, roster);
       MarketTable market = marketTableOf(economy, instance);
-      // ★★★ D4-Ib2b：真实资产占用 + W2a posting 报价；同一份 accounts 也是工资可支付库存读口的账户来源。
+      // ★★★ P4c3：真实资产占用由组合根装配；工资报价直接读 economy.productionWageAnchors。
       AppProductionLookups.Lookups lookups =
           AppProductionLookups.forEconomy(economy, definitions, runtime, accounts, revision, day);
       Set<ProductionLocation> existingSettlementLocations =
@@ -405,11 +429,11 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
               accounts,
               economy.relations(),
               market,
-              lookups.wageQuotes(),
+              boundary,
+              economy.productionWageAnchors(),
               Map.of(),
               lookups.assetOccupancy(),
               revision,
-              economy.productionWagePostings(),
               existingSettlementLocations,
               day,
               runtime);

@@ -55,8 +55,8 @@ import java.util.Set;
  * EconomyData}、不复制撮合逻辑；成交仍走 {@code MarketSettlement.clearOncePerCycle} 与唯一写口 {@code
  * EconomySettlement.applyTransfer}。所有账户/冻结表都是活的可变表，测试在结算后直接读终态。
  *
- * <p>★ 每个家户的"生活保留"由 {@code HouseholdEconomy.population} 经 {@code
- * EconomyVocabulary.cumulativeRationMilli(pop, 35)} 现算 —— 与生产路径同一条算式；夹具不写死保留量。
+ * <p>★ 每个家户的"生活保留"由夹具注入的当日 {@code naturalNeeds} × {@link MarketSettlement#MARKET_LIFE_RESERVE_DAYS}
+ * 现算（P2a = 5 tick）—— 与生产路径同一条算式；夹具不写死保留量。
  */
 final class MarketSettlementFixtures {
 
@@ -111,13 +111,14 @@ final class MarketSettlementFixtures {
   /**
    * ★ 2026-10-09 家户结构修复后的口径：运行时生活保留 = <b>本户当日注入 {@code naturalNeeds} × 补货窗口</b> （{@code
    * HouseholdEconomy.expectedNeedMilli}），不再按 {@code population × 全局人均定额} 现算。 ⇒ 夹具把"1 人 1 天的口粮"注入
-   * {@code naturalNeeds[grain]}，保留额 = 日额 × {@link MarketSettlement#MARKET_LIFE_RESERVE_DAYS}（35 天）。
+   * {@code naturalNeeds[grain]}，保留额 = 日额 × {@link MarketSettlement#MARKET_LIFE_RESERVE_DAYS}（P2a =
+   * 5 tick）。
    */
   static long dailyRationGrain(long population) {
     return io.mosire.simos.util.economy.EconomyVocabulary.dailyRationMilli(population, 1L);
   }
 
-  /** 一个家户的生活保留（35 天 × 当日注入需求）——测试断言的唯一算式来源。 */
+  /** 一个家户的生活保留（5 tick × 当日注入需求）——测试断言的唯一算式来源。 */
   static long lifeReserveGrain(long population) {
     return dailyRationGrain(population) * MarketSettlement.MARKET_LIFE_RESERVE_DAYS;
   }

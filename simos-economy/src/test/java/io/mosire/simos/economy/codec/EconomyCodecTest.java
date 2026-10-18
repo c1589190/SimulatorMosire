@@ -143,7 +143,7 @@ class EconomyCodecTest {
 
   /** ★ E4a：连续合同身份（key == 值内 id，且 id 由四元组派生；故必须在 FARM_HH/LANDLORD_HH/GRAIN/CURRENCY 之后）。 */
   private static final DebtContractId D1 =
-      DebtContractId.idOf(FARM_HH, LANDLORD_HH, DebtUnit.commodity(GRAIN), GRAIN_TERMS);
+      DebtContractId.idOf(FARM_HH, LANDLORD_HH, DebtUnit.money(CURRENCY), GRAIN_TERMS);
 
   private static final DebtContractId D2 =
       DebtContractId.idOf(
@@ -1286,7 +1286,7 @@ class EconomyCodecTest {
         D1,
         FARM_HH,
         LANDLORD_HH,
-        DebtUnit.commodity(GRAIN),
+        new DebtUnit.Money(CURRENCY),
         GRAIN_TERMS,
         DebtSource.ORDINARY_LOAN,
         100L,
@@ -1301,7 +1301,7 @@ class EconomyCodecTest {
         D2,
         LANDLORD_HH,
         FARM_HH,
-        DebtUnit.money(CURRENCY),
+        new DebtUnit.Money(CURRENCY),
         DebtTerms.legacyDefault(),
         DebtSource.ORDINARY_LOAN,
         700L,
@@ -1327,7 +1327,7 @@ class EconomyCodecTest {
         3L,
         4L,
         Map.of(CURRENCY, 5L),
-        Map.of(DebtUnit.commodity(GRAIN).key(), 7L));
+        Map.of(DebtUnit.money(CURRENCY).key(), 7L));
   }
 
   /** 最小自洽需求（B2b 起本类用它承载四条 {@code FieldDelta} 变体；原承载者 {@code units} 已随实例权威迁走）。 */

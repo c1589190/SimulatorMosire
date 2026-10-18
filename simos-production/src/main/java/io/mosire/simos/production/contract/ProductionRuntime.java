@@ -49,6 +49,25 @@ public interface ProductionRuntime {
   ProductionProbeResult probe(ProductionProbeRequest request);
 
   /**
+   * ★★★ <b>①b 试算（roster 形态，无副作用）</b>：对一份参与名册返回<b>逐参与户效率</b>、总规模/劳动/投入/预计产出/铸币 （D-032 P3 约束设计书 §8；审计
+   * A2/A3/A4 的只读契约面）。
+   *
+   * <p>★★ <b>与 {@link #probe} 的关系</b>：旧单户入口<b>逐值不变</b>；本方法是<b>纯增量</b>。两者共用同一 {@code
+   * ProductionEfficiency} 公式、同一方案定义、同一产出覆盖与同一时间单位（I6）——本方法只是把"一个家户条件"换成 "参与者 × 角色 × 计划劳动 +
+   * 逐户条件"，从而能表达协作生产与零劳动组织者。
+   *
+   * <p>★★ <b>A2</b>：逐 (家户×角色) 效率按该户的熟练度/经验求值（与 {@link #execute} 同一函数）；不得用组织者的效率
+   * 冒充全员。<b>A3</b>：organizer 计划劳动为 0 时，允许按工资招工目标判可行性（目标不是"已招到人"的承诺，也不伪造
+   * worker）。<b>A4</b>：结果给出总预计产出与逐参与户效率，供 economy 按本户产品份额收益排序（排序本身归 economy）。
+   *
+   * <p>★ 契约（I5/V1）：本方法<b>不</b>改任何切片、不写 revision、不推进时间、不涨经验。同一份入参 + 同一份 候选态 ⇒ 同一答案（V2）。
+   *
+   * @param request roster 试算请求；不得为 null
+   * @return 可行/具名拒绝结果；不得为 null
+   */
+  ProductionRosterProbeResult probeRoster(ProductionRosterProbeRequest request);
+
+  /**
    * ★★ <b>② 执行（按最终投入推进实例并给出回执）</b>：实际消耗 / 实毛产（含铸币候选）· 进度变化 · 实际出工家户与贡献 · 精度余数；同时把本域候选态推进一格。
    *
    * <p>★ 本方法<b>会</b>改 production 本域候选态（这就是它的职责），但<b>不</b>改别的领域、不写 revision、

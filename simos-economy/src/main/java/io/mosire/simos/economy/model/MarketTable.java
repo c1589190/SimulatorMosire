@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -27,6 +28,7 @@ import java.util.Set;
  * numeraire  本市场的计价币（毫计价货币 / 商品单位 里的"计价货币"）
  * hexes      ★ 本市场的成员格：**派生形态的唯一权威**（见下）；持久形态必须为空集合
  * prices     商品 → 单价（毫计价货币 / 商品单位；**逐值 ≥ 0**，0 = 明确免费）
+ * landPrice  ★ P2b：本市场区的土地单价（毫计价货币 / 1 个整亩；empty = 未定价，0 = 明确免费）
  * </pre>
  *
  * <p>★★ <b>两种形态（同一个类型、同一个键空间，互斥）</b> —— 与 {@code EconomyData.marketZones} 是否为空一一对应：
@@ -61,6 +63,12 @@ import java.util.Set;
  * 回答。{@link #priceOf(CommodityId)} 对"未定价"与"明确 0 价"都返回 0， 因此<b>凡是要区分这两种状态的判定</b>必须先查 {@code
  * hasPrice}。
  *
+ * <p>★★ <b>P2b：区级土地价格</b>（2026-10-18）—— 土地按<b>市场区一个价</b>（禁止 hex 级独立地价表；hex 只决定面积/质量）， 量纲 = <b>毫计价货币
+ * / 1 个整亩</b>，土地数量用千分亩，故价值 = {@code floor(quantityMilliMu × landPrice / 1000)}。★ {@link
+ * #landPrice()} 用 {@link OptionalLong} 表达三态：{@code empty} = <b>未定价</b>（不生成土地订单、不改价、不当免费）， {@code 0}
+ * = <b>明确 0 价（合法免费）</b>，负值构造期拒绝。⇒ 凡要区分"未定价"与"免费"的判定必须先查 {@link #hasLandPrice()}， 不得用 {@code
+ * orElse(0)} 把未定价冒充免费。
+ *
  * <p>★★ <b>买卖两侧的挂牌限价</b>（{@link #bidPriceOf} / {@link #askPriceOf}）与两个具名常量 （{@link #BID_PER_MILLE}
  * / {@link #ASK_PER_MILLE}）逐字沿用退役的 {@code MarketTable}：它们只决定限价过滤，不决定成交价 （成交按本表价）。★
  * 随"家户不挂价"（S-9）退役属后续批次，W1 不动。
@@ -83,6 +91,7 @@ import java.util.Set;
  * @param numeraire 本市场的计价币；不得为 null
  * @param hexes 本市场的成员格（派生形态的唯一权威；持久形态必须为空表）；不得为 null；逐值非 null、规范序、不可变
  * @param prices 商品 → 单价（毫计价货币 / 商品单位；**逐值 ≥ 0**，0 = 明确免费）；不得为 null（没有价格就请给空表）
+ * @param landPrice ★★ P2b：本市场区的土地单价（毫计价货币 / 1 个整亩；{@code empty} = 未定价，{@code 0} = 明确免费）；不得为 null
  * @param loanRatePerMille ★★ W5.5：本市场货币市场的清算利率（‰/周期；≥ 0；0 = 白借）
  * @param loanRateAlphaPerMille ★★ W5.5：本市场利率的自适应步长 α（‰/轮；≥ 0；0 = 利率不随供需变动）
  */
@@ -90,6 +99,7 @@ public record MarketTable(
     CurrencyId numeraire,
     Set<HexCoord> hexes,
     Map<CommodityId, Long> prices,
+    OptionalLong landPrice,
     long loanRatePerMille,
     long loanRateAlphaPerMille) {
 
@@ -111,11 +121,35 @@ public record MarketTable(
 
   /** ★ 三参形态 = 货币市场两项取缺省：<b>立区/播种/夹具等"不表态"的写入形态</b>（缺省语义中性，不是旧档兼容位）。 */
   public MarketTable(CurrencyId numeraire, Set<HexCoord> hexes, Map<CommodityId, Long> prices) {
-    this(numeraire, hexes, prices, DEFAULT_LOAN_RATE_PER_MILLE, DEFAULT_LOAN_RATE_ALPHA_PER_MILLE);
+    this(
+        numeraire,
+        hexes,
+        prices,
+        OptionalLong.empty(),
+        DEFAULT_LOAN_RATE_PER_MILLE,
+        DEFAULT_LOAN_RATE_ALPHA_PER_MILLE);
+  }
+
+  /**
+   * ★★ <b>P2b：五参形态 = 土地未定价的中性构造</b>（保留旧调用语义）—— {@link #landPrice()} 取 {@code
+   * OptionalLong.empty()}，其余逐值透传。已有调用点（播种/GM/夹具）不需要知道土地价也能继续编译与运行，且"没设过土地价" = 未定价。
+   */
+  public MarketTable(
+      CurrencyId numeraire,
+      Set<HexCoord> hexes,
+      Map<CommodityId, Long> prices,
+      long loanRatePerMille,
+      long loanRateAlphaPerMille) {
+    this(numeraire, hexes, prices, OptionalLong.empty(), loanRatePerMille, loanRateAlphaPerMille);
   }
 
   public MarketTable {
     Objects.requireNonNull(numeraire, "MarketTable.numeraire 不得为 null（一个市场恰一种计价币）");
+    Objects.requireNonNull(landPrice, "MarketTable.landPrice 不得为 null（未定价请给 OptionalLong.empty()）");
+    if (landPrice.isPresent() && landPrice.getAsLong() < 0L) {
+      throw new IllegalArgumentException(
+          "MarketTable.landPrice 不得为负（0 = 明确免费，是合法状态；未定价请给 empty）: " + landPrice.getAsLong());
+    }
     if (hexes == null) {
       throw new IllegalArgumentException("MarketTable.hexes 不得为 null（没有成员格请给空表）");
     }
@@ -189,7 +223,7 @@ public record MarketTable(
   }
 
   /**
-   * ★ 本市场的最小毫：0 价（免费）也算"有价"，故只看有没有定价行。空表 ⇒ 无价可言。
+   * ★ 本市场是否"什么都没定价"：<b>商品价格空</b> 且 <b>土地价未定价</b> 才为 true。同类商品口径：0 价（免费）也算"有价"，故只看有没有定价行。
    *
    * <p>★★ <b>线格式契约（W1f，2026-10-11）</b>：这是<b>派生判断</b>、不是状态组件 ⇒ 必须 {@link JsonIgnore}。Jackson 的 bean
    * 内省把 {@code isEmpty()} 当成属性 {@code empty} <b>写进字节</b>，而全仓读侧 （{@code FAIL_ON_UNKNOWN_PROPERTIES}
@@ -210,14 +244,36 @@ public record MarketTable(
    */
   @JsonIgnore
   public boolean isEmpty() {
-    return prices.isEmpty();
+    return prices.isEmpty() && landPrice.isEmpty();
+  }
+
+  /**
+   * ★★ <b>P2b：本市场区有没有土地价</b>：{@link #landPrice()} 是 {@code OptionalLong.of(...)} 即为 true —— 值 <b>0
+   * 也算定价</b> （明确 0 价合法）。{@code empty} = 未定价。★ 任何要区分"未定价"与"免费"的判定都必须先查本方法， 不得用 {@code
+   * landPrice().orElse(0)} 把未定价冒充免费。
+   */
+  public boolean hasLandPrice() {
+    return landPrice.isPresent();
+  }
+
+  /** ★★ <b>P2b：只换本市场区的土地价</b>（其余逐值不变）—— GM/Seeder/测试给出或清除区级地价的唯一写入形态。 */
+  public MarketTable withLandPrice(OptionalLong nextLandPrice) {
+    return new MarketTable(
+        numeraire, hexes, prices, nextLandPrice, loanRatePerMille, loanRateAlphaPerMille);
+  }
+
+  /** ★★ <b>P2b：只换本市场区的土地价</b>（非空便捷重载；{@code 0} = 明确免费，负值由构造期拒绝）。 */
+  public MarketTable withLandPrice(long nextLandPrice) {
+    return withLandPrice(OptionalLong.of(nextLandPrice));
   }
 
   /** ★ 只换整张价格表的拷贝（计价币与成员格逐值不变）：自适应写回与 GM 定价的唯一构造形态。 */
   public MarketTable withPrices(Map<CommodityId, Long> nextPrices) {
     // ★★ W5.5：货币市场两项逐值带过 —— 自适应改价**每个市场轮**都会走本方法，漏了它 ⇒ 利率每轮被重置回出厂 20‰
     //   （"静默丢字段"的同族；本仓最贵的那类 bug）。
-    return new MarketTable(numeraire, hexes, nextPrices, loanRatePerMille, loanRateAlphaPerMille);
+    // ★★ P2b：土地价同理逐值带过 —— 商品改价不得把区级地价清空。
+    return new MarketTable(
+        numeraire, hexes, nextPrices, landPrice, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换一条价格行（其余逐值不变）：GM 逐商品定价的最小写入形态。 */
@@ -225,17 +281,20 @@ public record MarketTable(
     Objects.requireNonNull(commodity, "commodity");
     Map<CommodityId, Long> next = new LinkedHashMap<>(prices);
     next.put(commodity, price);
-    return new MarketTable(numeraire, hexes, next, loanRatePerMille, loanRateAlphaPerMille);
+    return new MarketTable(
+        numeraire, hexes, next, landPrice, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换计价币（价格表与成员格逐值不变）：GM 改本区计价币的最小写入形态。 */
   public MarketTable withNumeraire(CurrencyId nextNumeraire) {
-    return new MarketTable(nextNumeraire, hexes, prices, loanRatePerMille, loanRateAlphaPerMille);
+    return new MarketTable(
+        nextNumeraire, hexes, prices, landPrice, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换成员格（计价币与价格表逐值不变）：派生形态的划界/退让写入形态。 */
   public MarketTable withHexes(Set<HexCoord> nextHexes) {
-    return new MarketTable(numeraire, nextHexes, prices, loanRatePerMille, loanRateAlphaPerMille);
+    return new MarketTable(
+        numeraire, nextHexes, prices, landPrice, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /**
@@ -244,7 +303,8 @@ public record MarketTable(
    * @param nextLoanRatePerMille 新的清算利率（‰/周期；≥ 0；0 = 白借）；不设上限
    */
   public MarketTable withLoanRatePerMille(long nextLoanRatePerMille) {
-    return new MarketTable(numeraire, hexes, prices, nextLoanRatePerMille, loanRateAlphaPerMille);
+    return new MarketTable(
+        numeraire, hexes, prices, landPrice, nextLoanRatePerMille, loanRateAlphaPerMille);
   }
 
   /**
@@ -253,7 +313,8 @@ public record MarketTable(
    * @param nextLoanRateAlphaPerMille 新的步长（‰/轮；≥ 0；0 = 利率不随供需变动）；不设上限
    */
   public MarketTable withLoanRateAlphaPerMille(long nextLoanRateAlphaPerMille) {
-    return new MarketTable(numeraire, hexes, prices, loanRatePerMille, nextLoanRateAlphaPerMille);
+    return new MarketTable(
+        numeraire, hexes, prices, landPrice, loanRatePerMille, nextLoanRateAlphaPerMille);
   }
 
   /**

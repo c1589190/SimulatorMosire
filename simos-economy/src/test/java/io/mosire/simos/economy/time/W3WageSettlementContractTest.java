@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -38,6 +39,7 @@ import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.BarterDiscountPolicy;
 import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.CycleContribution;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.MoneyOutput;
@@ -51,9 +53,13 @@ import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.production.contract.RoleShareRemainder;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -61,17 +67,23 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★★ <b>W3（D-032 D3 §6/§8.4）工资支付 → 抵物 → 余款成债的独立判据</b>。
+ * ★★★ <b>W3（D-032 P4a §3/§4/§5）工资<b>只付现金</b> → 未付差额成普通工资债的独立判据</b>。
  *
  * <p>本类直接驱动唯一的 W3 结算口 {@link WageSettlement#settle}，用<b>纸面算式</b>给出每个期望值：
  *
  * <pre>
  * due = quote.wagePerLaborMilli × tickLaborMilli / 1000 + carryBefore/1000
- * 支付顺序 = 对应货币先付 → 可支付库存按“初始可用数量降序、同量 CommodityId 升序”抵物 → 余款成债
- * 抵物单位价值 = floor(当地参考价 × discountPerMille / 1000)
+ * 每付款人现金预算 = 账户余额 − 冻结；按稳定 (unit, role, worker) 序逐笔 paidMoney = min(dueRemaining, cash)
+ * 未付差额 ⇒ 一条 WAGE_ARREARS 货币普通债（wageArrearsDefault()，0‰）
+ * 库存/市场价/barter 一律不参与 ⇒ 商品库存逐键不变
  * </pre>
  *
- * <p>不按实现反推断言：每个数字都从夹具里写下的 quote/labor/价格/折价系数/库存量算出。
+ * <p>不按实现反推断言：每个数字都从夹具里写下的 quote/labor/现金余额算出。
+ *
+ * <p>★ P4a 起没有 barter/抵物判据：原“抵物优先级”位改由“库存零变化 + 未付成债”的等价强判据承担。
+ *
+ * <p>★ 夹具仍暂时用 {@link RolePayment.MoneyWage} 构造（P4d 才删 barter 字段），但本类<b>不断言</b>工资支付读取或使用
+ * 任何 barter 折价。
  */
 class W3WageSettlementContractTest {
 
@@ -81,12 +93,12 @@ class W3WageSettlementContractTest {
   private static final ProductionUnitId UNIT = new ProductionUnitId("unit-w3-wage");
   private static final HouseholdId PAYER = HouseholdId.parse("hh-w3-payer");
   private static final HouseholdId WORKER = HouseholdId.parse("hh-w3-worker");
+  private static final HouseholdId WORKER_B = HouseholdId.parse("hh-w3-worker-b");
   private static final ActorRef PAYER_ACTOR = HouseholdActors.of(PAYER);
   private static final ActorRef WORKER_ACTOR = HouseholdActors.of(WORKER);
   private static final CurrencyId SILVER = new CurrencyId("silver");
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId FIBER = new CommodityId("fiber");
-  private static final CommodityId CLOTH = new CommodityId("cloth");
   private static final ProductionRoleId ROLE_ORGANIZER = ProductionRoleId.parse("operator");
   private static final ProductionRoleId ROLE_WORKER = ProductionRoleId.parse("hired-hand");
   private static final long DAY = 1L;
@@ -94,24 +106,30 @@ class W3WageSettlementContractTest {
   private static final long QUOTE = 1L;
   private static final long LABOR_MILLI = 100_000L; // 100 小时 ⇒ due = 1 × 100,000 / 1000 = 100
 
-  /** 货币优先：付款人钱足够 ⇒ 不动库存、不新债。 */
+  /**
+   * P4d 前 {@link RolePayment.MoneyWage} 仍带 barter 折价字段；夹具保留占位值，但 P4a 的工资结算不读它
+   * （下面每条断言都不依赖它）。
+   */
+  private static final BarterDiscountPolicy COMPAT_DISCOUNT =
+      new BarterDiscountPolicy(BarterReferencePrice.LOCAL_ASK, 500L);
+
+  /** 现金足额：money 腿支付、库存一毫不动、不新债。 */
   @Test
-  void moneyIsPaidBeforeInventoryAndNoDebtIsCreated() {
+  void sufficientCashPaysMoneyOnlyAndNoDebtIsCreated() {
     Settlement settlement =
         settle(
             Map.of(SILVER, 100L),
             Map.of(GRAIN, 50_000L),
-            Map.of(GRAIN, 25L),
-            discount(BarterReferencePrice.LOCAL_ASK, 500L),
-            Optional.of(Map.of(GRAIN, 50_000L)),
+            Map.of(GRAIN, 10L),
             Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
-    assertThat(readout.paidMoneyMilli()).as("U21：先付对应货币，due=100 全部由货币支付").isEqualTo(100L);
-    assertThat(readout.barterQuantity()).as("钱够 ⇒ 一分库存都不动").isEmpty();
+    assertThat(readout.paidMoneyMilli()).as("due=100 全部由现金支付").isEqualTo(100L);
     assertThat(readout.arrearsMilli()).as("已付清 ⇒ 零欠款").isZero();
-    assertThat(settlement.result().newWageDebtIds()).as("零欠款 ⇒ 不写工资债").isEmpty();
     assertThat(readout.debtContractId()).isEmpty();
+    assertThat(readout.reasons()).as("P4a：现金足额时没有任何 barter/库存理由").isEmpty();
+    assertTwoNumberConservation(readout);
+    assertThat(settlement.debts()).as("零欠款 ⇒ 不写工资债").isEmpty();
     assertThat(settlement.result().carryRemainders())
         .as("carry 按 (unit, role, worker) 持久；本 tick 恰好整除 ⇒ 0 也保留该键")
         .containsEntry(new WageCarryKey(UNIT, ROLE_WORKER, WORKER), 0L);
@@ -123,124 +141,162 @@ class W3WageSettlementContractTest {
             transfer -> {
               assertThat(transfer.reason()).isEqualTo(TransferReason.WAGE_PAYMENT);
               assertThat(transfer.money()).containsExactly(Map.entry(SILVER, 100L));
-              assertThat(transfer.goods()).isEmpty();
+              assertThat(transfer.goods()).as("工资只现金 ⇒ 不得有商品腿").isEmpty();
               assertThat(transfer.from()).isEqualTo(PAYER_ACTOR);
               assertThat(transfer.to()).isEqualTo(WORKER_ACTOR);
             });
+    assertInventoryUntouched(settlement, Map.of(GRAIN, 50_000L));
+    assertMoney(settlement, Map.of(SILVER, 0L), Map.of(SILVER, 100L));
   }
 
   /**
-   * 抵物按<b>初始可用数量降序</b>，不是按价值序：fiber 数量远大于 cloth，但 cloth 单价远高。
+   * 部分现金：现金 4 &lt; due 100 ⇒ paidMoney=4、arrears=96 成 0‰ 工资债；即便库存有 50,000 粮也一毫不动。
    *
-   * <pre>
-   * 货币 4，due 100 ⇒ 剩 96
-   * 参考价 ASK：price=10 ⇒ ask=11；discount=500 ⇒ unitValue=floor(11×500/1000)=5
-   * fiber qWanted = floor(96×1000/5)=19,200；fiber 可用 50,000 ⇒ qPay=19,200，paidValue=floor(19,200×5/1000)=96
-   * ⇒ 只动 fiber；若按价值序会先吃 cloth（单价 1000、unitValue=505）
-   * </pre>
+   * <p>本用例取代旧“抵物按初始数量降序”判据：可判别性改为“库存逐键零变化 + 未付差额精确成债”。
    */
   @Test
-  void barterConsumesHighestInitialQuantityFirstNotHighestValue() {
+  void partialCashCreatesZeroInterestArrearsAndLeavesInventoryUntouched() {
     Settlement settlement =
         settle(
             Map.of(SILVER, 4L),
-            Map.of(FIBER, 50_000L, CLOTH, 10L),
-            Map.of(FIBER, 10L, CLOTH, 1_000L),
-            discount(BarterReferencePrice.LOCAL_ASK, 500L),
-            Optional.of(Map.of(FIBER, 50_000L, CLOTH, 10L)),
-            Map.of());
-
-    WageSettlementReadout readout = onlyReadout(settlement);
-    assertThat(readout.paidMoneyMilli()).as("先付货币 4").isEqualTo(4L);
-    assertThat(readout.barterQuantity())
-        .as("P18/例 5：数量降序 ⇒ 只消耗 fiber；高价值 cloth 不得先被吃")
-        .containsExactly(Map.entry(FIBER, 19_200L));
-    assertThat(readout.barterPaidValueMilli())
-        .as("P32：unitValue=5 ⇒ 19,200 毫商品抵 96 毫货币")
-        .containsExactly(Map.entry(FIBER, 96L));
-    assertThat(readout.arrearsMilli()).as("96 = 4 + 96 + 0").isZero();
-    assertThreeNumberConservation(readout);
-  }
-
-  /**
-   * U23-c 折价 500 与余款成债：库存只有 1,000 毫 fiber ⇒ 抵 5 毫，余 91 毫成 0‰ 工资债。
-   *
-   * <pre>
-   * due=100，货币 4 ⇒ 96；fiber 1,000 × 5/1000 = 5 ⇒ arrears = 91
-   * </pre>
-   */
-  @Test
-  void fiveHundredDiscountAndRemainderBecomeZeroInterestWageArrears() {
-    Settlement settlement =
-        settle(
-            Map.of(SILVER, 4L),
-            Map.of(FIBER, 1_000L),
+            Map.of(FIBER, 50_000L),
             Map.of(FIBER, 10L),
-            discount(BarterReferencePrice.LOCAL_ASK, 500L),
-            Optional.of(Map.of(FIBER, 1_000L)),
             Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
-    assertThat(readout.paidMoneyMilli()).isEqualTo(4L);
-    assertThat(readout.barterQuantity()).containsExactly(Map.entry(FIBER, 1_000L));
-    assertThat(readout.barterPaidValueMilli()).containsExactly(Map.entry(FIBER, 5L));
-    assertThat(readout.arrearsMilli()).as("100 = 4 + 5 + 91").isEqualTo(91L);
-    assertThreeNumberConservation(readout);
+    assertThat(readout.paidMoneyMilli()).as("现金用完为止：先付 4").isEqualTo(4L);
+    assertThat(readout.arrearsMilli()).as("100 − 4 = 96").isEqualTo(96L);
+    assertThat(readout.reasons()).as("P4a：不得再出现任何 barter/库存理由").isEmpty();
+    assertTwoNumberConservation(readout);
 
-    assertWageDebt(settlement.debts(), settlement.result().newWageDebtIds(), 91L);
-    assertThat(readout.debtContractId()).isPresent();
-    assertThat(settlement.result().newWageDebtIds())
-        .as("同日还款轮排除集合 = 本日新建工资债 id")
-        .containsExactly(readout.debtContractId().orElseThrow());
-
+    assertWageDebt(settlement, readout.debtContractId(), WORKER, 96L);
     assertThat(settlement.wageTransfers())
-        .as("同一条 WAGE_PAYMENT 可带钱+物两腿")
+        .as("同一条 WAGE_PAYMENT 只带货币腿，不得带商品腿")
         .hasSize(1)
         .allSatisfy(
             transfer -> {
               assertThat(transfer.reason()).isEqualTo(TransferReason.WAGE_PAYMENT);
               assertThat(transfer.money()).containsExactly(Map.entry(SILVER, 4L));
-              assertThat(transfer.goods()).containsExactly(Map.entry(FIBER, 1_000L));
+              assertThat(transfer.goods()).isEmpty();
             });
+    assertInventoryUntouched(settlement, Map.of(FIBER, 50_000L));
   }
 
-  /** D4 读口不可用：库存腿整段跳过（具名理由），不得回退账户余额，余款全部成债。 */
+  /** 零现金：due 全额成 0‰ 工资债；库存无论多少都不动；不铸任何工资转移。 */
   @Test
-  void unavailableInventoryScopeSkipsBarterAndNeverFallsBackToAccountStock() {
-    Settlement settlement =
-        settle(
-            Map.of(SILVER, 4L),
-            Map.of(GRAIN, 1_000_000L),
-            Map.of(GRAIN, 10L),
-            discount(BarterReferencePrice.LOCAL_ASK, 500L),
-            Optional.empty(),
-            Map.of());
-
-    WageSettlementReadout readout = onlyReadout(settlement);
-    assertThat(readout.paidMoneyMilli()).isEqualTo(4L);
-    assertThat(readout.barterQuantity()).as("lookup empty ⇒ 不得用账户余额 1,000,000 粮兜底").isEmpty();
-    assertThat(readout.arrearsMilli()).isEqualTo(96L);
-    assertThat(readout.reasons()).contains("wage-inventory-scope-unavailable");
-    assertWageDebt(settlement.debts(), settlement.result().newWageDebtIds(), 96L);
-  }
-
-  /** 缺价商品 skip 且保留欠款；不得按 1:1 或任意价抵付。 */
-  @Test
-  void missingPriceSkipsCommodityAndKeepsArrears() {
+  void zeroCashCreatesFullArrearsAndLeavesInventoryUntouched() {
     Settlement settlement =
         settle(
             Map.of(SILVER, 0L),
-            Map.of(),
-            Map.of(), // 故意不给 fiber 定价
-            discount(BarterReferencePrice.LOCAL_ASK, 500L),
-            Optional.of(Map.of(FIBER, 50_000L)),
+            Map.of(FIBER, 1_000L, GRAIN, 50_000L),
+            Map.of(FIBER, 10L, GRAIN, 10L),
             Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
     assertThat(readout.paidMoneyMilli()).isZero();
-    assertThat(readout.barterQuantity()).isEmpty();
-    assertThat(readout.arrearsMilli()).as("缺价 ⇒ 不抵付，余款 100 全部成债").isEqualTo(100L);
-    assertThat(readout.reasons()).contains("wage-barter-price-missing:fiber");
+    assertThat(readout.arrearsMilli()).as("零现金 ⇒ 100 全额成债").isEqualTo(100L);
+    assertThat(readout.reasons()).isEmpty();
+    assertTwoNumberConservation(readout);
+
+    assertWageDebt(settlement, readout.debtContractId(), WORKER, 100L);
+    assertThat(settlement.wageTransfers()).as("零现金 ⇒ 没有工资转移").isEmpty();
+    assertInventoryUntouched(settlement, Map.of(FIBER, 1_000L, GRAIN, 50_000L));
+  }
+
+  /**
+   * 缺现金时<b>绝不回退到有价库存</b>：商品在市场表里有价（grain=10）也不得被拿去抵工资。
+   *
+   * <p>本用例取代旧“缺价商品 skip”判据：即使商品有价，工资也只走现金；差额成债。
+   */
+  @Test
+  void cashShortfallNeverFallsBackToValuedInventory() {
+    Settlement settlement =
+        settle(
+            Map.of(SILVER, 0L),
+            Map.of(GRAIN, 50_000L),
+            Map.of(GRAIN, 10L),
+            Map.of());
+
+    WageSettlementReadout readout = onlyReadout(settlement);
+    assertThat(readout.paidMoneyMilli()).isZero();
+    assertThat(readout.arrearsMilli()).as("有价库存不得抵付 ⇒ 100 全部成债").isEqualTo(100L);
+    assertThat(readout.reasons())
+        .as("P4a：不再有 wage-barter-price-missing / 库存折价理由")
+        .noneMatch(reason -> reason.contains("barter") || reason.contains("inventory"));
+    assertTwoNumberConservation(readout);
+    assertWageDebt(settlement, readout.debtContractId(), WORKER, 100L);
+    assertThat(settlement.wageTransfers()).isEmpty();
+    assertInventoryUntouched(settlement, Map.of(GRAIN, 50_000L));
+  }
+
+  /**
+   * 现金预算按付款人共享、按稳定 {@code (unit, role, worker)} 序逐笔耗尽：两名工人各 due 100、现金 150
+   * ⇒ 先者足额 100、后者 50 + 50 欠款；库存不动。
+   */
+  @Test
+  void cashBudgetIsExhaustedInStableObligationOrder() {
+    Settlement settlement =
+        settle(
+            Map.of(SILVER, 150L),
+            Map.of(GRAIN, 50_000L),
+            Map.of(GRAIN, 10L),
+            Map.of(),
+            List.of(
+                new WorkerObligation(WORKER, LABOR_MILLI),
+                new WorkerObligation(WORKER_B, LABOR_MILLI)),
+            QUOTE);
+
+    assertThat(settlement.result().readouts()).hasSize(2);
+    WageSettlementReadout first = settlement.result().readouts().get(0);
+    WageSettlementReadout second = settlement.result().readouts().get(1);
+    assertThat(first.worker()).as("稳定序 = (unit, role, worker)").isEqualTo(WORKER);
+    assertThat(first.paidMoneyMilli()).isEqualTo(100L);
+    assertThat(first.arrearsMilli()).isZero();
+    assertThat(first.debtContractId()).isEmpty();
+    assertThat(second.worker()).isEqualTo(WORKER_B);
+    assertThat(second.paidMoneyMilli()).as("现金只剩 50").isEqualTo(50L);
+    assertThat(second.arrearsMilli()).as("100 − 50 = 50").isEqualTo(50L);
+    assertTwoNumberConservation(first);
+    assertTwoNumberConservation(second);
+    assertWageDebt(settlement, second.debtContractId(), WORKER_B, 50L);
+    assertThat(settlement.wageTransfers())
+        .as("两条 WAGE_PAYMENT：100 + 50，均只带货币腿")
+        .hasSize(2)
+        .allSatisfy(transfer -> assertThat(transfer.goods()).isEmpty());
+    assertInventoryUntouched(settlement, Map.of(GRAIN, 50_000L));
+  }
+
+  /**
+   * P4a 负向判据：工资可支付库存读口已从类型系统移除，且 {@link WageSettlement#settle} 的签名不再接收任何
+   * Lookup 依赖 ⇒ “工资支付不读库存 / 不因 inventory lookup 不可用而阻断”。
+   *
+   * <p>本用例取代旧“lookup 不可用 ⇒ 跳过抵物且不回退账户库存”判据。
+   */
+  @Test
+  void settlementApiHasNoWagePayableInventoryLookupDependency() {
+    for (String retired :
+        List.of(
+            "io.mosire.simos.economy.time.WagePayableInventoryLookup",
+            "io.mosire.simos.economy.time.WagePayableInventoryLookupImpl",
+            "io.mosire.simos.economy.time.UnavailableWagePayableInventoryLookup")) {
+      assertThatThrownBy(() -> Class.forName(retired))
+          .as("P4a：工资可支付库存读口必须已删除: " + retired)
+          .isInstanceOf(ClassNotFoundException.class);
+    }
+
+    Method settle =
+        Arrays.stream(WageSettlement.class.getDeclaredMethods())
+            .filter(method -> method.getName().equals("settle"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("WageSettlement.settle 必须存在"));
+    assertThat(Arrays.stream(settle.getParameterTypes()).map(Class::getSimpleName).toList())
+        .as("P4a：WageSettlement.settle 不得接收任何 Lookup 依赖（工资不读库存）")
+        .noneMatch(name -> name.toLowerCase(Locale.ROOT).contains("lookup"));
+    for (Class<?> parameterType : settle.getParameterTypes()) {
+      assertThat(parameterType.getName())
+          .as("settle 参数里不得出现任何 inventory lookup 类型")
+          .doesNotContain("WagePayableInventoryLookup");
+    }
   }
 
   /**
@@ -254,11 +310,9 @@ class W3WageSettlementContractTest {
             Map.of(SILVER, 100L),
             Map.of(),
             Map.of(GRAIN, 1_000L),
-            discount(BarterReferencePrice.LOCAL_BID, 1_000L),
-            Optional.of(Map.of()),
             Map.of(),
-            QUOTE,
-            500L);
+            List.of(new WorkerObligation(WORKER, 500L)),
+            QUOTE);
     WageSettlementReadout firstReadout = onlyReadout(first);
     assertThat(firstReadout.dueMilli()).as("1 × 500 / 1000 = 0").isZero();
     assertThat(firstReadout.carryBefore()).isZero();
@@ -271,11 +325,9 @@ class W3WageSettlementContractTest {
             Map.of(SILVER, 100L),
             Map.of(),
             Map.of(GRAIN, 1_000L),
-            discount(BarterReferencePrice.LOCAL_BID, 1_000L),
-            Optional.of(Map.of()),
             first.result().carryRemainders(),
-            QUOTE,
-            500L);
+            List.of(new WorkerObligation(WORKER, 500L)),
+            QUOTE);
     WageSettlementReadout secondReadout = onlyReadout(second);
     assertThat(secondReadout.carryBefore()).isEqualTo(500L);
     assertThat(secondReadout.dueMilli()).as("(1 × 500 + 500) / 1000 = 1").isEqualTo(1L);
@@ -284,45 +336,47 @@ class W3WageSettlementContractTest {
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
 
-  private static BarterDiscountPolicy discount(BarterReferencePrice reference, long perMille) {
-    return new BarterDiscountPolicy(reference, perMille);
-  }
+  /** 一条待结义务的工人 + 本次实际劳动（毫小时）。 */
+  private record WorkerObligation(HouseholdId worker, long laborMilli) {}
 
   private record Settlement(
       WageSettlement.Result result,
       LinkedHashMap<DebtContractId, DebtContract> debts,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       List<Transfer> wageTransfers) {}
 
   private static Settlement settle(
       Map<CurrencyId, Long> payerMoney,
       Map<CommodityId, Long> payerGoods,
       Map<CommodityId, Long> prices,
-      BarterDiscountPolicy discount,
-      Optional<Map<CommodityId, Long>> payableInventory,
       Map<WageCarryKey, Long> carryBefore) {
     return settle(
         payerMoney,
         payerGoods,
         prices,
-        discount,
-        payableInventory,
         carryBefore,
-        QUOTE,
-        LABOR_MILLI);
+        List.of(new WorkerObligation(WORKER, LABOR_MILLI)),
+        QUOTE);
   }
 
   private static Settlement settle(
       Map<CurrencyId, Long> payerMoney,
       Map<CommodityId, Long> payerGoods,
       Map<CommodityId, Long> prices,
-      BarterDiscountPolicy discount,
-      Optional<Map<CommodityId, Long>> payableInventory,
       Map<WageCarryKey, Long> carryBefore,
-      long quote,
-      long laborMilli) {
-    IndustryDefinitionView industry = industry(discount);
+      List<WorkerObligation> workers,
+      long quote) {
+    IndustryDefinitionView industry = industry();
     ProductionProcess unit = unit();
     ProductionData definitions = ProductionData.empty().withIndustry(industry).withInstance(unit);
+
+    Map<HouseholdId, HouseholdEconomy> households = new LinkedHashMap<>();
+    households.put(PAYER, row(PAYER, payerGoods, payerMoney));
+    for (WorkerObligation worker : workers) {
+      households.put(worker.worker(), row(worker.worker(), Map.of(), Map.of()));
+    }
+
     EconomyData base =
         EconomyData.empty()
             .withMeta(
@@ -333,13 +387,8 @@ class W3WageSettlementContractTest {
                         OptionalLong.empty(),
                         EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
                         Optional.empty())))
-            .withHouseholdEconomies(
-                Map.of(
-                    PAYER,
-                    row(PAYER, payerGoods, payerMoney),
-                    WORKER,
-                    row(WORKER, Map.of(), Map.of())))
-            .withProductionRosters(Map.of(UNIT, roster()))
+            .withHouseholdEconomies(households)
+            .withProductionRosters(Map.of(UNIT, roster(workers)))
             .withProductionWagePostings(Map.of(postingKey(), posting(quote)))
             .withWageCarryRemainders(carryBefore)
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(HEX, quote(SILVER, prices))))
@@ -354,36 +403,37 @@ class W3WageSettlementContractTest {
                         PAYER_ACTOR)));
     EconomyDayView dayView = EconomyFixtures.dayView(base, definitions);
 
-    AccountSnapshot snapshot =
-        AccountSnapshot.of(
-            Map.of(
-                new AccountPartitionKey(PAYER),
-                new AccountSnapshot.SnapshotAccount(payerGoods, payerMoney, Map.of(), Map.of()),
-                new AccountPartitionKey(WORKER),
-                new AccountSnapshot.SnapshotAccount(Map.of(), Map.of(), Map.of(), Map.of())),
-            Map.of());
+    Map<AccountPartitionKey, AccountSnapshot.SnapshotAccount> partitions = new LinkedHashMap<>();
+    partitions.put(
+        new AccountPartitionKey(PAYER),
+        new AccountSnapshot.SnapshotAccount(payerGoods, payerMoney, Map.of(), Map.of()));
+    for (WorkerObligation worker : workers) {
+      partitions.put(
+          new AccountPartitionKey(worker.worker()),
+          new AccountSnapshot.SnapshotAccount(Map.of(), Map.of(), Map.of(), Map.of()));
+    }
+    AccountSnapshot snapshot = AccountSnapshot.of(partitions, Map.of());
 
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> householdGoods = new LinkedHashMap<>();
     householdGoods.put(PAYER, new LinkedHashMap<>(payerGoods));
-    householdGoods.put(WORKER, new LinkedHashMap<>());
     LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     householdMoney.put(PAYER, new LinkedHashMap<>(payerMoney));
-    householdMoney.put(WORKER, new LinkedHashMap<>());
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> frozenGoods = new LinkedHashMap<>();
     frozenGoods.put(PAYER, new LinkedHashMap<>());
-    frozenGoods.put(WORKER, new LinkedHashMap<>());
     LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> frozenMoney = new LinkedHashMap<>();
     frozenMoney.put(PAYER, new LinkedHashMap<>());
-    frozenMoney.put(WORKER, new LinkedHashMap<>());
+    Map<ActorRef, HouseholdId> householdOfActor = new LinkedHashMap<>();
+    householdOfActor.put(PAYER_ACTOR, PAYER);
+    for (WorkerObligation worker : workers) {
+      householdGoods.put(worker.worker(), new LinkedHashMap<>());
+      householdMoney.put(worker.worker(), new LinkedHashMap<>());
+      frozenGoods.put(worker.worker(), new LinkedHashMap<>());
+      frozenMoney.put(worker.worker(), new LinkedHashMap<>());
+      householdOfActor.put(HouseholdActors.of(worker.worker()), worker.worker());
+    }
 
     LinkedHashMap<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(DAY);
-    WagePayableInventoryLookup lookup =
-        (payer, location) -> {
-          assertThat(payer).isEqualTo(PAYER_ACTOR);
-          assertThat(location).isEqualTo(ProductionLocation.parse(HEX_KEY));
-          return payableInventory;
-        };
     WageSettlement.Result result =
         WageSettlement.settle(
             DAY,
@@ -395,19 +445,17 @@ class W3WageSettlementContractTest {
             householdMoney,
             frozenGoods,
             frozenMoney,
-            Map.of(PAYER_ACTOR, PAYER, WORKER_ACTOR, WORKER),
+            householdOfActor,
             debts,
             ledger,
-            productionDay(laborMilli),
-            MarketTopology.singleHex(base.marketTables(), base.marketZones()),
-            lookup);
+            productionDay(workers));
     List<Transfer> wageTransfers = new ArrayList<>();
     for (Transfer transfer : ledger.toLedger().transfers()) {
       if (transfer.reason() == TransferReason.WAGE_PAYMENT) {
         wageTransfers.add(transfer);
       }
     }
-    return new Settlement(result, debts, wageTransfers);
+    return new Settlement(result, debts, householdGoods, householdMoney, wageTransfers);
   }
 
   private static WageSettlementReadout onlyReadout(Settlement settlement) {
@@ -415,14 +463,51 @@ class W3WageSettlementContractTest {
     return settlement.result().readouts().get(0);
   }
 
-  private static void assertThreeNumberConservation(WageSettlementReadout readout) {
-    long barter = readout.barterPaidValueMilli().values().stream().mapToLong(Long::longValue).sum();
+  private static void assertTwoNumberConservation(WageSettlementReadout readout) {
     assertThat(readout.dueMilli())
-        .as("D3-I2 三数守恒：due = paidMoney + Σ paidBarter + arrears")
-        .isEqualTo(readout.paidMoneyMilli() + barter + readout.arrearsMilli());
+        .as("P4a 守恒：due = paidMoney + arrears")
+        .isEqualTo(readout.paidMoneyMilli() + readout.arrearsMilli());
   }
 
-  private static IndustryDefinitionView industry(BarterDiscountPolicy discount) {
+  private static void assertInventoryUntouched(
+      Settlement settlement, Map<CommodityId, Long> expectedPayerGoods) {
+    assertThat(settlement.householdGoods().get(PAYER))
+        .as("P4a：工资支付不得读写商品库存（付款人库存逐键不变）")
+        .containsExactlyInAnyOrderEntriesOf(expectedPayerGoods);
+    settlement
+        .householdGoods()
+        .forEach(
+            (household, goods) -> {
+              if (!household.equals(PAYER)) {
+                assertThat(goods).as("收款人库存同样不得因工资而变动").isEmpty();
+              }
+            });
+  }
+
+  private static void assertMoney(
+      Settlement settlement,
+      Map<CurrencyId, Long> expectedPayerMoney,
+      Map<CurrencyId, Long> expectedWorkerMoney) {
+    assertMoneyEntry(settlement.householdMoney().get(PAYER), expectedPayerMoney);
+    assertMoneyEntry(settlement.householdMoney().get(WORKER), expectedWorkerMoney);
+  }
+
+  /** 零余额键会被账户写口移除，因此按币种取值（缺键 = 0）而不是整表逐键比较。 */
+  private static void assertMoneyEntry(
+      Map<CurrencyId, Long> actual, Map<CurrencyId, Long> expected) {
+    for (Map.Entry<CurrencyId, Long> entry : expected.entrySet()) {
+      assertThat(actual.getOrDefault(entry.getKey(), 0L))
+          .as("币种 %s 余额", entry.getKey().value())
+          .isEqualTo(entry.getValue());
+    }
+    for (Map.Entry<CurrencyId, Long> entry : actual.entrySet()) {
+      assertThat(expected.containsKey(entry.getKey()))
+          .as("实际余额里出现未预期币种: %s", entry.getKey().value())
+          .isTrue();
+    }
+  }
+
+  private static IndustryDefinitionView industry() {
     ProductionRoleDefinition organizer =
         new ProductionRoleDefinition(
             ROLE_ORGANIZER,
@@ -444,7 +529,7 @@ class W3WageSettlementContractTest {
             0L,
             Optional.empty(),
             List.of(),
-            new RolePayment.MoneyWage(discount));
+            new RolePayment.MoneyWage(COMPAT_DISCOUNT));
     return new IndustryDefinitionView(
         INDUSTRY,
         "W3 工资结算夹具",
@@ -482,14 +567,16 @@ class W3WageSettlementContractTest {
         new LinkedHashMap<>());
   }
 
-  private static ProductionRoster roster() {
-    return new ProductionRoster(
-        UNIT,
-        INDUSTRY,
-        List.of(
-            io.mosire.simos.economy.model.ProductionParticipant.of(PAYER, ROLE_ORGANIZER, true, 0L),
-            io.mosire.simos.economy.model.ProductionParticipant.of(
-                WORKER, ROLE_WORKER, false, LABOR_MILLI)));
+  private static ProductionRoster roster(List<WorkerObligation> workers) {
+    List<io.mosire.simos.economy.model.ProductionParticipant> participants = new ArrayList<>();
+    participants.add(
+        io.mosire.simos.economy.model.ProductionParticipant.of(PAYER, ROLE_ORGANIZER, true, 0L));
+    for (WorkerObligation worker : workers) {
+      participants.add(
+          io.mosire.simos.economy.model.ProductionParticipant.of(
+              worker.worker(), ROLE_WORKER, false, worker.laborMilli()));
+    }
+    return new ProductionRoster(UNIT, INDUSTRY, participants);
   }
 
   private static WagePostingKey postingKey() {
@@ -513,7 +600,18 @@ class W3WageSettlementContractTest {
         0L);
   }
 
-  private static ProductionDayResult productionDay(long laborMilli) {
+  private static ProductionDayResult productionDay(List<WorkerObligation> workers) {
+    Map<ProductionParticipantKey, Long> laborContributions = new LinkedHashMap<>();
+    Map<ProductionParticipantKey, CycleContribution> cycleContributions = new LinkedHashMap<>();
+    for (WorkerObligation worker : workers) {
+      ProductionParticipantKey key = new ProductionParticipantKey(worker.worker(), ROLE_WORKER);
+      laborContributions.put(key, worker.laborMilli());
+      cycleContributions.put(
+          key,
+          new CycleContribution(
+              worker.worker(), ROLE_WORKER, worker.laborMilli(), worker.laborMilli()));
+    }
+    long totalLabor = workers.stream().mapToLong(WorkerObligation::laborMilli).sum();
     ProductionReceipt receipt =
         new ProductionReceipt(
             UNIT,
@@ -526,12 +624,9 @@ class W3WageSettlementContractTest {
             Map.of(),
             Map.of(),
             Map.of(),
-            Map.of(new ProductionParticipantKey(WORKER, ROLE_WORKER), laborMilli),
-            Map.of(
-                new ProductionParticipantKey(WORKER, ROLE_WORKER),
-                new io.mosire.simos.production.contract.CycleContribution(
-                    WORKER, ROLE_WORKER, laborMilli, laborMilli)),
-            laborMilli,
+            laborContributions,
+            cycleContributions,
+            totalLabor,
             null,
             Map.of(),
             List.of(),
@@ -540,11 +635,14 @@ class W3WageSettlementContractTest {
   }
 
   private static void assertWageDebt(
-      Map<DebtContractId, DebtContract> debts, Set<DebtContractId> newIds, long principal) {
+      Settlement settlement,
+      Optional<DebtContractId> readoutDebtId,
+      HouseholdId worker,
+      long principal) {
     DebtContractId expectedId =
-        DebtContractId.idOf(PAYER, WORKER, DebtUnit.money(SILVER), DebtTerms.wageArrearsDefault());
-    assertThat(newIds).containsExactly(expectedId);
-    DebtContract contract = debts.get(expectedId);
+        DebtContractId.idOf(PAYER, worker, DebtUnit.money(SILVER), DebtTerms.wageArrearsDefault());
+    assertThat(readoutDebtId).as("读数必须带工资债 id").contains(expectedId);
+    DebtContract contract = settlement.debts().get(expectedId);
     assertThat(contract).as("工资债必须落合同").isNotNull();
     assertThat(contract.source())
         .as("U23-a/R-11：工资债必须带 WAGE_ARREARS 来源（不能只靠 WAGE_PAYMENT/terms）")
@@ -556,6 +654,11 @@ class W3WageSettlementContractTest {
     assertThat(contract.unit()).isEqualTo(DebtUnit.money(SILVER));
     assertThat(contract.principal()).as("D3-I8：债务本金 = 未付差额").isEqualTo(principal);
     assertThat(contract.dueCycle()).hasValue(DUE_CYCLE);
+    Set<DebtContractId> readoutDebtIds = new LinkedHashSet<>();
+    for (WageSettlementReadout readout : settlement.result().readouts()) {
+      readout.debtContractId().ifPresent(readoutDebtIds::add);
+    }
+    assertThat(readoutDebtIds).contains(expectedId);
   }
 
   private static HouseholdEconomy row(

@@ -31,6 +31,12 @@ class MarketSettlementSingleHexLossTest {
   /** ★ M-A1：只提供运力的跑商家户（发货格 H1；不参与商品市场）。 */
   private static final HouseholdId CARRIER = HouseholdId.parse("hh-carrier");
 
+  /**
+   * P2a：5 tick 生活保留下，1 人户只有 415 毫粮，2‰ 损耗向下取整为 0，无法触发损耗可见判据。 买方提高到 7 人 ⇒ 7 × 583 × 5 = 2,915 毫粮 ⇒ 损耗
+   * = 5 毫，跨格损耗判据仍真实发生。
+   */
+  private static final long BUYER_POPULATION = 7L;
+
   @Test
   void sameHexFillHasZeroLossAndConservesExactly() {
     World world =
@@ -72,7 +78,12 @@ class MarketSettlementSingleHexLossTest {
             .market(MarketSettlementFixtures.H1, 10L)
             .market(MarketSettlementFixtures.H2, 10L)
             .household(SELLER, MarketSettlementFixtures.H1, 1L, sellerBefore, 0L)
-            .household(BUYER, MarketSettlementFixtures.H2, 1L, buyerBefore, buyerSilverBefore)
+            .household(
+                BUYER,
+                MarketSettlementFixtures.H2,
+                BUYER_POPULATION,
+                buyerBefore,
+                buyerSilverBefore)
             // ★★ M-A1（2026-10-10）："商号行"退役后运力是**派生量** ⇒ 跨格车道要求发货格有"选了跑商的家户"。
             //   本用例的世界必须显式给一个承运家户，否则车道根本不建（具名 LOGISTICS_CAPACITY、零成交）——
             //   那会让"跨格损耗守恒"这条判据**不再被测到**（而不是被测红）。
@@ -91,8 +102,8 @@ class MarketSettlementSingleHexLossTest {
     assertThat(fill.from()).isEqualTo(MarketSettlementFixtures.H1);
     assertThat(fill.to()).isEqualTo(MarketSettlementFixtures.H2);
     assertThat(fill.quantity())
-        .as("成交毛量 = 买方生活保留缺口 = 1 人 35 天的口粮")
-        .isEqualTo(MarketSettlementFixtures.lifeReserveGrain(1L));
+        .as("成交毛量 = 买方生活保留缺口 = 7 人 5 tick 的口粮")
+        .isEqualTo(MarketSettlementFixtures.lifeReserveGrain(BUYER_POPULATION));
     assertThat(fill.lossMilli())
         .as("★ 距离 1 × moveCost 1 × 2‰ = 2‰，向下取整")
         .isEqualTo(fill.quantity() * 2L * 1L / 1000L);

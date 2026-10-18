@@ -7,13 +7,13 @@ import java.util.OptionalLong;
  * ★★ <b>E4b：一个家户的债务容量（F / headroom）—— 不可变、只读的结果类型</b>（理想架构 §5.2／§5.3 的 {@code
  * DebtCapacity}，2026-09-29 E4b）。
  *
- * <p>★★ <b>公式（唯一的拼写点在 {@link #F()}、{@link #pledgeableRealAssetValue()} 与 {@link #headroom()}）</b>：
+ * <p>★★ <b>公式（唯一的拼写点在 {@link #F()}、{@link #creditRealAssetValue()} 与 {@link #headroom()}）</b>：
  *
  * <pre>
  * F        = max(0, afterAllocationGrainIncome − basicRation − nextRoundNecessaryInput − taxPaid)
- * 可质押真实资产价值 = 可自用余粮（本 record 存成 pledgeableGrainSurplusValue）
- *                    + pledgeableAssetPolicyValue（显式钩子；E5 的 LiquidationPolicy／价格源未落地前恒 0）
- * headroom = max(0, ⌊κ × F ÷ 1000⌋ + 可质押真实资产价值 − existingDebt)     κ = {@link #CREDIT_F_MULTIPLE_PER_MILLE}
+ * 可计入信用的真实资产价值 = 可自用余粮（本 record 存成 creditGrainSurplusValue）
+ *                    + creditAssetPolicyValue（显式钩子；当前恒 0）
+ * headroom = max(0, ⌊κ × F ÷ 1000⌋ + 可计入信用的真实资产价值 − existingDebt)     κ = {@link #CREDIT_F_MULTIPLE_PER_MILLE}
  * </pre>
  *
  * <p>★★ <b>每个输入的来源与统计窗口</b>（调用方 {@code DebtCapacityBook} 负责按这些口径取值，本类型只存结果）：
@@ -31,11 +31,11 @@ import java.util.OptionalLong;
  *       <td><b>下一轮</b>（配方口径 = 读口时点的 unit／资产／状态；代理口径 = 本周期）</td></tr>
  *   <tr><td>{@link #taxPaid()}</td><td>{@code FlowRow.taxPaid}</td>
  *       <td><b>本周期已缴</b>（当前生产路径恒 0；照实读，不伪造）</td></tr>
- *   <tr><td>{@link #pledgeableGrainSurplusValue()}</td><td>调用方传入的粮库存
+ *   <tr><td>{@link #creditGrainSurplusValue()}</td><td>调用方传入的粮库存
  *       − 本周期自需（与放贷方 {@code 旧结算引擎（R3a 已删除）.lendableOf} 同一算式、同一保留额）</td>
  *       <td><b>时点</b>（会话工作副本的调用时值）；库存读不到 ⇒ {@link OptionalLong#empty()}，<b>不是 0</b></td></tr>
- *   <tr><td>{@link #pledgeableAssetPolicyValue()}</td><td>显式钩子（E5 的 {@code LiquidationPolicy}／价格源）</td>
- *       <td><b>时点</b>；E4b 两侧调用点都传 {@link #PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED}（0），
+ *   <tr><td>{@link #creditAssetPolicyValue()}</td><td>显式钩子（当前恒 0）</td>
+ *       <td><b>时点</b>；E4b 两侧调用点都传 {@link #CREDIT_ASSET_POLICY_VALUE_NOT_LANDED}（0），
  *       但在结果里单独列出，禁止静默省略</td></tr>
  *   <tr><td>{@link #existingDebt()}</td><td>该家户名下<b>同 unit（粮）</b>的 {@code DebtContract.principal} 合计</td>
  *       <td><b>时点</b>本金余额（E4b 只对粮 unit 算粮信用线）</td></tr>
@@ -59,8 +59,8 @@ import java.util.OptionalLong;
  * @param nextRoundNecessaryInput 下一轮必要粮投入（毫粮）；不得为负
  * @param nextRoundNecessaryInputSource 下一轮必要投入的口径来源；不得为 null
  * @param taxPaid 本周期实缴税（毫粮）；不得为负
- * @param pledgeableGrainSurplusValue 可自用余粮（毫粮）；空 = 粮库存读不到（具名缺失），不是 0
- * @param pledgeableAssetPolicyValue 显式可质押资产政策价值钩子（毫粮）；E4b 恒 0；不得为负
+ * @param creditGrainSurplusValue 可自用余粮（毫粮）；空 = 粮库存读不到（具名缺失），不是 0
+ * @param creditAssetPolicyValue 显式可计入信用的资产政策价值钩子（毫粮）；E4b 恒 0；不得为负
  * @param existingDebt 同 unit（粮）既有本金合计（毫粮）；不得为负
  * @param unpricedDebtAmount 不能折算的非粮债务本金原始和（跨 unit，审计口径）；不得为负
  * @param unpricedDebtCount 不能折算的非粮债务条数；不得为负
@@ -71,8 +71,8 @@ public record DebtCapacity(
     long nextRoundNecessaryInput,
     NextRoundNecessaryInputSource nextRoundNecessaryInputSource,
     long taxPaid,
-    OptionalLong pledgeableGrainSurplusValue,
-    long pledgeableAssetPolicyValue,
+    OptionalLong creditGrainSurplusValue,
+    long creditAssetPolicyValue,
     long existingDebt,
     long unpricedDebtAmount,
     int unpricedDebtCount) {
@@ -87,12 +87,12 @@ public record DebtCapacity(
   public static final int CREDIT_F_MULTIPLE_PER_MILLE = 1000;
 
   /**
-   * ★★ <b>显式可质押资产政策价值的“未落地”默认值</b>：<b>0</b>。
+   * ★★ <b>显式可计入信用的资产政策价值的“未落地”默认值</b>：<b>0</b>。
    *
-   * <p>E4b 不做 E5 的 {@code LiquidationPolicy}／价格源，故两侧调用点都传本值；但它在 {@link
-   * #pledgeableAssetPolicyValue()} 里<b>单独列出</b>（不折进“可自用余粮”一起静默吞掉）—— 将来钩子接线时改的只是这一处输入。
+   * <p>E4b 当前没有资产政策价格源，故两侧调用点都传本值；但它在 {@link #creditAssetPolicyValue()}
+   * 里<b>单独列出</b>（不折进“可自用余粮”一起静默吞掉）—— 将来钩子接线时改的只是这一处输入。
    */
-  public static final long PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED = 0L;
+  public static final long CREDIT_ASSET_POLICY_VALUE_NOT_LANDED = 0L;
 
   /**
    * ★★ <b>单位口径说明</b>（读口原样发出）：全部数值为<b>毫粮</b>（毫最小计量单位；{@code 1 粮 = 1000 毫粮}）——
@@ -127,17 +127,16 @@ public record DebtCapacity(
     if (taxPaid < 0L) {
       throw new IllegalArgumentException("DebtCapacity.taxPaid 不得为负: " + taxPaid);
     }
-    if (pledgeableGrainSurplusValue == null) {
-      pledgeableGrainSurplusValue = OptionalLong.empty(); // 旧档/手写 JSON 的缺键口径：空 = 读不到，不是 0
+    if (creditGrainSurplusValue == null) {
+      creditGrainSurplusValue = OptionalLong.empty(); // 旧档/手写 JSON 的缺键口径：空 = 读不到，不是 0
     }
-    if (pledgeableGrainSurplusValue.isPresent() && pledgeableGrainSurplusValue.getAsLong() < 0L) {
+    if (creditGrainSurplusValue.isPresent() && creditGrainSurplusValue.getAsLong() < 0L) {
       throw new IllegalArgumentException(
-          "DebtCapacity.pledgeableGrainSurplusValue 不得为负: "
-              + pledgeableGrainSurplusValue.getAsLong());
+          "DebtCapacity.creditGrainSurplusValue 不得为负: " + creditGrainSurplusValue.getAsLong());
     }
-    if (pledgeableAssetPolicyValue < 0L) {
+    if (creditAssetPolicyValue < 0L) {
       throw new IllegalArgumentException(
-          "DebtCapacity.pledgeableAssetPolicyValue 不得为负: " + pledgeableAssetPolicyValue);
+          "DebtCapacity.creditAssetPolicyValue 不得为负: " + creditAssetPolicyValue);
     }
     if (existingDebt < 0L) {
       throw new IllegalArgumentException("DebtCapacity.existingDebt 不得为负: " + existingDebt);
@@ -174,25 +173,25 @@ public record DebtCapacity(
   }
 
   /**
-   * ★★ <b>可质押真实资产价值</b>（毫粮）= {@link #pledgeableGrainSurplusValue()}（可自用余粮） + {@link
-   * #pledgeableAssetPolicyValue()}（显式钩子）。
+   * ★★ <b>可计入信用的真实资产价值</b>（毫粮）= {@link #creditGrainSurplusValue()}（可自用余粮） + {@link
+   * #creditAssetPolicyValue()}（显式钩子）。
    *
    * <p>★ 可自用余粮读不到（粮库存缺失）⇒ 返回 {@link OptionalLong#empty()} —— “读不到”不是“0”， 读口据此标具名缺失。钩子本身是 0 不改变这条：未知
    * + 0 仍是未知。
    */
-  public OptionalLong pledgeableRealAssetValue() {
-    if (pledgeableGrainSurplusValue.isEmpty()) {
+  public OptionalLong creditRealAssetValue() {
+    if (creditGrainSurplusValue.isEmpty()) {
       return OptionalLong.empty();
     }
     return OptionalLong.of(
-        Math.addExact(pledgeableGrainSurplusValue.getAsLong(), pledgeableAssetPolicyValue));
+        Math.addExact(creditGrainSurplusValue.getAsLong(), creditAssetPolicyValue));
   }
 
   /**
    * ★★ <b>新信用额度 headroom</b>（毫粮）：
    *
    * <pre>
-   * headroom = max(0, ⌊κ × F ÷ 1000⌋ + 可质押真实资产价值 − existingDebt)     κ = {@link #CREDIT_F_MULTIPLE_PER_MILLE}
+   * headroom = max(0, ⌊κ × F ÷ 1000⌋ + 可计入信用的真实资产价值 − existingDebt)     κ = {@link #CREDIT_F_MULTIPLE_PER_MILLE}
    * </pre>
    *
    * <p>★ 可自用余粮读不到 ⇒ 返回 {@link OptionalLong#empty()}（<b>不是 0</b>：读口必须标具名缺失，
@@ -202,13 +201,13 @@ public record DebtCapacity(
    * <p>★ 本方法只做算术，不写任何状态；借入合法性仍由真实债权人库存转出与借粮路径守卫决定。
    */
   public OptionalLong headroom() {
-    OptionalLong pledgeable = pledgeableRealAssetValue();
-    if (pledgeable.isEmpty()) {
+    OptionalLong creditable = creditRealAssetValue();
+    if (creditable.isEmpty()) {
       return OptionalLong.empty();
     }
     long creditFromF = Math.multiplyExact(F(), (long) CREDIT_F_MULTIPLE_PER_MILLE) / 1000L;
     long room =
-        Math.subtractExact(Math.addExact(creditFromF, pledgeable.getAsLong()), existingDebt);
+        Math.subtractExact(Math.addExact(creditFromF, creditable.getAsLong()), existingDebt);
     return OptionalLong.of(Math.max(0L, room));
   }
 

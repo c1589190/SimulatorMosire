@@ -16,9 +16,7 @@ import io.mosire.simos.economy.api.debt.RepaymentRule;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -35,7 +33,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * ★★ <b>P3：世界生成的测试条件</b>（纯数据、确定性、可序列化；空表合法）—— 允许测试显式给出初始债务、初始质押、资产份额拆分与 额外库存/货币注入，而<b>不是</b>在断言侧凭空把
+ * ★★ <b>P3：世界生成的测试条件</b>（纯数据、确定性、可序列化；空表合法）—— 允许测试显式给出初始债务、资产份额拆分与额外库存/货币注入，而<b>不是</b>在断言侧凭空把
  * {@code debts} 写成非空。
  *
  * <p>★★ <b>它为什么是纯数据</b>：条件要能随 {@code economy.Seed} 载荷 / {@code simos.worldgen.initialize} 的 {@code
@@ -57,15 +55,11 @@ import java.util.Set;
  * {
  *   "initialDebts": [
  *     {"debtor":"hh-0_0-rural-poor_peasant","creditor":"hh-0_0-rural-landlord",
- *      "unit":{"kind":"commodity","commodity":"grain"},
+ *      "unit":{"kind":"money","currency":"silver"},
  *      "principal":500000, "dueCycle":1, "moveInventory":true,
  *      "terms":{"interestRatePerMillePerCycle":20,"interestTiming":"AFTER_REPAYMENT_ON_CLOSE",
  *               "repaymentRule":"AVAILABLE_SURPLUS_SHARE","monetaryConversion":"NOT_ALLOWED",
  *               "defaultRemedy":"MARK_DEFAULTED"}}
- *   ],
- *   "initialPledges": [
- *     {"debtContractId":"debtc-…","assetShareId":"share-…","quantity":50000,
- *      "modeId":"legacy","priority":10}
  *   ],
  *   "assetSplits": [
  *     {"industry":"farm@0_0","asset":"LAND","sourceOwner":{"kind":"ESTATE","id":"farm@0_0"},
@@ -82,14 +76,13 @@ import java.util.Set;
  */
 public record TestConditions(
     List<InitialDebt> initialDebts,
-    List<InitialPledge> initialPledges,
     List<AssetSplit> assetSplits,
     Map<HouseholdId, Map<CommodityId, Long>> extraGoodsByHousehold,
     Map<HouseholdId, Map<CurrencyId, Long>> extraMoneyByHousehold) {
 
   /** 空条件（= P1 行为；worldgen 不传参数、或传空对象都归一到这里）。 */
   public static final TestConditions EMPTY =
-      new TestConditions(List.of(), List.of(), List.of(), Map.of(), Map.of());
+      new TestConditions(List.of(), List.of(), Map.of(), Map.of());
 
   /** 外部注入在 reason / 报告里的具名前缀（不得与 INITIAL_ENDOWMENT 混淆）。 */
   public static final String EXTERNAL_ENDOWMENT_REASON = "test-condition:external-endowment";
@@ -98,7 +91,6 @@ public record TestConditions(
   private static final Set<String> TOP_LEVEL_KEYS =
       Set.of(
           "initialDebts",
-          "initialPledges",
           "assetSplits",
           "extraGoodsByHousehold",
           "extraMoneyByHousehold");
@@ -113,12 +105,6 @@ public record TestConditions(
       Objects.requireNonNull(debt, "test-condition: initialDebts 的元素不得为 null");
     }
     initialDebts = Collections.unmodifiableList(debtsCopy);
-    List<InitialPledge> pledgesCopy =
-        new ArrayList<>(initialPledges == null ? List.of() : initialPledges);
-    for (InitialPledge pledge : pledgesCopy) {
-      Objects.requireNonNull(pledge, "test-condition: initialPledges 的元素不得为 null");
-    }
-    initialPledges = Collections.unmodifiableList(pledgesCopy);
     List<AssetSplit> splitsCopy = new ArrayList<>(assetSplits == null ? List.of() : assetSplits);
     for (AssetSplit split : splitsCopy) {
       Objects.requireNonNull(split, "test-condition: assetSplits 的元素不得为 null");
@@ -167,7 +153,6 @@ public record TestConditions(
   /** 无任何条件（等价于 P1 的播种路径）。 */
   public boolean isEmpty() {
     return initialDebts.isEmpty()
-        && initialPledges.isEmpty()
         && assetSplits.isEmpty()
         && extraGoodsByHousehold.isEmpty()
         && extraMoneyByHousehold.isEmpty();
@@ -190,14 +175,13 @@ public record TestConditions(
         money.merge(entry.getKey(), entry.getValue(), Math::addExact);
       }
     }
-    return new Report(initialDebts.size(), initialPledges.size(), assetSplits.size(), goods, money);
+    return new Report(initialDebts.size(), assetSplits.size(), goods, money);
   }
 
   /** 工具摘要里的 {@code testConditions} 节点（键序固定；只用 String 键，避免 JSON 键序列化口径问题）。 */
   public Map<String, Object> wireSummary() {
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("initialDebts", initialDebts.size());
-    out.put("initialPledges", initialPledges.size());
     out.put("assetSplits", assetSplits.size());
     out.put("extraGoodsByHousehold", wireGoods(extraGoodsByHousehold));
     out.put("extraMoneyByHousehold", wireMoney(extraMoneyByHousehold));
@@ -207,7 +191,7 @@ public record TestConditions(
 
   /**
    * 把本条件序列化成 {@link #parseJson(String)} 的**逆**（测试夹具/工具参数用）—— 同一份条件 JSON 经 {@code
-   * parseJson(toJson())} 往返逐字段不变。空条件序列化成"五个键都在的空表"（合法输入）。
+   * parseJson(toJson())} 往返逐字段不变。空条件序列化成"四个键都在的空表"（合法输入）。
    */
   public String toJson() {
     Map<String, Object> root = new LinkedHashMap<>();
@@ -216,17 +200,6 @@ public record TestConditions(
       debtNodes.add(initialDebtNode(debt));
     }
     root.put("initialDebts", debtNodes);
-    List<Map<String, Object>> pledgeNodes = new ArrayList<>(initialPledges.size());
-    for (InitialPledge pledge : initialPledges) {
-      Map<String, Object> node = new LinkedHashMap<>();
-      node.put("debtContractId", pledge.debtContractId().value());
-      node.put("assetShareId", pledge.assetShareId().value());
-      node.put("quantity", pledge.quantity());
-      node.put("modeId", pledge.modeId().value());
-      node.put("priority", pledge.priority());
-      pledgeNodes.add(node);
-    }
-    root.put("initialPledges", pledgeNodes);
     List<Map<String, Object>> splitNodes = new ArrayList<>(assetSplits.size());
     for (AssetSplit split : assetSplits) {
       splitNodes.add(assetSplitNode(split));
@@ -246,15 +219,9 @@ public record TestConditions(
     node.put("debtor", debt.debtor().value());
     node.put("creditor", debt.creditor().value());
     Map<String, Object> unit = new LinkedHashMap<>();
-    if (debt.unit() instanceof DebtUnit.Commodity commodity) {
-      unit.put("kind", "commodity");
-      unit.put("commodity", commodity.commodity().value());
-    } else if (debt.unit() instanceof DebtUnit.Money money) {
-      unit.put("kind", "money");
-      unit.put("currency", money.currency().value());
-    } else {
-      throw new IllegalStateException("未知 DebtUnit 变体: " + debt.unit());
-    }
+    DebtUnit.Money money = debt.unit();
+    unit.put("kind", "money");
+    unit.put("currency", money.currency().value());
     node.put("unit", unit);
     node.put("principal", debt.principal());
     DebtTerms terms = debt.terms();
@@ -306,7 +273,7 @@ public record TestConditions(
   public record InitialDebt(
       HouseholdId debtor,
       HouseholdId creditor,
-      DebtUnit unit,
+      DebtUnit.Money unit,
       long principal,
       DebtTerms terms,
       OptionalLong dueCycle,
@@ -331,7 +298,7 @@ public record TestConditions(
 
     /** 真实移动库存、legacy 条款、无约定到期周期。 */
     public static InitialDebt moving(
-        HouseholdId debtor, HouseholdId creditor, DebtUnit unit, long principal) {
+        HouseholdId debtor, HouseholdId creditor, DebtUnit.Money unit, long principal) {
       return new InitialDebt(
           debtor, creditor, unit, principal, DebtTerms.legacyDefault(), OptionalLong.empty(), true);
     }
@@ -340,7 +307,7 @@ public record TestConditions(
     public static InitialDebt moving(
         HouseholdId debtor,
         HouseholdId creditor,
-        DebtUnit unit,
+        DebtUnit.Money unit,
         long principal,
         DebtTerms terms,
         OptionalLong dueCycle) {
@@ -349,7 +316,7 @@ public record TestConditions(
 
     /** 不移动库存（对价必须来自本批外部注入；播种器逐条校验注入余量）。 */
     public static InitialDebt externallyFunded(
-        HouseholdId debtor, HouseholdId creditor, DebtUnit unit, long principal) {
+        HouseholdId debtor, HouseholdId creditor, DebtUnit.Money unit, long principal) {
       return new InitialDebt(
           debtor,
           creditor,
@@ -358,36 +325,6 @@ public record TestConditions(
           DebtTerms.legacyDefault(),
           OptionalLong.empty(),
           false);
-    }
-  }
-
-  /**
-   * ★★ <b>一条初始质押</b>：债务合同 + 资产份额 + 数量 + 生产方式 + 优先级（状态恒 {@code ACTIVE}，由播种器写）。
-   *
-   * <p>播种器逐条校验：合同∈本批、份额∈本批、{@code share.owner == debt.debtor}、份额是真实 {@code OWNED}、 Σ活跃质押 ≤
-   * 份额数量、{@code modeId} 已被本 profile 种下。
-   */
-  public record InitialPledge(
-      DebtContractId debtContractId,
-      AssetShareId assetShareId,
-      long quantity,
-      ProductionModeId modeId,
-      int priority) {
-
-    public InitialPledge {
-      Objects.requireNonNull(
-          debtContractId, "test-condition: initialPledges[].debtContractId 不得为 null");
-      Objects.requireNonNull(
-          assetShareId, "test-condition: initialPledges[].assetShareId 不得为 null");
-      Objects.requireNonNull(modeId, "test-condition: initialPledges[].modeId 不得为 null");
-      if (quantity <= 0L) {
-        throw new IllegalArgumentException(
-            "test-condition: initialPledges[].quantity 必须 > 0: " + quantity);
-      }
-      if (priority < 0) {
-        throw new IllegalArgumentException(
-            "test-condition: initialPledges[].priority 不得为负: " + priority);
-      }
     }
   }
 
@@ -470,15 +407,14 @@ public record TestConditions(
    */
   public record Report(
       int debtContractCount,
-      int pledgeCount,
       int splitShareCount,
       Map<CommodityId, Long> injectedGoods,
       Map<CurrencyId, Long> injectedMoney) {
 
-    public static final Report EMPTY = new Report(0, 0, 0, Map.of(), Map.of());
+    public static final Report EMPTY = new Report(0, 0, Map.of(), Map.of());
 
     public Report {
-      if (debtContractCount < 0 || pledgeCount < 0 || splitShareCount < 0) {
+      if (debtContractCount < 0 || splitShareCount < 0) {
         throw new IllegalArgumentException("test-condition: Report 的条数不得为负");
       }
       Map<CommodityId, Long> goodsCopy = new LinkedHashMap<>();
@@ -499,7 +435,6 @@ public record TestConditions(
 
     public boolean isEmpty() {
       return debtContractCount == 0
-          && pledgeCount == 0
           && splitShareCount == 0
           && injectedGoods.isEmpty()
           && injectedMoney.isEmpty();
@@ -509,7 +444,6 @@ public record TestConditions(
     public Map<String, Object> toWireMap() {
       Map<String, Object> out = new LinkedHashMap<>();
       out.put("debtContracts", debtContractCount);
-      out.put("pledges", pledgeCount);
       out.put("splitShares", splitShareCount);
       Map<String, Object> goods = new LinkedHashMap<>();
       for (Map.Entry<CommodityId, Long> entry : injectedGoods.entrySet()) {
@@ -536,10 +470,13 @@ public record TestConditions(
   // ── 资产份额确定性 id 助手（fixture 预测"拆分新建份额"的 id 用；与 EconomyPayloads 的序列口径同式）────
 
   /**
-   * ★★ <b>家户自有 OWNED 份额的确定性 id</b> = {@code OwnershipStake.idOf(industry, asset, household,
-   * household, OWNED, location, sequence)}。{@code location} 必须显式取自真实 seed/unit 格； {@code sequence}
-   * 是该 {@code entry} 内同 {@code (industry, asset, owner, operator, kind, location)} 键的第几条（从 0 起）——
-   * 拆分出来的新份额通常 {@code sequence=0}（目标家户此前没有同键份额）。
+   * ★★ <b>家户自有 OWNED 份额的确定性 id</b>：{@code LAND} 走 {@code
+   * OwnershipStake.landBlockIdOf(industry, location, sequence)}（owner/operator/kind 不入 id）；非土地资产走原 {@code
+   * OwnershipStake.idOf(industry, asset, household, household, OWNED, location, sequence)}。
+   *
+   * <p>{@code location} 必须显式取自真实 seed/unit 格；{@code sequence} 是该 {@code entry} 内同键的第几条（从 0 起）——
+   * 土地键只含 {@code (industry, LAND, location)}；非土地键含 owner/operator/kind。拆分出来的新份额通常 {@code
+   * sequence=0}（目标家户此前没有同键份额）。
    */
   public static AssetShareId ownedShareIdForHousehold(
       IndustryId industry,
@@ -547,6 +484,9 @@ public record TestConditions(
       HouseholdId household,
       ProductionLocation location,
       long sequence) {
+    if (asset == AssetKind.LAND) {
+      return OwnershipStake.landBlockIdOf(industry, location, sequence);
+    }
     ActorRef actor = HouseholdActors.of(household);
     return OwnershipStake.idOf(
         industry, asset, actor, actor, AssetRightKind.OWNED, location, sequence);
@@ -578,7 +518,6 @@ public record TestConditions(
     requireOnlyKeys(root, TOP_LEVEL_KEYS, "economyTestConditions");
     return new TestConditions(
         parseInitialDebts(root.get("initialDebts")),
-        parseInitialPledges(root.get("initialPledges")),
         parseAssetSplits(root.get("assetSplits")),
         parseExtraGoods(root.get("extraGoodsByHousehold")),
         parseExtraMoney(root.get("extraMoneyByHousehold")));
@@ -602,7 +541,7 @@ public record TestConditions(
           where);
       HouseholdId debtor = HouseholdId.parse(requireText(item, "debtor", where));
       HouseholdId creditor = HouseholdId.parse(requireText(item, "creditor", where));
-      DebtUnit unit = parseDebtUnit(item.get("unit"), where + ".unit");
+      DebtUnit.Money unit = parseDebtUnit(item.get("unit"), where + ".unit");
       long principal = requirePositiveLong(item, "principal", where);
       DebtTerms terms =
           item.hasNonNull("terms") ? parseDebtTerms(item.get("terms"), where + ".terms") : null;
@@ -612,31 +551,6 @@ public record TestConditions(
       debts.add(new InitialDebt(debtor, creditor, unit, principal, terms, dueCycle, moveInventory));
     }
     return debts;
-  }
-
-  private static List<InitialPledge> parseInitialPledges(JsonNode node) {
-    if (node == null || node.isNull()) {
-      return List.of();
-    }
-    if (!node.isArray()) {
-      throw new IllegalArgumentException("test-condition: initialPledges 必须是数组（缺省 = 空表）: " + node);
-    }
-    List<InitialPledge> pledges = new ArrayList<>(node.size());
-    for (int i = 0; i < node.size(); i++) {
-      JsonNode item = node.get(i);
-      String where = "initialPledges[" + i + "]";
-      requireObject(item, where);
-      requireOnlyKeys(
-          item, Set.of("debtContractId", "assetShareId", "quantity", "modeId", "priority"), where);
-      pledges.add(
-          new InitialPledge(
-              DebtContractId.parse(requireText(item, "debtContractId", where)),
-              AssetShareId.parse(requireText(item, "assetShareId", where)),
-              requirePositiveLong(item, "quantity", where),
-              ProductionModeId.parse(requireText(item, "modeId", where)),
-              requireNonNegativeInt(item, "priority", where)));
-    }
-    return pledges;
   }
 
   private static List<AssetSplit> parseAssetSplits(JsonNode node) {
@@ -748,28 +662,21 @@ public record TestConditions(
     return out;
   }
 
-  private static DebtUnit parseDebtUnit(JsonNode node, String where) {
+  private static DebtUnit.Money parseDebtUnit(JsonNode node, String where) {
     requireObject(node, where);
-    requireOnlyKeys(node, Set.of("kind", "commodity", "currency"), where);
+    requireOnlyKeys(node, Set.of("kind", "currency"), where);
     String kind = requireText(node, "kind", where);
     return switch (kind) {
-      case "commodity" -> {
-        if (node.hasNonNull("currency")) {
+      case "commodity" ->
           throw new IllegalArgumentException(
-              "test-condition: " + where + ".kind=commodity 不得同时给 currency");
-        }
-        yield DebtUnit.commodity(CommodityId.parse(requireText(node, "commodity", where)));
-      }
-      case "money" -> {
-        if (node.hasNonNull("commodity")) {
-          throw new IllegalArgumentException(
-              "test-condition: " + where + ".kind=money 不得同时给 commodity");
-        }
-        yield DebtUnit.money(CurrencyId.parse(requireText(node, "currency", where)));
-      }
+              "test-condition: "
+                  + where
+                  + ".kind=commodity 已删除（P2c 起债务本金只允许货币）；商品欠款需在形成时按活动市场区价格折货币");
+      case "money" ->
+          new DebtUnit.Money(CurrencyId.parse(requireText(node, "currency", where)));
       default ->
           throw new IllegalArgumentException(
-              "test-condition: " + where + ".kind 必须是 commodity 或 money: " + kind);
+              "test-condition: " + where + ".kind 只认 money: " + kind);
     };
   }
 

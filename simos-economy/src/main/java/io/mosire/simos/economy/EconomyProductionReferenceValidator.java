@@ -17,8 +17,7 @@ import org.slf4j.Logger;
  * ProductionDefinitionLookup}，不 import production 实现包。
  *
  * <p>★ <b>覆盖原 {@code EconomyData} 构造期移走的跨域守卫</b>（{@link EconomyReferenceValidation}）：unit→industry、
- * assetShare→industry、{@code progressDays ≤
- * cycleDays}、classStructure/classPosition/组织/规则/质押/变迁→mode、
+ * assetShare→industry、{@code progressDays ≤ cycleDays}、classStructure/classPosition/组织/规则/变迁→mode、
  * mode→classStructure、输出覆盖→产业配方产出键等。本域形状约束仍由 {@code EconomyData} 构造器判。
  *
  * <p>★★ <b>两类失败的档位不同（日志纪律 §一.9）</b>：

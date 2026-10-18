@@ -42,8 +42,12 @@ import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionReceipt;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
+import io.mosire.simos.production.contract.ProductionRosterProbeParticipant;
+import io.mosire.simos.production.contract.ProductionRosterProbeRequest;
+import io.mosire.simos.production.contract.ProductionRosterProbeResult;
 import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.production.contract.ProductionTickCondition;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -578,6 +582,286 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
         expectedOutput,
         expectedMint,
         evaluation.efficiencyScalePerMille());
+  }
+
+  // ── ①b roster 试算（D-032 P3a；A2/A3/A4 的只读契约面）──────────────────────────────────────
+
+  /**
+   * ★★★ <b>{@link #probeRoster}：协作名册的试算（纯增量；单户 {@link #probe} 逐值不变）</b>。
+   *
+   * <p>★★ <b>公式复用（A2 的关键）</b>：本方法<b>不</b>自带任何效率/规模公式，逐户效率仍走 {@link #efficiencyScaleFor}，规模仍走 {@link
+   * ProductionEfficiency#evaluate}，需求/产出仍走 {@link #requiredAssets}/{@link #requiredInputs}/{@link
+   * #grossOutput}/{@link #mintCandidates}/ {@link #laborRequiredFor} —— 与 {@link #probe} 和 {@link
+   * #execute} 是<b>同一批函数</b>。 「预计/实际同源」因此在结构上成立，而不是靠两处数字凑巧相等。
+   *
+   * <p>★★ <b>逐参与户效率与 execute 同源</b>：execute 对每个实际贡献家户调 {@code efficiencyScaleFor(plan, household,
+   * null)} （读本 tick 冻结条件）；本方法对每个参与户调 {@code efficiencyScaleFor(plan, household,
+   * conditions.get(household))} （读调用方给的同 tick 条件事实）。两者是同一函数的两个数据来源分支（R5/R6 已把"试算读请求条件、执行读冻结条件"
+   * 钉成同一口径），故按同一份 tick 事实构造输入时逐值一致。
+   *
+   * <p>★★ <b>A3（零劳动 organizer + 工资招工）</b>：工资角色允许没有具名参与者。目标劳动按 {@link
+   * ProductionRosterProbeRequest#wageTargetLaborMilliPerDay()}（economy 的 posting target 投影）或方案角色的
+   * {@link ProductionRoleDefinition#standardLaborMilliPerCycle()} 取需求边界；已有正计划劳动参与项只补差额。★ 目标劳动
+   * <b>不</b>伪造 worker、<b>不</b>写进 {@code participantEfficiencyPerMille}；它没有工人经验事实，故只按中性 1000‰ 参与
+   * {@code ProductionEfficiency.evaluate} 的代表效率加权（见其结果类注）。
+   *
+   * <p>★★ <b>聚合口径</b>：同一户多角色只把劳动累加进"逐户劳动"，原料按户各读一次后累加；资产占用取请求级 {@link
+   * ProductionRosterProbeRequest#assetOccupancy()}（它就是统一分配后的实占读数，不再从各户 conditions 拼可用资产）。
+   *
+   * <p>★ <b>无副作用</b>（I5）：只读 {@code current} 与请求值，不写实例/经验/进度/占用。
+   */
+  @Override
+  public ProductionRosterProbeResult probeRoster(ProductionRosterProbeRequest request) {
+    if (request == null) {
+      throw new IllegalArgumentException("ProductionRuntimeEngine.probeRoster 的 request 不得为 null");
+    }
+    IndustryId planId = request.plan();
+    IndustryDefinitionView plan = current.industries().get(planId);
+    if (plan == null) {
+      return ProductionRosterProbeResult.rejected(planId, "plan-unknown");
+    }
+    List<ProductionRosterProbeParticipant> participants = request.participants();
+    if (participants.isEmpty()) {
+      return ProductionRosterProbeResult.rejected(planId, "roster-empty");
+    }
+    Map<ProductionRoleId, ProductionRoleDefinition> rolesById = rolesById(plan);
+    Map<HouseholdId, HouseholdProductionConditions> conditions = request.conditions();
+    Map<HouseholdId, ExternalAttributeFacts> participantFacts = request.participantAttributes();
+
+    // ── 组织者必须出现在 roster 里（名册身份是 economy 的事实；production 只按它判计划级资格主体）──────
+    boolean organizerParticipates = false;
+    for (ProductionRosterProbeParticipant participant : participants) {
+      if (participant.household().equals(request.organizer())) {
+        organizerParticipates = true;
+        break;
+      }
+    }
+    if (!organizerParticipates) {
+      return ProductionRosterProbeResult.rejected(planId, "organizer-not-participant");
+    }
+    HouseholdProductionConditions organizerConditions = conditions.get(request.organizer());
+    if (organizerConditions == null) {
+      return ProductionRosterProbeResult.rejected(
+          planId, "condition-missing:" + request.organizer().value());
+    }
+
+    // ── 逐参与项：角色存在性 + 条件存在性 + 角色级资格（只对本周期真有劳动的参与项判，与 execute 同面）──
+    for (ProductionRosterProbeParticipant participant : participants) {
+      ProductionRoleDefinition role = rolesById.get(participant.role());
+      if (role == null) {
+        return ProductionRosterProbeResult.rejected(
+            planId, "role-unknown:" + participant.role().value());
+      }
+      HouseholdProductionConditions condition = conditions.get(participant.household());
+      if (condition == null) {
+        return ProductionRosterProbeResult.rejected(
+            planId, "condition-missing:" + participant.household().value());
+      }
+      if (participant.plannedLaborMilliPerCycle() <= 0L) {
+        continue; // 零劳动参与项（如只组织/收剩余的 organizer）不构成 execute 的 labor contribution
+      }
+      ExternalAttributeFacts facts =
+          participantFacts.getOrDefault(participant.household(), ExternalAttributeFacts.EMPTY);
+      String roleFailure =
+          roleQualificationFailure(
+              plan, role, participant.household(), condition::experienceOf, facts);
+      if (roleFailure != null) {
+        return ProductionRosterProbeResult.rejected(
+            planId,
+            "role-qualification:"
+                + role.id().value()
+                + ":"
+                + participant.household().value()
+                + ":"
+                + roleFailure);
+      }
+    }
+
+    // ── 计划级资格：主体 = organizer（与 probe/execute 共用同一个 qualificationFailure）──────────────
+    String qualificationFailure =
+        qualificationFailure(
+            plan,
+            request.organizer(),
+            organizerConditions::experienceOf,
+            participantFacts.getOrDefault(request.organizer(), ExternalAttributeFacts.EMPTY));
+    if (qualificationFailure != null) {
+      return ProductionRosterProbeResult.rejected(planId, qualificationFailure);
+    }
+
+    // ── A2：逐 (家户×角色) 效率 = 与 execute 同一个 efficiencyScaleFor（conditions 分支）────────────
+    Map<ProductionParticipantKey, Long> participantEfficiency = new LinkedHashMap<>();
+    Map<HouseholdId, Long> efficiencyByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, Long> laborPerCycleByHousehold = new LinkedHashMap<>();
+    Map<ProductionRoleId, Long> plannedLaborByRole = new LinkedHashMap<>();
+    for (ProductionRosterProbeParticipant participant : participants) {
+      HouseholdProductionConditions condition = conditions.get(participant.household());
+      long efficiency = efficiencyScaleFor(plan, participant.household(), condition);
+      participantEfficiency.put(participant.participantKey(), efficiency);
+      efficiencyByHousehold.put(participant.household(), efficiency);
+      laborPerCycleByHousehold.merge(
+          participant.household(), participant.plannedLaborMilliPerCycle(), Math::addExact);
+      plannedLaborByRole.merge(
+          participant.role(), participant.plannedLaborMilliPerCycle(), Math::addExact);
+    }
+
+    // ── A3：工资招工目标（只对 MONEY_WAGE 角色；只补"尚无具名参与劳动"的差额）────────────────────
+    for (Map.Entry<ProductionRoleId, Long> target :
+        request.wageTargetLaborMilliPerDay().entrySet()) {
+      ProductionRoleDefinition role = rolesById.get(target.getKey());
+      if (role == null) {
+        return ProductionRosterProbeResult.rejected(
+            planId, "role-unknown:" + target.getKey().value());
+      }
+      if (!(role.payment() instanceof RolePayment.MoneyWage)) {
+        return ProductionRosterProbeResult.rejected(
+            planId, "wage-target-role-not-money-wage:" + role.id().value());
+      }
+    }
+    long targetLaborPerCycle = 0L;
+    for (ProductionRoleDefinition role : plan.roles()) {
+      if (!(role.payment() instanceof RolePayment.MoneyWage)) {
+        continue;
+      }
+      Long explicitTargetPerDay = request.wageTargetLaborMilliPerDay().get(role.id());
+      long targetPerCycle =
+          explicitTargetPerDay != null
+              ? Math.multiplyExact(explicitTargetPerDay, plan.cycleDays())
+              : Math.max(0L, role.standardLaborMilliPerCycle());
+      if (targetPerCycle <= 0L) {
+        continue;
+      }
+      long plannedForRole = plannedLaborByRole.getOrDefault(role.id(), 0L);
+      long missing = Math.max(0L, targetPerCycle - plannedForRole);
+      targetLaborPerCycle = Math.addExact(targetLaborPerCycle, missing);
+    }
+
+    // ── 逐户聚合投入（同户多角色只读一次；资产占用按请求级实占读数）──────────────────────────────
+    Map<CommodityId, Long> aggregatedInputs = new LinkedHashMap<>();
+    for (HouseholdId household : laborPerCycleByHousehold.keySet()) {
+      HouseholdProductionConditions condition = conditions.get(household);
+      for (Map.Entry<CommodityId, Long> entry : condition.inputs().entrySet()) {
+        aggregatedInputs.merge(entry.getKey(), entry.getValue(), Math::addExact);
+      }
+    }
+
+    // ── 与单户 probe 相同的三通道预检（资产/原料）；劳动由整份 roster + 招工目标共同决定 ─────────────
+    long assetScaleRaw = capacityScaleOf(plan, request.assetOccupancy());
+    boolean assetsAvailable =
+        !plan.capacityPerUnit().isEmpty() && !request.assetOccupancy().isEmpty();
+    if (assetsAvailable && assetScaleRaw <= 0L) {
+      return ProductionRosterProbeResult.rejected(planId, "asset-short");
+    }
+    Map<CommodityId, Long> inputPerUnit = plan.inputPerUnit();
+    long inputScale = Long.MAX_VALUE;
+    CommodityId bindingInput = null;
+    for (Map.Entry<CommodityId, Long> entry : inputPerUnit.entrySet()) {
+      if (entry.getValue() == null || entry.getValue() <= 0L) {
+        continue;
+      }
+      long available = aggregatedInputs.getOrDefault(entry.getKey(), 0L);
+      long route = Math.floorDiv(available, entry.getValue());
+      if (route < inputScale) {
+        inputScale = route;
+        bindingInput = entry.getKey();
+      }
+    }
+    if (inputScale == 0L) {
+      return ProductionRosterProbeResult.rejected(
+          planId, "input-short" + (bindingInput == null ? "" : ":" + bindingInput.value()));
+    }
+
+    long totalParticipantLaborPerCycle = 0L;
+    for (long labor : laborPerCycleByHousehold.values()) {
+      totalParticipantLaborPerCycle = Math.addExact(totalParticipantLaborPerCycle, labor);
+    }
+    long totalLaborPerCycle = Math.addExact(totalParticipantLaborPerCycle, targetLaborPerCycle);
+    if (plan.laborPerUnit() > 0L && totalLaborPerCycle <= 0L) {
+      // ★ A3：零劳动 organizer 只有在"确实没有招工目标"时才判 labor-short；目标 > 0 ⇒ 继续按目标求规模。
+      return ProductionRosterProbeResult.rejected(planId, "labor-short");
+    }
+
+    // ── 逐户加权劳动（与 execute 同式：labor × 该户当 tick 效率）────────────────────────────────
+    Map<HouseholdId, Long> laborByHousehold = new LinkedHashMap<>(laborPerCycleByHousehold);
+    Map<HouseholdId, Long> weightedLaborByHousehold = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Long> entry : laborPerCycleByHousehold.entrySet()) {
+      long efficiency = efficiencyByHousehold.getOrDefault(entry.getKey(), 0L);
+      weightedLaborByHousehold.put(
+          entry.getKey(), Math.multiplyExact(entry.getValue(), efficiency));
+    }
+    if (targetLaborPerCycle > 0L) {
+      // ★ 目标劳动没有具名参与户 ⇒ 无工人经验事实可读。把它的规模贡献并入 organizer 的<b>聚合</b>键（evaluate 只做求和），
+      //   权重按中性效率 1000‰ —— 不伪造 worker 参与项，也不把 organizer 的效率冒充成雇工效率。
+      laborByHousehold.merge(request.organizer(), targetLaborPerCycle, Math::addExact);
+      weightedLaborByHousehold.merge(
+          request.organizer(),
+          Math.multiplyExact(
+              targetLaborPerCycle, ProductionEfficiency.NEUTRAL_EFFICIENCY_PER_MILLE),
+          Math::addExact);
+    }
+
+    // ── 与单户 probe / execute 同一个 ProductionEfficiency 入口（同一余数、同一 effectScope、同一时间单位）──
+    ProductionEfficiency.Evaluation evaluation =
+        ProductionEfficiency.evaluate(
+            request.carry().orElse(null),
+            plan.experience().effectScope(),
+            plan.cycleDays(),
+            weightedLaborByHousehold,
+            laborByHousehold,
+            assetScaleRaw,
+            inputPerUnit,
+            aggregatedInputs,
+            plan.laborPerUnit(),
+            Long.MAX_VALUE); // 试算不设授予上限：上限是 economy 分配阶段的预算，不是方案的性质
+
+    if (plan.laborPerUnit() > 0L && evaluation.baseLaborScale() <= 0L) {
+      return ProductionRosterProbeResult.rejected(planId, "labor-short");
+    }
+    if (assetsAvailable && evaluation.assetScale() <= 0L) {
+      return ProductionRosterProbeResult.rejected(planId, "asset-short");
+    }
+
+    long baseScale = Math.max(0L, evaluation.baseScale());
+    long finalScale = Math.max(0L, evaluation.finalScale());
+    Map<AssetKind, Long> assetRequired = requiredAssets(plan, baseScale);
+    Map<CommodityId, Long> inputRequired = requiredInputs(plan, baseScale);
+    Map<CommodityId, Long> expectedOutput = grossOutput(plan, finalScale);
+    Map<CurrencyId, Long> expectedMint = mintCandidates(plan, finalScale);
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "PRODUCTION_ROSTER_PROBED",
+                  ProductionLogSource.PRODUCTION_RUNTIME,
+                  "plan",
+                  planId.value(),
+                  "organizer",
+                  request.organizer().value(),
+                  "participants",
+                  participants.size(),
+                  "targetLaborPerCycle",
+                  targetLaborPerCycle,
+                  "baseScale",
+                  baseScale,
+                  "finalScale",
+                  finalScale,
+                  "efficiencyPerMille",
+                  evaluation.efficiencyScalePerMille(),
+                  "effectScope",
+                  plan.experience().effectScope().key()));
+    }
+    return new ProductionRosterProbeResult(
+        planId,
+        true,
+        null,
+        baseScale,
+        finalScale,
+        laborRequiredFor(plan, evaluation, baseScale),
+        assetRequired,
+        inputRequired,
+        expectedOutput,
+        expectedMint,
+        evaluation.efficiencyScalePerMille(),
+        participantEfficiency);
   }
 
   /**

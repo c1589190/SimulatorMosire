@@ -32,7 +32,7 @@ import java.util.Objects;
  *
  * <ol>
  *   <li><b>必要投入价 / 生活保留影子价</b>：目标保有量 = 本户 {@code expectedNeedMilli(商品, }{@value #HOLD_DAYS}{@code
- *       )} （与市场"安全库存 = 30 天"同尺；<b>需求系数的唯一权威仍是 Social</b>，本类只对它线性外推）； 库存越低于目标，保留价越高（缺这一单位要饿肚子/停产）；
+ *       )} （P2a 的 5 tick 生活保留窗口；<b>需求系数的唯一权威仍是 Social</b>，本类只对它线性外推）； 库存越低于目标，保留价越高（缺这一单位要饿肚子/停产）；
  *   <li><b>库存饱和衰减</b>：库存越超过目标，保留价越低（多出来的这一单位对自己不值市场价）；
  *   <li><b>真实成交校准</b>（{@link TradeHistory}）：本户<b>自己</b>最近成交价的滚动均值。★ 本阶段默认 {@link #NO_TRADE_HISTORY}
  *       = 没有校准（跨 tick 的成交史需要状态组件，而 P2 明令第一版不许把派生量塞进状态 —— 要接就得另提状态组件方案，走 Codec + 往返不变式）。
@@ -47,10 +47,10 @@ import java.util.Objects;
 final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable {
 
   /**
-   * ★ <b>目标保有天数</b>（天）：保留价的"够/不够"分界。{@code 30} 与 {@code MarketSettlement.MARKET_SAFETY_STOCK_DAYS}
-   * 同尺 —— 两处若用不同的天数，"市场认为的安全库存"与"家户认为的够用"就会各说各话。
+   * ★ <b>目标保有天数</b>（天）：保留价的"够/不够"分界。P2a 起与 {@link MarketConstants#MARKET_LIFE_RESERVE_DAYS} 同尺 ——
+   * 到下一市场轮的基础消费 + 生产投入窗口。
    */
-  static final long HOLD_DAYS = 30L;
+  static final long HOLD_DAYS = 5L;
 
   /**
    * ★ <b>完全短缺时的上浮上限（‰）</b>：库存为 0 时保留价 = 市价 × (1 + 500‰) = 1.5 倍。

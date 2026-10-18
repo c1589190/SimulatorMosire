@@ -301,7 +301,7 @@ public final class CatalogTool implements SimosTool {
                   + " 承担),"
                   + "units[{id?,industry,operator?{kind,id},modeKey?,progressDays?,cycleLaborMilli?,cycleInputUsedMilli?}],"
                   + "classes[{residence(rural|urban),slot,population,laborMilli,participationPerMille,goods?,money?,naturalNeeds?,effectiveDemand?}],debtContracts?(E4a"
-                  + " 只接受空数组),pledges?(同上),allocations[{id,group,household?,actor{kind,id},activity(="
+                  + " 只接受空数组),allocations[{id,group,household?,actor{kind,id},activity(="
                   + " unit id),laborMilli,period}],"
                   + "assetShares[{industry,owner{kind,id},operator{kind,id},asset,quantity,kind}]?}]（★"
                   + " 旧形状 industry 的"
@@ -518,19 +518,14 @@ public final class CatalogTool implements SimosTool {
                   + " configured-weight-invalid / wage-target-missing / household-labor-overcommitted 等；"
                   + "★ GM-only（不进令/RegisterEffect/决策人目录）—— 名册是'谁参与生产'的结构事实，不得由决策人自行改写）"),
           Map.entry(
-              "economy.SetProductionWageDefault",
-              "plan(方案稳定 id), marketZone(市场区 id), roles[{role, initialWagePerLaborMilli(毫货币/小时，≥0),"
-                  + " initialTargetLaborMilliPerDay(毫小时/日，>0)}]（★ D-032 D3 §2.2.1/§2.10：整表替换该"
-                  + " (plan, marketZone) 的候选级工资默认；roles: [] = 清空。只写 economy.productionWageDefaults，"
-                  + " 不隐式创建实例、不写执行期 posting；★ GM-only（不进令/RegisterEffect/决策人目录））"),
-          Map.entry(
-              "economy.SetProductionWagePosting",
-              "unit(生产实例稳定 id), postings[{role, targetLaborMilliPerDay(毫小时/日，≥0),"
-                  + " currency(可省略；给出须等于 unit 市场区法定币), wagePerLaborMilli(毫货币/小时，≥0),"
-                  + " quoteSource?(SEED|EXPLICIT|GENERATED|DEFAULT_MATERIALIZED)}]（★ D-032 D3 §2.7：整表替换该"
-                  + " unit 的 execution posting；postings: [] = 清空；unit 必须已存在，不隐式创建实例；不得写"
-                  + " shortageStreak/satisfiedStreak/lastAdjustedTick/lastObserved* 等锁定字段；★ GM-only"
-                  + "（不进令/RegisterEffect/决策人目录））"),
+              "economy.SetProductionWageAnchor",
+              "marketZone(市场区 id), industry(产业/方案稳定 id), role(方案内工资角色 id),"
+                  + " currency(可省略；给出须等于 marketZone 法定币), wagePerLaborMilli(毫货币/小时，≥0),"
+                  + " shortageStreak?/satisfiedStreak?/lastAdjustedTick?/lastObservedMatchedLaborMilli?/"
+                  + " lastObservedTargetLaborMilli?/lastAdjustmentDelta?（★ D-032 P4 §6.1：U20 工资锚单条"
+                  + " upsert，键 =(marketZone,industry,role)；currency 缺省取区法定币；0 工资合法、缺锚 ≠ 0；"
+                  + "★ 市场日 M8 后系统还会按 target/matched 观测并调下一 tick 锚；本命令只做显式 upsert；"
+                  + "★ GM-only（不进令/RegisterEffect/决策人目录））"),
           Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
@@ -633,7 +628,7 @@ public final class CatalogTool implements SimosTool {
               "regionId（必填；必须在当前 map.regions() 里）（★ GM-only 区域经济数据清空：目标 Region 格集内"
                   + " industries/markets 及可靠可定位的连带记录"
                   + "（units/relations/operatorConditions/assetShares/classes/flows/memberships/allocations/"
-                  + "debtContracts/pledges/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
+                  + "debtContracts/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
                   + "crisisSignals）整条删除；世界级发行审计/在途货物/laborSupply/制度定义不动）"),
           Map.entry(
               "economy.UnitBorrow",
@@ -652,7 +647,7 @@ public final class CatalogTool implements SimosTool {
                   + " {from:{household:borrowerHousehold}, to:{household:lenderHousehold}}）"),
           Map.entry(
               "economy.GmAdjust",
-              "adjustment(forgiveDebt|setLiquidationPolicy"
+              "adjustment(forgiveDebt"
                   + "|upsertClassStructure|upsertClassPosition"
                   + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization),"
                   + " 已迁出的五个 kind（upsertCandidate / setOutputQuantity / clearOutputQuantity /"
@@ -662,10 +657,7 @@ public final class CatalogTool implements SimosTool {
                   + "写面在 production.UpsertProductionMode / DeactivateProductionMode）；"
                   + " parameters(JSON 对象), reason(必填非空白)（★ GM-only、只改源状态：白名单外/派生读数 ⇒"
                   + " 拒；旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤"
-                  + " 本金)；setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000),"
-                  + " protectedReserve(≥0), priceSource(MARKET|AGREED|POLICY),"
-                  + " policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
-                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；P7 生产方式定义编辑已迁"
+                  + " 本金)；P7 生产方式定义编辑已迁"
                   + " production.UpsertProductionMode / DeactivateProductionMode（★ B5 起本命令**命中即具名拒**）；本命令只做："
                   + "upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置"
                   + " upsert 并同步全局 classPositions 与所有结构副本；份额给到即整体替换；新建必须给非空 positions）；"
@@ -673,7 +665,7 @@ public final class CatalogTool implements SimosTool {
                   + " classStructureId；既有位置的 modeId 不可改）；"
                   + "upsertProductionRelation={activity,operator?,inputSupplier?,rules?,residualOwner?,laborSource?}（activity"
                   + " 必须对应已存在 unit；operator 必须与 unit.operator 一致）；"
-                  + "upsertAssetRule={modeId,assetKind,id?,isCoreMeans?,pledgeable?,liquidationPriority?,rentRule?,transferRule?}（id"
+                  + "upsertAssetRule={modeId,assetKind,id?,isCoreMeans?,rentRule?,transferRule?}（id"
                   + " 须与 AssetRuleId.idOf 派生值一致；新建后四字段必填）；"
                   + "upsertProductionOrganization={id?,modeId,classPositionId,unitId?,organizer,laborSources?,"
                   + "assetSources?,inputSources?,outputOwnership,relationTemplateRef?,status,statusReason?}（ACTIVE/EXITING"
@@ -985,7 +977,7 @@ public final class CatalogTool implements SimosTool {
                   + "（★ D-031 P1：生产方式定义写入归 production；被引用 mode 的显式版本升级照旧允许；GM-only）"),
           Map.entry(
               "production.DeactivateProductionMode",
-              "id（★ 被 classStructures/classPositions/productionOrganizations/assetRules/modeTransitions/pledges"
+              "id（★ 被 classStructures/classPositions/productionOrganizations/assetRules/modeTransitions"
                   + " 任一引用 ⇒ 具名拒绝；GM-only）"),
           Map.entry(
               "production.CreateInstance",

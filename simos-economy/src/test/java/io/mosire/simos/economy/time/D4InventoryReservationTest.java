@@ -13,12 +13,23 @@ import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** D4 §4.4 / §7.2 / P18d：预留全地点 overcommit 与工资可支付库存读口。 */
+/**
+ * D4 §4.4 / §7.2 / P18d：预留全地点 overcommit，以及 P4a 后工资可支付库存读口的退役判据。
+ *
+ * <p>★ P4a：工资改为只付现金 ⇒ {@code WagePayableInventoryLookup} 系列整体删除；本类把原先专测该读口的
+ * 三段改成 <b>负向/静态判据</b>：类型不存在、WageSettlement 不接收任何 Lookup 依赖，且库存预留基础设施仍保留给其他
+ * 预算用途（不得误删）。
+ */
 class D4InventoryReservationTest {
 
   private static final HouseholdId HOUSEHOLD = HouseholdId.parse("hh-d4-inventory");
@@ -54,65 +65,72 @@ class D4InventoryReservationTest {
         .containsEntry(first.id(), first);
   }
 
+  /**
+   * P4a 负向判据（取代旧“读口扣除全地点 ACTIVE 预留”）：工资可支付库存读口的三个类型都已从类型系统删除。
+   */
   @Test
-  void wageLookupDeductsFrozenAndActiveReservationsFromAllLocationsExactlyOnce() {
-    Map<InventoryReservationId, InventoryReservation> reservations = new LinkedHashMap<>();
-    InventoryReservation atA =
-        reservation(UNIT_A, L0, GRAIN, 300L, InventoryReservationStatus.ACTIVE, -1L);
-    InventoryReservation atB =
-        reservation(UNIT_B, L3, GRAIN, 100L, InventoryReservationStatus.ACTIVE, -1L);
-    reservations.put(atA.id(), atA);
-    reservations.put(atB.id(), atB);
-    Map<InventoryReservationId, InventoryReservation> before = Map.copyOf(reservations);
-
-    WagePayableInventoryLookupImpl lookup =
-        new WagePayableInventoryLookupImpl(reservations, 0L, accounts(1_000L, 200L));
-
-    assertThat(lookup.payableInventory(PAYER, L0))
-        .as("P13：1000 − frozen 200 − 全地点 ACTIVE 400 = 400；不是只减 L0 的 300")
-        .contains(Map.of(GRAIN, 400L));
-    assertThat(lookup.payableInventory(PAYER, L0).orElseThrow())
-        .as("D4-I10：资产权益 LAND 不进入工资可支付商品表")
-        .doesNotContainKey(CLOTH);
-    assertThat(lookup.payableInventory(PAYER, L0))
-        .as("读口纯读/不二次扣减：连续读取同值")
-        .contains(Map.of(GRAIN, 400L));
-    assertThat(reservations).as("lookup 不写预留").isEqualTo(before);
+  void wagePayableInventoryLookupTypesAreRetired() {
+    for (String retired :
+        List.of(
+            "io.mosire.simos.economy.time.WagePayableInventoryLookup",
+            "io.mosire.simos.economy.time.WagePayableInventoryLookupImpl",
+            "io.mosire.simos.economy.time.UnavailableWagePayableInventoryLookup")) {
+      assertThatThrownBy(() -> Class.forName(retired))
+          .as("P4a §4.1：工资可支付库存读口必须整体删除: " + retired)
+          .isInstanceOf(ClassNotFoundException.class);
+    }
   }
 
+  /**
+   * P4a 负向判据（取代旧“空 Map vs 账户不可用”）：{@link WageSettlement} 的结算口径不再接收、也不再声明任何
+   * inventory lookup 字段/方法 ⇒ 工资支付不读库存、不因 lookup 不可用而 skip。
+   */
   @Test
-  void wageLookupDistinguishesEmptyMapFromUnavailableAccount() {
-    WagePayableInventoryLookupImpl noGoods =
-        new WagePayableInventoryLookupImpl(
-            Map.of(), 0L, snapshot(Map.of(), Map.of(), Map.of(), Map.of()));
-    assertThat(noGoods.payableInventory(PAYER, L0))
-        .as("读口可用但无商品 ⇒ 空 Map（不是 Optional.empty）")
-        .contains(Map.of());
+  void wageSettlementApiHasNoInventoryLookupDependency() {
+    Method settle =
+        Arrays.stream(WageSettlement.class.getDeclaredMethods())
+            .filter(method -> method.getName().equals("settle"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("WageSettlement.settle 必须存在"));
+    assertThat(Arrays.stream(settle.getParameterTypes()).map(Class::getSimpleName).toList())
+        .as("P4a：WageSettlement.settle 不得接收任何 Lookup 依赖")
+        .noneMatch(name -> name.toLowerCase(Locale.ROOT).contains("lookup"));
 
-    WagePayableInventoryLookupImpl unavailable =
-        new WagePayableInventoryLookupImpl(Map.of(), 0L, Optional::<AccountSnapshot>empty);
-    assertThat(unavailable.payableInventory(PAYER, L0)).as("账户权威不可用 ⇒ Optional.empty").isEmpty();
-
-    WagePayableInventoryLookupImpl frozenAway =
-        new WagePayableInventoryLookupImpl(
-            Map.of(),
-            0L,
-            snapshot(Map.of(GRAIN, 1_000L), Map.of(), Map.of(GRAIN, 1_000L), Map.of()));
-    assertThat(frozenAway.payableInventory(PAYER, L0))
-        .as("余额被冻结全部扣完 ⇒ 空 Map，不是不可用")
-        .contains(Map.of());
+    for (Field field : WageSettlement.class.getDeclaredFields()) {
+      assertThat(field.getType().getSimpleName().toLowerCase(Locale.ROOT))
+          .as("P4a：WageSettlement 不得持有 inventory lookup 字段: " + field.getName())
+          .doesNotContain("lookup");
+    }
+    assertThat(
+            Arrays.stream(WageSettlement.class.getDeclaredMethods())
+                .map(Method::getName)
+                .filter(name -> name.toLowerCase(Locale.ROOT).contains("payableinventory"))
+                .toList())
+        .as("P4a：不得残留 payableInventory 读口方法")
+        .isEmpty();
   }
 
+  /**
+   * P4a 不得误删库存基础设施（取代旧“缺/非法地点 fail-closed”）：{@link AccountInventorySnapshotLookup} 与
+   * {@link InventoryReservationBook} 仍存在并继续服务其他预算用途；只有工资路径不再依赖它们。
+   */
   @Test
-  void wageLookupFailsClosedForMissingOrIllegalSettlementLocation() {
-    WagePayableInventoryLookupImpl lookup =
-        new WagePayableInventoryLookupImpl(Map.of(), 0L, accounts(1_000L, 0L));
-    assertThatThrownBy(() -> lookup.payableInventory(PAYER, null))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("asset-location-missing");
-    assertThatThrownBy(() -> lookup.payableInventory(PAYER, new ProductionLocation("foo")))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("asset-location-missing");
+  void inventoryInfrastructureSurvivesForNonWageBudgets() throws Exception {
+    assertThat(Class.forName(AccountInventorySnapshotLookup.class.getName()))
+        .as("P4a §4.1：不得误删 AccountInventorySnapshotLookup")
+        .isEqualTo(AccountInventorySnapshotLookup.class);
+    assertThat(Class.forName(InventoryReservationBook.class.getName()))
+        .as("P4a §4.1：保留 InventoryReservationBook 等其他库存预算使用")
+        .isEqualTo(InventoryReservationBook.class);
+    Method settle =
+        Arrays.stream(WageSettlement.class.getDeclaredMethods())
+            .filter(method -> method.getName().equals("settle"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(Arrays.stream(settle.getParameterTypes()).map(Class::getName).toList())
+        .as("P4a：工资结算不得把库存预留/账户库存读口纳入签名")
+        .doesNotContain(
+            AccountInventorySnapshotLookup.class.getName(), InventoryReservationBook.class.getName());
   }
 
   private static InventoryReservation reservation(

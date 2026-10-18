@@ -19,7 +19,7 @@ import org.slf4j.Logger;
  * ★★ <b>{@code economy.GmAdjust}：GM 经济调整的窄命令</b>。载荷：
  *
  * <pre>{@code
- * {"adjustment":"forgiveDebt"|"setLiquidationPolicy"
+ * {"adjustment":"forgiveDebt"
  *              |"upsertClassStructure"|"upsertClassPosition"
  *              |"upsertProductionRelation"|"upsertAssetRule"
  *              |"upsertProductionOrganization"|"upsertCandidate"(已退役)
@@ -33,17 +33,9 @@ import org.slf4j.Logger;
  * {@link EconomyGmAdjustments#project}：
  *
  * <ul>
- *   <li><b>旧表两</b>：
- *       <ul>
- *         <li>{@code forgiveDebt}：{@code debtContractId} + 可选 {@code amount}（缺省 = 全额本金）。调用 {@code
- *             DebtContractBook.forgive} 减/清本金，<b>不碰粮/钱库存</b>；{@code amount > 本金} ⇒ 具名 {@link
- *             HandlerOutcome.Rejected}；
- *         <li>{@code setLiquidationPolicy}：{@code assetRuleId} + {@code maxLiquidatePerMille ∈
- *             [0,1000]} + {@code protectedReserve ≥ 0} + {@code priceSource(MARKET|AGREED|POLICY)}
- *             + {@code policyValuePerUnitMilli ≥ 0（非 POLICY 必须 0）} + {@code
- *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
- *             {@code AssetRule} 不存在 ⇒ 具名拒绝。
- *       </ul>
+ *   <li><b>旧表一</b>：{@code forgiveDebt}：{@code debtContractId} + 可选 {@code amount}（缺省 = 全额本金）。调用
+ *       {@code DebtContractBook.forgive} 减/清本金，<b>不碰粮/钱库存</b>；{@code amount > 本金} ⇒ 具名 {@link
+ *       HandlerOutcome.Rejected}。
  *   <li><b>P7 生产方式/阶层编辑</b>：生产方式定义写入已迁 {@code production.UpsertProductionMode} / {@code
  *       production.DeactivateProductionMode}（本命令不再收）；{@code upsertClassStructure}（{@code
  *       id,modeId,positions?,defaultSharesPerMille?}； 位置 upsert 并同步全局表与所有结构副本）、{@code
@@ -108,8 +100,6 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     switch (adjustment) {
       case EconomyGmAdjustments.FORGIVE_DEBT ->
           EconomyCommandPayloads.requireText(label, parameters, "debtContractId");
-      case EconomyGmAdjustments.SET_LIQUIDATION_POLICY ->
-          EconomyCommandPayloads.requireText(label, parameters, "assetRuleId");
       case EconomyGmAdjustments.UPSERT_CLASS_STRUCTURE ->
           requireUpsertClassStructureShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CLASS_POSITION ->

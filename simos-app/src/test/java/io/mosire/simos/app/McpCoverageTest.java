@@ -199,6 +199,8 @@ class McpCoverageTest {
           "economy.SetPlanSources",
           // ★★★ D-032 C3 / D4-Ib2b：生产名册与工资默认/执行报价三条 GM-only 写口。
           "economy.SetProductionRoster",
+          // ★★★ D-032 P4b1：U20 工资锚的 GM-only 显式写口（新命令类型 ⇒ 本表 +1）。
+          "economy.SetProductionWageAnchor",
           "economy.SetProductionWageDefault",
           "economy.SetProductionWagePosting",
           "economy.SetGovernmentPolicy",
@@ -414,9 +416,10 @@ class McpCoverageTest {
           //   要有"进入算法方案池的非格方案 + 后续读点"，那是 `D031P1*` 那批判据的面；
           //   本用例的义务只是"每条 catalog type 都能经 MCP 到达且要么生效要么具名拒"。
           "economy.SetPlanSources",
-          // ★★★ D-032 C3 / D4-Ib2b：三条 GM-only 写口在本夹具没有 production 实例/方案/市场区前置
-          //   ⇒ 载荷形状合法但域层具名拒（零 revision）。
+          // ★★★ D-032 C3 / D4-Ib2b + P4b1：四条 GM-only 写口在本夹具没有 production 实例/方案/市场区前置
+          //   ⇒ 载荷形状合法但域层具名拒（零 revision）。P4b1 的工资锚按 `wage-anchor-market-zone-missing` 拒。
           "economy.SetProductionRoster",
+          "economy.SetProductionWageAnchor",
           "economy.SetProductionWageDefault",
           "economy.SetProductionWagePosting",
           // ★★★ D-032 T6：B2c 裁定十的实例写面；本夹具的定义权威是空的（`production.Seed` 空载荷）⇒ 具名拒。
@@ -511,6 +514,11 @@ class McpCoverageTest {
           //   是空载荷 ⇒ 分别具名拒 unit-unknown / wage-default-plan-unknown / wage-posting-unit-unknown。
           Map.entry(
               "economy.SetProductionRoster", "{\"unit\":\"unit-missing\",\"participants\":[]}"),
+          // ★★★ D-032 P4b1：工资锚写口在本夹具没有持久市场区 ⇒ 具名拒
+          //   `wage-anchor-market-zone-missing`（载荷形状合法、零 revision）。
+          Map.entry(
+              "economy.SetProductionWageAnchor",
+              "{\"marketZone\":\"zone-missing\",\"industry\":\"farm\",\"role\":\"operator\",\"wagePerLaborMilli\":1000}"),
           Map.entry(
               "economy.SetProductionWageDefault",
               "{\"plan\":\"plan-missing\",\"marketZone\":\"zone-missing\",\"roles\":[]}"),
@@ -1160,7 +1168,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 **152** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 T6（2026-10-17）：D1/D2 把"
+            "catalog 列出的 type 与 Shell 注册的 **153** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 T6（2026-10-17）：D1/D2 把"
                 + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
                 + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
                 + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148；"

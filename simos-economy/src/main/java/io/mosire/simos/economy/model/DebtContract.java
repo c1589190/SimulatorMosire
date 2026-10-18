@@ -17,7 +17,7 @@ import java.util.OptionalLong;
  * DebtContract(
  *   id,               // (debtor, creditor, unit, terms) 的确定性稳定身份；键 == 值内 id
  *   debtor, creditor, // 家户稳定身份（S1 起身份与视图分离）
- *   unit,             // 显式计量标的：实物 CommodityId 或货币 CurrencyId，恰有其一
+ *   unit,             // 显式计量标的：P2c 起只能是 DebtUnit.Money（商品只作还债介质）
  *   terms,            // 条款（利率/计息时点/偿还规则/折偿/救济/期限维）；不同 terms 不合并
  *   source,           // ★ 来源（工资欠款/欠租/普通贷款/历史未知）；工资债必须 WAGE_ARREARS + 0‰
  *   principal,        // 连续本金余额；≥ 0；计息并入本金（不搬粮/钱）
@@ -37,7 +37,7 @@ import java.util.OptionalLong;
  * @param id 稳定身份；不得为 null（键 == 值内 id、且必须是 {@code DebtContractId.idOf(...)} 的产物）
  * @param debtor 债务人；不得为 null
  * @param creditor 债权人；不得为 null
- * @param unit 计量标的；不得为 null
+ * @param unit 计量标的；P2c 起只能 {@link DebtUnit.Money}；不得为 null
  * @param terms 条款；不得为 null
  * @param source 债务来源；不得为 null（缺 source 是 {@code debt-source-missing} 契约故障）
  * @param principal 连续本金余额；不得为负
@@ -50,7 +50,7 @@ public record DebtContract(
     DebtContractId id,
     HouseholdId debtor,
     HouseholdId creditor,
-    DebtUnit unit,
+    DebtUnit.Money unit,
     DebtTerms terms,
     DebtSource source,
     long principal,
@@ -68,8 +68,7 @@ public record DebtContract(
     if (source == null) {
       throw new IllegalStateException("debt-source-missing: DebtContract.source 不得为 null");
     }
-    if (source == DebtSource.WAGE_ARREARS
-        && (!DebtTerms.wageArrearsDefault().equals(terms) || !(unit instanceof DebtUnit.Money))) {
+    if (source == DebtSource.WAGE_ARREARS && !DebtTerms.wageArrearsDefault().equals(terms)) {
       throw new IllegalStateException(
           "wage-debt-terms-unsupported: WAGE_ARREARS 必须是 DebtUnit.Money + wageArrearsDefault()（0‰）: unit="
               + unit

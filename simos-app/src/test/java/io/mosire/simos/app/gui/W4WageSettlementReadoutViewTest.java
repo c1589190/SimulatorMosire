@@ -56,7 +56,7 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>新增三键 {@code wageSettlementReadouts}/{@code wageSettlementReadoutStatus}/ {@code
  *       wageSettlementReadoutUnavailableReason}，且 readout 行是<b>精确键集</b>；
- *   <li>app 只读：原样投递 {@link WageSettlementReadout}、只按本格 unit 过滤并稳定排序，<b>不重算</b>支付/抵物/债；
+ *   <li>app 只读：原样投递 {@link WageSettlementReadout}、只按本格 unit 过滤并稳定排序，<b>不重算</b>支付/债；
  *   <li>读不到（未结算 / tick 不一致）⇒ 具名 unavailable，不拿空数组冒充“已结算且无义务”。
  * </ul>
  */
@@ -88,9 +88,9 @@ class W4WageSettlementReadoutViewTest {
 
   @Test
   void economyHexEmitsFeedReadoutsInStableOrderWithoutRecomputing() {
-    WageSettlementReadout later = readout(UNIT_B, WORKER_B, 40L, 10L, 30L, 0L);
-    WageSettlementReadout earlier = readout(UNIT_A, WORKER_A, 100L, 4L, 5L, 91L);
-    WageSettlementReadout otherHex = readout(UNIT_OTHER, WORKER_A, 999L, 0L, 0L, 999L);
+    WageSettlementReadout later = readout(UNIT_B, WORKER_B, 40L, 10L, 30L);
+    WageSettlementReadout earlier = readout(UNIT_A, WORKER_A, 100L, 4L, 96L);
+    WageSettlementReadout otherHex = readout(UNIT_OTHER, WORKER_A, 999L, 0L, 999L);
     // 故意乱序投递：读口必须自行按 (unit, role, worker, payer) 稳定排序。
     WageSettlementReadoutFeed.publish(MAP_ID, TICK, List.of(later, otherHex, earlier));
 
@@ -116,10 +116,11 @@ class W4WageSettlementReadoutViewTest {
 
     Map<String, Object> first = rows.get(0);
     assertThat(fieldNames(first))
-        .as("readout 行精确键集（app 只做形状化，不新增/不改写金额键）")
+        .as("readout 行精确键集（P4a 起无 barter 键；app 只做形状化，不新增/不改写金额键）")
         .containsExactly(
             "unit",
             "role",
+            "anchor",
             "worker",
             "payer",
             "currency",
@@ -129,14 +130,11 @@ class W4WageSettlementReadoutViewTest {
             "carryAfter",
             "dueMilli",
             "paidMoneyMilli",
-            "barterQuantity",
-            "barterPaidValueMilli",
-            "barter",
             "arrearsMilli",
             "debtContractId",
             "reasons");
     assertThat(first)
-        .as("原值透传，不重算：due=100 = money 4 + barter 5 + arrears 91")
+        .as("原值透传，不重算：due=100 = paidMoney 4 + arrears 96")
         .containsEntry("unit", UNIT_A.value())
         .containsEntry("role", ROLE.value())
         .containsEntry("worker", WORKER_A.value())
@@ -148,17 +146,8 @@ class W4WageSettlementReadoutViewTest {
         .containsEntry("carryAfter", 0L)
         .containsEntry("dueMilli", 100L)
         .containsEntry("paidMoneyMilli", 4L)
-        .containsEntry("arrearsMilli", 91L)
-        .containsEntry("barterQuantity", Map.of(GRAIN, 1_000L))
-        .containsEntry("barterPaidValueMilli", Map.of(GRAIN, 5L))
-        .containsEntry("reasons", List.of("wage-inventory-scope-unavailable"));
-    @SuppressWarnings("unchecked")
-    Map<String, Object> barter = (Map<String, Object>) first.get("barter");
-    assertThat(fieldNames(barter))
-        .as("D3 §6.7 形状的嵌套 barter 键集")
-        .containsExactly("qPay", "paidValueMilli");
-    assertThat(barter.get("qPay")).isEqualTo(Map.of(GRAIN, 1_000L));
-    assertThat(barter.get("paidValueMilli")).isEqualTo(Map.of(GRAIN, 5L));
+        .containsEntry("arrearsMilli", 96L)
+        .containsEntry("reasons", List.of());
 
     assertThat(rows.get(1)).containsEntry("unit", UNIT_B.value()).containsEntry("dueMilli", 40L);
   }
@@ -166,7 +155,7 @@ class W4WageSettlementReadoutViewTest {
   @Test
   void missingOrStaleFeedIsNamedUnavailableNotAnEmptySuccess() {
     WageSettlementReadoutFeed.publish(
-        MAP_ID, TICK - 1L, List.of(readout(UNIT_A, WORKER_A, 100L, 0L, 0L, 100L)));
+        MAP_ID, TICK - 1L, List.of(readout(UNIT_A, WORKER_A, 100L, 0L, 100L)));
 
     Map<String, Object> body = ApiViews.economyHex(HEX, state());
 
@@ -180,7 +169,8 @@ class W4WageSettlementReadoutViewTest {
 
   @Test
   void feedOnlyServesThePublishingTickAndPreservesPublishedObjects() {
-    List<WageSettlementReadout> published = List.of(readout(UNIT_A, WORKER_A, 100L, 4L, 5L, 91L));
+    List<WageSettlementReadout> published =
+        List.of(readout(UNIT_A, WORKER_A, 100L, 4L, 96L));
     WageSettlementReadoutFeed.publish(MAP_ID, TICK, published);
 
     Optional<List<WageSettlementReadout>> sameTick = WageSettlementReadoutFeed.last(MAP_ID, TICK);
@@ -202,11 +192,11 @@ class W4WageSettlementReadoutViewTest {
       HouseholdId worker,
       long due,
       long paidMoney,
-      long barterValue,
       long arrears) {
     return new WageSettlementReadout(
         unit,
         ROLE,
+        Optional.empty(),
         worker,
         PAYER,
         SILVER,
@@ -216,11 +206,9 @@ class W4WageSettlementReadoutViewTest {
         0L,
         due,
         paidMoney,
-        barterValue > 0L ? Map.of(GRAIN, barterValue * 200L) : Map.of(),
-        barterValue > 0L ? Map.of(GRAIN, barterValue) : Map.of(),
         arrears,
         Optional.empty(),
-        arrears > 0L ? List.of("wage-inventory-scope-unavailable") : List.of());
+        List.of());
   }
 
   private static SimulationState state() {

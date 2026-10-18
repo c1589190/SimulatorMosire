@@ -463,6 +463,9 @@ class R2SharedAssetScopeTest {
   }
 
   private static OwnershipStake share(IndustryId industry, ActorRef operator, long quantity) {
+    // P2b2 后 LAND id 只含 (industry, LAND, location, sequence)，不再含 operator。
+    // 同一 location 下不同 operator 的夹具必须用不同 sequence 区分土地块；A=0、B=1 保持稳定顺序。
+    long sequence = OPERATOR_B.equals(operator) ? 1L : 0L;
     return new OwnershipStake(
         OwnershipStake.idOf(
             industry,
@@ -471,7 +474,7 @@ class R2SharedAssetScopeTest {
             operator,
             AssetRightKind.OWNED,
             ProductionLocation.parse(HEX_KEY),
-            0L),
+            sequence),
         industry,
         AssetKind.LAND,
         operator,

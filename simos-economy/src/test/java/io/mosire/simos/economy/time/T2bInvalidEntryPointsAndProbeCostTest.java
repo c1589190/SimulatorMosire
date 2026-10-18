@@ -94,7 +94,7 @@ class T2bInvalidEntryPointsAndProbeCostTest {
         .as("★★ runtime=null 的旧构造器已删；合法构造器只剩 3/6/7 参且都显式收 runtime")
         .containsExactlyInAnyOrder("3 参", "6 参", "7 参");
 
-    // ③ `EconomyData` 不再持有实例表 / 定义表 / 候选面（当前 37 组件）。
+    // ③ `EconomyData` 不再持有实例表 / 定义表 / 候选面（P2d 后当前 35 组件）。
     List<String> components = new ArrayList<>();
     for (var component : EconomyData.class.getRecordComponents()) {
       components.add(component.getName());

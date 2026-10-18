@@ -33,11 +33,9 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
@@ -169,28 +167,20 @@ public interface EconomyDayView {
   }
 
   /**
-   * ★★★ <b>D-032 W2a：候选级工资默认（键 = plan/role/marketZone）</b>。
-   *
-   * <p>只在实例存在前服务候选估价；空表合法。{@code EconomyData} 直接实现（它就是自己的当刻值）， {@code WorkingDayView} 覆盖为工作副本优先。
-   */
-  default Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults() {
-    return Map.of();
-  }
-
-  /**
-   * ★★★ <b>D-032 W2a：执行期工资岗位（键 = unit/role）</b>。
-   *
-   * <p>已存在实例的唯一实际报价权威；空表合法。{@code EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
-   */
-  default Map<WagePostingKey, ProductionWagePosting> productionWagePostings() {
-    return Map.of();
-  }
-
-  /**
    * ★★★ <b>D-032 W2b：逐 {@code (unit, role, worker)} 工资进位余数（0..999）</b>。空表 = 全部为 0； {@code
    * EconomyData} 直接实现，{@code WorkingDayView} 覆盖为工作副本优先。
    */
   default Map<WageCarryKey, Long> wageCarryRemainders() {
+    return Map.of();
+  }
+
+  /**
+   * ★★★ <b>D-032 P4b1：U20 工资锚（键 = marketZone/industry/role）</b>。
+   *
+   * <p>★ <b>缺省 = 空表</b>：没有锚不是坏数据，也不是 0；缺锚与 0 工资必须由读口（{@code WageAnchorBook}）区分。
+   * 锚是 M3/M6/M8 的唯一工资报价权威。
+   */
+  default Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors() {
     return Map.of();
   }
 

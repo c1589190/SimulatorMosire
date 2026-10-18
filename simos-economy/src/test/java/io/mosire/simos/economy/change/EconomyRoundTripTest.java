@@ -34,7 +34,6 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -86,20 +85,20 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
-import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.ProductionWageDefault;
 import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.TransferRule;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.economy.testing.IndustryViews;
@@ -139,11 +138,12 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
  * HouseholdId}（旧视图用 {@code HouseholdIds.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
  * operator / 周期进度住在 {@link ProductionProcess} 上（不是 {@code IndustryDefinitionView} 的旧档兼容位）；{@code
- * EconomyData} 是 31 组件记录（E1–E6 追加组件 + P10.1 {@code merchantFirms} + P4a {@code periodicAdjustments}
- * + Z1 {@code outputQuantityOverrides}/{@code productionEfficiency}，全部在 {@link EconomyChangeSet}
- * 里逐一对齐）。
+ * EconomyData} 是 36 组件记录（P2d 删除 {@code pledges}/{@code liquidationPolicies} 后为 35，P4b1 末尾追加 {@code
+ * productionWageAnchors} 后为 36；全部在 {@link
+ * EconomyChangeSet} 里逐一对齐）。
  *
- * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime，本往返面同步收敛为 31 组件。
+ * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime；P2d 后本往返面为 35 组件，
+ * P4b1（U20 工资锚）后为 36 组件。
  */
 class EconomyRoundTripTest {
 
@@ -193,7 +193,7 @@ class EconomyRoundTripTest {
 
   /** ★ E4a：连续粮债的稳定身份（key == 值内 id，且 id 由四元组派生）。 */
   private static final DebtContractId D1 =
-      DebtContractId.idOf(KEY_HH, OTHER_HH, DebtUnit.commodity(GRAIN), DebtTerms.legacyDefault());
+      DebtContractId.idOf(KEY_HH, OTHER_HH, DebtUnit.money(SILVER), DebtTerms.legacyDefault());
 
   private static final ProductionModeId MODE = new ProductionModeId("mode-1");
   private static final ProductionModeId MODE_TARGET = new ProductionModeId("mode-2");
@@ -208,7 +208,6 @@ class EconomyRoundTripTest {
   private static final MarketMandateId MANDATE = new MarketMandateId("mandate-1");
 
   private static final MoneyIssuanceId ISSUANCE = new MoneyIssuanceId("issuance-1");
-  private static final PledgeId PLEDGE = new PledgeId("pledge-1");
   private static final CrisisSignalId CRISIS = CrisisSignalId.idOf(KEY.hex(), "FOOD");
   private static final ModeTransitionId TRANSITION =
       ModeTransitionId.idOf(ORGANIZATION, MODE_TARGET, 10L);
@@ -532,10 +531,10 @@ class EconomyRoundTripTest {
    * {@code industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code
    * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} /
    * {@code operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2
-   * 的两个 / E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的
-   * {@code periodicAdjustments} / Z1 的 {@code outputQuantityOverrides} 与 {@code
-   * productionEfficiency} / A1（2026-10-08）的 {@code currencies} 与 {@code moneyInstruments} /
-   * B2（2026-10-08）的 {@code marketZones} / 2026-10-09 选项 A 的 {@code householdDebtRefs}。
+   * 的两个 / E3 的两个 / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的 {@code
+   * periodicAdjustments} / Z1 的 {@code outputQuantityOverrides} 与 {@code productionEfficiency} /
+   * A1（2026-10-08）的 {@code currencies} 与 {@code moneyInstruments} / B2（2026-10-08）的 {@code
+   * marketZones} / 2026-10-09 选项 A 的 {@code householdDebtRefs}。
    *
    * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P4a 29 → Z1 31 → A1 33 → B2 34 → 选项 A
    * 35）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
@@ -564,10 +563,13 @@ class EconomyRoundTripTest {
    * modes}（生产方式定义副本）六个"第二权威"整段删除（I1：定义/实例/进度/经验/产出覆盖的唯一权威在 production； 组件数迁移轨迹 37 →（B2b 删
    * units/覆盖/效率）33 →（B4 删 industries, B2c 删 candidates）33→31 →（B5 删 modes）**31**）。★ 断的是 record
    * 组件数**实测值**，两侧子集断言仍然双向成立 ⇒ 再动状态必须同步本用例。
+   *
+   * <p>★★ <b>D-032 P4b1：35 → 36</b>：末尾追加第 36 个组件 {@code productionWageAnchors}（U20 工资锚；键 = {@code
+   * WageAnchorKey}）。本批只恢复组件形状基线，不测锚业务（P4c 再补）。
    */
   @Test
-  void changeSetHasExactlyThirtySevenComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
+  void changeSetHasExactlyThirtySixComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -632,6 +634,14 @@ class EconomyRoundTripTest {
         0L,
         0L,
         0L);
+  }
+
+  /**
+   * ★★★ D-032 P4b1：最小工资锚夹具（**只服务组件形状基线**）。字段取非默认值，确保"锚表非空 ⇒ 参与差异"
+   * 的判别力；不验证 U20 调价/观测业务（P4c 再补）。
+   */
+  private static ProductionWageAnchor wageAnchor() {
+    return new ProductionWageAnchor(SILVER, 1_250L, 1L, 2L, 3L, 4L, 5L, -6L);
   }
 
   private static AssetOccupancyGrant assetOccupancy() {
@@ -728,9 +738,6 @@ class EconomyRoundTripTest {
       case "moneyIssuances" ->
           base.withGovernments(Map.of(GOVERNMENT, government()))
               .withMoneyIssuances(Map.of(ISSUANCE, moneyIssuance()));
-      case "pledges" -> base.withPledges(Map.of(PLEDGE, pledge()));
-      case "liquidationPolicies" ->
-          base.withLiquidationPolicies(Map.of(ASSET_RULE, liquidationPolicy()));
       case "crisisSignals" -> base.withCrisisSignals(Map.of(CRISIS, crisisSignal()));
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
@@ -832,6 +839,12 @@ class EconomyRoundTripTest {
         InventoryReservation value = inventoryReservation();
         yield base.withInventoryReservations(Map.of(value.id(), value));
       }
+      // ★★★ D-032 P4b1：第 36 个组件（U20 工资锚）—— 只恢复组件形状基线：空表与"字段没进变更集"
+      //   在值层面不可区分 ⇒ 判别力要求锚表非空；键 == 值内三元组。锚业务（U20 调价等）由 P4c 另测。
+      case "productionWageAnchors" -> {
+        WageAnchorKey key = new WageAnchorKey(MARKET, FARM, OPERATOR_ROLE);
+        yield base.withProductionWageAnchors(Map.of(key, wageAnchor()));
+      }
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -869,8 +882,6 @@ class EconomyRoundTripTest {
       case "assetRules" -> cs.assetRules().changed();
       case "governments" -> cs.governments().changed();
       case "moneyIssuances" -> cs.moneyIssuances().changed();
-      case "pledges" -> cs.pledges().changed();
-      case "liquidationPolicies" -> cs.liquidationPolicies().changed();
       case "crisisSignals" -> cs.crisisSignals().changed();
       case "modeTransitions" -> cs.modeTransitions().changed();
       case "classShares" -> cs.classShares().changed();
@@ -893,6 +904,8 @@ class EconomyRoundTripTest {
       case "wageCarryRemainders" -> cs.wageCarryRemainders().changed();
       case "assetOccupancies" -> cs.assetOccupancies().changed();
       case "inventoryReservations" -> cs.inventoryReservations().changed();
+      // ★★★ D-032 P4b1：第 36 个组件（见 mutate 的同名 case）
+      case "productionWageAnchors" -> cs.productionWageAnchors().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -976,7 +989,7 @@ class EconomyRoundTripTest {
         D1,
         KEY_HH,
         OTHER_HH,
-        DebtUnit.commodity(GRAIN),
+        new DebtUnit.Money(SILVER),
         DebtTerms.legacyDefault(),
         DebtSource.ORDINARY_LOAN,
         100L,
@@ -1002,7 +1015,7 @@ class EconomyRoundTripTest {
         3L,
         4L,
         Map.of(SILVER, 9L),
-        Map.of(DebtUnit.commodity(GRAIN).key(), 5L));
+        Map.of(DebtUnit.money(SILVER).key(), 5L));
   }
 
   /**
@@ -1228,8 +1241,6 @@ class EconomyRoundTripTest {
         MODE,
         AssetKind.CATTLE,
         true,
-        true,
-        10,
         Optional.empty(),
         new TransferRule(true, true, false));
   }
@@ -1304,8 +1315,8 @@ class EconomyRoundTripTest {
    * withMarketTables(成员格为空的表)} 时它还不是区 ⇒ "派生市场必须有成员格"。 ⇒ 与 {@code EconomyClearRegionHandler} 末尾对
    * {@code classes}+{@code classStandings} 的处理同款： <b>两个互相约束的组件必须在同一次规范构造里改变</b>。
    *
-   * <p>★ <b>代价与护栏</b>：这里显式列出全部 37 个组件 ⇒ 将来新增组件时本调用**编译不过**（不是静默丢字段）， 且本文件的 {@code
-   * changeSetHasExactlyThirtyOneComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
+   * <p>★ <b>代价与护栏</b>：这里显式列出全部 36 个组件 ⇒ 将来新增组件时本调用**编译不过**（不是静默丢字段）， 且本文件的 {@code
+   * changeSetHasExactlyThirtySixComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
    *
    * <p>★★ <b>2026-10-11 W1d 更正（W1 收尾批核对代码时发现，本注原先已过期）</b>：上面"两个单组件 wither 之间没有合法 中间态"这条理由**已不成立**
    * —— {@code EconomyData} 构造期那条"每个持久区必须有价表条目"的守卫已按设计书 §4.2 N-4 **删除**（"缺表 =
@@ -1334,8 +1345,6 @@ class EconomyRoundTripTest {
         base.assetRules(),
         base.governments(),
         base.moneyIssuances(),
-        base.pledges(),
-        base.liquidationPolicies(),
         base.crisisSignals(),
         base.modeTransitions(),
         base.classShares(),
@@ -1352,26 +1361,14 @@ class EconomyRoundTripTest {
         base.productionWagePostings(),
         base.wageCarryRemainders(),
         base.assetOccupancies(),
-        base.inventoryReservations());
+        base.inventoryReservations(),
+        // ★★★ D-032 P4b1：第 36 个组件（U20 工资锚）—— 本帮手是整份状态复制，必须逐字段带上。
+        base.productionWageAnchors());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {
     return new MoneyIssuanceRecord(
         ISSUANCE, GOVERNMENT, 0L, 1L, SILVER, 100L, MoneyIssuanceKind.INITIAL_ENDOWMENT, "fixture");
-  }
-
-  static Pledge pledge() {
-    return new Pledge(PLEDGE, D1, FARM_SHARE, 1L, MODE, 10, Pledge.Status.ACTIVE);
-  }
-
-  static LiquidationPolicy liquidationPolicy() {
-    return new LiquidationPolicy(
-        ASSET_RULE,
-        1_000,
-        0L,
-        LiquidationPolicy.PriceSource.POLICY,
-        3L,
-        LiquidationPolicy.PayeeRule.CREDITOR_FIRST);
   }
 
   static HexCrisisSignal crisisSignal() {

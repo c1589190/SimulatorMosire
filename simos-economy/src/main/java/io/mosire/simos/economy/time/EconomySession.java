@@ -44,9 +44,6 @@ public final class EconomySession {
    */
   private final AssetOccupancyLookup assetOccupancyLookup;
 
-  /** ★★★ D-032 D2 §6.5：工资报价读口；C2 的默认 = {@link UnavailableProductionWageQuoteLookup}（永远 empty）。 */
-  private final ProductionWageQuoteLookup wageQuoteLookup;
-
   /** ★★★ D-032 D2 §6.2/§7.3：参与户外部属性事实的唯一读口。 */
   private final ParticipantAttributeLookup participantAttributeLookup;
 
@@ -160,27 +157,24 @@ public final class EconomySession {
         definitions,
         runtime,
         new UnavailableAssetOccupancyLookup(),
-        new UnavailableProductionWageQuoteLookup(),
         new UnavailableParticipantAttributeLookup());
   }
 
   /**
-   * ★★★ <b>D-032 C2 的装配口</b>：除定义来源与运行时外，再注入 D4-C 资产占用读口、工资报价读口与属性桥。 三个 lookup 都必须显式给出（缺真实实现时用对应的
-   * {@code Unavailable*} fail-closed 适配器，不得传 null）。
+   * ★★★ <b>D-032 C2 的装配口</b>：除定义来源与运行时外，再注入 D4-C 资产占用读口与属性桥。 两个 lookup
+   * 都必须显式给出（缺真实实现时用对应的 {@code Unavailable*} fail-closed 适配器，不得传 null）。
    */
   public EconomySession(
       EconomyData base,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionRuntime runtime,
       AssetOccupancyLookup assetOccupancyLookup,
-      ProductionWageQuoteLookup wageQuoteLookup,
       ParticipantAttributeLookup participantAttributeLookup) {
     this(
         base,
         definitions,
         runtime,
         assetOccupancyLookup,
-        wageQuoteLookup,
         participantAttributeLookup,
         null);
   }
@@ -194,7 +188,6 @@ public final class EconomySession {
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionRuntime runtime,
       AssetOccupancyLookup assetOccupancyLookup,
-      ProductionWageQuoteLookup wageQuoteLookup,
       ParticipantAttributeLookup participantAttributeLookup,
       io.mosire.simos.util.state.RevisionId expectedRevision) {
     this.base = Objects.requireNonNull(base, "base");
@@ -204,8 +197,6 @@ public final class EconomySession {
     this.assetOccupancyLookup =
         Objects.requireNonNull(
             assetOccupancyLookup, "assetOccupancyLookup（D4-C 读口，缺实现用 Unavailable*）");
-    this.wageQuoteLookup =
-        Objects.requireNonNull(wageQuoteLookup, "wageQuoteLookup（D2 §6.5 读口，缺实现用 Unavailable*）");
     this.participantAttributeLookup =
         Objects.requireNonNull(
             participantAttributeLookup, "participantAttributeLookup（属性桥，缺实现用 Unavailable*）");
@@ -243,11 +234,6 @@ public final class EconomySession {
   /** ★★★ D-032 D4-C：本会话的资产占用只读读口（empty = 不可用，调用方必须具名拒绝）。 */
   public AssetOccupancyLookup assetOccupancyLookup() {
     return assetOccupancyLookup;
-  }
-
-  /** ★★★ D-032 D2 §6.5：本会话的工资报价读口（C2 默认永远 empty ⇒ `wage-quote-missing`）。 */
-  public ProductionWageQuoteLookup wageQuoteLookup() {
-    return wageQuoteLookup;
   }
 
   /** ★★★ D-032 D2 §6.2/§7.3：参与户外部属性事实读口。 */

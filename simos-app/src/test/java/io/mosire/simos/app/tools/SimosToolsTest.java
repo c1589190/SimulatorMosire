@@ -743,12 +743,13 @@ class SimosToolsTest {
       concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES);
 
   /**
-   * catalog 预期的 <b>152</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   * catalog 预期的 <b>153</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
    *
    * <p>★★ <b>D-031 Z6（2026-10-16）</b>：{@code simos-production} / {@code simos-culture} 两个新模块的 5 条
    * handler 进扫描面 ⇒ 143 → <b>148</b>；本表与 {@code catalogCoversEveryCommandHandlerImplementation} 的
-   * {@code hasSize(152)} 必须同轮改。★★ D-032 C4b：C3/D4-Ib2b 注册 economy.SetProductionRoster /
-   * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>。 ★
+   * {@code hasSize(153)} 必须同轮改。★★ D-032 C4b：C3/D4-Ib2b 注册 economy.SetProductionRoster /
+   * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>；
+   * ★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ <b>153</b>。 ★
    * 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★ 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
    *
    * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
@@ -824,6 +825,8 @@ class SimosToolsTest {
           "economy.SetPlanSources",
           // ★★★ D-032 C3 / D4-Ib2b：生产名册与工资默认/执行报价三条 GM-only 写口。
           "economy.SetProductionRoster",
+          // ★★★ D-032 P4b1：U20 工资锚的 GM-only 显式写口（新命令类型 ⇒ 本表 +1）。
+          "economy.SetProductionWageAnchor",
           "economy.SetProductionWageDefault",
           "economy.SetProductionWagePosting",
           "economy.SetGovernmentMintScale",
@@ -1170,12 +1173,12 @@ class SimosToolsTest {
 
     assertThat(tool.description())
         .as("description 白名单计数与两个新 kind")
-        // ★★ D-032 T6（2026-10-17；spec §14.23.2 裁定四十一）：main 侧 `EconomyAdjustTool` 的描述已按
-        //   实测改成「白名单（7）」——轨迹 12 → 9 → 7（B2c 退役 upsertCandidate、Z1 两个产出覆盖 kind 迁 production、
-        //   B5 两个 mode kind 迁 production）。旧锚点「白名单（12）」是 B5 之前的历史计数。
+        // ★★ D-032 P2d：main 侧 `EconomyAdjustTool` 的描述已按实测改成「白名单（6）」——轨迹
+        //   12 → 9 → 7 → 6（B2c 退役 upsertCandidate、Z1 两个产出覆盖 kind 迁 production、
+        //   B5 两个 mode kind 迁 production、P2d 删除 setLiquidationPolicy）。
         //   ★ 不是放宽：下面两条 `contains(SET/CLEAR_OUTPUT_QUANTITY)` 与"三个已迁出的 kind 命中即具名拒"
         //     那一段逐条未动 —— 谁再把描述改回旧计数、或让迁移出去的 kind 静默生效，这里照样红。
-        .contains("白名单（7）")
+        .contains("白名单（6）")
         //   ★★ D-032 T6：两个产出覆盖 kind 已随 `outputQuantityOverrides` **迁出 economy**（B2c/Z1）——
         //   常量仍在（唯一用途 = 命中时给具名拒），但**不再出现在白名单描述里**：真跑实测描述含的是
         //   "★ 已迁出五 kind（upsertCandidate / setOutputQuantity / clearOutputQuantity / …）"这一句
@@ -1184,7 +1187,7 @@ class SimosToolsTest {
         //   ★ 不是放宽：断的仍是"描述必须把这两个 kind 的点名说清楚"，且下面 schema 的 6 属性与
         //     modifier 零命中一字未动；弱化的是**断言落点**（工具总描述 → adjustment 属性描述），命中的是同一份文案。
         .contains("upsertCandidate")
-        .contains("白名单 12 → 9 → 7 项");
+        .contains("白名单 12 → 9 → 7 → 6 项");
 
     @SuppressWarnings("unchecked")
     Map<String, Object> schema = tool.jsonSchema();
@@ -1265,8 +1268,10 @@ class SimosToolsTest {
                 + " 也是 **149** 条 type ⇒ 扫描面 == 注册面 == catalog 三处逐值一致）。"
                 + "★ 扫描器本轮补了一条**跨类限定常量**解析：`CreateInstanceHandler.TYPE ="
                 + " ProductionCommandTypes.CREATE_INSTANCE` 是类型限定名，旧扫描器只认字面量与同类常量 ⇒"
-                + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。")
-        .hasSize(152);
+                + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。"
+                + "；★★★ D-032 P4b1（2026-10-18）：新增 `economy.SetProductionWageAnchor`（U20 工资锚写口）"
+                + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。")
+        .hasSize(153);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

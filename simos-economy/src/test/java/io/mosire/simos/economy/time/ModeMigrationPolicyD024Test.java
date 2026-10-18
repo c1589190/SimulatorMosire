@@ -855,11 +855,10 @@ class ModeMigrationPolicyD024Test {
   private static Fixture withSourceDebt(Fixture fixture, long principalMilli) {
     DebtContract contract =
         new DebtContract(
-            DebtContractId.idOf(
-                SOURCE, BUYER2, DebtUnit.commodity(GRAIN), DebtTerms.legacyDefault()),
+            DebtContractId.idOf(SOURCE, BUYER2, DebtUnit.money(SILVER), DebtTerms.legacyDefault()),
             SOURCE,
             BUYER2,
-            DebtUnit.commodity(GRAIN),
+            new DebtUnit.Money(SILVER),
             DebtTerms.legacyDefault(),
             DebtSource.ORDINARY_LOAN,
             principalMilli,

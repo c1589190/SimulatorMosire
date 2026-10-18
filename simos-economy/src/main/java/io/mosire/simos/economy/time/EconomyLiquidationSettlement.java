@@ -1,97 +1,45 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.api.asset.AssetRightKind;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.debt.DebtStatus;
-import io.mosire.simos.economy.api.debt.DebtUnit;
-import io.mosire.simos.economy.api.id.AssetRuleId;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
-import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.PledgeId;
-import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.HexCrisisSignal;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 
 /**
- * ★★ <b>E5b：清算阶段 + 阶层下滑 + hex 危机信号</b>（理想架构 §2.8/§5.3/§5.4/§7.2/§7.3；计划 E5）。
+ * ★★ <b>E5b（P2d 收窄后）：债务压力计数器 + hex 债务爆炸信号</b>。
  *
- * <p>★★ <b>位置与去重</b>：本阶段在日结算的 <b>4b 借粮 → 4c 偿还 → 5 计息 → 5b 经营者退出</b> 之后、<b>5c 阶层写回</b> 之前执行，只在
- * {@code anyCycleClosed == true} 的关账日推进（与 5 计息同窗口；<b>异质周期世界按关账日/结算日计周期</b>，见报告）。 5b
- * 是"经营者退出"路径：它已经用库存/货币还过一轮、不足才把合同标 {@link DebtStatus#DEFAULTED}；本阶段只对 <b>此刻本金仍 &gt; 0</b> 的合同选路，5b
- * 已结清的合同本金为 0 ⇒ 天然不会被二次处置（去重口径写在这里，不靠两边各自记状态）。
+ * <p>★★ <b>P2d 删除的是自动资产处置</b>：本阶段不再选路处置资产、不再写 {@code assetShares}、不再创建或改写任何优先权记录。
+ * 保留的是与资产处置无关的债务压力读数、连续压力计数器与 {@code crisisSignals} 的 DEBT_EXPLOSION 信号路径。
+ *
+ * <p>★★ <b>位置与去重</b>：本阶段在日结算的 4b 借粮 → 4c 偿还 → 5 计息 → 5b 经营者退出之后、5c 阶层写回之前执行，只在 {@code
+ * anyCycleClosed == true} 的关账日推进。
  *
  * <pre>
- * ① 压力判定（逐户逐合同，读 E4b DebtCapacity 与 E4c 偿还读数；见 {@link #contractStressed}）
- * ② 连续压力计数器（HouseholdClassMembership.consecutiveDebtStressCycles；阈值 {@link #DEBT_STRESS_CYCLES_THRESHOLD}）
- * ③ 触发清算 = status==DEFAULTED，或连续压力 ≥ 阈值且本合同本期受压
- * ④ 触发阶层下滑 = 核心生产资料被处置，或 DEFAULTED 且压力 ≥ 阈值，或 F 持续不足下一轮必要投入
- * ⑤ planner 只读选路（{@link #plan}）→ apply（{@link #apply}）一次性写入
+ * ① 压力判定（逐户逐合同，读 E4b DebtCapacity 与 E4c 偿还读数）
+ * ② 连续压力计数器（HouseholdClassMembership.consecutiveDebtStressCycles）
+ * ③ DEBT_EXPLOSION 只读信号（写进 crisisSignals；不改债务/资产/账户）
  * </pre>
  *
- * <p>★★ <b>计数器口径（写清，避免"字段名只像债务"的误读）</b>：{@code consecutiveDebtStressCycles} 统计<b>连续</b>出现
- * "任一合同受压"<b>或</b>"E4b 的 {@code F} 项不足下一轮必要投入（{@code income &lt; 口粮 + 下一轮投入 + 税}）"的关账周期数；
- * 两者都清零的条件是当个周期既无债务压力、下一轮投入又可覆盖。★ 把第三条下滑判据（{@code F} 持续不足）的"持续"持久化在同一个计数器里， 是 E5b
- * 明确允许的<b>等价持久判据</b>（不新增状态组件、不加第二份真值）；没有这个计数器时，{@code DEFAULTED} 只能靠合同状态持久、 而 {@code F} 缺口跨重启就丢了。
- *
- * <p>★★ <b>计数器的读/写权威（2026-10-10 路径无关修复）</b>：{@code consecutiveDebtStressCycles} 的<b>增量基准 =
- * 当刻工作副本</b> （{@link EconomyStateBuilder#classMembershipsOrBase()}），<b>不是</b> {@code
- * context.base()} —— 后者 = 本次 {@code advance} 的 {@code range.from} 快照（{@code
- * EconomySession.base()}）。一次 {@code advance(from, from+N)} 内部逐日推进、 连跑多次关账（small-world 实测
- * 30/60/…/360 各一次），读基态会把"关账周期数"偷换成"advance 调用次数" ⇒ 计数器上限 = 段数、 阈值在单段推进下不可达（违反 {@code
- * TimeAdvance.java:71-77} 的"一次 N 天 == N 次单日"终态等价判据）。同一条纪律适用于本类 所有"<b>当前</b>归属/当前位置"的读取点（见 {@link
- * #selectRulePolicy}）。
- *
- * <p>★★ <b>清算只换生产资料所有权，不搬粮/钱</b>：apply 里只有三条写口 —— {@link OwnershipStakeBook#apply}（资产份额）、 {@link
- * DebtContractBook#reduce}/{@code markStatus}（债务本金/状态）、{@code EconomyStateBuilder.classStandings()}
- * / {@code crisisSignals()}（阶层与信号）。<b>不调用 applyTransfer、不碰账户</b>（§5.4"处置必须与债务本金扣减、资产份额转移、
- * 阶层归属变化在同一原子流程里完成"）。
- *
- * <p>★★ <b>planner 只读、apply 不再抛业务异常</b>：planner 把所有数量（处置量、减本额、质押减量、保护线、退化选择、无法处置的具名原因）
- * 一次算完并校验；apply 只做"照单执行"。唯一的 fail-closed 守卫在 {@link OwnershipStakeBook#apply} 里（源存在/数量够/质押上界），
- * planner 已按同一批 Move 在覆盖层上预演过 ⇒ apply 正常路径不抛。
- *
- * <p>★★ <b>不硬折</b>：{@code MARKET}/{@code AGREED} 目前没有稳定价格源 ⇒ 具名 {@code unpriced} 跳过；{@code POLICY}
- * 按 {@code policyValuePerUnitMilli} 折算。价格以"毫值/单位"计，只对<b>粮债</b>接线（粮是硬通货；货币/其它商品债需要汇率， 没有就不折，记 {@code
- * unpriced-debt-unit}）。{@code MARKET_FIRST} 没有市场 acteur（资产市场未落地）⇒ 具名跳过，不造第二套市场。
- *
- * <p>★★ <b>稳定序</b>：合同按 {@link DebtContractId#value()}；质押按 {@code priority →
- * AssetRule.liquidationPriority → AssetShareId.value() → PledgeId.value()}；家户按 {@link
- * HouseholdId#value()}。所有排序不依赖 Map 迭代序/哈希序。
+ * <p>★ <b>稳定序</b>：合同按 {@link DebtContractId#value()}；家户按 {@link HouseholdId#value()}。排序不依赖 Map
+ * 迭代序/哈希序。
  */
 public final class EconomyLiquidationSettlement {
 
-  /** ★★ <b>清算阈值：连续债务压力周期数</b>（2 个关账周期）。只有 {@code status == DEFAULTED} 或达到本阈值才触发清算； 未到期的正常债务不卖地。 */
+  /** ★★ <b>清算阈值：连续债务压力周期数</b>（2 个关账周期）。 */
   public static final long DEBT_STRESS_CYCLES_THRESHOLD = 2L;
 
   /**
@@ -100,39 +48,28 @@ public final class EconomyLiquidationSettlement {
    */
   public static final long DEBT_EXPLOSION_F_MULTIPLE = 4L;
 
-  /** ★ 下滑目标的规则扩展位键名（优先于机械序，见类注）。 */
-
   /** ★ 新建 {@code HouseholdClassMembership} 的具名原因（尚未发生阶层迁移）。 */
   public static final String STANDING_SEED_REASON = "e5b:classStandingSeed";
 
   /** ★ 信号/审计的稳定动作词（读口按它分类，不在多处拼字符串）。 */
-  static final String ACTION_DISPOSED = "disposed";
-
   static final String ACTION_SKIPPED = "skipped";
-  static final String ACTION_DEGRADED = "degraded-rule-selection";
+
   static final String ACTION_DEBT_EXPLOSION = "debt-explosion";
+
   static final String ACTION_PROJECTION_FALLBACK = "class-projection-fallback";
 
-  /** ★ 无 ACTIVE 质押时自动挂质押的确定性 id 前缀（不含 {@code "."}/{@code "|"}）。 */
-  private static final String AUTO_PLEDGE_ID_PREFIX = "autopledge-";
-
-  /** 清算/阶层下滑日志（settlement 分类）。 */
-  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
+  /** 债务压力/危机信号日志（settlement 分类）。 */
+  static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   /**
    * ★★ W5-fix6（D5）：<b>债务状态面</b>（debt 分类 —— 与 {@code DebtContractBook} 的 {@code DEBT_UPSERT} 同一个
    * logger）—— 自持合同的"不标违约/不计压力"具名 DEBUG 走它。
    */
-  private static final org.slf4j.Logger DEBT = EconomyLog.debt();
+  static final org.slf4j.Logger DEBT = EconomyLog.debt();
 
   private EconomyLiquidationSettlement() {}
 
-  /**
-   * ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。
-   *
-   * <p>★★ <b>B5（§13.15.2 裁定十八）</b>：生产方式定义副本已从 {@code EconomyData} 删除 ⇒ "有没有接线生产方式"这一维 改读
-   * <b>production 当刻定义权威</b>（{@code definitions.modes()}，由调用方显式注入；缺来源 ⇒ 当场拒，不静默当空表）。
-   */
+  /** 本阶段是否启用：只要世界已经有生产方式/阶层/资产规则中的任意一项。 */
   public static boolean isActive(
       EconomyData base,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions) {
@@ -141,46 +78,24 @@ public final class EconomyLiquidationSettlement {
     return !definitions.modes().isEmpty()
         || !base.classPositions().isEmpty()
         || !base.classStandings().isEmpty()
-        || !base.pledges().isEmpty()
-        || !base.liquidationPolicies().isEmpty()
         || !base.assetRules().isEmpty();
   }
 
-  /**
-   * ★★ <b>E5b 阶段入口</b>（包内可见；只由 {@code EconomySettlement} 的关账分支调用，协调器单线程）。
-   *
-   * @param session 当次推进会话（写 work copy 的唯一入口）
-   * @param day 当前结算日（绝对世界日）
-   * @param currentCycle 正在进行的周期序号（关账前的口径；与 4c/5 的偿还/计息同源）
-   * @param rows 家户行工作副本
-   * @param assetShares 资产份额工作副本（唯一写口 {@link OwnershipStakeBook}）
-   * @param debts 债务合同工作副本（唯一写口 {@link DebtContractBook}）
-   * @param principalAtDayStart 当日起始本金快照（在任何 借/还 之前取；用于"本金未下降"与利息口径）
-   * @param repaidPrincipalByDebt E4c 本日逐合同偿还读数（本金减少的具名证据；可为空表）
-   * @param debtCapacities 本关账日终态的 E4b 容量（F/headroom 的唯一算法；见 {@code DebtCapacityBook}）
-   * @param industries 产业模板表（{@link OwnershipStakeBook#apply} 的存在性守卫读它）
-   * @param ledger 当天审计累加器（清算事件只进这里，不落盘）
-   */
   static void settle(
       EconomySession session,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       long day,
       long currentCycle,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
       Map<DebtContractId, Long> principalAtDayStart,
       Map<DebtContractId, Long> repaidPrincipalByDebt,
       Map<HouseholdId, DebtCapacity> debtCapacities,
-      Map<IndustryId, IndustryDefinitionView> industries,
       ProductionLedger.Accumulator ledger) {
     Objects.requireNonNull(session, "session 不得为 null");
     Objects.requireNonNull(definitions, "definitions（B5：生产方式定义的唯一权威在 production，必须显式注入）");
     Objects.requireNonNull(ledger, "ledger 不得为 null");
     Objects.requireNonNull(householdEconomies, "rows 不得为 null");
-    Objects.requireNonNull(assetShares, "assetShares 不得为 null");
-    Objects.requireNonNull(pledges, "pledges 不得为 null");
     Objects.requireNonNull(debts, "debts 不得为 null");
     Objects.requireNonNull(principalAtDayStart, "principalAtDayStart 不得为 null");
     Objects.requireNonNull(repaidPrincipalByDebt, "repaidPrincipalByDebt 不得为 null");
@@ -196,33 +111,24 @@ public final class EconomyLiquidationSettlement {
             day,
             currentCycle,
             householdEconomies,
-            assetShares,
-            pledges,
             debts,
             principalAtDayStart,
             repaidPrincipalByDebt,
             debtCapacities,
-            industries,
             ledger);
-    Plan plan = plan(context);
+    Plan plan = DebtStressBook.plan(context);
     if (LOG.isDebugEnabled()) {
       EventLog.channel(LOG)
           .debug(
               LogEvent.of(
-                  "LIQUIDATION_PLAN",
+                  "DEBT_STRESS_PLAN",
                   EconomyLogSource.ECONOMY_SETTLEMENT,
                   "day",
                   day,
-                  // ★ 2026-10-10：带上是**第几个关账周期**——计数器口径 = 关账周期数（与 advance 分段无关），
-                  //   排查"路径效应"时要能与逐户 DEBT_STRESS_THRESHOLD_FIRED 的 cycle 对齐。
                   "cycle",
                   currentCycle,
                   "stressUpdates",
                   plan.stressUpdates().size(),
-                  "debtReductions",
-                  plan.debtReductions().size(),
-                  "pledgeUpdates",
-                  plan.pledgeUpdates().size(),
                   "audits",
                   plan.audits().size(),
                   "explosions",
@@ -230,12 +136,12 @@ public final class EconomyLiquidationSettlement {
                   "autoDefaults",
                   plan.autoDefaults().size()));
     }
-    apply(context, plan);
+    LiquidationApplyBook.apply(context, plan);
     if (LOG.isDebugEnabled()) {
       EventLog.channel(LOG)
           .debug(
               LogEvent.of(
-                  "LIQUIDATION_APPLIED",
+                  "DEBT_STRESS_APPLIED",
                   EconomyLogSource.ECONOMY_SETTLEMENT,
                   "day",
                   day,
@@ -245,50 +151,21 @@ public final class EconomyLiquidationSettlement {
   }
 
   /** planner 的只读输入（所有 Map 都是调用方的当刻工作副本引用；planner 不写它们）。 */
-  private record Context(
+  record Context(
       EconomySession session,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       EconomyData base,
       long day,
       long currentCycle,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
       Map<DebtContractId, Long> principalAtDayStart,
       Map<DebtContractId, Long> repaidPrincipalByDebt,
       Map<HouseholdId, DebtCapacity> debtCapacities,
-      Map<IndustryId, IndustryDefinitionView> industries,
       ProductionLedger.Accumulator ledger) {}
 
-  /** 一条已选路的资产转移（新份额 id 在 apply 时由 {@link OwnershipStakeBook} 确定性生成）。 */
-  private record PlannedMove(
-      DebtContractId debtId,
-      PledgeId pledgeId,
-      AssetShareId source,
-      long quantity,
-      long valueMilli,
-      long pricePerUnitMilli,
-      AssetRuleId ruleId,
-      boolean coreMeans,
-      String pricing,
-      String recipientRule) {}
-
-  /** 一个合同的清算计划：按稳定序的 Move + 质押终态 + 无法处置的具名审计。 */
-  private record DebtReductionPlan(
-      DebtContract debt,
-      List<PlannedMove> moves,
-      List<PledgeUpdate> pledgeUpdates,
-      long totalValueMilli,
-      long principalAfter,
-      boolean coreMeansDisposed,
-      List<AuditEntry> audits) {}
-
-  /** 一条质押的计划终态（减量/EXECUTED/RELEASED）。 */
-  private record PledgeUpdate(PledgeId pledgeId, Pledge after) {}
-
-  /** 一户的压力读数与计数器更新（nextCount 已按"能否持久化"裁决）。 */
-  private record StressUpdate(
+  /** 一户的压力读数与计数器更新。 */
+  record StressUpdate(
       HouseholdId household,
       long previousCount,
       long nextCount,
@@ -296,7 +173,7 @@ public final class EconomyLiquidationSettlement {
       Map<String, Long> evidence) {}
 
   /** 一次债务爆炸读数。 */
-  private record DebtExplosionPlan(
+  record DebtExplosionPlan(
       HouseholdId household,
       HexCoord hex,
       long principalTotalMilli,
@@ -309,985 +186,21 @@ public final class EconomyLiquidationSettlement {
       Map<String, Long> evidence) {}
 
   /** 内部审计条目（apply 时转成 {@link ProductionLedger.LiquidationAudit}；可选引用用 null 表示"没有"）。 */
-  private record AuditEntry(
+  record AuditEntry(
       long day,
       String action,
       HouseholdId household,
       DebtContractId contractId,
-      PledgeId pledgeId,
-      AssetShareId sourceAssetShareId,
-      AssetShareId createdAssetShareId,
-      long quantity,
-      long pricePerUnitMilli,
-      long debtReductionMilli,
-      long debtPrincipalAfter,
-      long pledgeQuantityAfter,
       String reason,
       Map<String, Long> evidence) {}
 
   /** planner 结果：只读、完整、可重放；apply 只是它的执行。 */
-  private record Plan(
+  record Plan(
       List<StressUpdate> stressUpdates,
-      List<DebtReductionPlan> debtReductions,
-      List<PledgeUpdate> pledgeUpdates,
       List<AuditEntry> audits,
       List<DebtExplosionPlan> explosions,
       List<DebtContractId> autoDefaults) {}
 
-  /** 规则/政策选路结果；{@code failureReason != null} = 不处置（具名）。 */
-  private record RulePolicySelection(
-      AssetRule rule, LiquidationPolicy policy, String degradedFrom, String failureReason) {}
-
-  /** 一个质押候选（选路结果 + 失败原因；失败也留在序里以便写具名审计）。 */
-  private record PledgeCandidate(
-      Pledge pledge,
-      OwnershipStake share,
-      AssetRule rule,
-      LiquidationPolicy policy,
-      String degradedFrom,
-      String failureReason) {}
-
-  /** 自动挂质押的候选（折后可用量的自有份额 + 可质押规则）。 */
-  private record AutoPledgeCandidate(
-      OwnershipStake share, AssetRule rule, long availableQuantity) {}
-
-  /** 价格选路结果：{@code pricePerUnitMilli} 与政策一起返回，保证"价"与"保护线/比例"同源。 */
-  private record SelectedPrice(long pricePerUnitMilli, LiquidationPolicy policy) {}
-
-  // ── planner ─────────────────────────────────────────────────────────────────────────────
-
-  private static Plan plan(Context context) {
-    EconomyData base = context.base();
-    // ★★ 2026-10-10 路径无关修复（E5b 计数器）：阶层归属是**当刻工作副本**，不是本次 advance 的基态快照。
-    //   ★ 为什么必须是工作副本：`consecutiveDebtStressCycles` 的定义域是**世界的关账周期数**（类注、:64-67/:88），
-    //     而一次 `advance(from, from+N)` 内部会逐日推进、连跑多次关账（small-world 实测 30/60/…/360 各一次）。
-    //     读 `base`（= `range.from` 那份快照，`EconomySession.base()`）⇒ `previous` 恒为"本次调用开始时的值"，
-    //     `next` 恒等于 `previous + 1` ⇒ 计数器上限 = **advance 调用次数**，把"关账周期数"偷换成"调用次数"：
-    //     1 段推进下阈值 2 不可达 ⇒ "连续压力 ⇒ 触发清算/阶层下滑"整条支路永不开火（实测 s1 取值上限 = 1）。
-    //   ★ 工作副本 ⊇ 基态（`EconomyStateBuilder.classMemberships()` 首次物化时从 `base.classStandings()` 拷贝），
-    //     且 E5b 自己、E6a 变迁、迁移新建户都会在同一段内写它 ⇒ 读它才看得见"本段内已经发生过的关账"。
-    //   ★ 口子是既有的 `classMembershipsOrBase()`（`EconomyStateBuilder.java:294`），不新增状态、不新增写口。
-    //   ★ `classPositions` 是静态模板（位置定义不随日改变）⇒ 照旧读 base。
-    Map<HouseholdId, HouseholdClassMembership> classMemberships =
-        context.session().sheet().classMembershipsOrBase();
-    Map<ClassPositionId, ProductionRole> positions = base.classPositions();
-    List<AuditEntry> audits = new ArrayList<>();
-
-    Map<HouseholdId, List<DebtContract>> debtsByDebtor = indexDebtsByDebtor(context.debts());
-    Map<DebtContractId, List<Pledge>> pledgesByDebt = indexActivePledgesByDebt(context.pledges());
-    List<HouseholdId> households = sortedHouseholds(context.householdEconomies());
-    // ★★ 到期即默认：先用有效状态参与本轮的应力/触发判定，需落状态的在 apply 统一 markStatus。
-    List<DebtContractId> autoDefaults = new ArrayList<>();
-    Map<DebtContractId, DebtStatus> effectiveStatuses = effectiveStatuses(context, autoDefaults);
-
-    // ── 1. 压力判定 + 连续计数器（逐户，稳定 HouseholdId 序）──────────────────────────────
-    Map<HouseholdId, Long> nextCounts = new LinkedHashMap<>();
-    Map<HouseholdId, Set<DebtContractId>> stressedContractsByHousehold = new LinkedHashMap<>();
-    List<StressUpdate> stressUpdates = new ArrayList<>();
-    for (HouseholdId household : households) {
-      List<DebtContract> active = activeDebts(debtsByDebtor.getOrDefault(household, List.of()));
-      DebtCapacity capacity = context.debtCapacities().get(household);
-      Map<String, Long> evidence = new LinkedHashMap<>();
-      Set<DebtContractId> stressedContracts = new LinkedHashSet<>();
-      boolean anyStress = false;
-      long principalTotal = 0L;
-      long startTotal = 0L;
-      long interestTotal = 0L;
-      long repaidToday = 0L;
-      int defaultedContracts = 0;
-      int overdueContracts = 0;
-      int shortContracts = 0;
-      int grainContracts = 0;
-      int nonGrainContracts = 0;
-      for (DebtContract debt : active) {
-        if (DebtContractBook.isSelfHeld(debt)) {
-          // ★★★ W5-fix6（D5）：**自持合同不计违约压力**（同族漏网之一）—— 它没有可执行的债权人，"压力/逾期/欠 F"
-          //   对它都不成立；把它计进 anyStress 会让政府的连续压力计数被自己的记账事实推着走（进而触发清算/阶层滑落）。
-          //   ★ 不静默：逐条 DEBUG 具名。
-          if (DEBT.isDebugEnabled()) {
-            EventLog.channel(DEBT)
-                .debug(
-                    LogEvent.of(
-                        "DEBT_STRESS_SELF_HELD_SKIPPED",
-                        EconomyLogSource.ECONOMY_DEBT_STATE,
-                        "day",
-                        context.day(),
-                        "cycle",
-                        context.currentCycle(),
-                        "household",
-                        household.value(),
-                        "debtContract",
-                        debt.id().value(),
-                        "unit",
-                        debt.unit().key(),
-                        "outstandingPrincipal",
-                        debt.principal(),
-                        "why",
-                        "self-held-not-executable"));
-          }
-          continue;
-        }
-        long startPrincipal = context.principalAtDayStart().getOrDefault(debt.id(), 0L);
-        long currentPrincipal = debt.principal();
-        long cycleInterest = perMille(startPrincipal, debt.terms().interestRatePerMillePerCycle());
-        // 到期口径：合同滚动 dueCycle 优先（借入/资本化会刷新它）；没有滚动值时读 terms 的固定期限维。
-        boolean overdue = contractDueCycle(debt) <= context.currentCycle;
-        long required = overdue ? Math.max(cycleInterest, currentPrincipal) : cycleInterest;
-        boolean principalDeclined = currentPrincipal < startPrincipal;
-        // ★ F 是粮口径（E4b 只对粮 unit 算 F；非粮债进 unpriced 不硬折）⇒ 只有粮债能用
-        //   "F < 本期利息/到期应还"这一路；非粮债只走 DEFAULTED/到期两路，避免跨 unit 比较。
-        boolean shortOfRequired =
-            isGrainDebt(debt) && capacity != null && capacity.F() < required && !principalDeclined;
-        DebtStatus effectiveStatus = effectiveStatuses.getOrDefault(debt.id(), debt.status());
-        boolean stressed = contractStressed(effectiveStatus, overdue, shortOfRequired);
-        if (stressed) {
-          anyStress = true;
-          stressedContracts.add(debt.id());
-        }
-        if (effectiveStatus == DebtStatus.DEFAULTED) {
-          defaultedContracts++;
-        }
-        if (overdue) {
-          overdueContracts++;
-        }
-        if (shortOfRequired) {
-          shortContracts++;
-        }
-        if (!isGrainDebt(debt)) {
-          nonGrainContracts++;
-        } else {
-          // ★ 只对粮 unit 做金额聚合：principal/interest/已偿都是各自 unit 的最小单位，
-          //   跨 unit 相加就是把银/布硬折成粮（与 F 的粮口径冲突）。
-          grainContracts++;
-          principalTotal = saturatedAdd(principalTotal, currentPrincipal);
-          startTotal = saturatedAdd(startTotal, startPrincipal);
-          interestTotal = saturatedAdd(interestTotal, cycleInterest);
-          repaidToday =
-              saturatedAdd(
-                  repaidToday, context.repaidPrincipalByDebt().getOrDefault(debt.id(), 0L));
-        }
-      }
-      boolean inputShortfall = capacity != null && nextRoundInputNotFunded(capacity);
-      boolean counterStress = anyStress || inputShortfall;
-      Optional<ClassPositionId> resolvable =
-          resolvablePosition(context, household, classMemberships, positions);
-      // ★ 增量基准 = **当刻工作副本**里上一关账周期落下的值（同一段内第 n 次关账能看到第 n-1 次的值）。
-      long previous =
-          classMemberships.get(household) == null
-              ? 0L
-              : classMemberships.get(household).consecutiveDebtStressCycles();
-      long incremented = previous == Long.MAX_VALUE ? Long.MAX_VALUE : previous + 1L;
-      long next =
-          counterStress && resolvable.isPresent() ? incremented : (counterStress ? previous : 0L);
-      nextCounts.put(household, next);
-      stressedContractsByHousehold.put(household, stressedContracts);
-      evidence.put("grainPrincipalTotalMilli", principalTotal);
-      evidence.put("grainPrincipalAtDayStartMilli", startTotal);
-      evidence.put("grainInterestChargedMilli", interestTotal);
-      evidence.put("grainContracts", (long) grainContracts);
-      evidence.put("nonGrainContracts", (long) nonGrainContracts);
-      evidence.put("defaultedContracts", (long) defaultedContracts);
-      evidence.put("overdueContracts", (long) overdueContracts);
-      evidence.put("shortOfRequiredContracts", (long) shortContracts);
-      if (capacity == null) {
-        evidence.put("FUnavailable", 1L);
-      } else {
-        evidence.put("FMilli", capacity.F());
-        evidence.put("basicRationMilli", capacity.basicRation());
-        evidence.put("nextRoundNecessaryInputMilli", capacity.nextRoundNecessaryInput());
-        evidence.put("afterAllocationGrainIncomeMilli", capacity.afterAllocationGrainIncome());
-        evidence.put("inputNotFunded", inputShortfall ? 1L : 0L);
-      }
-      evidence.put("repaidPrincipalTodayMilli", repaidToday);
-      if (next != previous) {
-        stressUpdates.add(new StressUpdate(household, previous, next, counterStress, evidence));
-      } else if (counterStress && resolvable.isEmpty()) {
-        audits.add(
-            audit(
-                context.day(),
-                ACTION_SKIPPED,
-                household,
-                null,
-                null,
-                null,
-                null,
-                "stress-counter-unpersisted:no-current-position",
-                evidence));
-      }
-    }
-
-    // ── 2. 触发合同（默认违约立即；连续压力达标且**本合同本期受压**）────────────────────────
-    List<DebtContract> triggered = new ArrayList<>();
-    for (HouseholdId household : households) {
-      long count = nextCounts.getOrDefault(household, 0L);
-      boolean thresholdReached = count >= DEBT_STRESS_CYCLES_THRESHOLD;
-      Set<DebtContractId> stressedContracts =
-          stressedContractsByHousehold.getOrDefault(household, Set.of());
-      for (DebtContract debt : activeDebts(debtsByDebtor.getOrDefault(household, List.of()))) {
-        DebtStatus effectiveStatus = effectiveStatuses.getOrDefault(debt.id(), debt.status());
-        if (effectiveStatus == DebtStatus.DEFAULTED
-            || (thresholdReached && stressedContracts.contains(debt.id()))) {
-          triggered.add(debt);
-        }
-      }
-    }
-    triggered.sort(Comparator.comparing(debt -> debt.id().value()));
-
-    // ── 3. 无 ACTIVE 质押的触发债务先自动挂质押（同一 pledgeUpdates apply 路径；planner 立即读它）──
-    Map<AssetShareId, Long> activePledgeQuantity = activePledgeQuantityByShare(context.pledges());
-    List<PledgeUpdate> autoPledgeUpdates = new ArrayList<>();
-    for (DebtContract debt : triggered) {
-      List<Pledge> active = pledgesByDebt.get(debt.id());
-      if (active != null && !active.isEmpty()) {
-        continue;
-      }
-      Optional<Pledge> autoPledge = autoPledgeFor(context, debt, activePledgeQuantity);
-      if (autoPledge.isPresent()) {
-        Pledge pledge = autoPledge.get();
-        pledgesByDebt.computeIfAbsent(debt.id(), ignored -> new ArrayList<>()).add(pledge);
-        activePledgeQuantity.merge(
-            pledge.assetShareId(), pledge.quantity(), EconomyLiquidationSettlement::saturatedAdd);
-        autoPledgeUpdates.add(new PledgeUpdate(pledge.id(), pledge));
-      }
-    }
-
-    // ── 3b. 逐合同选路（planner 只读；availableQuantity 覆盖层保证同一份额不被超卖）───────────
-    Map<AssetShareId, Long> availableQuantity = new LinkedHashMap<>();
-    List<DebtReductionPlan> reductions = new ArrayList<>();
-    List<PledgeUpdate> pledgeUpdates = new ArrayList<>(autoPledgeUpdates);
-    for (DebtContract debt : triggered) {
-      DebtReductionPlan reduction =
-          planDebtReduction(
-              context,
-              debt,
-              pledgesByDebt.getOrDefault(debt.id(), List.of()),
-              availableQuantity,
-              audits);
-      reductions.add(reduction);
-      pledgeUpdates.addAll(reduction.pledgeUpdates());
-      audits.addAll(reduction.audits());
-    }
-
-    // ── 5. DEBT_EXPLOSION 读数（本金/F 比或"压力≥阈值且本金净增"）────────────────────────
-    List<DebtExplosionPlan> explosions = new ArrayList<>();
-    for (HouseholdId household : households) {
-      List<DebtContract> active = activeDebts(debtsByDebtor.getOrDefault(household, List.of()));
-      if (active.isEmpty()) {
-        continue;
-      }
-      HouseholdEconomy householdEconomy = context.householdEconomies().get(household);
-      if (householdEconomy == null) {
-        continue;
-      }
-      // ★ 只把**粮 unit** 的本金相加：F 是粮口径，混入银/布本金就是把不同 unit 硬折成一个数。
-      //   没有粮债 ⇒ 本判据不适用（非粮债各自的到期/违约仍在 E5b 的别处读）。
-      long principalTotal = 0L;
-      long startTotal = 0L;
-      int grainContracts = 0;
-      int nonGrainContracts = 0;
-      for (DebtContract debt : active) {
-        if (!isGrainDebt(debt)) {
-          nonGrainContracts++;
-          continue;
-        }
-        grainContracts++;
-        principalTotal = saturatedAdd(principalTotal, debt.principal());
-        startTotal =
-            saturatedAdd(startTotal, context.principalAtDayStart().getOrDefault(debt.id(), 0L));
-      }
-      if (grainContracts == 0) {
-        continue;
-      }
-      long netDelta = principalTotal - startTotal;
-      DebtCapacity capacity = context.debtCapacities().get(household);
-      long F = capacity == null ? -1L : capacity.F();
-      long stressCycles = nextCounts.getOrDefault(household, 0L);
-      // ★ 阈值口径：principal / max(1, F)（F 读不到时只走"连续压力 ≥ 阈值且本金净增"这一路，不用 0 冒充）。
-      long multiple = capacity == null ? -1L : principalTotal / Math.max(1L, F);
-      boolean ratioExplosion = capacity != null && multiple >= DEBT_EXPLOSION_F_MULTIPLE;
-      boolean accumulationExplosion = stressCycles >= DEBT_STRESS_CYCLES_THRESHOLD && netDelta > 0L;
-      if (!ratioExplosion && !accumulationExplosion) {
-        continue;
-      }
-      int severity =
-          ratioExplosion ? (int) Math.min(5L, 2L + multiple / DEBT_EXPLOSION_F_MULTIPLE) : 2;
-      Map<String, Long> evidence = new LinkedHashMap<>();
-      evidence.put("principalTotalMilli", principalTotal);
-      evidence.put("FMilli", F);
-      evidence.put("principalToFMultiple", multiple);
-      evidence.put("netPrincipalDeltaMilli", netDelta);
-      evidence.put("consecutiveStressCycles", stressCycles);
-      evidence.put("thresholdMultiple", DEBT_EXPLOSION_F_MULTIPLE);
-      evidence.put("grainDebtContracts", (long) grainContracts);
-      evidence.put("nonGrainDebtContracts", (long) nonGrainContracts);
-      if (capacity != null) {
-        evidence.put("nextRoundNecessaryInputMilli", capacity.nextRoundNecessaryInput());
-        evidence.put("afterAllocationGrainIncomeMilli", capacity.afterAllocationGrainIncome());
-      } else {
-        evidence.put("FUnavailable", 1L);
-      }
-      String reason =
-          "debt-explosion:principalToFMultiple="
-              + multiple
-              + ";stressCycles="
-              + stressCycles
-              + ";window=preLiquidation"
-              + ";unit=milli";
-      explosions.add(
-          new DebtExplosionPlan(
-              household,
-              householdEconomy.view().hex(),
-              principalTotal,
-              F,
-              multiple,
-              netDelta,
-              stressCycles,
-              severity,
-              reason,
-              evidence));
-      audits.add(
-          audit(
-              context.day(),
-              ACTION_DEBT_EXPLOSION,
-              household,
-              null,
-              null,
-              null,
-              null,
-              reason,
-              evidence));
-    }
-
-    if (LOG.isDebugEnabled() || LOG.isInfoEnabled()) {
-      logStressThresholdFired(
-          context, households, nextCounts, stressedContractsByHousehold, triggered);
-    }
-
-    return new Plan(stressUpdates, reductions, pledgeUpdates, audits, explosions, autoDefaults);
-  }
-
-  /**
-   * ★★ <b>§一.9：E5b"连续压力 ⇒ 触发清算"支路开火时的具名读数</b>（只读快照，不写任何状态、不改公式）。
-   *
-   * <p>说清三件事：<b>第几个关账周期</b>（{@code cycle} = 世界的关账周期序号，不是 advance 调用序号）、 <b>压力累计到几</b>（{@code
-   * stressCycles} / {@code threshold}）、<b>触发了什么</b>（{@code thresholdLiquidations} 条受压合同被选路处置）。 ★
-   * W4：本行**不再报阶层下滑** —— 阶层滑落已从"阈值触发"改为"速度 = f(债务/资产)、市场轮最末结算" （{@link
-   * ClassSlideSettlement}），与这条关账日的压力支路无关。
-   *
-   * <p>两级：<b>INFO</b> = 本关账日整段的"这条支路真的开火了"（一行/关账日，只在有户达阈值时打印）； <b>DEBUG</b> = 逐户一行（稳定 {@link
-   * HouseholdId} 序）—— 这是"计数器可达"的直接读数。
-   */
-  private static void logStressThresholdFired(
-      Context context,
-      List<HouseholdId> households,
-      Map<HouseholdId, Long> nextCounts,
-      Map<HouseholdId, Set<DebtContractId>> stressedContractsByHousehold,
-      List<DebtContract> triggered) {
-    // 达阈值户名下、**本期受压**的合同（= 只可能因达阈值才被选路处置的那一批；已违约合同不在此计）。
-    Map<HouseholdId, Long> thresholdLiquidations = new LinkedHashMap<>();
-    for (DebtContract debt : triggered) {
-      Set<DebtContractId> stressed =
-          stressedContractsByHousehold.getOrDefault(debt.debtor(), Set.of());
-      if (stressed.contains(debt.id())) {
-        thresholdLiquidations.merge(debt.debtor(), 1L, Long::sum);
-      }
-    }
-    long householdsAtThreshold = 0L;
-    long liquidationsTotal = 0L;
-    for (HouseholdId household : households) {
-      long stressCycles = nextCounts.getOrDefault(household, 0L);
-      if (stressCycles < DEBT_STRESS_CYCLES_THRESHOLD) {
-        continue;
-      }
-      householdsAtThreshold++;
-      long liquidations = thresholdLiquidations.getOrDefault(household, 0L);
-      liquidationsTotal += liquidations;
-      if (LOG.isDebugEnabled()) {
-        EventLog.channel(LOG)
-            .debug(
-                LogEvent.of(
-                    "DEBT_STRESS_THRESHOLD_FIRED",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "day",
-                    context.day(),
-                    "cycle",
-                    context.currentCycle,
-                    "household",
-                    household.value(),
-                    "stressCycles",
-                    stressCycles,
-                    "threshold",
-                    DEBT_STRESS_CYCLES_THRESHOLD,
-                    "thresholdLiquidations",
-                    liquidations));
-      }
-    }
-    if (householdsAtThreshold > 0L) {
-      EventLog.channel(LOG)
-          .info(
-              LogEvent.of(
-                  "DEBT_STRESS_BRANCH_FIRED",
-                  EconomyLogSource.ECONOMY_SETTLEMENT,
-                  "day",
-                  context.day(),
-                  "cycle",
-                  context.currentCycle,
-                  "householdsAtThreshold",
-                  householdsAtThreshold,
-                  "threshold",
-                  DEBT_STRESS_CYCLES_THRESHOLD,
-                  "thresholdLiquidations",
-                  liquidationsTotal));
-    }
-  }
-
-  // ── 逐合同选路 ───────────────────────────────────────────────────────────────────────────
-
-  private static DebtReductionPlan planDebtReduction(
-      Context context,
-      DebtContract debt,
-      List<Pledge> activePledges,
-      Map<AssetShareId, Long> availableQuantity,
-      List<AuditEntry> audits) {
-    if (activePledges.isEmpty()) {
-      audits.add(
-          audit(
-              context.day(),
-              ACTION_SKIPPED,
-              debt.debtor(),
-              debt.id(),
-              null,
-              null,
-              null,
-              "no-active-pledge",
-              Map.of("principalMilli", debt.principal())));
-      return new DebtReductionPlan(
-          debt, List.of(), List.of(), 0L, debt.principal(), false, List.of());
-    }
-
-    List<PledgeCandidate> candidates = new ArrayList<>(activePledges.size());
-    for (Pledge pledge : activePledges) {
-      candidates.add(selectCandidate(context, debt, pledge));
-    }
-    candidates.sort(
-        Comparator.comparingInt((PledgeCandidate candidate) -> candidate.pledge().priority())
-            .thenComparingInt(
-                candidate ->
-                    candidate.rule() == null
-                        ? Integer.MAX_VALUE
-                        : candidate.rule().liquidationPriority())
-            .thenComparing(candidate -> candidate.pledge().assetShareId().value())
-            .thenComparing(candidate -> candidate.pledge().id().value()));
-
-    long remainingDebt = debt.principal();
-    List<PlannedMove> moves = new ArrayList<>();
-    Map<PledgeId, Pledge> pledgeAfter = new LinkedHashMap<>();
-    List<AuditEntry> localAudits = new ArrayList<>();
-    boolean coreDisposed = false;
-    for (PledgeCandidate candidate : candidates) {
-      if (remainingDebt <= 0L) {
-        break;
-      }
-      Pledge pledge = candidate.pledge();
-      OwnershipStake share = candidate.share();
-      if (candidate.failureReason() != null) {
-        localAudits.add(
-            skipAudit(
-                context.day(),
-                debt,
-                pledge,
-                candidate.failureReason(),
-                Map.of("principalMilli", remainingDebt, "pledgeQuantity", pledge.quantity())));
-        continue;
-      }
-      if (candidate.degradedFrom() != null) {
-        localAudits.add(
-            audit(
-                context.day(),
-                ACTION_DEGRADED,
-                debt.debtor(),
-                debt.id(),
-                pledge.id(),
-                pledge.assetShareId(),
-                null,
-                "degraded-selection:" + candidate.degradedFrom(),
-                Map.of(
-                    "selectedRulePriority",
-                    (long) candidate.rule().liquidationPriority(),
-                    "pledgeQuantity",
-                    pledge.quantity())));
-      }
-      if (candidate.policy().recipientRule() == LiquidationPolicy.PayeeRule.MARKET_FIRST) {
-        // ★ 资产市场尚未落地（没有市场 acteur）：MARKET_FIRST 不硬走"第二套市场"，具名跳过；
-        //   降级为 CREDITOR_FIRST 会让政策本身失真，故本阶段选择跳过而不是暗中改受偿对象。
-        localAudits.add(
-            skipAudit(
-                context.day(),
-                debt,
-                pledge,
-                "recipient-rule-market-not-landed",
-                Map.of("principalMilli", remainingDebt, "pledgeQuantity", pledge.quantity())));
-        continue;
-      }
-      SelectedPrice price =
-          selectedPrice(candidate.policy(), context.day(), debt, pledge, localAudits);
-      if (price == null) {
-        continue;
-      }
-      if (!(debt.unit() instanceof DebtUnit.Commodity commodity)
-          || !commodity.commodity().equals(EconomySettlement.GRAIN)) {
-        localAudits.add(
-            skipAudit(
-                context.day(),
-                debt,
-                pledge,
-                "unpriced-debt-unit:" + debt.unit().key(),
-                Map.of("principalMilli", remainingDebt, "pledgeQuantity", pledge.quantity())));
-        continue;
-      }
-      long available = availableQuantity.getOrDefault(pledge.assetShareId(), share.quantity());
-      long capacityProtected = Math.max(0L, available - price.policy().protectedReserve());
-      long capacityPledge = perMille(pledge.quantity(), price.policy().maxLiquidatePerMille());
-      long capacityDebt = remainingDebt / price.pricePerUnitMilli();
-      long quantity =
-          Math.min(Math.min(capacityDebt, capacityPledge), Math.min(capacityProtected, available));
-      if (quantity <= 0L) {
-        localAudits.add(
-            skipAudit(
-                context.day(),
-                debt,
-                pledge,
-                "no-disposable-quantity",
-                Map.of(
-                    "principalMilli", remainingDebt,
-                    "pricePerUnitMilli", price.pricePerUnitMilli(),
-                    "pledgeCapacity", capacityPledge,
-                    "protectedCapacity", capacityProtected)));
-        continue;
-      }
-      long value = quantity * price.pricePerUnitMilli();
-      if (value <= 0L || value > remainingDebt) {
-        localAudits.add(
-            skipAudit(
-                context.day(),
-                debt,
-                pledge,
-                "value-guard:value=" + value + ";remaining=" + remainingDebt,
-                Map.of(
-                    "principalMilli",
-                    remainingDebt,
-                    "pricePerUnitMilli",
-                    price.pricePerUnitMilli())));
-        continue;
-      }
-      moves.add(
-          new PlannedMove(
-              debt.id(),
-              pledge.id(),
-              pledge.assetShareId(),
-              quantity,
-              value,
-              price.pricePerUnitMilli(),
-              candidate.rule().id(),
-              candidate.rule().isCoreMeans(),
-              candidate.policy().priceSource().name(),
-              candidate.policy().recipientRule().name()));
-      availableQuantity.put(pledge.assetShareId(), available - quantity);
-      remainingDebt -= value;
-      if (candidate.rule().isCoreMeans()) {
-        coreDisposed = true;
-      }
-      long pledgeLeft = pledge.quantity() - quantity;
-      Pledge after = pledge.withQuantity(pledgeLeft);
-      if (pledgeLeft == 0L) {
-        after = after.withStatus(Pledge.Status.EXECUTED);
-      }
-      pledgeAfter.put(pledge.id(), after);
-    }
-
-    long totalValue = debt.principal() - remainingDebt;
-    if (totalValue > 0L && remainingDebt == 0L) {
-      // 债已结清 ⇒ 余下 ACTIVE 质押没有担保对象，全部释放（不留下"无债却占着份额"的质押）。
-      for (Pledge pledge : activePledges) {
-        Pledge current = pledgeAfter.getOrDefault(pledge.id(), pledge);
-        if (current.status() == Pledge.Status.ACTIVE && current.quantity() > 0L) {
-          pledgeAfter.put(pledge.id(), current.withStatus(Pledge.Status.RELEASED));
-        }
-      }
-    }
-    List<PledgeUpdate> pledgeUpdates = new ArrayList<>(pledgeAfter.size());
-    for (Pledge afterPledge : pledgeAfter.values()) {
-      pledgeUpdates.add(new PledgeUpdate(afterPledge.id(), afterPledge));
-    }
-    return new DebtReductionPlan(
-        debt,
-        List.copyOf(moves),
-        List.copyOf(pledgeUpdates),
-        totalValue,
-        remainingDebt,
-        coreDisposed,
-        localAudits);
-  }
-
-  /** 一个质押的资格 + 规则/政策选路（纯读；失败原因具名，不抛业务异常）。 */
-  private static PledgeCandidate selectCandidate(
-      Context context, DebtContract debt, Pledge pledge) {
-    OwnershipStake share = context.assetShares().get(pledge.assetShareId());
-    if (share == null) {
-      return new PledgeCandidate(pledge, null, null, null, null, "pledge-share-missing");
-    }
-    if (share.kind() != AssetRightKind.OWNED && share.kind() != AssetRightKind.COMMUNAL) {
-      return new PledgeCandidate(
-          pledge, share, null, null, null, "right-kind-not-disposable:" + share.kind().name());
-    }
-    if (!share.owner().equals(HouseholdActors.of(debt.debtor()))) {
-      return new PledgeCandidate(pledge, share, null, null, null, "share-owner-not-debtor");
-    }
-    if (!context.industries().isEmpty() && !context.industries().containsKey(share.industry())) {
-      // 与 OwnershipStakeBook.apply 的存在性守卫同口径：产业模板已提供但缺这一条 ⇒ planner 先具名拒绝，
-      // 不让 apply 在提交前才抛（"planner 只读选路、apply 不再抛业务异常"）。
-      return new PledgeCandidate(pledge, share, null, null, null, "asset-industry-missing");
-    }
-    RulePolicySelection selection = selectRulePolicy(context, debt, pledge, share);
-    if (selection.failureReason() != null) {
-      return new PledgeCandidate(
-          pledge, share, null, null, selection.degradedFrom(), selection.failureReason());
-    }
-    if (!selection.rule().transferRule().transferable()) {
-      return new PledgeCandidate(
-          pledge,
-          share,
-          selection.rule(),
-          selection.policy(),
-          selection.degradedFrom(),
-          "asset-not-transferable");
-    }
-    if (selection.rule().transferRule().requiresOwnerConsent()
-        && !share.owner().equals(HouseholdActors.of(debt.debtor()))) {
-      // ★ owner == debtor 时，处置的是所有权人自己的份额（同意要求由所有权身份满足）；
-      //   owner != debtor 的租佃份额不得由佃户卖 —— 这条在更上面已挡一次，这里再把规则位读实。
-      return new PledgeCandidate(
-          pledge,
-          share,
-          selection.rule(),
-          selection.policy(),
-          selection.degradedFrom(),
-          "owner-consent-required");
-    }
-    if (!selection.rule().pledgeable()) {
-      return new PledgeCandidate(
-          pledge,
-          share,
-          selection.rule(),
-          selection.policy(),
-          selection.degradedFrom(),
-          "asset-not-pledgeable");
-    }
-    return new PledgeCandidate(
-        pledge, share, selection.rule(), selection.policy(), selection.degradedFrom(), null);
-  }
-
-  /** 优先取"债务人当前位置的 mode + assetKind"对应的规则/政策；否则按 assetKind 取 id 最小的有政策规则。 */
-  private static RulePolicySelection selectRulePolicy(
-      Context context, DebtContract debt, Pledge pledge, OwnershipStake share) {
-    EconomyData base = context.base();
-    // ★ 2026-10-10 同族修复：这里的语义是"债务人**当前**位置的 mode"（方法名/注释都写"当前位置"）⇒ 与
-    //   `plan()` 的计数器读同一份**工作副本**：一段 advance 内 E5b 自身的阶层下滑 / E6a 变迁 / 迁移会把
-    //   `currentPositionId` 改掉，读基态会让同一段里靠后的关账日按**段首**位置选规则/政策（选错规则 ⇒
-    //   具名 degraded 退化或选到不该用的政策）。`classPositions` 仍是静态模板，照旧读 base。
-    ProductionModeId preferredMode =
-        preferredMode(
-            context,
-            debt,
-            pledge,
-            context.session().sheet().classMembershipsOrBase(),
-            base.classPositions());
-    AssetRule preferredRule =
-        preferredMode == null
-            ? null
-            : base.assetRules().get(AssetRuleId.idOf(preferredMode, share.asset()));
-    if (preferredRule != null) {
-      LiquidationPolicy policy = base.liquidationPolicies().get(preferredRule.id());
-      if (policy != null) {
-        return new RulePolicySelection(preferredRule, policy, null, null);
-      }
-    }
-    List<AssetRule> sameKind = rulesOfKind(base, share.asset());
-    if (sameKind.isEmpty()) {
-      return new RulePolicySelection(
-          null, null, null, "no-asset-rule-for-asset-kind:" + share.asset().name());
-    }
-    for (AssetRule rule : sameKind) {
-      LiquidationPolicy policy = base.liquidationPolicies().get(rule.id());
-      if (policy != null) {
-        String degradedFrom =
-            preferredRule == null
-                ? (preferredMode == null ? "mode-unresolved" : "no-rule-for-preferred-mode")
-                : preferredRule.id().value();
-        return new RulePolicySelection(rule, policy, degradedFrom + "->" + rule.id().value(), null);
-      }
-    }
-    String preferred = preferredRule == null ? "none" : preferredRule.id().value();
-    return new RulePolicySelection(null, null, null, "no-liquidation-policy-for-rule:" + preferred);
-  }
-
-  /** 债务人当前位置的 mode（位置表空时退回 pledge.modeId；再没有 ⇒ 空）。 */
-  private static ProductionModeId preferredMode(
-      Context context,
-      DebtContract debt,
-      Pledge pledge,
-      Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      Map<ClassPositionId, ProductionRole> positions) {
-    HouseholdClassMembership classMembership = classMemberships.get(debt.debtor());
-    if (classMembership != null) {
-      ProductionRole position = positions.get(classMembership.currentPositionId());
-      if (position != null) {
-        return position.modeId();
-      }
-    }
-    // ★★★ B5（裁定十八）：读 production 当刻定义权威（economy 侧不再有 modes 副本）。
-    return context.definitions().mode(pledge.modeId()).isPresent() ? pledge.modeId() : null;
-  }
-
-  /** 同 assetKind 的规则按 ruleId.value() 升序（退化选择的稳定序）。 */
-  private static List<AssetRule> rulesOfKind(EconomyData base, AssetKind assetKind) {
-    List<AssetRule> rules = new ArrayList<>();
-    for (AssetRule rule : base.assetRules().values()) {
-      if (rule.assetKind() == assetKind) {
-        rules.add(rule);
-      }
-    }
-    rules.sort(Comparator.comparing(rule -> rule.id().value()));
-    return rules;
-  }
-
-  /** 价格选路：POLICY 有正价才可折算；MARKET/AGREED 目前没有稳定价格源 ⇒ 具名 unpriced 跳过。 */
-  private static SelectedPrice selectedPrice(
-      LiquidationPolicy policy,
-      long day,
-      DebtContract debt,
-      Pledge pledge,
-      List<AuditEntry> audits) {
-    switch (policy.priceSource()) {
-      case POLICY -> {
-        if (policy.policyValuePerUnitMilli() > 0L) {
-          return new SelectedPrice(policy.policyValuePerUnitMilli(), policy);
-        }
-        audits.add(
-            skipAudit(
-                day,
-                debt,
-                pledge,
-                "unpriced:policy-price-zero-or-missing",
-                Map.of("protectedReserve", policy.protectedReserve())));
-        return null;
-      }
-      case MARKET -> {
-        audits.add(
-            skipAudit(
-                day,
-                debt,
-                pledge,
-                "unpriced:market-price-not-landed",
-                Map.of("protectedReserve", policy.protectedReserve())));
-        return null;
-      }
-      case AGREED -> {
-        audits.add(
-            skipAudit(
-                day,
-                debt,
-                pledge,
-                "unpriced:agreed-price-not-landed",
-                Map.of("protectedReserve", policy.protectedReserve())));
-        return null;
-      }
-    }
-    throw new IllegalStateException("未裁决的 LiquidationPolicy.PriceSource: " + policy.priceSource());
-  }
-
-  // ── apply：照单执行（资产份额唯一写口 → 债务唯一写口 → 阶层/信号 → 审计）──────────────────
-
-  private static void apply(Context context, Plan plan) {
-    // ★ 到期即默认：先落状态，后续 reduce/结清仍按既有唯一写口语义（DEFAULTED + 本金 0 ⇒ SETTLED）。
-    for (DebtContractId debtId : plan.autoDefaults()) {
-      DebtContractBook.markStatus(context.debts(), debtId, DebtStatus.DEFAULTED);
-    }
-    List<OwnershipStakeBook.Move> moves = new ArrayList<>();
-    for (DebtReductionPlan reduction : plan.debtReductions()) {
-      for (PlannedMove move : reduction.moves()) {
-        moves.add(
-            new OwnershipStakeBook.Move(
-                move.source(),
-                move.quantity(),
-                HouseholdActors.of(reduction.debt().creditor()),
-                HouseholdActors.of(reduction.debt().creditor()),
-                AssetRightKind.OWNED));
-      }
-    }
-
-    Map<PledgeId, Pledge> plannedPledges = new LinkedHashMap<>(context.pledges());
-    for (PledgeUpdate update : plan.pledgeUpdates()) {
-      plannedPledges.put(update.pledgeId(), update.after());
-    }
-    List<AssetShareId> created =
-        moves.isEmpty()
-            ? List.of()
-            : OwnershipStakeBook.apply(
-                context.assetShares(), context.industries(), plannedPledges, moves);
-
-    // ★ 2026-10-09：OwnershipStakeBook 会把被处置份额上**其它** ACTIVE 质押按比例跟到债权人新份额；
-    //   该写口就地改的是 plannedPledges（已先并入本计划的质押终态）⇒ 这里整表并回唯一的工作副本。
-    context.pledges().clear();
-    context.pledges().putAll(plannedPledges);
-
-    int moveIndex = 0;
-    for (DebtReductionPlan reduction : plan.debtReductions()) {
-      if (reduction.moves().isEmpty()) {
-        continue;
-      }
-      DebtContract after =
-          DebtContractBook.reduce(
-              context.debts(), reduction.debt().id(), reduction.totalValueMilli());
-      if (after.principal() == 0L && after.status() == DebtStatus.DEFAULTED) {
-        after =
-            DebtContractBook.markStatus(context.debts(), reduction.debt().id(), DebtStatus.SETTLED);
-      }
-      for (PlannedMove move : reduction.moves()) {
-        AssetShareId createdId = created.get(moveIndex++);
-        context
-            .ledger()
-            .addLiquidationAudit(
-                toLiquidationAudit(context.day(), reduction, move, createdId, after.principal()));
-      }
-    }
-
-    writeStressCounters(context, plan);
-
-    if (!plan.explosions().isEmpty()) {
-      writeCrisisSignals(context, plan);
-    }
-
-    for (AuditEntry entry : plan.audits()) {
-      context.ledger().addLiquidationAudit(toLiquidationAudit(entry));
-    }
-  }
-
-  /** 压力计数器落到 working copy；只有真的要写才物化 {@code classStandings} 工作副本。 */
-  private static void writeStressCounters(Context context, Plan plan) {
-    if (plan.stressUpdates().isEmpty()) {
-      return;
-    }
-    LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
-        context.session().sheet().classMemberships();
-    Map<ClassPositionId, ProductionRole> positions = context.base().classPositions();
-    // ★ 2026-10-10 同族修复：播种回退（写口缺该户时的位置解析）以前读 `context.base().classStandings()` ——
-    //   那是**本次 advance 起点**的副本，而这里正要写入的是**当刻工作副本**。指向两处会让同一次写入
-    //   "按段首归属播种、按当刻值写回"（两条真值）。工作副本 ⊇ 基态（首次物化即从基态拷贝、之后只增不减），
-    //   故对"工作副本里没有该户"的判定逐值等价 —— 这里改成用即将写入的同一份表，只留一条真值。
-
-    for (StressUpdate update : plan.stressUpdates()) {
-      HouseholdClassMembership existingClassMembership = classMemberships.get(update.household());
-      if (existingClassMembership == null) {
-        Optional<ClassPositionId> position =
-            resolvablePosition(context, update.household(), classMemberships, positions);
-        if (position.isEmpty()) {
-          continue; // planner 已写具名审计：不伪造位置
-        }
-        existingClassMembership =
-            new HouseholdClassMembership(
-                update.household(),
-                position.get(),
-                position.get(),
-                // ★ P2-B：新播种的归属只参与当前位置（可参与集合由后续命令追加）。
-                Set.of(),
-                Map.of(),
-                update.previousCount(),
-                0L,
-                STANDING_SEED_REASON);
-      }
-      classMemberships.put(
-          update.household(), withStressCount(existingClassMembership, update.nextCount()));
-    }
-  }
-
-  /** 同 hex 同 kind 覆盖更新（键 = (hex, kind) 派生 id）；group 内按家户序聚合证据。 */
-  private static void writeCrisisSignals(Context context, Plan plan) {
-    LinkedHashMap<HexCoord, List<DebtExplosionPlan>> explosionsByHex = new LinkedHashMap<>();
-    for (DebtExplosionPlan explosion : plan.explosions()) {
-      explosionsByHex.computeIfAbsent(explosion.hex(), ignored -> new ArrayList<>()).add(explosion);
-    }
-    if (explosionsByHex.isEmpty()) {
-      return;
-    }
-    LinkedHashMap<CrisisSignalId, HexCrisisSignal> signals =
-        context.session().sheet().crisisSignals();
-    List<HexCoord> hexes = new ArrayList<>(explosionsByHex.keySet());
-    hexes.sort(Comparator.naturalOrder());
-    for (HexCoord hex : hexes) {
-      List<DebtExplosionPlan> explosions = explosionsByHex.getOrDefault(hex, List.of());
-      if (!explosions.isEmpty()) {
-        HexCrisisSignal signal = debtExplosionSignal(context, hex, explosions);
-        signals.put(signal.id(), signal);
-      }
-    }
-  }
-
-  private static HexCrisisSignal debtExplosionSignal(
-      Context context, HexCoord hex, List<DebtExplosionPlan> explosions) {
-    List<DebtExplosionPlan> ordered = new ArrayList<>(explosions);
-    ordered.sort(Comparator.comparing(explosion -> explosion.household().value()));
-    LinkedHashMap<String, Long> evidence = new LinkedHashMap<>();
-    List<HouseholdId> households = new ArrayList<>();
-    Set<SocialClassId> classes = new LinkedHashSet<>();
-    StringBuilder reason = new StringBuilder("debt-explosion");
-    long principalTotal = 0L;
-    long netDelta = 0L;
-    long maxCycles = 0L;
-    long minF = Long.MAX_VALUE;
-    long maxMultiple = 0L;
-    int severity = 1;
-    int unknownF = 0;
-    for (DebtExplosionPlan explosion : ordered) {
-      households.add(explosion.household());
-      HouseholdEconomy householdEconomy = context.householdEconomies().get(explosion.household());
-      if (householdEconomy != null) {
-        classes.add(householdEconomy.view().stratum());
-      }
-      principalTotal = saturatedAdd(principalTotal, explosion.principalTotalMilli());
-      netDelta = saturatedAdd(netDelta, explosion.netPrincipalDeltaMilli());
-      maxCycles = Math.max(maxCycles, explosion.stressCycles());
-      maxMultiple = Math.max(maxMultiple, Math.max(0L, explosion.principalToFMultiple()));
-      if (explosion.FMilli() < 0L) {
-        unknownF++;
-      } else {
-        minF = Math.min(minF, explosion.FMilli());
-      }
-      severity = Math.max(severity, explosion.severity());
-      reason.append(';').append(explosion.reason());
-    }
-    evidence.put("principalTotalMilli", principalTotal);
-    evidence.put("netPrincipalDeltaMilli", netDelta);
-    evidence.put("maxConsecutiveStressCycles", maxCycles);
-    evidence.put("maxPrincipalToFMultiple", maxMultiple);
-    evidence.put("FMilli", minF == Long.MAX_VALUE ? -1L : minF);
-    evidence.put("FUnavailable", (long) unknownF);
-    evidence.put("thresholdMultiple", DEBT_EXPLOSION_F_MULTIPLE);
-    return new HexCrisisSignal(
-        CrisisSignalId.idOf(hex, HexCrisisSignal.Kind.DEBT_EXPLOSION.name()),
-        hex,
-        HexCrisisSignal.Kind.DEBT_EXPLOSION,
-        severity,
-        context.day(),
-        evidence,
-        households,
-        new ArrayList<>(classes),
-        reason.toString());
-  }
-
-  // ── 5c 的投影回退审计（由 EconomySettlement 调用）─────────────────────────────────────────
-
-  /** ★ 5c 投影不到旧 stratum 时保留旧 view 并具名报告（不落盘、只进当天审计）。 */
   static void recordClassProjectionFallback(
       ProductionLedger.Accumulator ledger,
       long day,
@@ -1308,360 +221,11 @@ public final class EconomyLiquidationSettlement {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty(),
-            0L,
             0L,
             0L,
             0L,
             0L,
             "classStanding-position-not-projectable:" + positionId.value(),
             evidence));
-  }
-
-  // ── 纯函数/工具 ─────────────────────────────────────────────────────────────────────────
-
-  /** 粮债判据（F/政策价值都是粮口径）：只有 {@code DebtUnit.Commodity(GRAIN)} 才可做跨口径比较。 */
-  private static boolean isGrainDebt(DebtContract debt) {
-    return debt.unit() instanceof DebtUnit.Commodity commodity
-        && commodity.commodity().equals(EconomySettlement.GRAIN);
-  }
-
-  /** 合同压力：有效状态 {@code DEFAULTED} 或 到期未偿 或 {@code F < 本期利息/到期应还 且本金未下降}。 */
-  private static boolean contractStressed(
-      DebtStatus effectiveStatus, boolean overdue, boolean shortOfRequired) {
-    return effectiveStatus == DebtStatus.DEFAULTED || overdue || shortOfRequired;
-  }
-
-  /**
-   * {@code F 项不足下一轮必要投入}的饱和比较（不溢出）：{@code income &lt; 口粮 + 下一轮投入 + 税}。
-   *
-   * <p>★ 下一轮必要投入为 0（没有可解析的生产投入）时返回 false：那属于"口粮缺口/断粮"，由 FOOD/famine 一族表达，
-   * 不冒充"再生产维持不了"；没有再生产投入的位置不应因本判据机械下滑。
-   */
-  private static boolean nextRoundInputNotFunded(DebtCapacity capacity) {
-    if (capacity.nextRoundNecessaryInput() <= 0L) {
-      return false;
-    }
-    long remaining = capacity.afterAllocationGrainIncome();
-    if (remaining < capacity.basicRation()) {
-      return true;
-    }
-    remaining -= capacity.basicRation();
-    if (remaining < capacity.nextRoundNecessaryInput()) {
-      return true;
-    }
-    remaining -= capacity.nextRoundNecessaryInput();
-    return remaining < capacity.taxPaid();
-  }
-
-  /**
-   * 户当前位置：<b>唯一拼写点已搬到 {@link ClassLadderBook#resolvablePosition}</b>（W4 起阶层滑落是那条新路径的唯一写口； 这里只剩"播种
-   * standing 时也要能解析出位置"这一个读点，仍走同一份实现，不留第二套口径）。
-   */
-  private static Optional<ClassPositionId> resolvablePosition(
-      Context context,
-      HouseholdId household,
-      Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      Map<ClassPositionId, ProductionRole> positions) {
-    return ClassLadderBook.resolvablePosition(
-        household, classMemberships, positions, context.householdEconomies().get(household));
-  }
-
-  private static HouseholdClassMembership withStressCount(
-      HouseholdClassMembership classMembership, long count) {
-    return new HouseholdClassMembership(
-        classMembership.householdId(),
-        classMembership.originalPositionId(),
-        classMembership.currentPositionId(),
-        classMembership.participatingPositionIds(),
-        classMembership.retainedShares(),
-        count,
-        classMembership.lastTransitionDay(),
-        classMembership.reason());
-  }
-
-  /**
-   * ★★ 到期即默认的有效状态：{@code principal > 0}、{@link #contractDueCycle(DebtContract)} 已到（合同滚动字段优先， 否则
-   * terms 固定期限；legacy 两者都空 ⇒ 不触发）、且当前状态既非 {@code DEFAULTED}/{@code SETTLED}/{@code FORGIVEN} ⇒ 本轮视为
-   * {@code DEFAULTED}，并由 {@code autoDefaults} 收集需在 apply 落状态的合同（稳定 id 序）。
-   *
-   * <p>★★ <b>W5-fix6（D5）自持合同（{@code debtor == creditor}）不在此列</b>：它是"发行额 = 政府负债"的记账事实、
-   * <b>没有可执行的债权</b>（{@link DebtContractBook#isSelfHeld} 是唯一拼写点）⇒ 给它标 {@code DEFAULTED}
-   * 是读口的假声明（改前铸币债在 d240 起就恒 {@code DEFAULTED}，真读数见 W5 验收报告 §3-D5）。状态原样保留、不进 {@code autoDefaults}（于是
-   * apply 阶段也不会写它）。
-   */
-  private static Map<DebtContractId, DebtStatus> effectiveStatuses(
-      Context context, List<DebtContractId> autoDefaults) {
-    Map<DebtContractId, DebtStatus> statuses = new LinkedHashMap<>();
-    for (DebtContract debt : context.debts().values()) {
-      DebtStatus status = debt.status();
-      boolean terminal =
-          status == DebtStatus.DEFAULTED
-              || status == DebtStatus.SETTLED
-              || status == DebtStatus.FORGIVEN;
-      if (DebtContractBook.isSelfHeld(debt)) {
-        statuses.put(debt.id(), status);
-      } else if (debt.principal() > 0L
-          && !terminal
-          && contractDueCycle(debt) <= context.currentCycle()) {
-        statuses.put(debt.id(), DebtStatus.DEFAULTED);
-        autoDefaults.add(debt.id());
-      } else {
-        statuses.put(debt.id(), status);
-      }
-    }
-    autoDefaults.sort(Comparator.comparing(DebtContractId::value));
-    return statuses;
-  }
-
-  /** 现有 overdue 判定：合同滚动 dueCycle 优先，否则 terms 固定期限；两者都空 = 无到期（{@code Long.MAX_VALUE}）。 */
-  private static long contractDueCycle(DebtContract debt) {
-    return debt.dueCycle().isPresent()
-        ? debt.dueCycle().getAsLong()
-        : debt.terms().dueCycle().orElse(Long.MAX_VALUE);
-  }
-
-  /** ACTIVE 且 quantity &gt; 0 的质押按份额求和（自动挂质押算"剩余可用量"的输入）。 */
-  private static Map<AssetShareId, Long> activePledgeQuantityByShare(
-      Map<PledgeId, Pledge> pledges) {
-    Map<AssetShareId, Long> quantities = new LinkedHashMap<>();
-    List<Pledge> sorted = new ArrayList<>(pledges.values());
-    sorted.sort(Comparator.comparing(pledge -> pledge.id().value()));
-    for (Pledge pledge : sorted) {
-      if (pledge.status() == Pledge.Status.ACTIVE && pledge.quantity() > 0L) {
-        quantities.merge(
-            pledge.assetShareId(), pledge.quantity(), EconomyLiquidationSettlement::saturatedAdd);
-      }
-    }
-    return quantities;
-  }
-
-  /**
-   * ★★ 无 ACTIVE 质押的触发债务：按债务人自有份额自动挂一笔 ACTIVE 质押。份额条件 = {@code owner ==
-   * HouseholdActors.of(debtor)}、{@code kind == OWNED}、同 assetKind 存在 {@code pledgeable} 规则、扣除已有
-   * ACTIVE 质押后可用量 &gt; 0；候选按 {@code isCoreMeans → liquidationPriority → share.id → rule.id}
-   * 稳定排序。找不到合格份额 ⇒ 空，planner 保留既有 {@code no-active-pledge} 具名审计，不伪造质押。
-   */
-  private static Optional<Pledge> autoPledgeFor(
-      Context context, DebtContract debt, Map<AssetShareId, Long> activePledgeQuantity) {
-    List<OwnershipStake> shares = new ArrayList<>(context.assetShares().values());
-    shares.sort(Comparator.comparing(share -> share.id().value()));
-    List<AutoPledgeCandidate> candidates = new ArrayList<>();
-    for (OwnershipStake share : shares) {
-      if (!share.owner().equals(HouseholdActors.of(debt.debtor()))
-          || share.kind() != AssetRightKind.OWNED
-          || (!context.industries().isEmpty()
-              && !context.industries().containsKey(share.industry()))) {
-        continue;
-      }
-      long available = share.quantity() - activePledgeQuantity.getOrDefault(share.id(), 0L);
-      if (available <= 0L) {
-        continue;
-      }
-      for (AssetRule rule : context.base().assetRules().values()) {
-        if (rule.assetKind() == share.asset() && rule.pledgeable()) {
-          candidates.add(new AutoPledgeCandidate(share, rule, available));
-        }
-      }
-    }
-    if (candidates.isEmpty()) {
-      return Optional.empty();
-    }
-    candidates.sort(
-        Comparator.comparing((AutoPledgeCandidate candidate) -> !candidate.rule().isCoreMeans())
-            .thenComparingInt(candidate -> candidate.rule().liquidationPriority())
-            .thenComparing(candidate -> candidate.share().id().value())
-            .thenComparing(candidate -> candidate.rule().id().value()));
-    AutoPledgeCandidate selected = candidates.get(0);
-    return Optional.of(
-        new Pledge(
-            autoPledgeId(context, debt),
-            debt.id(),
-            selected.share().id(),
-            selected.availableQuantity(),
-            selected.rule().modeId(),
-            selected.rule().liquidationPriority(),
-            Pledge.Status.ACTIVE));
-  }
-
-  /** 自动质押 id：优先 {@code autopledge-<debtId>}；被非 ACTIVE 旧质押占用时按 cycle 确定性避让。 */
-  private static PledgeId autoPledgeId(Context context, DebtContract debt) {
-    PledgeId base = new PledgeId(AUTO_PLEDGE_ID_PREFIX + debt.id().value());
-    if (!context.pledges().containsKey(base)) {
-      return base;
-    }
-    PledgeId cycled =
-        new PledgeId(AUTO_PLEDGE_ID_PREFIX + context.currentCycle() + "-" + debt.id().value());
-    if (!context.pledges().containsKey(cycled)) {
-      return cycled;
-    }
-    int suffix = 1;
-    while (true) {
-      PledgeId candidate = new PledgeId(cycled.value() + "-" + suffix);
-      if (!context.pledges().containsKey(candidate)) {
-        return candidate;
-      }
-      suffix++;
-    }
-  }
-
-  /** ACTIVE 且 quantity &gt; 0 的质押按债务合同索引（一次派生；同债多条按 PledgeId.value 升序）。 */
-  private static Map<DebtContractId, List<Pledge>> indexActivePledgesByDebt(
-      Map<PledgeId, Pledge> pledges) {
-    List<Pledge> sorted = new ArrayList<>(pledges.values());
-    sorted.sort(Comparator.comparing(pledge -> pledge.id().value()));
-    Map<DebtContractId, List<Pledge>> index = new LinkedHashMap<>();
-    for (Pledge pledge : sorted) {
-      if (pledge.status() == Pledge.Status.ACTIVE && pledge.quantity() > 0L) {
-        index.computeIfAbsent(pledge.debtContractId(), ignored -> new ArrayList<>()).add(pledge);
-      }
-    }
-    return index;
-  }
-
-  private static Map<HouseholdId, List<DebtContract>> indexDebtsByDebtor(
-      Map<DebtContractId, DebtContract> debts) {
-    List<DebtContract> sorted = new ArrayList<>(debts.values());
-    sorted.sort(Comparator.comparing(debt -> debt.id().value()));
-    Map<HouseholdId, List<DebtContract>> index = new LinkedHashMap<>();
-    for (DebtContract debt : sorted) {
-      index.computeIfAbsent(debt.debtor(), ignored -> new ArrayList<>()).add(debt);
-    }
-    return index;
-  }
-
-  private static List<HouseholdId> sortedHouseholds(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
-    List<HouseholdId> households = new ArrayList<>(householdEconomies.keySet());
-    households.sort(Comparator.comparing(HouseholdId::value));
-    return households;
-  }
-
-  private static List<DebtContract> activeDebts(List<DebtContract> debts) {
-    List<DebtContract> active = new ArrayList<>();
-    for (DebtContract debt : debts) {
-      if (debt.principal() > 0L) {
-        active.add(debt);
-      }
-    }
-    return active;
-  }
-
-  private static long perMille(long value, int perMille) {
-    if (value <= 0L || perMille <= 0) {
-      return 0L;
-    }
-    return BigInteger.valueOf(value)
-        .multiply(BigInteger.valueOf(perMille))
-        .divide(BigInteger.valueOf(1000L))
-        .longValueExact();
-  }
-
-  private static long saturatedAdd(long left, long right) {
-    long sum = left + right;
-    if (((left ^ sum) & (right ^ sum)) < 0L) {
-      return Long.MAX_VALUE;
-    }
-    return sum;
-  }
-
-  private static AuditEntry skipAudit(
-      long day, DebtContract debt, Pledge pledge, String reason, Map<String, Long> evidence) {
-    return audit(
-        day,
-        ACTION_SKIPPED,
-        debt.debtor(),
-        debt.id(),
-        pledge.id(),
-        pledge.assetShareId(),
-        null,
-        reason,
-        evidence);
-  }
-
-  private static AuditEntry audit(
-      long day,
-      String action,
-      HouseholdId household,
-      DebtContractId contractId,
-      PledgeId pledgeId,
-      AssetShareId sourceAssetShareId,
-      AssetShareId createdAssetShareId,
-      String reason,
-      Map<String, Long> evidence) {
-    return new AuditEntry(
-        day,
-        action,
-        household,
-        contractId,
-        pledgeId,
-        sourceAssetShareId,
-        createdAssetShareId,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        reason,
-        Map.copyOf(evidence));
-  }
-
-  private static ProductionLedger.LiquidationAudit toLiquidationAudit(
-      long day,
-      DebtReductionPlan reduction,
-      PlannedMove move,
-      AssetShareId createdId,
-      long debtPrincipalAfter) {
-    Pledge after = null;
-    for (PledgeUpdate update : reduction.pledgeUpdates()) {
-      if (update.pledgeId().equals(move.pledgeId())) {
-        after = update.after();
-        break;
-      }
-    }
-    long pledgeQuantityAfter = after == null ? move.quantity() : after.quantity();
-    LinkedHashMap<String, Long> evidence = new LinkedHashMap<>();
-    evidence.put("debtPrincipalBeforeMilli", reduction.debt().principal());
-    evidence.put("debtReductionMilli", move.valueMilli());
-    evidence.put("coreMeans", move.coreMeans() ? 1L : 0L);
-    evidence.put("quantity", move.quantity());
-    return new ProductionLedger.LiquidationAudit(
-        day,
-        ACTION_DISPOSED,
-        Optional.of(reduction.debt().debtor()),
-        Optional.of(reduction.debt().id()),
-        Optional.of(move.pledgeId()),
-        Optional.of(move.source()),
-        Optional.of(createdId),
-        move.quantity(),
-        move.pricePerUnitMilli(),
-        move.valueMilli(),
-        debtPrincipalAfter,
-        pledgeQuantityAfter,
-        "liquidated:rule="
-            + move.ruleId().value()
-            + ";pricing="
-            + move.pricing()
-            + ";recipient="
-            + move.recipientRule(),
-        evidence);
-  }
-
-  private static ProductionLedger.LiquidationAudit toLiquidationAudit(AuditEntry entry) {
-    return new ProductionLedger.LiquidationAudit(
-        entry.day(),
-        entry.action(),
-        Optional.ofNullable(entry.household()),
-        Optional.ofNullable(entry.contractId()),
-        Optional.ofNullable(entry.pledgeId()),
-        Optional.ofNullable(entry.sourceAssetShareId()),
-        Optional.ofNullable(entry.createdAssetShareId()),
-        entry.quantity(),
-        entry.pricePerUnitMilli(),
-        entry.debtReductionMilli(),
-        entry.debtPrincipalAfter(),
-        entry.pledgeQuantityAfter(),
-        entry.reason(),
-        entry.evidence());
   }
 }

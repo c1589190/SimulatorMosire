@@ -64,20 +64,19 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★★ <b>W3 真实 tick 验收（D-032 D3 §7、§8.4 P21/P23；B2 回归）</b>。
+ * ★★★ <b>W3 真实 tick 验收（D-032 P4a §3/§4/§5；B2 回归）</b>。
  *
  * <p>判据：含 {@code MONEY_WAGE} 名册的真实 tick <b>不再被 B2 的 {@code wage-settlement-not-implemented} 整 tick
- * 拒绝</b>；工资按 W3 规则先货币、库存不可支付时余款成 0‰ 工资债、并以 {@code WAGE_PAYMENT} 转移落账；同日 {@code repayDebts}
- * <b>不得</b>把当日新债再付一次。
+ * 拒绝</b>；工资只按现金支付（{@code WAGE_PAYMENT} 货币腿），未付差额成 0‰ 工资债；商品库存一毫不动。
  *
  * <p>纸面算式：
  *
  * <pre>
  * quote = 1 毫货币/小时，本次 tick 实际劳动 = 100,000 毫小时 ⇒ due = 1 × 100,000 / 1000 = 100
  * 付款人货币 = 4 ⇒ paidMoney = 4
- * 抵物折价 = 0‰ ⇒ 所有可支付商品都具名 wage-barter-discount-zero 并 skip（不是 1:1）
+ * P4a：工资不读库存/市场价/barter ⇒ 付款人 grain 1,000 逐毫不变；没有任何商品腿
  * ⇒ arrears = 96，工资债 = WAGE_ARREARS + wageArrearsDefault()（0‰），本金 96
- * 同日 repayDebts 若未排除，会用付款人 grain 1,000 把 96 还掉 ⇒ 本金会减少；本用例断言本金仍 = 96。
+ * M8 在 M2 之后 ⇒ 本 tick 新工资债不会被同 tick 二次偿还；本金仍 = 96。
  * </pre>
  */
 class W3WageSettlementTickIntegrationTest {
@@ -101,7 +100,7 @@ class W3WageSettlementTickIntegrationTest {
 
   @Test
   void moneyWageTickPaysFirstCreatesZeroInterestDebtAndDoesNotRepayItSameDay() {
-    EconomyDayStepper stepper = stepper();
+    EconomyDayStepper stepper = stepper(PAYER_MONEY);
     try {
       ProductionLedger ledger = stepper.step(1L);
       List<Transfer> wageTransfers =
@@ -113,11 +112,14 @@ class W3WageSettlementTickIntegrationTest {
           .hasSize(1);
       Transfer wage = wageTransfers.get(0);
       assertThat(wage.money())
-          .as("U21：先付对应货币 4；库存抵物在折价 0 时全部 skip")
+          .as("P4a：只付现金 4（库存不参与）")
           .containsExactly(Map.entry(SILVER, PAYER_MONEY));
-      assertThat(wage.goods()).as("工资角色折价 0‰ ⇒ 库存腿全部 skip（不得 1:1/按余额抵付）").isEmpty();
+      assertThat(wage.goods()).as("P4a：工资只现金 ⇒ 不得带商品腿").isEmpty();
       assertThat(wage.from()).isEqualTo(PAYER_ACTOR);
       assertThat(wage.to()).isEqualTo(WORKER_ACTOR);
+      assertThat(stepper.accounts().householdGoods().get(WORKER))
+          .as("收款人库存不得因工资而变动")
+          .isEmpty();
 
       DebtContractId expectedDebt =
           DebtContractId.idOf(
@@ -128,7 +130,7 @@ class W3WageSettlementTickIntegrationTest {
       assertThat(debt.terms()).isEqualTo(DebtTerms.wageArrearsDefault());
       assertThat(debt.terms().interestRatePerMillePerCycle()).isZero();
       assertThat(debt.principal())
-          .as("P21/D3-I13：同日 repayDebts 必须排除当日新工资债；若未排除会用 grain 1,000 把 96 还掉")
+          .as("M8 在 M2 之后 ⇒ 本 tick 新工资债不被二次偿还；本金仍 96")
           .isEqualTo(96L);
 
       assertThat(stepper.lastWageSettlementReadouts())
@@ -138,24 +140,45 @@ class W3WageSettlementTickIntegrationTest {
       assertThat(readout.dueMilli()).isEqualTo(100L);
       assertThat(readout.paidMoneyMilli()).isEqualTo(PAYER_MONEY);
       assertThat(readout.arrearsMilli()).isEqualTo(96L);
-      assertThat(readout.barterPaidValueMilli()).isEmpty();
-      assertThat(readout.reasons()).contains("wage-barter-discount-zero:grain");
+      assertThat(readout.debtContractId()).contains(expectedDebt);
+      assertThat(readout.reasons()).as("P4a：现金-only ⇒ 无任何 barter/库存理由").isEmpty();
       assertThat(readout.dueMilli())
-          .as("D3-I2 三数守恒")
-          .isEqualTo(
-              readout.paidMoneyMilli()
-                  + readout.barterPaidValueMilli().values().stream()
-                      .mapToLong(Long::longValue)
-                      .sum()
-                  + readout.arrearsMilli());
+          .as("P4a 守恒：due = paidMoney + arrears")
+          .isEqualTo(readout.paidMoneyMilli() + readout.arrearsMilli());
     } finally {
       stepper.close();
     }
   }
 
+  /**
+   * P4a 库存零变化强判据（tick 级）：同一 tick 只把付款人现金从 4 改成足额 100，商品 grain 的最终库存必须逐毫相同
+   * ⇒ 工资现金不足没有动用任何库存（生产本身对库存的合法变化被差分消掉）。
+   */
+  @Test
+  void cashShortfallDoesNotChangeTickInventoryComparedToFullyPaid() {
+    EconomyDayStepper partial = stepper(PAYER_MONEY);
+    EconomyDayStepper fullyPaid = stepper(100L);
+    try {
+      partial.step(1L);
+      fullyPaid.step(1L);
+      assertThat(grainOf(partial))
+          .as("P4a：现金不足 vs 足额，同 tick 的 grain 库存必须相同 ⇒ 工资未读写库存")
+          .isEqualTo(grainOf(fullyPaid));
+      assertThat(partial.lastWageSettlementReadouts().get(0).arrearsMilli()).isEqualTo(96L);
+      assertThat(fullyPaid.lastWageSettlementReadouts().get(0).arrearsMilli()).isZero();
+    } finally {
+      partial.close();
+      fullyPaid.close();
+    }
+  }
+
+  private static long grainOf(EconomyDayStepper stepper) {
+    return stepper.accounts().householdGoods().get(PAYER).getOrDefault(GRAIN, 0L);
+  }
+
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
 
-  private static EconomyDayStepper stepper() {
+  private static EconomyDayStepper stepper(long payerMoney) {
     IndustryDefinitionView industry = industry();
     ProductionProcess unit =
         new ProductionProcess(
@@ -255,7 +278,7 @@ class W3WageSettlementTickIntegrationTest {
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(
-        PAYER, HEX, Map.of(GRAIN, PAYER_GRAIN), Map.of(SILVER, PAYER_MONEY), Map.of(), Map.of());
+        PAYER, HEX, Map.of(GRAIN, PAYER_GRAIN), Map.of(SILVER, payerMoney), Map.of(), Map.of());
     accounts.registerHousehold(WORKER, HEX, Map.of(), Map.of(), Map.of(), Map.of());
     return new EconomyDayStepper(
         base,

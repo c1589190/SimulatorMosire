@@ -31,7 +31,7 @@ import org.slf4j.Logger;
  *  "effectiveDay":121?,"reason":"…"?}
  * }</pre>
  *
- * <p>★★ <b>本命令只登记 PENDING，不迁移任何状态</b>：生产组织/生产单元/阶层份额/质押模式的真正迁移由日结算在生效日 （{@code effectiveDay <=
+ * <p>★★ <b>本命令只登记 PENDING，不迁移任何状态</b>：生产组织/生产单元/阶层份额的真正迁移由日结算在生效日 （{@code effectiveDay <=
  * day}）**自动组织之前**执行（见 {@code EconomyModeTransitionSettlement}）。因此命令成功 = 恰好新增一条 {@link
  * ModeTransition.Status#PENDING}；一次 revision 原子。
  *

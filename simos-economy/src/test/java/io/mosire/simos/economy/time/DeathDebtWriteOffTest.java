@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -69,9 +70,13 @@ class DeathDebtWriteOffTest {
   private static final HouseholdId CREDITOR =
       HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
+
+  /** ★ P2c：债务本金只能是货币；夹具沿用全仓测试币 silver。 */
+  private static final CurrencyId SILVER = new CurrencyId("silver");
+
   private static final DebtTerms TERMS = DebtTerms.legacyDefault();
   private static final DebtContractId DEBT =
-      DebtContractId.idOf(DEBTOR, CREDITOR, DebtUnit.commodity(GRAIN), TERMS);
+      DebtContractId.idOf(DEBTOR, CREDITOR, DebtUnit.money(SILVER), TERMS);
   private static final LaborAllocationId ALLOC = new LaborAllocationId("alloc-death");
 
   @Test
@@ -235,7 +240,7 @@ class DeathDebtWriteOffTest {
             DEBT,
             DEBTOR,
             CREDITOR,
-            DebtUnit.commodity(GRAIN),
+            new DebtUnit.Money(SILVER),
             TERMS,
             DebtSource.ORDINARY_LOAN,
             principal,

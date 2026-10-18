@@ -64,15 +64,12 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
-import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
-import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.time.AssetOccupancyBudget;
 import io.mosire.simos.economy.time.AssetOccupancyScope;
 import io.mosire.simos.economy.time.AssetOccupancyView;
@@ -1209,7 +1206,7 @@ public final class ApiViews {
       }
     }
     view.put("productionRosters", PRODUCTION_CONSUMER.rosterReadouts(state, rosterUnits));
-    // ★★★ D-032 W4：W3 工资结算逐义务只读读数（feed 原样，不重算支付/抵物/债；稳定序由 consumer port 保证）。
+    // ★★★ D-032 P4a：W3 工资结算逐义务只读读数（feed 原样，不重算现金支付/债；稳定序由 consumer port 保证）。
     Optional<List<Map<String, Object>>> wageReadouts =
         PRODUCTION_CONSUMER.wageSettlementReadouts(state, rosterUnits);
     view.put("wageSettlementReadouts", wageReadouts.orElse(List.of()));
@@ -1217,6 +1214,9 @@ public final class ApiViews {
     view.put(
         "wageSettlementReadoutUnavailableReason",
         wageReadouts.isPresent() ? null : "wage-settlement-readout-unavailable");
+    // ★★★ D-032 P4c2：U20 锚级只读列表（不是逐义务值）。锚按 (marketZone,industry,role) 持久；
+    //   这里只转发 AppProductionConsumerPort 的确定性视图，不重算工资/streak/调价。
+    view.put("productionWageAnchors", PRODUCTION_CONSUMER.productionWageAnchors(state));
     return view;
   }
 
@@ -1240,8 +1240,6 @@ public final class ApiViews {
     // ★★★ D-032 D4-Ib2b：占用/预留只读视图 —— 只用 AssetOccupancyView 的权威派生与稳定序，不在读口重算分配。
     view.put("assetOccupancies", assetOccupancyViews(data, productionUnits, coord));
     view.put("inventoryReservations", inventoryReservationViews(data, productionUnits, coord));
-    // ★ D-032 W2a：本格实例的执行期工资 posting 只读输出（候选级 default 是 plan×zone 事实，不混进逐格视图）。
-    view.put("productionWagePostings", productionWagePostingViews(data, productionUnits, coord));
     view.put("activated", data.meta().isPresent());
     // ★★ M2.7：把读数的坐标与窗口随视图发出去（此前读口没有 tick，读者无法判断"这个数属于哪一天"）。
     view.put("tick", tick < 0L ? null : tick);
@@ -1457,13 +1455,8 @@ public final class ApiViews {
     //   ⇒ 响应字节是内容的纯函数）。★ 读的是 **production 的当刻定义**（不再有 economy 的候选表）；
     //   ★ 键名由 {@code candidates} 改成 {@code plans}：候选面已退役，读口不该继续用旧概念名。
     view.put("plans", planViews(productionDefinitions.industries()));
-    // ★★ E5a：**清算政策**（世界级、与格无关 ⇒ 全量发；按 ruleId 排序 ⇒ 响应字节是内容的纯函数）与
-    //   **本格 hex 危机信号**（按 (hex, kind) 派生的 id 排序）。两张表都是持久状态：空表 = 没有登记，
-    //   不是"读不到"；E5a 不产生任何信号/清算（生成留 E5b），这里只如实反映为空。
-    view.put("liquidationPolicies", liquidationPolicyViews(data));
+    // ★★ E5a：**本格 hex 危机信号**（按 (hex, kind) 派生的 id 排序）。空表 = 没有登记，不是"读不到"。
     view.put("crisisSignals", crisisSignalViews(data, coord));
-    // ★★ E5b：本格质押只读视图（清算的输入侧；状态真值 = EconomyData.pledges）。
-    view.put("pledges", pledgeViews(data, coord));
     // ★★ E6a：模式变迁与阶层保留份额（**世界级、按 id 稳定序**；两者都是持久状态，空列表 = 没有记录，
     //   不是"读不到"）。★ 视图只读 EconomyData 的规范表，不重算派生读数、不按 hex 过滤伪造局部空表：
     //   变迁的目标组织 id 自带格键，读的人可逐条对格；classShares 的家户/位置身份也逐条发出。
@@ -1523,8 +1516,8 @@ public final class ApiViews {
       }
       grainStockByHousehold.merge(key, inventory.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
-    // ★★ E4b：逐户 debtCapacity（F 四项 / 可质押余粮 / 既有债 / unpriced / headroom；唯一算法在
-    //   {@link DebtCapacityBook}）。库存从 actor 侧账本现取：账缺席 ⇒ 该行的 pledgeable/headroom 记 null +
+    // ★★ E4b：逐户 debtCapacity（F 四项 / 可计入信用的余粮 / 既有债 / unpriced / headroom；唯一算法在
+    //   {@link DebtCapacityBook}）。库存从 actor 侧账本现取：账缺席 ⇒ 该行的 credit/headroom 记 null +
     //   具名原因（{@link #DEBT_CAPACITY_STOCK_UNREADABLE}），不填 0 冒充。
     Map<HouseholdId, DebtCapacity> debtCapacities;
     if (assetBudget == null) {
@@ -2101,11 +2094,11 @@ public final class ApiViews {
   /** ★★ E6c：无有效价格/不硬折的具名原因（唯一拼写点；E4b 的 NO_UNIT_PRICES 同侧）。 */
   private static final String DASHBOARD_PRICE_UNAVAILABLE =
       "非粮/货币债务折成粮需要有效价格；E4b 起 DebtCapacityBook 的唯一价格钩子仍是 NO_UNIT_PRICES"
-          + "（E5 的价格源未落地）⇒ 不硬折：债务只按 unit 分栏，unpriced 部分见 debtCapacity.unpricedDebt*";
+          + "⇒ 不硬折：债务只按 unit 分栏，unpriced 部分见 debtCapacity.unpricedDebt*";
 
   /** ★★ E6c：资产市值没有可信口径的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE =
-      "资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）"
+      "资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、政策账面价不是市值）"
           + "⇒ dashboard 只报实物数量，不折算成粮/钱";
 
   /** ★★ E6c：HouseholdEconomy.debts 引用悬空的具名原因（唯一拼写点）。 */
@@ -2760,41 +2753,15 @@ public final class ApiViews {
       item.put("debtPrincipal", aggregate.principal);
       item.put("debtContractCount", aggregate.contractCount);
       item.put("numeratorWindow", "时点：当前 revision 的债务本金合计（逐 unit；全部状态）");
-      if (aggregate.unit instanceof DebtUnit.Commodity commodity) {
-        String commodityId = commodity.commodity().value();
-        long output = incomeByCommodity.getOrDefault(commodityId, 0L);
-        item.put("unitKind", "commodity");
-        item.put("commodity", commodityId);
-        item.put("currency", null);
-        item.put("output", output);
-        item.put("outputMeasure", "本周期已实现所得 Σ FlowRow.income[" + commodityId + "]");
-        item.put("denominatorWindow", "本周期至今：Σ FlowRow.income[" + commodityId + "]（新周期第一天清零）");
-        OptionalLong perMille = perMilleOrEmpty(aggregate.principal, output);
-        if (perMille.isPresent()) {
-          item.put("debtToOutputPerMille", perMille.getAsLong());
-          item.put("unavailable", null);
-        } else {
-          item.put("debtToOutputPerMille", null);
-          item.put(
-              "unavailable",
-              output <= 0L
-                  ? "本周期产出 Σ FlowRow.income["
-                      + commodityId
-                      + "] = 0 ⇒ "
-                      + DASHBOARD_DENOMINATOR_ZERO
-                  : DASHBOARD_RATIO_OVERFLOW);
-        }
-      } else {
-        DebtUnit.Money money = (DebtUnit.Money) aggregate.unit;
-        item.put("unitKind", "money");
-        item.put("currency", money.currency().value());
-        item.put("commodity", null);
-        item.put("output", null);
-        item.put("outputMeasure", null);
-        item.put("denominatorWindow", null);
-        item.put("debtToOutputPerMille", null);
-        item.put("unavailable", DASHBOARD_MONEY_OUTPUT_UNAVAILABLE);
-      }
+      DebtUnit.Money money = aggregate.unit;
+      item.put("unitKind", "money");
+      item.put("currency", money.currency().value());
+      item.put("commodity", null);
+      item.put("output", null);
+      item.put("outputMeasure", null);
+      item.put("denominatorWindow", null);
+      item.put("debtToOutputPerMille", null);
+      item.put("unavailable", DASHBOARD_MONEY_OUTPUT_UNAVAILABLE);
       entries.add(item);
     }
     return entries;
@@ -3225,7 +3192,7 @@ public final class ApiViews {
 
   /** 单个 DebtUnit.key() 的债务聚合中间量（读口私有；principal/条数/违约条数/状态分布）。 */
   private static final class UnitDebtAggregate {
-    private final DebtUnit unit;
+    private final DebtUnit.Money unit;
     private final Map<String, Long> statusCounts = new TreeMap<>();
     private final Set<HouseholdId> households = new LinkedHashSet<>();
     private long principal;
@@ -3233,7 +3200,7 @@ public final class ApiViews {
     private long defaultedCount;
     private long delinquentCount;
 
-    private UnitDebtAggregate(DebtUnit unit) {
+    private UnitDebtAggregate(DebtUnit.Money unit) {
       this.unit = unit;
     }
 
@@ -3253,18 +3220,9 @@ public final class ApiViews {
     private Map<String, Object> view() {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("unitKey", unit.key());
-      switch (unit) {
-        case DebtUnit.Commodity commodity -> {
-          view.put("unitKind", "commodity");
-          view.put("commodity", commodity.commodity().value());
-          view.put("currency", null);
-        }
-        case DebtUnit.Money money -> {
-          view.put("unitKind", "money");
-          view.put("commodity", null);
-          view.put("currency", money.currency().value());
-        }
-      }
+      view.put("unitKind", "money");
+      view.put("commodity", null);
+      view.put("currency", unit.currency().value());
       view.put("principal", principal);
       view.put("contractCount", contractCount);
       view.put("defaultedCount", defaultedCount);
@@ -3469,18 +3427,10 @@ public final class ApiViews {
       item.put("debtor", capitalization.debtor().value());
       item.put("creditor", capitalization.creditor().value());
       item.put("ruleType", capitalization.rule().type().name());
-      switch (capitalization.unit()) {
-        case DebtUnit.Commodity commodity -> {
-          item.put("unitKind", "commodity");
-          item.put("commodity", commodity.commodity().value());
-          item.put("currency", null);
-        }
-        case DebtUnit.Money money -> {
-          item.put("unitKind", "money");
-          item.put("commodity", null);
-          item.put("currency", money.currency().value());
-        }
-      }
+      DebtUnit.Money money = capitalization.unit();
+      item.put("unitKind", "money");
+      item.put("commodity", null);
+      item.put("currency", money.currency().value());
       item.put("amount", capitalization.amount());
       item.put("day", capitalization.day());
       item.put("dueCycle", capitalization.dueCycle());
@@ -3527,18 +3477,10 @@ public final class ApiViews {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("debtor", skip.debtor().value());
       item.put("contractId", skip.contractId().value());
-      switch (skip.unit()) {
-        case DebtUnit.Commodity commodity -> {
-          item.put("unitKind", "commodity");
-          item.put("commodity", commodity.commodity().value());
-          item.put("currency", null);
-        }
-        case DebtUnit.Money money -> {
-          item.put("unitKind", "money");
-          item.put("commodity", null);
-          item.put("currency", money.currency().value());
-        }
-      }
+      DebtUnit.Money money = skip.unit();
+      item.put("unitKind", "money");
+      item.put("commodity", null);
+      item.put("currency", money.currency().value());
       item.put("principalOutstanding", skip.principalOutstanding());
       item.put("reason", skip.reason());
       items.add(item);
@@ -3840,41 +3782,6 @@ public final class ApiViews {
       row.put("toTickExclusive", reservation.toTickExclusive());
       row.put("status", reservation.status().name());
       row.put("releasedAtTick", reservation.releasedAtTick());
-      out.add(Collections.unmodifiableMap(row));
-    }
-    return Collections.unmodifiableList(out);
-  }
-
-  /** 本格生产实例的工资 posting 只读视图（按 unit、role 升序；不重算调价/工资）。 */
-  private static List<Map<String, Object>> productionWagePostingViews(
-      EconomyData data, Map<ProductionUnitId, ProductionProcess> productionUnits, HexCoord coord) {
-    String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
-    List<ProductionWagePosting> postings = new ArrayList<>(data.productionWagePostings().values());
-    postings.sort(
-        Comparator.comparing((ProductionWagePosting row) -> row.unit().value())
-            .thenComparing(row -> row.role().value()));
-    List<Map<String, Object>> out = new ArrayList<>();
-    for (ProductionWagePosting posting : postings) {
-      ProductionProcess unit = productionUnits.get(posting.unit());
-      if (unit == null
-          || !unit.location().isSpecified()
-          || !hexKey.equals(unit.location().value())) {
-        continue;
-      }
-      Map<String, Object> row = new LinkedHashMap<>();
-      row.put("unit", posting.unit().value());
-      row.put("role", posting.role().value());
-      row.put("targetLaborMilliPerDay", posting.targetLaborMilliPerDay());
-      row.put("currency", posting.currency().value());
-      row.put("wagePerLaborMilli", posting.wagePerLaborMilli());
-      row.put("quoteSource", posting.quoteSource().name());
-      row.put("shortageStreak", posting.shortageStreak());
-      row.put("satisfiedStreak", posting.satisfiedStreak());
-      row.put("lastAdjustedTick", posting.lastAdjustedTick());
-      row.put("lastAdjustmentDelta", posting.lastAdjustmentDelta());
-      row.put("lastObservedMatchedLabor", posting.lastObservedMatchedLabor());
-      row.put("lastObservedEffectiveTarget", posting.lastObservedEffectiveTarget());
-      row.put("lastMaxAbsorbable", posting.lastMaxAbsorbable());
       out.add(Collections.unmodifiableMap(row));
     }
     return Collections.unmodifiableList(out);
@@ -4221,9 +4128,9 @@ public final class ApiViews {
     return view;
   }
 
-  /** ★★ E4b：粮库存读不到时 headroom/可质押余粮的具名缺失（唯一拼写点；绝不填 0 冒充）。 */
+  /** ★★ E4b：粮库存读不到时 headroom/可计入信用的余粮的具名缺失（唯一拼写点；绝不填 0 冒充）。 */
   private static final String DEBT_CAPACITY_STOCK_UNREADABLE =
-      "该家户在本格 ActorData 里没有 HouseholdInventory（粮库存读不到）⇒ 可质押余粮/可质押真实资产价值/headroom"
+      "该家户在本格 ActorData 里没有 HouseholdInventory（粮库存读不到）⇒ 可计入信用的余粮/可计入信用的真实资产价值/headroom"
           + "记 null；缺失不是 0，也不拿别的账本顶替";
 
   /** ★★ E4b：三个流量与库存的窗口标注（挂在 debtCapacity 块上；逐字段口径与 {@link DebtCapacity} 类注同源）。 */
@@ -4238,12 +4145,12 @@ public final class ApiViews {
         "下一周期配方口径（读口时点的 unit/资产/状态）；nextRoundNecessaryInputSource=NON_RATION_CONSUMED_PROXY 时"
             + "是本周期实际非口粮投入的代理，不是真实下一轮投入");
     view.put("taxPaid", "本周期已缴（FlowRow.taxPaid；当前生产路径恒 0，照实读）");
-    view.put("pledgeableGrainSurplusValue", "时点：max(0, 粮库存 − 本周期自需)，与放贷方余粮同一算式、同一保留额；库存读不到 ⇒ null");
+    view.put("creditGrainSurplusValue", "时点：max(0, 粮库存 − 本周期自需)，与放贷方余粮同一算式、同一保留额；库存读不到 ⇒ null");
     view.put(
-        "pledgeableAssetPolicyValue", "时点：E4b 的显式钩子恒 0（E5 的 LiquidationPolicy/价格源未落地）；单独列出，不静默省略");
+        "creditAssetPolicyValue", "时点：E4b 的显式钩子恒 0（当前没有资产政策价格源）；单独列出，不静默省略");
     view.put("existingDebt", "时点：该家户名下同 unit（粮）的债务本金合计；只减这一部分");
     view.put("unpricedDebtAmount", "时点：非粮 unit 且不能折算的债务本金原始和（各债各自计量单位；仅审计，不参与 headroom）");
-    view.put("headroom", "时点：max(0, κ×F÷1000 + 可质押真实资产价值 − existingDebt)");
+    view.put("headroom", "时点：max(0, κ×F÷1000 + 可计入信用的真实资产价值 − existingDebt)");
     return view;
   }
 
@@ -4263,16 +4170,16 @@ public final class ApiViews {
     view.put("taxPaid", capacity.taxPaid());
     view.put("F", capacity.F());
     // ★ 空 = 库存读不到（具名缺失）；≠ 0（0 是一个真实结论：库存够吃但一点余粮都没有）。
-    boolean stockReadable = capacity.pledgeableGrainSurplusValue().isPresent();
+    boolean stockReadable = capacity.creditGrainSurplusValue().isPresent();
     view.put("grainStockUnavailable", stockReadable ? null : DEBT_CAPACITY_STOCK_UNREADABLE);
     view.put(
-        "pledgeableGrainSurplusValue",
-        stockReadable ? capacity.pledgeableGrainSurplusValue().getAsLong() : null);
-    view.put("pledgeableAssetPolicyValue", capacity.pledgeableAssetPolicyValue());
+        "creditGrainSurplusValue",
+        stockReadable ? capacity.creditGrainSurplusValue().getAsLong() : null);
+    view.put("creditAssetPolicyValue", capacity.creditAssetPolicyValue());
     view.put(
-        "pledgeableRealAssetValue",
-        capacity.pledgeableRealAssetValue().isPresent()
-            ? capacity.pledgeableRealAssetValue().getAsLong()
+        "creditRealAssetValue",
+        capacity.creditRealAssetValue().isPresent()
+            ? capacity.creditRealAssetValue().getAsLong()
             : null);
     view.put("existingDebt", capacity.existingDebt());
     view.put("unpricedDebtAmount", capacity.unpricedDebtAmount());
@@ -4297,9 +4204,9 @@ public final class ApiViews {
     long nextRoundNecessaryInput = 0L;
     long taxPaid = 0L;
     long totalF = 0L;
-    long pledgeableGrainSurplusValue = 0L;
-    long pledgeableAssetPolicyValue = 0L;
-    long pledgeableRealAssetValue = 0L;
+    long creditGrainSurplusValue = 0L;
+    long creditAssetPolicyValue = 0L;
+    long creditRealAssetValue = 0L;
     long existingDebt = 0L;
     long unpricedDebtAmount = 0L;
     long unpricedDebtCount = 0L;
@@ -4317,12 +4224,12 @@ public final class ApiViews {
       nextRoundNecessaryInput += capacity.nextRoundNecessaryInput();
       taxPaid += capacity.taxPaid();
       totalF += capacity.F();
-      if (capacity.pledgeableGrainSurplusValue().isPresent()) {
-        pledgeableGrainSurplusValue += capacity.pledgeableGrainSurplusValue().getAsLong();
+      if (capacity.creditGrainSurplusValue().isPresent()) {
+        creditGrainSurplusValue += capacity.creditGrainSurplusValue().getAsLong();
       }
-      pledgeableAssetPolicyValue += capacity.pledgeableAssetPolicyValue();
-      if (capacity.pledgeableRealAssetValue().isPresent()) {
-        pledgeableRealAssetValue += capacity.pledgeableRealAssetValue().getAsLong();
+      creditAssetPolicyValue += capacity.creditAssetPolicyValue();
+      if (capacity.creditRealAssetValue().isPresent()) {
+        creditRealAssetValue += capacity.creditRealAssetValue().getAsLong();
       }
       existingDebt += capacity.existingDebt();
       unpricedDebtAmount += capacity.unpricedDebtAmount();
@@ -4344,9 +4251,9 @@ public final class ApiViews {
     total.put("nextRoundNecessaryInput", nextRoundNecessaryInput);
     total.put("taxPaid", taxPaid);
     total.put("F", totalF);
-    total.put("pledgeableGrainSurplusValue", pledgeableGrainSurplusValue);
-    total.put("pledgeableAssetPolicyValue", pledgeableAssetPolicyValue);
-    total.put("pledgeableRealAssetValue", pledgeableRealAssetValue);
+    total.put("creditGrainSurplusValue", creditGrainSurplusValue);
+    total.put("creditAssetPolicyValue", creditAssetPolicyValue);
+    total.put("creditRealAssetValue", creditRealAssetValue);
     total.put("existingDebt", existingDebt);
     total.put("unpricedDebtAmount", unpricedDebtAmount);
     total.put("unpricedDebtCount", unpricedDebtCount);
@@ -4358,7 +4265,7 @@ public final class ApiViews {
         "totalsPartialNote",
         unavailable == 0
             ? null
-            : "pledgeableGrainSurplusValue/pledgeableRealAssetValue/headroom 三项合计只含库存读得到的行；"
+            : "creditGrainSurplusValue/creditRealAssetValue/headroom 三项合计只含库存读得到的行；"
                 + "F 与四个输入项仍是全量合计");
     view.put("total", total);
     return view;
@@ -4425,18 +4332,10 @@ public final class ApiViews {
     view.put("direction", creditorSide ? "receivable" : "payable");
     view.put("counterparty", (creditorSide ? debt.debtor() : debt.creditor()).toString());
     // ★ 旧键形状保持：实物债发商品名、货币债发 null（不是“读不到”）；另补 unitKind/currency 两栏把显式 unit 发出来。
-    switch (debt.unit()) {
-      case DebtUnit.Commodity commodity -> {
-        view.put("commodity", commodity.commodity().value());
-        view.put("unitKind", "commodity");
-        view.put("currency", null);
-      }
-      case DebtUnit.Money money -> {
-        view.put("commodity", null);
-        view.put("unitKind", "money");
-        view.put("currency", money.currency().value());
-      }
-    }
+    DebtUnit.Money money = debt.unit();
+    view.put("commodity", null);
+    view.put("unitKind", "money");
+    view.put("currency", money.currency().value());
     view.put("unitKey", debt.unit().key());
     view.put("principal", debt.principal());
     view.put("ratePerMillePerCycle", debt.terms().interestRatePerMillePerCycle());
@@ -4948,27 +4847,6 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ <b>E5a：清算政策只读视图</b>（世界级；按 {@code ruleId} 排序 ⇒ 响应字节是内容的纯函数）。它只<b>读</b> {@code
-   * EconomyData.liquidationPolicies()}：E5a 不执行清算，空列表 = 没有登记政策（不是"读不到"）。
-   */
-  private static List<Map<String, Object>> liquidationPolicyViews(EconomyData data) {
-    List<LiquidationPolicy> policies = new ArrayList<>(data.liquidationPolicies().values());
-    policies.sort(Comparator.comparing(policy -> policy.ruleId().value()));
-    List<Map<String, Object>> out = new ArrayList<>(policies.size());
-    for (LiquidationPolicy policy : policies) {
-      Map<String, Object> view = new LinkedHashMap<>();
-      view.put("ruleId", policy.ruleId().value());
-      view.put("maxLiquidatePerMille", policy.maxLiquidatePerMille());
-      view.put("protectedReserve", policy.protectedReserve());
-      view.put("priceSource", policy.priceSource().name());
-      view.put("policyValuePerUnitMilli", policy.policyValuePerUnitMilli());
-      view.put("recipientRule", policy.recipientRule().name());
-      out.add(view);
-    }
-    return out;
-  }
-
-  /**
    * ★★ <b>E5a：本格 hex 危机信号只读视图</b>（按 id 排序；空列表 = 本格没有信号，不是"读不到"）。★ {@code evidence} 按
    * 原始量发出（<b>可为负</b>；负值不等于无证据，见 {@code HexCrisisSignal} 类注），视图不折算、不填 0。
    */
@@ -5000,38 +4878,6 @@ public final class ApiViews {
       }
       view.put("classes", classes);
       view.put("reason", signal.reason());
-      out.add(view);
-    }
-    return out;
-  }
-
-  /**
-   * ★★ <b>E5b：本格质押只读视图</b>（按 {@code pledgeId} 排序 ⇒ 响应字节是内容的纯函数）。★ 只列份额登记在本格的质押；
-   * 份额在别的格的质押请查那一格。{@code quantity} 与 OwnershipStake 同单位；{@code status} 是 ACTIVE/RELEASED/EXECUTED。
-   */
-  private static List<Map<String, Object>> pledgeViews(EconomyData data, HexCoord coord) {
-    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
-    List<Pledge> pledges = new ArrayList<>();
-    for (Pledge pledge : data.pledges().values()) {
-      OwnershipStake share = data.assetShares().get(pledge.assetShareId());
-      if (share == null) {
-        continue; // 份额缺失 = 坏状态；逐条具名留给 ownership/资产读数，不在这里伪造
-      }
-      if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
-        pledges.add(pledge);
-      }
-    }
-    pledges.sort(Comparator.comparing(pledge -> pledge.id().value()));
-    List<Map<String, Object>> out = new ArrayList<>(pledges.size());
-    for (Pledge pledge : pledges) {
-      Map<String, Object> view = new LinkedHashMap<>();
-      view.put("id", pledge.id().value());
-      view.put("debtContractId", pledge.debtContractId().value());
-      view.put("assetShareId", pledge.assetShareId().value());
-      view.put("quantity", pledge.quantity());
-      view.put("modeId", pledge.modeId().value());
-      view.put("priority", pledge.priority());
-      view.put("status", pledge.status().name());
       out.add(view);
     }
     return out;
@@ -5106,7 +4952,6 @@ public final class ApiViews {
       item.put("action", audit.action());
       item.put("household", audit.household().map(HouseholdId::value).orElse(null));
       item.put("contractId", audit.contractId().map(DebtContractId::value).orElse(null));
-      item.put("pledgeId", audit.pledgeId().map(pledgeId -> pledgeId.value()).orElse(null));
       item.put(
           "sourceAssetShareId",
           audit.sourceAssetShareId().map(assetShareId -> assetShareId.value()).orElse(null));
@@ -5117,7 +4962,6 @@ public final class ApiViews {
       item.put("pricePerUnitMilli", audit.pricePerUnitMilli());
       item.put("debtReductionMilli", audit.debtReductionMilli());
       item.put("debtPrincipalAfter", audit.debtPrincipalAfter());
-      item.put("pledgeQuantityAfter", audit.pledgeQuantityAfter());
       item.put("reason", audit.reason());
       item.put("evidence", new TreeMap<>(audit.evidence()));
       items.add(item);

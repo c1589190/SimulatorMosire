@@ -139,6 +139,19 @@ public final class ProductionProcessBook {
         units, assetShares, existingGrants, industries, rosters, Map.of(), today);
   }
 
+  /** ★★★ P3b：带“本轮新取得土地排除集”的无劳动配额入口（空集 = P2 逐值相同）。 */
+  public static AssetOccupancyBudget assetOccupancyBudget(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<ProductionUnitId, ProductionRoster> rosters,
+      long today,
+      Set<AssetShareId> excludedShareIds) {
+    return assetOccupancyBudget(
+        units, assetShares, existingGrants, industries, rosters, Map.of(), today, excludedShareIds);
+  }
+
   /** ★★★ 带当刻劳动配额快照的入口：R2/D4 请求量可用实际 laborMilli 作为非资产事实。 */
   public static AssetOccupancyBudget assetOccupancyBudget(
       Map<ProductionUnitId, ProductionProcess> units,
@@ -148,12 +161,39 @@ public final class ProductionProcessBook {
       Map<ProductionUnitId, ProductionRoster> rosters,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       long today) {
+    return assetOccupancyBudget(
+        units,
+        assetShares,
+        existingGrants,
+        industries,
+        rosters,
+        laborCommitments,
+        today,
+        ProductionLandFilter.none());
+  }
+
+  /**
+   * ★★★ <b>P3b：M3/M6/M7 资产预算的统一入口（带“本轮新取得土地排除集”）</b>。
+   *
+   * <p>★ {@code excludedShareIds} 由调用方传 {@code SettlementDayContext.landAcquiredThisRound()}；空集 ⇒ 与
+   * P2 逐值相同。排除只发生在 {@link AssetOccupancyBook#allocate} 的 scope 供给匹配，不删份额表。
+   */
+  public static AssetOccupancyBudget assetOccupancyBudget(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<ProductionUnitId, ProductionRoster> rosters,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      long today,
+      Set<AssetShareId> excludedShareIds) {
     Objects.requireNonNull(units, "units 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
     Objects.requireNonNull(existingGrants, "existingGrants 不得为 null（无占用用空表）");
     Objects.requireNonNull(industries, "industries 不得为 null");
     Objects.requireNonNull(rosters, "rosters 不得为 null（无名册用空表）");
     Objects.requireNonNull(laborCommitments, "laborCommitments 不得为 null（无配额用空表）");
+    Set<AssetShareId> excluded = ProductionLandFilter.normalize(excludedShareIds);
     if (today < 0L) {
       throw new IllegalArgumentException("asset-occupancy-invalid-tick: today 不得为负: " + today);
     }
@@ -243,7 +283,7 @@ public final class ProductionProcessBook {
       }
     }
     return AssetOccupancyBook.allocate(
-        requests, existingGrants, assetShares, accepted, units, today);
+        requests, existingGrants, assetShares, accepted, units, today, excluded);
   }
 
   private static List<AssetKind> sortedKinds(Map<AssetKind, Long> capacityPerUnit) {

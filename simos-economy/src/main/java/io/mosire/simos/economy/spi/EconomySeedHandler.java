@@ -87,13 +87,13 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
               definitions,
               // ★★ B2b：实例权威也在 production —— 载荷里的 units[] 逐个对着它核对（缺一个即具名拒）。
               production.instances(),
-              // ★★★ D-032 W2a：工资 default/posting 的市场区/法定币必须对当前 economy 区表校验。
+              // ★★★ D-032 P4c3：工资锚的市场区/法定币必须对当前 economy 区表校验。
               base.marketZones());
       // ★★★ D-032 C2（D2 §5.5 / §7.1）：创世名册的跨切片校验（角色存在/份额 owner/全局预算/旧规则禁用）。
       //   ★ W5-E：seed 是**写入口** ⇒ 显式 enforcePlannedLaborBudget=true，保留 D2-I13 的拒绝语义。
       io.mosire.simos.economy.EconomyReferenceValidation.validateProductionRosters(
           definitions, production, seeded, "economy.Seed", true);
-      // ★★★ D-032 W2a：候选 default / 执行期 posting 的 plan/role/币种/范围跨切片校验。
+      // ★★★ D-032 P4c3：工资锚 / 进位的 plan/role/币种/范围跨切片校验。
       io.mosire.simos.economy.EconomyReferenceValidation.validateProductionWages(
           definitions, production, seeded, "economy.Seed");
     } catch (IllegalArgumentException | IllegalStateException e) {
@@ -219,12 +219,8 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //     gov-unit-<unitId> 派生 id 登记，重复登记是同键 upsert（幂等），也不靠播种顺序。
             mergeKeepingExisting(base.governments(), seeded.governments()),
             merge(base.moneyIssuances(), seeded.moneyIssuances()),
-            // ★★ E4a 的第 25 个组件：质押按同一套“该格已被占用 ⇒ 上面就拒”的口径追加（空表播种 ⇒ 逐值带过已有状态）。
-            merge(base.pledges(), seeded.pledges()),
-            // ★★ E5a 的第 26/27 个组件：清算政策/危机信号也按同一套 append 口径合并 —— 漏了它们 =
-            //   已播国家的清算制度参数与 hex 危机信号在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
+            // ★★ E5a：危机信号按 append 口径合并 —— 漏了它 = 已播国家的 hex 危机信号在后续国家 seed 时静默消失。
             //   ★ 危机信号键 = (hex, kind)，同键以后播的载荷为准（覆盖即更新，见 HexCrisisSignal 类注）。
-            merge(base.liquidationPolicies(), seeded.liquidationPolicies()),
             merge(base.crisisSignals(), seeded.crisisSignals()),
             // ★★ E6a 的第 28/29 个组件：同一套 append 口径合并 —— 漏了它们 = 已有模式变迁/保留份额在后续
             //   国家 seed 时静默消失（新播的 seed 载荷通常为空表，逐值带过已有状态）。
@@ -257,14 +253,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★★ D-032 C2（D2 §5.5）：名册按 unit 合并 —— 新播的 unit 带自己的名册；缺键 ⇒ 逐值带过已有状态。
             //   漏了它 = 一次按格追加播种会把已建立的名册静默抹掉。
             merge(base.productionRosters(), seeded.productionRosters()),
-            // ★★★ D-032 W2a：候选 default / 执行期 posting 同样按 append 口径合并；漏了它们 =
-            //   一次按格补种会把已设的工资默认/岗位静默抹掉。
-            merge(base.productionWageDefaults(), seeded.productionWageDefaults()),
-            merge(base.productionWagePostings(), seeded.productionWagePostings()),
             merge(base.wageCarryRemainders(), seeded.wageCarryRemainders()),
             // ★★★ D-032 D4-Ib1：占用/预留为世界运行事实，seed 不声明 ⇒ 逐值带过已有状态。
             merge(base.assetOccupancies(), seeded.assetOccupancies()),
-            merge(base.inventoryReservations(), seeded.inventoryReservations()));
+            merge(base.inventoryReservations(), seeded.inventoryReservations()),
+            // ★★★ D-032 P4b1：U20 工资锚按 append 口径合并；漏了它 = 已设锚会被后续补种静默抹掉。
+            merge(base.productionWageAnchors(), seeded.productionWageAnchors()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

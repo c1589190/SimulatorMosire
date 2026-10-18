@@ -17,6 +17,7 @@ import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -82,6 +83,9 @@ class EconomyInvariantsTest {
   private static final HouseholdId LANDLORD_HOUSE = HouseholdIds.ofLegacy(LANDLORD_KEY);
   private static final CommodityId GRAIN = new CommodityId("grain");
 
+  /** ★ P2c：债务本金只能是货币；夹具沿用全仓测试币 silver。 */
+  private static final CurrencyId SILVER = new CurrencyId("silver");
+
   /** ★ E4a：粮债的默认条款与两个不同条款的连续合同身份（D1/D2 供“债务表是权威”的对照用例）。 */
   private static final DebtTerms GRAIN_TERMS = DebtTerms.legacyDefault();
 
@@ -89,11 +93,11 @@ class EconomyInvariantsTest {
       DebtTerms.legacyDefault(DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE + 1);
 
   private static final DebtContractId D1 =
-      DebtContractId.idOf(PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.commodity(GRAIN), GRAIN_TERMS);
+      DebtContractId.idOf(PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.money(SILVER), GRAIN_TERMS);
 
   private static final DebtContractId D2 =
       DebtContractId.idOf(
-          PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.commodity(GRAIN), GRAIN_SECOND_TERMS);
+          PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.money(SILVER), GRAIN_SECOND_TERMS);
 
   /** R4：经营主体住在 {@code ProductionProcess}（不再是 {@code IndustryDefinitionView} 的模板字段）。 */
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "estate-7");
@@ -1158,7 +1162,7 @@ class EconomyInvariantsTest {
         id,
         PEASANT_HOUSE,
         LANDLORD_HOUSE,
-        DebtUnit.commodity(GRAIN),
+        new DebtUnit.Money(SILVER),
         terms,
         DebtSource.ORDINARY_LOAN,
         principal,

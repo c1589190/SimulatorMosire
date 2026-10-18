@@ -178,12 +178,11 @@ public final class EconomyDayStepper implements AutoCloseable {
         plantingDrawsFirst,
         parallelism,
         new UnavailableAssetOccupancyLookup(),
-        new UnavailableProductionWageQuoteLookup(),
         new UnavailableParticipantAttributeLookup());
   }
 
   /**
-   * ★★★ <b>D-032 C2 全参构造器</b>：在原有行为旋钮之外显式注入 D4-C 资产占用读口、D2 §6.5 工资报价读口与 参与户属性桥。未接真实实现时必须传对应的 {@code
+   * ★★★ <b>D-032 C2 全参构造器</b>：在原有行为旋钮之外显式注入 D4-C 资产占用读口与参与户属性桥。未接真实实现时必须传对应的 {@code
    * Unavailable*} fail-closed 适配器（不得传 null）。
    */
   public EconomyDayStepper(
@@ -195,7 +194,6 @@ public final class EconomyDayStepper implements AutoCloseable {
       boolean plantingDrawsFirst,
       EconomyParallelism parallelism,
       AssetOccupancyLookup assetOccupancyLookup,
-      ProductionWageQuoteLookup wageQuoteLookup,
       ParticipantAttributeLookup participantAttributeLookup) {
     this(
         base,
@@ -206,7 +204,6 @@ public final class EconomyDayStepper implements AutoCloseable {
         plantingDrawsFirst,
         parallelism,
         assetOccupancyLookup,
-        wageQuoteLookup,
         participantAttributeLookup,
         null);
   }
@@ -221,7 +218,6 @@ public final class EconomyDayStepper implements AutoCloseable {
       boolean plantingDrawsFirst,
       EconomyParallelism parallelism,
       AssetOccupancyLookup assetOccupancyLookup,
-      ProductionWageQuoteLookup wageQuoteLookup,
       ParticipantAttributeLookup participantAttributeLookup,
       io.mosire.simos.util.state.RevisionId expectedRevision) {
     this.lastCycleClosed = false;
@@ -234,7 +230,6 @@ public final class EconomyDayStepper implements AutoCloseable {
             Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）"),
             runtime,
             Objects.requireNonNull(assetOccupancyLookup, "assetOccupancyLookup（D4-C 读口）"),
-            Objects.requireNonNull(wageQuoteLookup, "wageQuoteLookup（D2 §6.5 读口）"),
             Objects.requireNonNull(participantAttributeLookup, "participantAttributeLookup（属性桥）"),
             expectedRevision);
     this.accounts = Objects.requireNonNull(accounts, "accounts（账户会话是会话状态，必须由调用方载入）");
@@ -673,6 +668,33 @@ public final class EconomyDayStepper implements AutoCloseable {
     Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
     EconomySettlement.applyHouseholdPopulationDeltasInto(
         session, deltas, birthsByHousehold, deathsByHousehold, day);
+  }
+
+  /**
+   * ★★ <b>D-032 P1：population-only 窄写回</b>（在 {@code step(day)} 之前把本日 Social 的净人口变化落到经济行）。
+   *
+   * <p>只加 {@code population}，不写 FlowRow、不删债、不碰劳动；校验与既有二参入口同口径（null/0/缺行/负值 fail-closed）。 每个 tick
+   * 只调用一次。
+   */
+  public void applyHouseholdPopulationDeltasOnly(Map<HouseholdId, Long> deltas) {
+    Objects.requireNonNull(deltas, "deltas");
+    PopulationWritebackSettlement.applyHouseholdPopulationDeltasOnlyInto(session, deltas);
+  }
+
+  /**
+   * ★★ <b>D-032 P1：lifecycle-only 窄写回</b>（在 {@code step(day)} 之后把本日 Social 的出生/死亡原值补进 FlowRow）。
+   *
+   * <p>只记录 births/deaths，不更新 population；若某户 population 已为 0 且 deaths &gt; 0，执行一次户绝双向销债。每个 tick
+   * 只调用一次。
+   */
+  public void applyHouseholdLifecycleOnly(
+      Map<HouseholdId, Long> birthsByHousehold,
+      Map<HouseholdId, Long> deathsByHousehold,
+      long day) {
+    Objects.requireNonNull(birthsByHousehold, "birthsByHousehold");
+    Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
+    PopulationWritebackSettlement.applyHouseholdLifecycleOnlyInto(
+        session, birthsByHousehold, deathsByHousehold, day);
   }
 
   /**

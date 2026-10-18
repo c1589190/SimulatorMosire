@@ -4,7 +4,6 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
@@ -404,15 +403,8 @@ final class OperatorSettlement {
                   household.value(),
                   "industry",
                   industry.id().value());
-          // ★★ A2b（I24 / M7-③）：**逐币种分别算** —— 实物债看该商品的库存、货币债看**该债币种**的现金。
-          //   改前是 `case DebtUnit.Money ignored -> cashOf(household, householdMoney)`：把该户**全部币种**的余额
-          //   1:1 加总当作"能还这笔钱的钱" ⇒ 一户只有铜也能被读成"银债还得起"。现在"能还多少"只由**债的那一种钱**回答。
-          long available =
-              switch (debt.unit()) {
-                case DebtUnit.Commodity commodity ->
-                    stockOf(household, commodity.commodity(), householdGoods);
-                case DebtUnit.Money money -> cashOf(household, money.currency(), householdMoney);
-              };
+          // ★★ A2b（I24 / M7-③）+ P2c：合同只有货币债，能还多少只由**债的那一种钱**回答，不跨币种 1:1 加总。
+          long available = cashOf(household, debt.unit().currency(), householdMoney);
           if (due > available) {
             debtStress = true;
           }

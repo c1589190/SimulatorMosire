@@ -216,13 +216,16 @@ class MerchantCapacityAcceptanceTest {
     HouseholdId seller = hh("hh-seller");
     HouseholdId buyer = hh("hh-buyer");
     HouseholdId carrier = hh("hh-carrier");
+    // ★ P2a：5 tick 保留下 1 人户需求仅 415，已小于本夹具的 2,500 运力；提高到 7 人 ⇒ 2,915 > 2,500，
+    //   让“需求大于运力 ⇒ 截断真的发生”重新成为判据，而不是把断言放宽成 <= 运力。
+    long buyerPopulation = 7L;
     // 承运户运力故意压到很小（劳动 2,000 + 工具 0）⇒ 跨格成交被截断，剩余记 LOGISTICS_CAPACITY。
     MarketSettlementFixtures.World world =
         MarketSettlementFixtures.builder()
             .market(H1, 10L)
             .market(H2, 10L)
             .household(seller, H1, 1L, 200_000L, 0L)
-            .household(buyer, H2, 1L, 0L, 1_000_000L)
+            .household(buyer, H2, buyerPopulation, 0L, 1_000_000L)
             .carrier(carrier, H1, 1_500L, 1_000L)
             .build();
     // ★ A3：缺省口径（无服务市场）下运力 = 劳动 + 工具，且它是**装配点的读数** —— 本轮不再"烧工具"（旧"每趟
@@ -235,8 +238,8 @@ class MerchantCapacityAcceptanceTest {
     assertThat(capacity).as("派生运力 = 劳动 1500 + 工具 1000").isEqualTo(2_500L);
     assertThat(outcome.report().fills()).as("运力不足以整车 ⇒ 仍有一笔（按运力截断）").hasSize(1);
     assertThat(outcome.report().fills().get(0).quantity())
-        .as("★ 需求（生活保留缺口）大于运力 ⇒ 截断真的发生了（否则本用例测不到东西）")
-        .isLessThan(MarketSettlementFixtures.lifeReserveGrain(1L));
+        .as("★ 需求（生活保留缺口 2,915）大于运力 2,500 ⇒ 截断真的发生了（否则本用例测不到东西）")
+        .isLessThan(MarketSettlementFixtures.lifeReserveGrain(buyerPopulation));
     assertThat(outcome.report().fills().get(0).quantity())
         .as("★ 成交毛量 ≤ 本格运力总量（分配 ≤ 运力）")
         .isLessThanOrEqualTo(capacity);

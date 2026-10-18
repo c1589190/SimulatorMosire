@@ -16,7 +16,6 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -33,13 +32,8 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -76,11 +70,11 @@ import org.slf4j.Logger;
  * <p>★★ <b>逐格可靠可定位的连带记录一并清</b>（不变量要求它们与 industry/class 同生共死，否则下一次构造当场违约）：
  *
  * <ul>
- *   <li>{@code assetShares}（按 {@code industry} 定位）与引用它们的 {@code pledges}；
+ *   <li>{@code assetShares}（按 {@code industry} 定位）；
  *   <li>{@code classes}（按 {@code HouseholdEconomy.view().hex()} 定位）、同键的 {@code flows}、{@code
  *       memberships}、 {@code classStandings}、{@code classShares}、{@code allocations}（按 {@code
  *       household} 定位）；
- *   <li>清空区域内家户所涉的 {@code debtContracts}（按 debtor/creditor 定位）；引用被清合同/份额的 {@code pledges}；
+ *   <li>清空区域内家户所涉的 {@code debtContracts}（按 debtor/creditor 定位）；
  *   <li>{@code demands}：HEX 范围按格键命中；HOUSEHOLD 范围按被清家户命中；
  *   <li>{@code crisisSignals}：{@code signal.hex()} 命中目标格，或点名的家户被清（避免悬空引用）；
  *   <li>{@code productionOrganizations}：unit / 劳动来源家户 / 资产份额任一被清即清；引用被清组织的 {@code modeTransitions}。
@@ -95,7 +89,7 @@ import org.slf4j.Logger;
  *       social/map 侧，economy 看不见）；只清一半会让同一格城乡 split-brain ⇒ 整表不清。它的悬空由被清的 allocations
  *       解开，剩余行不违反任何构造期不变量；
  *   <li>{@code candidates} / {@code modes} / {@code classStructures} / {@code classPositions} /
- *       {@code assetRules} / {@code liquidationPolicies}：世界级/制度定义，无格；
+ *       {@code assetRules}：世界级/制度定义，无格；
  *   <li>{@code governments} / {@code moneyIssuances}：世界级发行主体与世界总量审计；发行量不按区域归属，清它会破坏 货币守恒审计。
  * </ul>
  *
@@ -317,17 +311,6 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     //   （`roster-instance-unknown`）。
     Map<ProductionUnitId, ProductionRoster> productionRosters =
         withoutKeys(base.productionRosters(), removedUnits);
-    // ★★★ D-032 W2a：被清实例的执行期工资岗位同批删除；候选 default 按 plan 同批删（避免指向已退役定义）。
-    Map<WageDefaultKey, ProductionWageDefault> productionWageDefaults =
-        new LinkedHashMap<>(base.productionWageDefaults());
-    productionWageDefaults
-        .entrySet()
-        .removeIf(entry -> removedIndustries.contains(entry.getKey().plan()));
-    Map<WagePostingKey, ProductionWagePosting> productionWagePostings =
-        new LinkedHashMap<>(base.productionWagePostings());
-    productionWagePostings
-        .entrySet()
-        .removeIf(entry -> removedUnits.contains(entry.getKey().unit()));
     Map<io.mosire.simos.economy.model.WageCarryKey, Long> wageCarryRemainders =
         new LinkedHashMap<>(base.wageCarryRemainders());
     wageCarryRemainders.keySet().removeIf(entry -> removedUnits.contains(entry.unit()));
@@ -373,15 +356,6 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
             entry ->
                 removedClasses.contains(entry.getValue().debtor())
                     || removedClasses.contains(entry.getValue().creditor()));
-    Set<DebtContractId> removedContracts = keysRemoved(base.debtContracts(), debtContracts);
-    Map<PledgeId, Pledge> pledges = new LinkedHashMap<>(base.pledges());
-    pledges
-        .entrySet()
-        .removeIf(
-            entry ->
-                removedContracts.contains(entry.getValue().debtContractId())
-                    || removedShares.contains(entry.getValue().assetShareId()));
-
     Map<ProductionOrganizationId, ProductionEnterprise> enterprises =
         new LinkedHashMap<>(base.productionOrganizations());
     enterprises
@@ -452,7 +426,6 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         base.withProductionRosters(productionRosters)
             .withRelations(relations)
             .withOperatorConditions(operatorConditions)
-            .withPledges(pledges)
             .withClassShares(classShares)
             .withModeTransitions(modeTransitions)
             // ★ M-A1：商号表（merchantFirms）已退役 ⇒ 不再有"商号 → 组织"的摘除次序约束；组织表
@@ -489,8 +462,6 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.assetRules(),
         staged.governments(),
         staged.moneyIssuances(),
-        staged.pledges(),
-        staged.liquidationPolicies(),
         staged.crisisSignals(),
         staged.modeTransitions(),
         staged.classShares(),
@@ -516,12 +487,11 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         staged.marketRoundStats(),
         // ★★★ D-032 C2：被清格里的名册同批删除（staged 已按 removedUnits 摘过）。
         staged.productionRosters(),
-        // ★★★ D-032 W2a：候选默认按 removedIndustries 摘过；执行期岗位按 removedUnits 摘过。
-        productionWageDefaults,
-        productionWagePostings,
         wageCarryRemainders,
         assetOccupancies,
-        inventoryReservations);
+        inventoryReservations,
+        // ★★★ D-032 P4b1：清区域不拥有世界级锚的写面 —— 原样带过 staged 的表（P4c 才接锚消费者）。
+        staged.productionWageAnchors());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

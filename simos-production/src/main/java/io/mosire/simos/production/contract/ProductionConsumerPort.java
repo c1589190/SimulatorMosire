@@ -85,7 +85,7 @@ public interface ProductionConsumerPort {
   }
 
   /**
-   * 一次 mode 停用检查的引用者清单（六类；展示串与旧 {@code deactivateProductionMode} 逐字对齐）。
+   * 一次 mode 停用检查的引用者清单（五类；展示串与旧 {@code deactivateProductionMode} 逐字对齐）。
    *
    * <p>★ 空报告 = 无引用 ⇒ 允许停用。
    */
@@ -94,8 +94,7 @@ public interface ProductionConsumerPort {
       List<String> classPositions,
       List<String> productionOrganizations,
       List<String> assetRules,
-      List<String> modeTransitions,
-      List<String> pledges) {
+      List<String> modeTransitions) {
 
     public ModeReferenceReport {
       classStructures = List.copyOf(classStructures);
@@ -103,7 +102,6 @@ public interface ProductionConsumerPort {
       productionOrganizations = List.copyOf(productionOrganizations);
       assetRules = List.copyOf(assetRules);
       modeTransitions = List.copyOf(modeTransitions);
-      pledges = List.copyOf(pledges);
     }
 
     public boolean isEmpty() {
@@ -111,8 +109,7 @@ public interface ProductionConsumerPort {
           && classPositions.isEmpty()
           && productionOrganizations.isEmpty()
           && assetRules.isEmpty()
-          && modeTransitions.isEmpty()
-          && pledges.isEmpty();
+          && modeTransitions.isEmpty();
     }
 
     /** 旧 {@code deactivateProductionMode} 的拒绝理由片段（逐类具名列出引用者）。 */
@@ -123,7 +120,6 @@ public interface ProductionConsumerPort {
       append(text, "productionOrganizations", productionOrganizations);
       append(text, "assetRules", assetRules);
       append(text, "modeTransitions", modeTransitions);
-      append(text, "pledges", pledges);
       return text.toString();
     }
 

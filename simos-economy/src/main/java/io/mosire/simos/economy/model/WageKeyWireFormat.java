@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.model;
 
 /**
- * ★ <b>工资复合键的长度前缀线格式</b>（{@code WageDefaultKey} / {@code WagePostingKey} 共用；包内私有）。
+ * ★ <b>工资复合键的长度前缀线格式</b>（{@link WageAnchorKey} 使用；包内私有）。
  *
  * <p>构成键的稳定 ID 只保证"非空白"（{@code MarketZoneId} 额外禁 {@code |}），没有共同禁用字符，故不能用裸分隔符拼 {@code
  * toString()}。本类把除最后一段外的每个字段写成 {@code <字符数>:<值>}，最后一段吃掉剩余全部字符；解析只按长度切段， 与字段值可出现的字符无关。

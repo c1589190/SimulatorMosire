@@ -11,19 +11,17 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.ProductionWageQuote;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
-import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionDayResult;
 import io.mosire.simos.production.contract.ProductionLocation;
@@ -35,7 +33,6 @@ import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -50,7 +47,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 
 /**
- * ★★★ <b>W3 工资结算：直付 → 抵物 → 余款成债</b>（D-032 D3 §6/§7；U21）。
+ * ★★★ <b>W3 工资结算：只付现金 → 未付差额成普通工资债</b>（D-032 P4a）。
  *
  * <p>★★ <b>只处理有生产名册的实例</b>：名册路径的 organizer household 是唯一付款人；无名册的旧 {@code ProductionSettlement}
  * 货币工资路径按 D3 保留，本类不碰它 ⇒ 两条路径不会双付。
@@ -59,12 +56,14 @@ import org.slf4j.Logger;
  *
  * <ol>
  *   <li>按 {@code (unit, role, household)} 稳定序构造本次实际劳动义务；
- *   <li>先按付款人做 {@link WagePayerLocationPrecheck}：已有 unit/roster/posting 地点 ∪ 本次义务地点 &gt; 1 ⇒
- *       整组业务拒绝， 零 lookup / 零支付 / 零新债 / 零 carry 变化；
- *   <li>通过预检后先算完全部 due（carry 是逐义务状态），再对该组调用一次 {@link
- *       WagePayableInventoryLookup#payableInventory(ActorRef, ProductionLocation)}；
- *   <li>货币腿按 {@link AccountSnapshot} 的户级快照逐笔扣减；库存腿只消费该次 lookup 快照；余款才写工资债。
+ *   <li>先按付款人做 {@link WagePayerLocationPrecheck}：已有 unit/roster 地点 ∪ 本次义务地点 &gt; 1 ⇒
+ *       整组业务拒绝，零支付 / 零新债 / 零 carry 变化；
+ *   <li>通过预检后先算完全部 due（carry 是逐义务状态），再按稳定序逐笔付现金；
+ *   <li>每笔 {@code paidMoney = min(dueRemaining, cash[currency])}，现金用完为止；未付差额立即形成
+ *       {@link DebtSource#WAGE_ARREARS} 的货币普通债（{@code DebtTerms.wageArrearsDefault()}，0‰）。
  * </ol>
+ *
+ * <p>★ <b>不读库存/市场价/barter</b>：工资只付货币腿，绝不拿商品库存抵付，也不生成商品腿。
  *
  * <p>★ <b>账户写口</b>：本类不直接改商品/货币表；所有支付都铸成 {@link TransferReason#WAGE_PAYMENT} 的 {@link Transfer}，再经
  * {@link EconomySettlement#applyTransfer} 唯一写口落账。
@@ -73,7 +72,6 @@ public final class WageSettlement {
 
   private static final Logger LOG = EconomyLog.settlement();
   private static final Logger TRACE = EconomyLog.trace();
-  private static final BigInteger MILLI = BigInteger.valueOf(1000L);
   private static final Comparator<Obligation> OBLIGATION_ORDER =
       Comparator.comparing((Obligation value) -> value.unit().value())
           .thenComparing(value -> value.role().value())
@@ -100,27 +98,29 @@ public final class WageSettlement {
     }
   }
 
-  /** 本次工资结算的回执：逐义务读数 + carry 工作副本 + 同日还款排除集 + 业务拒绝。 */
+  /** 本次工资结算的回执：逐义务读数 + carry 工作副本 + 业务拒绝。 */
   public record Result(
       List<WageSettlementReadout> readouts,
       Map<WageCarryKey, Long> carryRemainders,
-      Set<DebtContractId> newWageDebtIds,
       List<Rejection> rejections) {
 
     public Result {
       Objects.requireNonNull(readouts, "Result.readouts 不得为 null");
       Objects.requireNonNull(carryRemainders, "Result.carryRemainders 不得为 null");
-      Objects.requireNonNull(newWageDebtIds, "Result.newWageDebtIds 不得为 null");
       Objects.requireNonNull(rejections, "Result.rejections 不得为 null");
       readouts = List.copyOf(readouts);
       Map<WageCarryKey, Long> carryCopy = new LinkedHashMap<>(carryRemainders);
       carryRemainders = Collections.unmodifiableMap(carryCopy);
-      newWageDebtIds = Collections.unmodifiableSet(new LinkedHashSet<>(newWageDebtIds));
       rejections = List.copyOf(rejections);
     }
   }
 
-  /** 一条待结工资义务（内部；已按名册 organizer 解析出付款人）。 */
+  /**
+   * 一条待结工资义务（内部；已按名册 organizer 解析出付款人）。
+   *
+   * <p>★ P4c3：{@code anchorKey} 是 {@code (unit 所在市场区, unit.industry, role)} 的 U20 锚键；定不出市场区时为空。
+   * 缺锚 ⇒ 该义务按 {@code wage-anchor-missing} 业务拒绝，<b>不按 0、不读旧表</b>。
+   */
   private record Obligation(
       ProductionUnitId unit,
       ProductionRoleId role,
@@ -128,7 +128,12 @@ public final class WageSettlement {
       HouseholdId payer,
       ProductionLocation location,
       long tickLaborMilli,
-      BarterDiscountPolicy discountPolicy) {}
+      Optional<WageAnchorKey> anchorKey) {
+
+    private Obligation {
+      Objects.requireNonNull(anchorKey, "Obligation.anchorKey 不得为 null（缺键用 Optional.empty()）");
+    }
+  }
 
   /** 逐付款人一组义务；组内按稳定义务序。 */
   private record PayerGroup(HouseholdId payer, List<Obligation> obligations) {}
@@ -141,20 +146,17 @@ public final class WageSettlement {
       long carryBefore,
       ProductionWageBook.Due due) {}
 
-  /** 一个结算地点内的库存预算（只来自一次 lookup 快照）。 */
-  private record InventoryBudget(Map<CommodityId, Long> payable, boolean unavailable) {}
-
   /**
    * ★★★ <b>执行 W3 工资结算</b>。
    *
    * @param day 世界日；不得为负
    * @param dueCycle 新工资债的到期周期（调用方给的当前周期 + 1）
-   * @param dayView 当刻经济只读视图（posting / roster / definitions / markets）
+   * @param dayView 当刻经济只读视图（锚 / roster / definitions）
    * @param units ★★ <b>本 tick 回执所在同一 revision 的当刻生产实例读口</b>（payer 已有地点汇总 + 回执 unit 地点解析）。调用方必须在
    *     {@code driveProductionDay} 之后取当刻权威候选态（{@code session.sheet().units()}），<b>不得</b>传日结算入口抓的
    *     tick 前快照 —— 本 tick 内 {@code createInstance} 新建的 unit 只存在于前者。
    * @param accountSnapshot W3 开始时的账户只读快照（货币腿的唯一余额来源）
-   * @param householdGoods 家户商品活表（唯一写口 {@link EconomySettlement#applyTransfer} 会写它）
+   * @param householdGoods 家户商品活表（唯一写口 {@link EconomySettlement#applyTransfer} 会读它；本类不读库存）
    * @param householdMoney 家户货币活表
    * @param householdFrozenGoods 家户商品冻结活表
    * @param householdFrozenMoney 家户货币冻结活表
@@ -162,8 +164,6 @@ public final class WageSettlement {
    * @param debts 债务工作表（唯一写口 {@link DebtContractBook#upsert}）
    * @param ledger 当日账本累加器（工资转移的唯一铸造口）
    * @param productionDay 本日生产回执（due 的唯一实际劳动来源）
-   * @param topology 市场拓扑（unit 地点 → 市场区价表）
-   * @param inventoryLookup D4 的可支付库存唯一读口
    */
   static Result settle(
       long day,
@@ -178,9 +178,7 @@ public final class WageSettlement {
       Map<ActorRef, HouseholdId> householdOfActor,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       ProductionLedger.Accumulator ledger,
-      ProductionDayResult productionDay,
-      MarketTopology topology,
-      WagePayableInventoryLookup inventoryLookup) {
+      ProductionDayResult productionDay) {
     Objects.requireNonNull(dayView, "dayView");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(accountSnapshot, "accountSnapshot");
@@ -192,8 +190,6 @@ public final class WageSettlement {
     Objects.requireNonNull(debts, "debts");
     Objects.requireNonNull(ledger, "ledger");
     Objects.requireNonNull(productionDay, "productionDay");
-    Objects.requireNonNull(topology, "topology");
-    Objects.requireNonNull(inventoryLookup, "inventoryLookup（D4-C，不可用请注入 Unavailable*）");
     if (day < 0L) {
       throw new IllegalArgumentException("WageSettlement.day 不得为负: " + day);
     }
@@ -203,6 +199,10 @@ public final class WageSettlement {
 
     Map<ProductionUnitId, ProductionRoster> rosters = dayView.productionRosters();
     ProductionWageBook wageBook = new ProductionWageBook(dayView);
+    // ★★★ P4c1：U20 锚的**同一 tick 快照**（M8 开始时刻冻结）；M8 只读不写锚（调价是 P4c2），
+    //   故本 tick 的 due 与 M3/M6 的锁不会被任何"新价"追改。
+    Map<WageAnchorKey, ProductionWageAnchor> wageAnchors =
+        new WageAnchorBook(dayView).snapshot();
     List<Rejection> rejections = new ArrayList<>();
     List<Obligation> obligations = collectObligations(dayView, rosters, units, productionDay);
     obligations.sort(OBLIGATION_ORDER);
@@ -215,14 +215,14 @@ public final class WageSettlement {
     payers.sort(Comparator.comparing(HouseholdId::value));
 
     List<WageSettlementReadout> readouts = new ArrayList<>();
-    Set<DebtContractId> newWageDebtIds = new LinkedHashSet<>();
+    int newWageDebts = 0;
     for (HouseholdId payer : payers) {
       List<Obligation> groupObligations = new ArrayList<>(byPayer.get(payer));
       groupObligations.sort(OBLIGATION_ORDER);
       PayerGroup group = new PayerGroup(payer, groupObligations);
       ActorRef payerActor = HouseholdActors.of(payer);
       Set<ProductionLocation> existing =
-          existingSettlementLocations(payer, rosters, units, dayView);
+          existingSettlementLocations(payer, rosters, units);
       Set<ProductionLocation> candidates = new LinkedHashSet<>();
       for (Obligation obligation : group.obligations()) {
         candidates.add(obligation.location());
@@ -246,8 +246,6 @@ public final class WageSettlement {
         continue;
       }
       // ★★ 预检/账户守卫都在 due 计算之前：整组拒绝时 carry 一个字节不动。
-      InventoryBudget inventory =
-          inventoryBudget(inventoryLookup, payerActor, settlementLocation, payer);
       // ★★ 两阶段：先把全组 due 算完（carry 写在工作副本），再按稳定序支付；支付阶段不重读 quote。
       List<DueObligation> dueObligations = new ArrayList<>();
       for (Obligation obligation : group.obligations()) {
@@ -260,21 +258,37 @@ public final class WageSettlement {
           rejectOne(obligation, "wage-organizer-self-employment", rejections);
           continue;
         }
-        ProductionWageQuote quote =
-            wageBook
-                .quoteFor(obligation.unit(), obligation.role())
-                .orElseThrow(
-                    () ->
-                        contractFault(
-                            "wage-quote-missing",
-                            obligation.unit().value() + "|" + obligation.role().value(),
-                            null));
+        // ★★★ P4c3：due 的 quote 唯一来自同一 tick 锚快照；缺锚 ⇒ 具名 wage-anchor-missing
+        //   业务拒绝（ERROR 日志），不支付、不成债、carry 不动。
+        ProductionProcess obligationUnit = units.get(obligation.unit());
+        WageQuoteBridge.WageQuoteResolution resolution =
+            WageQuoteBridge.resolveWageQuote(
+                day,
+                "m8-wage-due",
+                obligationUnit,
+                obligation.role(),
+                obligation.anchorKey(),
+                wageAnchors,
+                true);
+        if (resolution.quote().isEmpty()) {
+          throw contractFault(
+              WageQuoteBridge.WAGE_ANCHOR_MISSING,
+              "M8 工资义务缺 U20 锚（契约故障，整批不提交）: "
+                  + obligation.unit().value()
+                  + "|"
+                  + obligation.role().value()
+                  + "|"
+                  + obligation.worker().value(),
+              null);
+        }
+        ProductionWageQuote quote = resolution.quote().get();
         long carryBefore =
             wageBook.carryOf(obligation.unit(), obligation.role(), obligation.worker());
         ProductionWageBook.Due due;
         try {
           due =
               wageBook.dueFor(
+                  quote,
                   obligation.unit(),
                   obligation.role(),
                   obligation.worker(),
@@ -306,29 +320,10 @@ public final class WageSettlement {
         dueObligations.add(new DueObligation(obligation, workerActor, quote, carryBefore, due));
       }
 
+      // ★ 付款人现金预算 = 账户余额 − 冻结；现金用完为止，不按比例摊。
       Map<CurrencyId, Long> moneyBudget = spendableMoney(payerAccount);
-      Map<CommodityId, Long> inventoryRemaining = new LinkedHashMap<>(inventory.payable());
-      List<CommodityId> barterOrder = barterOrder(inventoryRemaining);
-      if (LOG.isDebugEnabled()) {
-        EventLog.channel(LOG)
-            .debug(
-                LogEvent.of(
-                    "WAGE_BARTER_ORDER",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "day",
-                    day,
-                    "payer",
-                    payer.value(),
-                    "location",
-                    settlementLocation.value(),
-                    "commodities",
-                    barterOrder.stream().map(CommodityId::value).toList(),
-                    "initialPayable",
-                    inventory.payable()));
-      }
       long dueGroup = 0L;
       long paidMoneyGroup = 0L;
-      long paidBarterGroup = 0L;
       long arrearsGroup = 0L;
       int processed = 0;
       for (DueObligation settled : dueObligations) {
@@ -341,26 +336,6 @@ public final class WageSettlement {
               settled.due().currency(), moneyBudget.get(settled.due().currency()) - paidMoney);
           remaining -= paidMoney;
         }
-        Map<CommodityId, Long> barterQuantity = new LinkedHashMap<>();
-        Map<CommodityId, Long> barterPaidValue = new LinkedHashMap<>();
-        List<String> reasons = new ArrayList<>();
-        if (inventory.unavailable() && remaining > 0L) {
-          reasons.add("wage-inventory-scope-unavailable");
-        }
-        if (!inventory.unavailable() && remaining > 0L) {
-          remaining =
-              payBarter(
-                  obligation,
-                  remaining,
-                  barterOrder,
-                  inventoryRemaining,
-                  dayView,
-                  topology,
-                  settled.due().currency(),
-                  barterQuantity,
-                  barterPaidValue,
-                  reasons);
-        }
         long arrears = remaining;
         Optional<DebtContractId> debtId = Optional.empty();
         if (arrears > 0L) {
@@ -369,26 +344,47 @@ public final class WageSettlement {
                   debts,
                   payer,
                   obligation.worker(),
-                  DebtUnit.money(settled.due().currency()),
+                  new DebtUnit.Money(settled.due().currency()),
                   DebtTerms.wageArrearsDefault(),
                   DebtSource.WAGE_ARREARS,
                   arrears,
                   day,
                   OptionalLong.of(dueCycle));
           debtId = Optional.of(contract.id());
-          newWageDebtIds.add(contract.id());
+          newWageDebts++;
+          if (TRACE.isTraceEnabled()) {
+            EventLog.channel(TRACE)
+                .trace(
+                    LogEvent.of(
+                        "WAGE_SETTLEMENT_DEBT",
+                        EconomyLogSource.ECONOMY_SETTLEMENT,
+                        "day",
+                        day,
+                        "unit",
+                        obligation.unit().value(),
+                        "role",
+                        obligation.role().value(),
+                        "worker",
+                        obligation.worker().value(),
+                        "payer",
+                        payer.value(),
+                        "currency",
+                        settled.due().currency().value(),
+                        "arrearsMilli",
+                        arrears,
+                        "debtContractId",
+                        contract.id().value()));
+          }
         }
-        Map<CurrencyId, Long> moneyLegs =
-            paidMoney > 0L
-                ? new LinkedHashMap<>(Map.of(settled.due().currency(), paidMoney))
-                : Map.of();
-        if (paidMoney > 0L || !barterQuantity.isEmpty()) {
+        if (paidMoney > 0L) {
+          Map<CurrencyId, Long> moneyLegs =
+              new LinkedHashMap<>(Map.of(settled.due().currency(), paidMoney));
           Transfer transfer =
               ledger.mint(
                   payerActor,
                   settled.workerActor(),
                   requireHex(settlementLocation, payer),
-                  barterQuantity,
+                  Map.of(),
                   moneyLegs,
                   TransferReason.WAGE_PAYMENT);
           EconomySettlement.applyTransfer(
@@ -398,13 +394,36 @@ public final class WageSettlement {
               householdFrozenMoney,
               householdOfActor,
               transfer);
+          if (TRACE.isTraceEnabled()) {
+            EventLog.channel(TRACE)
+                .trace(
+                    LogEvent.of(
+                        "WAGE_SETTLEMENT_TRANSFER",
+                        EconomyLogSource.ECONOMY_SETTLEMENT,
+                        "day",
+                        day,
+                        "unit",
+                        obligation.unit().value(),
+                        "role",
+                        obligation.role().value(),
+                        "worker",
+                        obligation.worker().value(),
+                        "payer",
+                        payer.value(),
+                        "currency",
+                        settled.due().currency().value(),
+                        "paidMoneyMilli",
+                        paidMoney,
+                        "transferId",
+                        transfer.id().value()));
+          }
         }
 
-        long paidBarterValue = sumBarterValue(barterPaidValue);
         WageSettlementReadout readout =
             new WageSettlementReadout(
                 obligation.unit(),
                 obligation.role(),
+                obligation.anchorKey(),
                 obligation.worker(),
                 payer,
                 settled.due().currency(),
@@ -414,11 +433,9 @@ public final class WageSettlement {
                 settled.due().carryRemainder(),
                 settled.due().dueMilli(),
                 paidMoney,
-                barterQuantity,
-                barterPaidValue,
                 arrears,
                 debtId,
-                reasons);
+                List.of());
         readouts.add(readout);
         if (LOG.isDebugEnabled()) {
           EventLog.channel(LOG)
@@ -436,6 +453,8 @@ public final class WageSettlement {
                       obligation.worker().value(),
                       "payer",
                       payer.value(),
+                      "currency",
+                      settled.due().currency().value(),
                       "carryBefore",
                       settled.carryBefore(),
                       "carryAfter",
@@ -444,18 +463,15 @@ public final class WageSettlement {
                       settled.due().dueMilli(),
                       "paidMoneyMilli",
                       paidMoney,
-                      "paidBarterValueMilli",
-                      paidBarterValue,
                       "arrearsMilli",
                       arrears));
         }
         dueGroup = Math.addExact(dueGroup, settled.due().dueMilli());
         paidMoneyGroup = Math.addExact(paidMoneyGroup, paidMoney);
-        paidBarterGroup = Math.addExact(paidBarterGroup, paidBarterValue);
         arrearsGroup = Math.addExact(arrearsGroup, arrears);
         processed++;
       }
-      if (processed > 0L) {
+      if (processed > 0) {
         EventLog.channel(LOG)
             .info(
                 LogEvent.of(
@@ -473,12 +489,8 @@ public final class WageSettlement {
                     dueGroup,
                     "paidMoneyMilli",
                     paidMoneyGroup,
-                    "paidBarterValueMilli",
-                    paidBarterGroup,
                     "arrearsMilli",
-                    arrearsGroup,
-                    "inventoryScopeUnavailable",
-                    inventory.unavailable()));
+                    arrearsGroup));
       }
     }
 
@@ -497,13 +509,13 @@ public final class WageSettlement {
                 "readouts",
                 readouts.size(),
                 "newWageDebts",
-                newWageDebtIds.size(),
+                newWageDebts,
                 "rejections",
                 rejections.size()));
-    return new Result(orderedReadouts, wageBook.carryRemainders(), newWageDebtIds, rejections);
+    return new Result(orderedReadouts, wageBook.carryRemainders(), rejections);
   }
 
-  /** 只收集“有生产名册 + MONEY_WAGE 角色 + 本次实际劳动 &gt; 0”的义务。 */
+  /** 只收集“有生产名册 + MONEY_WAGE 角色”的义务。 */
   private static List<Obligation> collectObligations(
       EconomyDayView dayView,
       Map<ProductionUnitId, ProductionRoster> rosters,
@@ -521,7 +533,7 @@ public final class WageSettlement {
       ProductionProcess process = units.get(receipt.unit());
       if (process == null) {
         throw contractFault(
-            "wage-posting-unit-unknown", "回执 unit 不在当刻生产实例表: " + receipt.unit().value(), null);
+            "wage-obligation-unit-unknown", "回执 unit 不在当刻生产实例表: " + receipt.unit().value(), null);
       }
       IndustryDefinitionView industry =
           dayView
@@ -530,14 +542,14 @@ public final class WageSettlement {
               .orElseThrow(
                   () ->
                       contractFault(
-                          "wage-posting-unit-unknown",
+                          "wage-obligation-unit-unknown",
                           "receipt plan 无生产定义: " + receipt.plan().value(),
                           null));
       for (Map.Entry<ProductionParticipantKey, Long> contribution :
           receipt.laborContributionsMilli().entrySet()) {
         ProductionParticipantKey key = contribution.getKey();
         ProductionRoleDefinition role = requireRole(industry, key.role());
-        if (!(role.payment() instanceof RolePayment.MoneyWage moneyWage)) {
+        if (!(role.payment() instanceof RolePayment.MoneyWage)) {
           continue;
         }
         result.add(
@@ -548,7 +560,7 @@ public final class WageSettlement {
                 roster.organizerHousehold(),
                 process.location(),
                 contribution.getValue(),
-                moneyWage.barterDiscount()));
+                WageQuoteBridge.wageAnchorKeyOf(dayView, process, key.role())));
       }
     }
     return result;
@@ -562,7 +574,7 @@ public final class WageSettlement {
       }
     }
     throw contractFault(
-        "wage-posting-role-unknown",
+        "wage-obligation-role-unknown",
         "industry=" + industry.id().value() + " role=" + role.value(),
         null);
   }
@@ -570,8 +582,7 @@ public final class WageSettlement {
   private static Set<ProductionLocation> existingSettlementLocations(
       HouseholdId payer,
       Map<ProductionUnitId, ProductionRoster> rosters,
-      Map<ProductionUnitId, ProductionProcess> units,
-      EconomyDayView dayView) {
+      Map<ProductionUnitId, ProductionProcess> units) {
     Set<ProductionLocation> locations = new LinkedHashSet<>();
     for (ProductionProcess unit : units.values()) {
       HouseholdId operatorHousehold = householdOfActor(unit.operator());
@@ -589,12 +600,6 @@ public final class WageSettlement {
             null);
       }
       locations.add(location);
-      boolean hasPosting =
-          dayView.productionWagePostings().keySet().stream()
-              .anyMatch(key -> key.unit().equals(unit.id()));
-      if (hasPosting) {
-        locations.add(location);
-      }
     }
     return locations;
   }
@@ -678,165 +683,6 @@ public final class WageSettlement {
     return spendable;
   }
 
-  private static InventoryBudget inventoryBudget(
-      WagePayableInventoryLookup lookup,
-      ActorRef payer,
-      ProductionLocation location,
-      HouseholdId payerHousehold) {
-    Optional<Map<CommodityId, Long>> payable = lookup.payableInventory(payer, location);
-    if (payable.isEmpty()) {
-      EventLog.channel(LOG)
-          .info(
-              LogEvent.of(
-                  "WAGE_INVENTORY_SCOPE_UNAVAILABLE",
-                  EconomyLogSource.ECONOMY_ASSET_OCCUPANCY,
-                  "payer",
-                  payerHousehold.value(),
-                  "location",
-                  location.value(),
-                  "reason",
-                  "wage-inventory-scope-unavailable"));
-      return new InventoryBudget(Map.of(), true);
-    }
-    LinkedHashMap<CommodityId, Long> copy = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> entry : payable.get().entrySet()) {
-      if (entry.getValue() != null && entry.getValue() > 0L) {
-        copy.put(entry.getKey(), entry.getValue());
-      }
-    }
-    return new InventoryBudget(copy, false);
-  }
-
-  private static List<CommodityId> barterOrder(Map<CommodityId, Long> inventory) {
-    List<CommodityId> ordered = new ArrayList<>(inventory.keySet());
-    ordered.sort(
-        Comparator.comparingLong((CommodityId commodity) -> inventory.getOrDefault(commodity, 0L))
-            .reversed()
-            .thenComparing(CommodityId::value));
-    return ordered;
-  }
-
-  private static long payBarter(
-      Obligation obligation,
-      long remainingDue,
-      List<CommodityId> barterOrder,
-      Map<CommodityId, Long> inventoryRemaining,
-      EconomyDayView dayView,
-      MarketTopology topology,
-      CurrencyId currency,
-      Map<CommodityId, Long> barterQuantity,
-      Map<CommodityId, Long> barterPaidValue,
-      List<String> reasons) {
-    long remaining = remainingDue;
-    for (CommodityId commodity : barterOrder) {
-      if (remaining <= 0L) {
-        break;
-      }
-      MarketTable market = marketOf(obligation, dayView, topology);
-      if (market == null || !market.hasPrice(commodity)) {
-        reasons.add("wage-barter-price-missing:" + commodity.value());
-        continue;
-      }
-      if (!market.numeraire().equals(currency)) {
-        reasons.add("wage-barter-not-deliverable");
-        continue;
-      }
-      long reference = referencePrice(market, commodity, obligation.discountPolicy());
-      if (reference <= 0L) {
-        reasons.add("wage-barter-price-missing:" + commodity.value());
-        continue;
-      }
-      long unitValue =
-          divideFloor(
-              multiplyExact(reference, obligation.discountPolicy().discountPerMille()), 1000L);
-      if (unitValue <= 0L) {
-        reasons.add("wage-barter-discount-zero:" + commodity.value());
-        continue;
-      }
-      long available = inventoryRemaining.getOrDefault(commodity, 0L);
-      if (available <= 0L) {
-        continue;
-      }
-      BigInteger wanted =
-          BigInteger.valueOf(remaining).multiply(MILLI).divide(BigInteger.valueOf(unitValue));
-      long qWanted = wanted.min(BigInteger.valueOf(Long.MAX_VALUE)).longValueExact();
-      long qPay = Math.min(available, qWanted);
-      if (qPay <= 0L) {
-        continue;
-      }
-      long paidValue = divideFloor(multiplyExact(qPay, unitValue), 1000L);
-      if (paidValue <= 0L) {
-        reasons.add("wage-barter-discount-zero:" + commodity.value());
-        continue;
-      }
-      if (paidValue > remaining) {
-        throw contractFault(
-            "wage-barter-value-overflow",
-            "抵物价值不得超过剩余 due: commodity="
-                + commodity.value()
-                + " value="
-                + paidValue
-                + " remaining="
-                + remaining,
-            null);
-      }
-      inventoryRemaining.put(commodity, available - qPay);
-      barterQuantity.put(commodity, qPay);
-      barterPaidValue.put(commodity, paidValue);
-      remaining -= paidValue;
-      if (TRACE.isTraceEnabled()) {
-        EventLog.channel(TRACE)
-            .trace(
-                LogEvent.of(
-                    "WAGE_BARTER_LEG",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "worker",
-                    obligation.worker().value(),
-                    "unit",
-                    obligation.unit().value(),
-                    "role",
-                    obligation.role().value(),
-                    "commodity",
-                    commodity.value(),
-                    "quantity",
-                    qPay,
-                    "unitValue",
-                    unitValue,
-                    "paidValueMilli",
-                    paidValue,
-                    "remainingMilli",
-                    remaining));
-      }
-    }
-    return remaining;
-  }
-
-  private static long referencePrice(
-      MarketTable market, CommodityId commodity, BarterDiscountPolicy policy) {
-    BarterReferencePrice reference = policy.referencePrice();
-    return switch (reference) {
-      case LOCAL_BID -> market.bidPriceOf(commodity);
-      case LOCAL_ASK -> market.askPriceOf(commodity);
-    };
-  }
-
-  private static MarketTable marketOf(
-      Obligation obligation, EconomyDayView dayView, MarketTopology topology) {
-    HexCoord hex = requireHex(obligation.location(), obligation.payer());
-    if (topology == null || !topology.contains(hex)) {
-      return null;
-    }
-    return dayView.marketTables().get(new MarketZoneId(topology.regionOf(hex).node().nodeId()));
-  }
-
-  private static long sumBarterValue(Map<CommodityId, Long> values) {
-    long total = 0L;
-    for (long value : values.values()) {
-      total = Math.addExact(total, value);
-    }
-    return total;
-  }
-
   private static HexCoord requireHex(ProductionLocation location, HouseholdId payer) {
     if (location == null || !location.isSpecified()) {
       throw contractFault(
@@ -865,18 +711,6 @@ public final class WageSettlement {
           "payer=" + payer.value() + " location=" + location.value(),
           failure);
     }
-  }
-
-  private static long multiplyExact(long left, long right) {
-    try {
-      return Math.multiplyExact(left, right);
-    } catch (ArithmeticException overflow) {
-      throw contractFault("wage-barter-value-overflow", left + " * " + right + " 溢出", overflow);
-    }
-  }
-
-  private static long divideFloor(long numerator, long denominator) {
-    return BigInteger.valueOf(numerator).divide(BigInteger.valueOf(denominator)).longValueExact();
   }
 
   private static IllegalStateException contractFault(String word, String detail, Throwable cause) {

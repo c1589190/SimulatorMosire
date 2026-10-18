@@ -4,50 +4,33 @@ import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWageDefaultLookup;
-import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.math.BigInteger;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import org.slf4j.Logger;
 
 /**
- * ★★★ <b>W2a/W2b 的真实工资读口与逐 tick 工资计算</b>（D-032 D3 §2.2.1/§2.3/§2.4/§3）。
+ * ★★★ <b>工资进位工作副本与 due 计算</b>（D-032 P4a/P4c3）。
  *
- * <p>★★ <b>三类状态严格分开</b>：
+ * <p>★★ <b>本类不持有任何工资报价权威</b>：报价的唯一来源是 {@code ProductionWageAnchors}。调用方先从锚解析出
+ * {@link ProductionWageQuote}，再交给 {@link #dueFor(ProductionWageQuote, ProductionUnitId, ProductionRoleId,
+ * HouseholdId, long)}。本类只保存逐 {@code (unit, role, worker)} 的进位余数工作副本，并在 tick 结束时由调用方写回
+ * {@code wageCarryRemainders}。
  *
- * <ul>
- *   <li>已存在实例的执行期报价：只读 {@code productionWagePostings}（{@link ProductionWageQuoteLookup}）；
- *   <li>实例存在前的候选估价：只读 {@code productionWageDefaults}（{@link ProductionWageDefaultLookup}）；
- *   <li>逐 {@code (unit, role, worker)} 的进位余数：{@link #dueFor} 读/写本 tick 工作副本，最终由调用方写回 {@code
- *       wageCarryRemainders} 第 35 组件。
- * </ul>
+ * <p>★ <b>U20 公式的唯一计算核心仍在 {@link #adjustPrice}</b>：{@link WageAnchorBook#applyObservations} 与本类都只调用这一份
+ * momentum/minStep/延迟降价公式；本类不再实现旧工资表或第二套调价。
  *
- * <p>★ <b>缺 = empty、0 = 合法</b>：本类不使用 {@code getOrDefault(..., 0)}；显式 0 报价/默认会原样返回。
- * 构造期按当刻视图冻结三张表；U20/命令改价只影响后续 tick。{@link #dueFor} <b>不支付、不改账户</b>。
+ * <p>★ <b>缺价 = 调用方拒绝</b>：{@link #dueFor} 显式要求非 null 报价；本类不会用 0 或旧表兜底。显式 0 工资是合法报价。
  */
-public final class ProductionWageBook
-    implements ProductionWageQuoteLookup, ProductionWageDefaultLookup {
-
-  private static final Logger LOG = EconomyLog.settlement();
+public final class ProductionWageBook {
 
   /** D3 §2.4：一次 due 的不可变结果；{@code carryRemainder ∈ 0..999}。 */
   public record Due(CurrencyId currency, long dueMilli, long carryRemainder) {
@@ -69,21 +52,6 @@ public final class ProductionWageBook
     /** {@link #carryRemainder()} 的短别名（D3 公式里的 {@code carry}）。 */
     public long carry() {
       return carryRemainder;
-    }
-  }
-
-  /** 一个 posting 的 tick 末观测值；U20 只用本 tick 实际值与两级 cap 后的有效目标。 */
-  public record WageObservation(
-      ProductionUnitId unit,
-      ProductionRoleId role,
-      long matchedLaborMilli,
-      long maxAbsorbableNonLaborForRole) {
-    public WageObservation {
-      Objects.requireNonNull(unit, "WageObservation.unit 不得为 null");
-      Objects.requireNonNull(role, "WageObservation.role 不得为 null");
-      if (matchedLaborMilli < 0L || maxAbsorbableNonLaborForRole < 0L) {
-        throw new IllegalArgumentException("WageObservation 的劳动量不得为负");
-      }
     }
   }
 
@@ -117,61 +85,26 @@ public final class ProductionWageBook
     }
   }
 
-  private final Map<WagePostingKey, ProductionWagePosting> postings;
-  private final Map<WageDefaultKey, ProductionWageDefault> defaults;
+  /**
+   * ★★★ <b>U20 调价公式的唯一计算核心</b>：只做 target &gt; 0 的两分支。
+   *
+   * <p>本记录不携带 anchor/unit/role 身份，也不写任何状态；{@link WageAnchorBook#applyObservations} 调用本方法，避免出现第二套
+   * momentum/minStep/延迟降价公式。
+   */
+  record PriceAdjustment(
+      long wagePerLaborMilli,
+      long shortageStreak,
+      long satisfiedStreak,
+      long lastAdjustedTick,
+      long lastAdjustmentDelta,
+      boolean changed) {}
+
   private final LinkedHashMap<WageCarryKey, Long> carries;
 
-  /** 从当刻日视图构造一个 tick 的只读快照（carry 为工作副本）。 */
+  /** 从当刻日视图构造一个 tick 的进位工作副本。 */
   public ProductionWageBook(EconomyDayView view) {
     Objects.requireNonNull(view, "view");
-    this.postings =
-        Collections.unmodifiableMap(
-            new LinkedHashMap<>(freeze(view.productionWagePostings(), "productionWagePostings")));
-    this.defaults =
-        Collections.unmodifiableMap(
-            new LinkedHashMap<>(freeze(view.productionWageDefaults(), "productionWageDefaults")));
     this.carries = carryCopy(view.wageCarryRemainders());
-  }
-
-  /** 显式以三张只读表构造（测试/装配用；表必须在别处冻结）。 */
-  public ProductionWageBook(
-      Map<WagePostingKey, ProductionWagePosting> postings,
-      Map<WageDefaultKey, ProductionWageDefault> defaults,
-      Map<WageCarryKey, Long> carries) {
-    this.postings = Collections.unmodifiableMap(new LinkedHashMap<>(freeze(postings, "postings")));
-    this.defaults = Collections.unmodifiableMap(new LinkedHashMap<>(freeze(defaults, "defaults")));
-    this.carries = carryCopy(carries);
-  }
-
-  /** 兼容 W2a 的两表构造：carry 全 0。 */
-  public ProductionWageBook(
-      Map<WagePostingKey, ProductionWagePosting> postings,
-      Map<WageDefaultKey, ProductionWageDefault> defaults) {
-    this(postings, defaults, Map.of());
-  }
-
-  @Override
-  public Optional<ProductionWageQuote> quoteFor(ProductionUnitId unit, ProductionRoleId role) {
-    Objects.requireNonNull(unit, "unit");
-    Objects.requireNonNull(role, "role");
-    ProductionWagePosting posting = postings.get(new WagePostingKey(unit, role));
-    return posting == null
-        ? Optional.empty()
-        : Optional.of(new ProductionWageQuote(posting.currency(), posting.wagePerLaborMilli()));
-  }
-
-  @Override
-  public Optional<ProductionWageDefault> defaultFor(
-      IndustryId plan, ProductionRoleId role, MarketZoneId zone) {
-    Objects.requireNonNull(plan, "plan");
-    Objects.requireNonNull(role, "role");
-    Objects.requireNonNull(zone, "zone");
-    return Optional.ofNullable(defaults.get(new WageDefaultKey(plan, role, zone)));
-  }
-
-  /** 本 tick 的 posting 快照（只读，按 {@code toString()} 稳定序）。 */
-  public Map<WagePostingKey, ProductionWagePosting> postingSnapshot() {
-    return postings;
   }
 
   /** 本 tick 结束时的 carry 工作副本（调用方须写回 EconomyData，且不得支付/改账户）。 */
@@ -197,22 +130,21 @@ public final class ProductionWageBook
    * </pre>
    *
    * <p>只写本对象内的 carry 工作副本，<b>不支付、不改账户、不改 EconomyData</b>。溢出 ⇒ {@code wage-quote-overflow}
-   * fail-closed；缺报价 ⇒ {@code wage-quote-missing}。
+   * fail-closed；{@code quote} 不得为 null（缺锚由调用方具名拒绝）。
    */
   public Due dueFor(
-      ProductionUnitId unit, ProductionRoleId role, HouseholdId worker, long tickLaborMilli) {
+      ProductionWageQuote quote,
+      ProductionUnitId unit,
+      ProductionRoleId role,
+      HouseholdId worker,
+      long tickLaborMilli) {
+    Objects.requireNonNull(quote, "quote（缺价不得传入 null）");
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(role, "role");
     Objects.requireNonNull(worker, "worker");
     if (tickLaborMilli < 0L) {
       throw new IllegalArgumentException("tickLaborMilli 不得为负: " + tickLaborMilli);
     }
-    ProductionWageQuote quote =
-        quoteFor(unit, role)
-            .orElseThrow(
-                () ->
-                    new IllegalStateException(
-                        "wage-quote-missing: " + unit.value() + "|" + role.value()));
     WageCarryKey key = new WageCarryKey(unit, role, worker);
     long carry = carries.getOrDefault(key, 0L);
     BigInteger numerator =
@@ -260,92 +192,50 @@ public final class ProductionWageBook
   }
 
   /**
-   * ★★★ D3 §3 U20：本 tick 匹配完成后，用实际观测计算下一 tick 的 posting；本 tick 已发生的 due 不追溯。
+   * ★★★ <b>D3 §3.3/§3.4 的同一套调价公式</b>（anchor 观察调用；调用方保证 target &gt; 0）。
    *
-   * @return 新的完整 posting 表；调用方在 tick 末写回 {@code productionWagePostings}
+   * <p>缺工：shortagePerMille → momentum → raw/base/step 封顶；招满：satisfiedStreak 超过 delay 后才按 initial+accel
+   * 降价、每次至少 1（若 wage &gt; 0）、不穿 0。所有中间乘法用 BigInteger；改价才推进
+   * {@code lastAdjustedTick}/{@code lastAdjustmentDelta}。
    */
-  public Map<WagePostingKey, ProductionWagePosting> adjustedPostings(
-      List<WageObservation> observations, WagePricingPolicy policy, long observedTick) {
-    Objects.requireNonNull(observations, "observations");
-    Objects.requireNonNull(policy, "policy");
-    if (observedTick < 0L) {
-      throw new IllegalArgumentException("observedTick 不得为负: " + observedTick);
-    }
-    List<WageObservation> ordered = new ArrayList<>(observations);
-    ordered.sort(
-        Comparator.comparing((WageObservation value) -> value.unit().value())
-            .thenComparing(value -> value.role().value()));
-    LinkedHashMap<WagePostingKey, ProductionWagePosting> next = new LinkedHashMap<>(postings);
-    for (WageObservation observation : ordered) {
-      Objects.requireNonNull(observation, "observations 不得含 null");
-      WagePostingKey key = new WagePostingKey(observation.unit(), observation.role());
-      ProductionWagePosting current = next.get(key);
-      if (current == null) {
-        throw new IllegalStateException(
-            "wage-posting-unit-unknown: "
-                + observation.unit().value()
-                + "|"
-                + observation.role().value());
-      }
-      ProductionWagePosting adjusted = adjustOne(current, observation, policy, observedTick);
-      next.put(key, adjusted);
-      boolean quoteChanged = adjusted.wagePerLaborMilli() != current.wagePerLaborMilli();
-      LogEvent event =
-          LogEvent.of(
-              quoteChanged ? "PRODUCTION_WAGE_ADJUSTED" : "PRODUCTION_WAGE_OBSERVED",
-              EconomyLogSource.ECONOMY_SETTLEMENT,
-              "unit",
-              adjusted.unit().value(),
-              "role",
-              adjusted.role().value(),
-              "oldWage",
-              current.wagePerLaborMilli(),
-              "newWage",
-              adjusted.wagePerLaborMilli(),
-              "matchedLaborMilli",
-              observation.matchedLaborMilli(),
-              "effectiveTarget",
-              adjusted.lastObservedEffectiveTarget(),
-              "maxAbsorbable",
-              observation.maxAbsorbableNonLaborForRole(),
-              "shortageStreak",
-              adjusted.shortageStreak(),
-              "satisfiedStreak",
-              adjusted.satisfiedStreak());
-      if (quoteChanged) {
-        EventLog.channel(LOG).info(event);
-      } else if (EconomyLog.settlement().isDebugEnabled()) {
-        EventLog.channel(LOG).debug(event);
-      }
-    }
-    return Collections.unmodifiableMap(next);
-  }
-
-  private static ProductionWagePosting adjustOne(
-      ProductionWagePosting posting,
-      WageObservation observation,
+  static PriceAdjustment adjustPrice(
+      long currentWage,
+      long shortageStreak,
+      long satisfiedStreak,
+      long lastAdjustedTick,
+      long lastAdjustmentDelta,
+      long targetLaborMilli,
+      long matchedLaborMilli,
       WagePricingPolicy policy,
       long observedTick) {
-    long effectiveTarget =
-        Math.min(posting.targetLaborMilliPerDay(), observation.maxAbsorbableNonLaborForRole());
-    long matched = Math.min(observation.matchedLaborMilli(), Long.MAX_VALUE);
-    long nextWage = posting.wagePerLaborMilli();
-    long shortageStreak = posting.shortageStreak();
-    long satisfiedStreak = posting.satisfiedStreak();
-    long lastAdjustedTick = posting.lastAdjustedTick();
-    long lastAdjustmentDelta = posting.lastAdjustmentDelta();
+    Objects.requireNonNull(policy, "policy");
+    if (currentWage < 0L || shortageStreak < 0L || satisfiedStreak < 0L) {
+      throw new IllegalArgumentException("adjustPrice 的工资/streak 不得为负");
+    }
+    if (targetLaborMilli <= 0L || matchedLaborMilli < 0L) {
+      throw new IllegalArgumentException(
+          "adjustPrice 只接受 target>0 且 matched>=0: target="
+              + targetLaborMilli
+              + " matched="
+              + matchedLaborMilli);
+    }
+    if (lastAdjustedTick < -1L || observedTick < 0L) {
+      throw new IllegalArgumentException("adjustPrice 的 tick 越域");
+    }
+    long nextWage = currentWage;
+    long nextShortageStreak = shortageStreak;
+    long nextSatisfiedStreak = satisfiedStreak;
+    long nextLastAdjustedTick = lastAdjustedTick;
+    long nextLastAdjustmentDelta = lastAdjustmentDelta;
+    boolean changed = false;
 
-    if (effectiveTarget == 0L) {
-      shortageStreak = 0L;
-      satisfiedStreak = 0L;
-      lastAdjustmentDelta = 0L;
-    } else if (matched < effectiveTarget) {
-      shortageStreak = Math.addExact(shortageStreak, 1L);
-      satisfiedStreak = 0L;
-      long shortagePerMille = shortagePerMille(effectiveTarget - matched, effectiveTarget);
-      long momentum = Math.min(policy.increaseMomentumCapTicks(), shortageStreak);
+    if (matchedLaborMilli < targetLaborMilli) {
+      nextShortageStreak = Math.addExact(shortageStreak, 1L);
+      nextSatisfiedStreak = 0L;
+      long shortagePerMille = shortagePerMille(targetLaborMilli - matchedLaborMilli, targetLaborMilli);
+      long momentum = Math.min(policy.increaseMomentumCapTicks(), nextShortageStreak);
       BigInteger raw =
-          BigInteger.valueOf(posting.wagePerLaborMilli())
+          BigInteger.valueOf(currentWage)
               .multiply(BigInteger.valueOf(policy.increaseRatePerMille()))
               .multiply(BigInteger.valueOf(shortagePerMille))
               .divide(BigInteger.valueOf(1_000_000L));
@@ -355,49 +245,44 @@ public final class ProductionWageBook
           BigInteger.valueOf(base)
               .multiply(BigInteger.valueOf(momentum))
               .min(BigInteger.valueOf(policy.maxStepMilliPerLabor()));
-      long delta = Math.min(step.longValueExact(), Long.MAX_VALUE - nextWage);
+      long delta = Math.min(step.longValueExact(), Long.MAX_VALUE - currentWage);
       if (delta > 0L) {
-        nextWage = Math.addExact(nextWage, delta);
-        lastAdjustedTick = observedTick;
-        lastAdjustmentDelta = delta;
+        nextWage = Math.addExact(currentWage, delta);
+        nextLastAdjustedTick = observedTick;
+        nextLastAdjustmentDelta = delta;
+        changed = true;
       }
     } else {
-      shortageStreak = 0L;
-      satisfiedStreak = Math.addExact(satisfiedStreak, 1L);
-      if (satisfiedStreak > policy.decreaseDelayTicks() && posting.wagePerLaborMilli() > 0L) {
+      nextShortageStreak = 0L;
+      nextSatisfiedStreak = Math.addExact(satisfiedStreak, 1L);
+      if (nextSatisfiedStreak > policy.decreaseDelayTicks() && currentWage > 0L) {
         BigInteger rate =
             BigInteger.valueOf(policy.decreaseInitialRatePerMille())
                 .add(
-                    BigInteger.valueOf(satisfiedStreak - policy.decreaseDelayTicks())
+                    BigInteger.valueOf(nextSatisfiedStreak - policy.decreaseDelayTicks())
                         .multiply(BigInteger.valueOf(policy.decreaseRateAccelPerMille())))
                 .min(BigInteger.valueOf(policy.decreaseRateCapPerMille()));
         BigInteger raw =
-            BigInteger.valueOf(posting.wagePerLaborMilli())
+            BigInteger.valueOf(currentWage)
                 .multiply(rate)
                 .divide(BigInteger.valueOf(1000L));
         long step = Math.max(1L, raw.longValueExact());
-        long delta = Math.min(step, posting.wagePerLaborMilli());
+        long delta = Math.min(step, currentWage);
         if (delta > 0L) {
-          nextWage = posting.wagePerLaborMilli() - delta;
-          lastAdjustedTick = observedTick;
-          lastAdjustmentDelta = -delta;
+          nextWage = currentWage - delta;
+          nextLastAdjustedTick = observedTick;
+          nextLastAdjustmentDelta = -delta;
+          changed = true;
         }
       }
     }
-    return new ProductionWagePosting(
-        posting.unit(),
-        posting.role(),
-        posting.targetLaborMilliPerDay(),
-        posting.currency(),
+    return new PriceAdjustment(
         nextWage,
-        posting.quoteSource(),
-        shortageStreak,
-        satisfiedStreak,
-        lastAdjustedTick,
-        lastAdjustmentDelta,
-        observation.matchedLaborMilli(),
-        effectiveTarget,
-        observation.maxAbsorbableNonLaborForRole());
+        nextShortageStreak,
+        nextSatisfiedStreak,
+        nextLastAdjustedTick,
+        nextLastAdjustmentDelta,
+        changed);
   }
 
   private static long shortagePerMille(long shortage, long effectiveTarget) {
@@ -421,10 +306,5 @@ public final class ProductionWageBook
           copy.put(key, value);
         });
     return copy;
-  }
-
-  private static <K, V> Map<K, V> freeze(Map<K, V> source, String name) {
-    Objects.requireNonNull(source, name);
-    return Collections.unmodifiableMap(new LinkedHashMap<>(source));
   }
 }

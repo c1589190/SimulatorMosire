@@ -3,7 +3,6 @@ package io.mosire.simos.economy.time;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
-import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
@@ -14,7 +13,6 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -36,20 +34,16 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
-import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionRuntime;
@@ -107,7 +101,6 @@ public final class EconomyStateBuilder {
 
   private LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies;
   private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
-  private LinkedHashMap<PledgeId, Pledge> pledges;
   private LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
   private LinkedHashMap<AssetShareId, OwnershipStake> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
@@ -126,12 +119,6 @@ public final class EconomyStateBuilder {
   /** ★★★ D-032 C2：生产参与名册工作副本（自动组织 / 名册命令在段内写；未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<ProductionUnitId, ProductionRoster> productionRosters;
 
-  /** ★★★ D-032 W2a：候选级工资默认工作副本（W1/W2b 若在段内物化会写；未物化 ⇒ 原样复用 base）。 */
-  private LinkedHashMap<WageDefaultKey, ProductionWageDefault> productionWageDefaults;
-
-  /** ★★★ D-032 W2a：执行期工资岗位工作副本（U20/W2b 后续写；未物化 ⇒ 原样复用 base）。 */
-  private LinkedHashMap<WagePostingKey, ProductionWagePosting> productionWagePostings;
-
   /** ★★★ D-032 W2b：逐 (unit, role, worker) 工资进位余数工作副本（未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<WageCarryKey, Long> wageCarryRemainders;
 
@@ -141,10 +128,12 @@ public final class EconomyStateBuilder {
   /** ★★★ D-032 D4-Ib1：商品库存预留工作副本（未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<InventoryReservationId, InventoryReservation> inventoryReservations;
 
+  /** ★★★ D-032 P4b1：U20 工资锚工作副本（P4c 的 M8 观测/调价会写；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<WageAnchorKey, ProductionWageAnchor> productionWageAnchors;
+
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
   private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
-  private LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies;
   private LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals;
   private LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships;
 
@@ -274,14 +263,6 @@ public final class EconomyStateBuilder {
       debtContracts = new LinkedHashMap<>(base.debtContracts());
     }
     return debtContracts;
-  }
-
-  /** ★★ E4a：质押表工作副本（E4a 只落形状，日结算暂不写；工作副本留给 E5）。 */
-  public LinkedHashMap<PledgeId, Pledge> pledges() {
-    if (pledges == null) {
-      pledges = new LinkedHashMap<>(base.pledges());
-    }
-    return pledges;
   }
 
   /** 劳动配额表工作副本。 */
@@ -435,32 +416,6 @@ public final class EconomyStateBuilder {
     return productionRosters;
   }
 
-  /** ★★★ D-032 W2a：候选级工资默认的只读选择（已物化读工作副本、未物化直接复用 base 的不可变表）。 */
-  public Map<WageDefaultKey, ProductionWageDefault> productionWageDefaultsOrBase() {
-    return productionWageDefaults == null ? base.productionWageDefaults() : productionWageDefaults;
-  }
-
-  /** ★★★ D-032 W2a：候选级工资默认工作副本（惰性物化）。 */
-  public LinkedHashMap<WageDefaultKey, ProductionWageDefault> productionWageDefaults() {
-    if (productionWageDefaults == null) {
-      productionWageDefaults = new LinkedHashMap<>(base.productionWageDefaults());
-    }
-    return productionWageDefaults;
-  }
-
-  /** ★★★ D-032 W2a：执行期工资岗位的只读选择（已物化读工作副本、未物化直接复用 base 的不可变表）。 */
-  public Map<WagePostingKey, ProductionWagePosting> productionWagePostingsOrBase() {
-    return productionWagePostings == null ? base.productionWagePostings() : productionWagePostings;
-  }
-
-  /** ★★★ D-032 W2a：执行期工资岗位工作副本（惰性物化）。 */
-  public LinkedHashMap<WagePostingKey, ProductionWagePosting> productionWagePostings() {
-    if (productionWagePostings == null) {
-      productionWagePostings = new LinkedHashMap<>(base.productionWagePostings());
-    }
-    return productionWagePostings;
-  }
-
   /** ★★★ D-032 W2b：工资进位余数的只读选择（已物化读工作副本、未物化直接复用 base）。 */
   public Map<WageCarryKey, Long> wageCarryRemaindersOrBase() {
     return wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders;
@@ -477,6 +432,19 @@ public final class EconomyStateBuilder {
   /** ★★★ D-032 D4-Ib1：资产占用表的只读选择（已物化读工作副本、未物化直接复用 base）。 */
   public Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupanciesOrBase() {
     return assetOccupancies == null ? base.assetOccupancies() : assetOccupancies;
+  }
+
+  /** ★★★ D-032 P4b1：U20 工资锚的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchorsOrBase() {
+    return productionWageAnchors == null ? base.productionWageAnchors() : productionWageAnchors;
+  }
+
+  /** ★★★ D-032 P4b1：U20 工资锚工作副本（惰性物化）。 */
+  public LinkedHashMap<WageAnchorKey, ProductionWageAnchor> productionWageAnchors() {
+    if (productionWageAnchors == null) {
+      productionWageAnchors = new LinkedHashMap<>(base.productionWageAnchors());
+    }
+    return productionWageAnchors;
   }
 
   /** ★★★ D-032 D4-Ib1：资产占用工作副本（惰性物化）。 */
@@ -537,18 +505,6 @@ public final class EconomyStateBuilder {
   /** ★★ <b>B2：货币发行审计表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
   public Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuancesOrBase() {
     return moneyIssuances == null ? base.moneyIssuances() : moneyIssuances;
-  }
-
-  /**
-   * ★★ E5a：清算政策表工作副本（E5a 只落地基；E5b 的清算阶段在结算会话里读它、并按需写回覆盖）。
-   *
-   * <p>★ 与其余组件同款：未物化 ⇒ {@link #build} 直接复用 base 的不可变表，空表基线不产生任何拷贝。
-   */
-  public LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies() {
-    if (liquidationPolicies == null) {
-      liquidationPolicies = new LinkedHashMap<>(base.liquidationPolicies());
-    }
-    return liquidationPolicies;
   }
 
   /** ★★ E5a：hex 危机信号表工作副本（E5a 只落地基；E5b 的危机阶段按 {@code (hex, kind)} 覆盖写最新一条）。 */
@@ -668,8 +624,6 @@ public final class EconomyStateBuilder {
         base.assetRules(),
         governments == null ? base.governments() : governments,
         moneyIssuances == null ? base.moneyIssuances() : moneyIssuances,
-        pledges == null ? base.pledges() : pledges,
-        liquidationPolicies == null ? base.liquidationPolicies() : liquidationPolicies,
         crisisSignals == null ? base.crisisSignals() : crisisSignals,
         // ★★ E6a：命令登记 PENDING、日结算执行终态 —— 显式工作副本；未物化 ⇒ 原样复用 base。
         modeTransitions == null ? base.modeTransitions() : modeTransitions,
@@ -709,16 +663,15 @@ public final class EconomyStateBuilder {
         // ★★★ D-032 C2（第 32 个组件）：自动组织会在段内写真名册 ⇒ 走显式工作副本；未物化 ⇒ 原样复用 base。
         //   漏了它 = 任意一次 advance 都会把已建立的名册静默抹掉（本仓最贵的那类 bug）。
         productionRosters == null ? base.productionRosters() : productionRosters,
-        // ★★★ D-032 W2a：工资 default/posting 两维；未物化 ⇒ 原样复用 base。漏了它们 =
-        //   任意一次 advance 都会把 GM 设过的候选默认/执行岗位静默抹掉。
-        productionWageDefaults == null ? base.productionWageDefaults() : productionWageDefaults,
-        productionWagePostings == null ? base.productionWagePostings() : productionWagePostings,
         // ★★★ D-032 W2b：进位余数工作副本；未物化 ⇒ 原样复用 base。漏了它 = 任意一次 advance
         //   都会把已累计的工资进位静默抹掉（逐 tick floor 会永久丢掉不足 1 毫的余数）。
         wageCarryRemainders == null ? base.wageCarryRemainders() : wageCarryRemainders,
         // ★★★ D-032 D4-Ib1：占用/预留工作副本；未物化 ⇒ 原样复用 base（漏了它 = 任意一次 advance
         //   都会把已授予的占用与生产预留静默抹掉）。
         assetOccupancies == null ? base.assetOccupancies() : assetOccupancies,
-        inventoryReservations == null ? base.inventoryReservations() : inventoryReservations);
+        inventoryReservations == null ? base.inventoryReservations() : inventoryReservations,
+        // ★★★ D-032 P4b1：U20 工资锚工作副本；未物化 ⇒ 原样复用 base。漏了它 = 任意一次 advance
+        //   都会把显式命令/seed 写入的锚静默抹掉。
+        productionWageAnchors == null ? base.productionWageAnchors() : productionWageAnchors);
   }
 }

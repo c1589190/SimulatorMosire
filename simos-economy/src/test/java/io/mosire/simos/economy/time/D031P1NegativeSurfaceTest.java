@@ -100,9 +100,10 @@ class D031P1NegativeSurfaceTest {
     assertThat(components)
         .as("★★ 旧定义表 industries/modes 必须从 economy 的完整状态里消失（定义权威在 production）")
         .doesNotContain("industries", "modes")
-        // ★★ D-032 C2/W2a/W2b/D4-Ib1 更新：31 → 37。计数是"组件集没被悄悄塞回东西"的绊线；
-        //   新增的 32–37（名册/工资默认/工资岗位/进位/占用/预留）必须与 ChangeSet 同步。
-        .hasSize(37);
+        // ★★ D-032 P2d 更新：37 → 35（Pledge 与 liquidationPolicies 两个组件已删）。
+        //   ★★★ D-032 P4b1 更新：35 → 36（末尾追加 productionWageAnchors）。计数是
+        //   "组件集没被悄悄塞回东西"的绊线；EconomyData 与 ChangeSet 必须同步。
+        .hasSize(36);
 
     List<String> methods = new ArrayList<>();
     for (Method method : EconomyData.class.getMethods()) {

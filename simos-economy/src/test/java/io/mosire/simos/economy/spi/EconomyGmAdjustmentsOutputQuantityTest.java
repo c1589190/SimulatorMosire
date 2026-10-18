@@ -30,19 +30,19 @@ class EconomyGmAdjustmentsOutputQuantityTest {
   private static final long DAY = 7L;
 
   @Test
-  void whitelistIsExactlySevenKindsAndCarriesNoModifierKind() {
-    // ★ T5（a 桶计数欠账）：白名单轨迹 12 → 10 → 9 → **7**。
+  void whitelistIsExactlySixKindsAndCarriesNoModifierKind() {
+    // ★ 白名单轨迹 12 → 10 → 9 → 7 → **6**。
     //   12 = HEAD 的全集；−2（Z1 两个产出覆盖 kind，B2b 裁定：迁 production、economy 侧只发具名拒）
     //   = 10；−1（upsertCandidate，B2c 裁定八：候选面整体退役）= 9；−2（upsertProductionMode /
-    //   deactivateProductionMode，B5 裁定十八：economy 的 modes 组件已删）= **7**。
+    //   deactivateProductionMode，B5 裁定十八：economy 的 modes 组件已删）= 7；−1（setLiquidationPolicy，
+    //   P2d：抵押/清算配置整体删除）= **6**。
     //   ★ 这 5 个已迁出的 kind **仍在** EconomyGmAdjustments.MOVED_ADJUSTMENTS 里、命中时给具名拒
     //   （见下一条用例与 EconomyGmAdjustments.project 的 switch）⇒ "不在白名单"不等于"掉进通用拒绝"。
     assertThat(EconomyGmAdjustments.ADJUSTMENTS)
         .as("§2/§4：GM 只能改源状态；现存白名单恰 7 项（逐值断言，不是 isNotEmpty）")
-        .hasSize(7)
+        .hasSize(6)
         .containsExactly(
             EconomyGmAdjustments.FORGIVE_DEBT,
-            EconomyGmAdjustments.SET_LIQUIDATION_POLICY,
             EconomyGmAdjustments.UPSERT_CLASS_STRUCTURE,
             EconomyGmAdjustments.UPSERT_CLASS_POSITION,
             EconomyGmAdjustments.UPSERT_PRODUCTION_RELATION,
@@ -58,8 +58,8 @@ class EconomyGmAdjustmentsOutputQuantityTest {
             EconomyGmAdjustments.DEACTIVATE_PRODUCTION_MODE);
     assertThat(
             EconomyGmAdjustments.ADJUSTMENTS.size() + EconomyGmAdjustments.MOVED_ADJUSTMENTS.size())
-        .as("两条表合起来 = HEAD 的 12 项全集（没有 kind 在迁移中被静默丢掉）")
-        .isEqualTo(12);
+        .as("两条表合起来 = 白名单 6 + 已迁出 5（P2d 删除的 setLiquidationPolicy 不再作为 kind 存在）")
+        .isEqualTo(11);
     assertThat(EconomyGmAdjustments.ADJUSTMENTS)
         .as("修正参数没有 GM kind（§2 写口矩阵 / §11.6 负向）")
         .noneMatch(kind -> kind.toLowerCase(java.util.Locale.ROOT).contains("modifier"))
@@ -67,7 +67,11 @@ class EconomyGmAdjustmentsOutputQuantityTest {
     // ★ B2c/B5：三个 kind 已整体退役 ⇒ 不得再出现在白名单里。
     assertThat(EconomyGmAdjustments.ADJUSTMENTS)
         .as("退役的 kind 不得留在白名单")
-        .doesNotContain("upsertProductionMode", "deactivateProductionMode", "upsertCandidate");
+        .doesNotContain(
+            "upsertProductionMode",
+            "deactivateProductionMode",
+            "upsertCandidate",
+            "setLiquidationPolicy");
   }
 
   @Test

@@ -5,7 +5,6 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -56,7 +55,7 @@ import java.util.function.Function;
  *
  * <p>★★ <b>库存从调用方传入</b>：{@link #capacitiesForState} 的 {@code grainStockMilliOf} 由 app 读 actor
  * 切片后给出； economy 自身不认识 {@code ActorData}（铁律 3）。库存读不到（函数返回 {@link OptionalLong#empty()}）⇒ {@link
- * DebtCapacity#pledgeableGrainSurplusValue()} 为空，headroom 也空（读口标具名缺失），不用 0 冒充。
+ * DebtCapacity#creditGrainSurplusValue()} 为空，headroom 也空（读口标具名缺失），不用 0 冒充。
  *
  * <p>★★ <b>既有债务怎么算</b>（D-030 §3.4）：
  *
@@ -157,7 +156,7 @@ public final class DebtCapacityBook {
         definitions,
         assetBudget,
         grainStockMilliOf,
-        DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
+        DebtCapacity.CREDIT_ASSET_POLICY_VALUE_NOT_LANDED,
         NO_UNIT_PRICES);
   }
 
@@ -168,7 +167,7 @@ public final class DebtCapacityBook {
       ProductionDefinitionLookup definitions,
       AssetOccupancyBudget assetBudget,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
-      long pledgeableAssetPolicyValue,
+      long creditAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
@@ -181,7 +180,7 @@ public final class DebtCapacityBook {
         assetBudget,
         data.classes().keySet(),
         grainStockMilliOf,
-        pledgeableAssetPolicyValue,
+        creditAssetPolicyValue,
         debtUnitValueLookup);
   }
 
@@ -205,7 +204,7 @@ public final class DebtCapacityBook {
         assetBudget,
         householdKeys,
         grainStockMilliOf,
-        DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
+        DebtCapacity.CREDIT_ASSET_POLICY_VALUE_NOT_LANDED,
         NO_UNIT_PRICES);
   }
 
@@ -217,7 +216,7 @@ public final class DebtCapacityBook {
       AssetOccupancyBudget assetBudget,
       Iterable<HouseholdId> householdKeys,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
-      long pledgeableAssetPolicyValue,
+      long creditAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
@@ -262,7 +261,7 @@ public final class DebtCapacityBook {
         data.assetShares(),
         data.operatorConditions(),
         assetBudget,
-        pledgeableAssetPolicyValue,
+        creditAssetPolicyValue,
         debtUnitValueLookup);
   }
 
@@ -288,7 +287,7 @@ public final class DebtCapacityBook {
    * @param assetShares 实物资产总账（只读；D4 grant 引用与退出解析用，规模只读 D4 budget）
    * @param operatorConditions 经营者状态（只读；计划规模系数用；缺键按 ACTIVE）
    * @param assetBudget 同一 revision/tick 的 D4 占用预算；不可缺省
-   * @param pledgeableAssetPolicyValue 可质押资产政策价值钩子（毫粮；E4b 恒 0）
+   * @param creditAssetPolicyValue 可计入信用的资产政策价值钩子（毫粮；E4b 恒 0）
    * @param debtUnitValueLookup 债务折粮钩子；旧读口用 {@link #NO_UNIT_PRICES}，生产借贷路径用 {@link
    *     #marketPriceLookup(Map)}
    */
@@ -305,7 +304,7 @@ public final class DebtCapacityBook {
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       AssetOccupancyBudget assetBudget,
-      long pledgeableAssetPolicyValue,
+      long creditAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(assetBudget, "assetBudget 不得为 null");
     return capacitiesWithAllocation(
@@ -321,7 +320,7 @@ public final class DebtCapacityBook {
         assetShares,
         operatorConditions,
         unit -> assetBudget.allocationOf(unit.id()),
-        pledgeableAssetPolicyValue,
+        creditAssetPolicyValue,
         debtUnitValueLookup);
   }
 
@@ -338,7 +337,7 @@ public final class DebtCapacityBook {
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       Function<ProductionProcess, Map<AssetKind, Long>> allocationOf,
-      long pledgeableAssetPolicyValue,
+      long creditAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(householdEconomies, "rows 不得为 null");
     Objects.requireNonNull(afterAllocationGrainIncome, "afterAllocationGrainIncome 不得为 null");
@@ -352,10 +351,9 @@ public final class DebtCapacityBook {
     Objects.requireNonNull(operatorConditions, "operatorConditions 不得为 null");
     Objects.requireNonNull(allocationOf, "allocationOf 不得为 null");
 
-    // ★ 旧调用点传 null / NO_UNIT_PRICES 时保留旧 E4b 行为：粮 unit 按 identity 计入，其它 unit 不折；生产路径显式传
-    //   marketPriceLookup（走 §3.4 公式，缺 grain 价/缺单位价一律 unpriced）。
-    boolean legacyGrainIdentity =
-        debtUnitValueLookup == null || debtUnitValueLookup == NO_UNIT_PRICES;
+    // ★ P2c：合同本金只允许货币；旧“粮 unit 按 identity 计入”的口径已随 DebtUnit.Commodity 删除。
+    //   缺省 lookup（null / NO_UNIT_PRICES）把全部货币债报为不可定价（-1），生产路径显式传 marketPriceLookup。
+    DebtUnitValueLookup lookup = debtUnitValueLookup == null ? NO_UNIT_PRICES : debtUnitValueLookup;
 
     // ★ 两个一次派生的索引：债务人 → 债务、operator → unit。逐户 O(债务 + unit) 查表，不做 O(户 × unit) 全扫。
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
@@ -395,17 +393,8 @@ public final class DebtCapacityBook {
         if (debt == null) {
           continue; // 防御性判空（债务表在本次调用内只读；缺条 = 坏状态 ⇒ 不猜、不计）
         }
-        // ★ D-030 §3.4：市场 lookup 走统一价格钩子；旧 NO_UNIT_PRICES/null 走“粮 identity、其它 unit 不折”的旧口径
-        //   （旧行为逐值保留）。不再读 terms.monetaryConversion（“可定价债务全部进入 existingDebt”）。
-        long converted = -1L;
-        if (legacyGrainIdentity) {
-          if (debt.unit() instanceof DebtUnit.Commodity commodity
-              && commodity.commodity().equals(EconomyCommodities.GRAIN)) {
-            converted = debt.principal();
-          }
-        } else {
-          converted = debtUnitValueLookup.grainValueMilliOf(debt);
-        }
+        // ★ D-030 §3.4：市场 lookup 走统一价格钩子；P2c 起合同只有货币债，缺价一律计入 unpriced。
+        long converted = lookup.grainValueMilliOf(debt);
         if (converted >= 0L) {
           existingDebt = Math.addExact(existingDebt, converted);
         } else {
@@ -431,7 +420,7 @@ public final class DebtCapacityBook {
               nextRound.source(),
               taxPaid,
               selfUsable,
-              pledgeableAssetPolicyValue,
+              creditAssetPolicyValue,
               existingDebt,
               unpricedDebtAmount,
               unpricedDebtCount));

@@ -5,7 +5,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtUnit;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -13,7 +12,6 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.time.DebtContractBook;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -33,7 +31,7 @@ import org.slf4j.Logger;
  * {"unitId":"u-prov",
  *  "borrowerHousehold":"hh-gov-u-prov",   // 借款单位国库家户（= 债务人）
  *  "lenderHousehold":"hh-0_0-urban-landlord",
- *  "unit":"money"|"grain",
+ *  "unit":"money",
  *  "amount":1200,
  *  "debtId":"debtc-…",                     // 可选：同 (借款人,放贷方,unit) 有多条未结清合同时必须给
  *  "reason":"…"}                           // 可选审计文本
@@ -66,9 +64,6 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets {
   public static final String TYPE = "economy.UnitRepay";
 
   private static final Logger LOG = EconomyLog.debt();
-
-  /** 粮的商品 id（{@link EconomyVocabulary} 的唯一拼写点）。 */
-  private static final CommodityId GRAIN = CommodityId.parse(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
   /** 银的货币 id（{@link MoneyVocabulary} 的唯一拼写点）。 */
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
@@ -119,7 +114,7 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets {
               + " 的 borrowerHousehold 与 lenderHousehold 不得相同: "
               + request.borrowerHousehold().value());
     }
-    DebtUnit debtUnit = debtUnit(request.unit());
+    DebtUnit.Money debtUnit = debtUnit(request.unit());
     DebtContract contract = resolveContract(base, request, debtUnit);
     if (request.amount() > contract.principal()) {
       throw new IllegalArgumentException(
@@ -163,7 +158,7 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets {
 
   /** 合同解析：{@code debtId} 优先；否则 (debtor, creditor, unit) 必须恰一条未结清。 */
   private static DebtContract resolveContract(
-      EconomyData base, Request request, DebtUnit debtUnit) {
+      EconomyData base, Request request, DebtUnit.Money debtUnit) {
     if (!request.debtId().isEmpty()) {
       DebtContractId id = DebtContractId.parse(request.debtId());
       DebtContract contract = base.debtContracts().get(id);
@@ -237,13 +232,16 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets {
     }
   }
 
-  private static DebtUnit debtUnit(String unit) {
+  private static DebtUnit.Money debtUnit(String unit) {
     return switch (unit) {
       case "money" -> new DebtUnit.Money(SILVER);
-      case "grain" -> new DebtUnit.Commodity(GRAIN);
-      default ->
+      case "grain" ->
           throw new IllegalArgumentException(
-              TYPE + " 的 unit 只认 \"money\"/\"grain\"（不做别名/大小写归一）: " + unit);
+              "legacy-commodity-debt-unsupported: "
+                  + TYPE
+                  + " 的 unit=grain 已删除；商品欠款必须先按活动所在地市场区价格折成货币");
+      default ->
+          throw new IllegalArgumentException(TYPE + " 的 unit 只认 \"money\"（不做别名/大小写归一）: " + unit);
     };
   }
 

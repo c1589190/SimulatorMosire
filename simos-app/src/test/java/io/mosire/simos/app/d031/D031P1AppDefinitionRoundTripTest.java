@@ -146,13 +146,13 @@ class D031P1AppDefinitionRoundTripTest {
           (ProductionSnapshot) productionCodec.apply(decodedProduction, baseSlice, meta(after));
       assertEveryComponentEquals("ProductionData", productionTarget, rebuiltSlice.state());
 
-      // ── economy：真实新世界状态与"空状态"之间的整份差异 ⇒ 全组件 JSON 往返 + 35 组件逐字段重建 ──
+      // ── economy：真实新世界状态与"空状态"之间的整份差异 ⇒ 全组件 JSON 往返 + 36 组件逐字段重建 ──
       EconomyData economyEmpty = EconomyData.empty();
       EconomyChangeSet economyDelta = EconomyChangeSet.between(economyEmpty, economyTarget);
       Set<String> changedEconomyComponents = changedComponentNames(economyDelta);
       assertThat(changedEconomyComponents)
           .as(
-              "★ 真实新世界在 economy 侧实际填了 %d/35 个组件（覆盖面证明：不是一两个组件的花架子）；实得=%s",
+              "★ 真实新世界在 economy 侧实际填了 %d/36 个组件（覆盖面证明：不是一两个组件的花架子）；实得=%s",
               changedEconomyComponents.size(), changedEconomyComponents)
           .hasSizeGreaterThan(12);
 

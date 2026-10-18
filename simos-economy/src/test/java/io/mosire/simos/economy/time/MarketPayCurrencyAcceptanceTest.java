@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
  * ⇒ 三个世界的成交读数、钱腿、冻结币种必须**逐值相同**（世界 A == B == C）
  * </pre>
  *
- * <p>★ ② 的判别力来自"买方两种币的余额刻意不对称"：银很多、铜刚好只够一半 ⇒ 若预算/冻结读的是银（本格币）， 成交会是整笔 2,905；读的是铜 ⇒ 恰好 1,452。用例两侧都断言。
+ * <p>★ ② 的判别力来自"买方两种币的余额刻意不对称"：银很多、铜刚好只够一半 ⇒ 若预算/冻结读的是银（本格币）， 成交会是整笔 2,915；读的是铜 ⇒ 恰好 1,452。用例两侧都断言。
  */
 class MarketPayCurrencyAcceptanceTest {
 
@@ -49,8 +49,14 @@ class MarketPayCurrencyAcceptanceTest {
   private static final long BUYER_SILVER = 1_000_000L;
   private static final long PRICE_MILLI = 10_000L;
 
-  /** 生活保留（买方的目标缺口）= 1 人 1 天口粮 × 35 天窗口 —— 夹具算法与生产路径同源。 */
-  private static final long DEMAND = MarketSettlementFixtures.lifeReserveGrain(1L);
+  /**
+   * P2a：5 tick 生活保留窗口下，1 人户的缺口只有 415 毫粮，已小于本用例刻意设置的“铜预算只够一半”的判别量。 把买方提高到 7 人（7 × 583 × 5 = 2,915
+   * 毫粮），让外币预算仍恰好只覆盖需求的一半。
+   */
+  private static final long BUYER_POPULATION = 7L;
+
+  /** 生活保留（买方的目标缺口）= 7 人 × 583 毫/天 × 5 tick = 2,915 毫粮。 */
+  private static final long DEMAND = MarketSettlementFixtures.lifeReserveGrain(BUYER_POPULATION);
 
   private static MarketTable silverMarket() {
     return EconomyFixtures.quote(SILVER, new LinkedHashMap<>(Map.of(GRAIN, PRICE_MILLI)));
@@ -65,7 +71,7 @@ class MarketPayCurrencyAcceptanceTest {
     return MarketSettlementFixtures.builder()
         .market(H1, silverMarket())
         .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
-        .household(BUYER, H1, 1L, 0L, BUYER_SILVER)
+        .household(BUYER, H1, BUYER_POPULATION, 0L, BUYER_SILVER)
         .build();
   }
 
@@ -81,10 +87,10 @@ class MarketPayCurrencyAcceptanceTest {
         .household(
             BUYER,
             H1,
-            1L,
+            BUYER_POPULATION,
             Map.of(GRAIN, 0L),
             buyerMoney,
-            Map.of(GRAIN, MarketSettlementFixtures.dailyRationGrain(1L)))
+            Map.of(GRAIN, MarketSettlementFixtures.dailyRationGrain(BUYER_POPULATION)))
         .build();
   }
 
@@ -160,7 +166,7 @@ class MarketPayCurrencyAcceptanceTest {
    * ★★ <b>T6 ②</b>：买方最强持有币是铜（铜区的粮便宜）⇒ 在<b>银计价</b>的本格市场上仍以<b>铜</b>付款。
    *
    * <pre>
-   * cost(silver) = 2,905 × 10,000 ÷ 1000 = 29,050 毫银   cost(copper) = 2,905 × 1,000 ÷ 1000 = 2,905 毫铜
+   * cost(silver) = 2,915 × 10,000 ÷ 1000 = 29,150 毫银   cost(copper) = 2,915 × 1,000 ÷ 1000 = 2,915 毫铜
    * ⇒ copper 最强（付得最少）
    * 预算 = 买方**铜**可花额 14,525（不是银的 1,000,000）⇒ 挂单量 = ⌊14,525 × 1000 ÷ 10,000⌋ = 1,452
    * 成交：单价仍是卖方格的 10,000 毫银/单位（价格尺度不动），实付 = ⌈1,452 × 10,000 ÷ 1000⌉ = 14,520 毫铜
@@ -228,7 +234,7 @@ class MarketPayCurrencyAcceptanceTest {
         twoZoneWorld(1_000L, Map.of(SILVER, BUYER_SILVER, COPPER, BUYER_SILVER));
     MarketSettlement.MarketOutcome fundedOutcome = settle(funded);
     assertThat(fundedOutcome.report().fills().get(0).quantity())
-        .as("★ 对照：铜给足 ⇒ 成交到整笔需求 2,905（同一形状，只差铜余额）")
+        .as("★ 对照：铜给足 ⇒ 成交到整笔需求 2,915（同一形状，只差铜余额）")
         .isEqualTo(DEMAND);
     assertThat(fundedOutcome.report().fills().get(0).paymentCurrency()).isEqualTo(COPPER);
   }

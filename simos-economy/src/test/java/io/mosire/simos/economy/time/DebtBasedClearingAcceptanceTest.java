@@ -214,22 +214,28 @@ class DebtBasedClearingAcceptanceTest {
         repayWorld(
             Map.of(GRAIN, 10_000L, CLOTH, 10_000L, TOOL, 10_000L),
             Map.of(SILVER, 10_000L),
-            DebtUnit.money(SILVER),
+            new DebtUnit.Money(SILVER),
             30L,
             pricedMarket());
 
-    List<DebtUnit> order = mediumOrderOf(world);
+    List<DebtValuation.RepaymentMedium> order = mediumOrderOf(world);
 
-    // ★ 逐值表：估值 = DebtValuation.estimatedUnitValueMilli（商品 = 该商品单价；货币 = 1000 毫/单位）。
+    // ★ P2c 当前口径：合同本金只能是 DebtUnit.Money；商品不是本金标的，只能作为「还款介质」出现在
+    //   DebtValuation.CommodityMedium 里。逐值表：估值 = DebtValuation.estimatedUnitValueMilli
+    //   （商品 = 该商品单价；货币 = 1000 毫/单位）。
     assertThat(order)
         .as(
             "★ S-5：介质序必须 = 预估单位价值**升序**（逐值表：grain=5 / cloth=20 / tool=100 / silver=1000）"
                 + "，货币**恒最后**（它不是「钱永远第一」的旧口径 D-030 §4）")
         .containsExactly(
-            DebtUnit.commodity(GRAIN),
-            DebtUnit.commodity(CLOTH),
-            DebtUnit.commodity(TOOL),
-            DebtUnit.money(SILVER));
+            new DebtValuation.CommodityMedium(GRAIN),
+            new DebtValuation.CommodityMedium(CLOTH),
+            new DebtValuation.CommodityMedium(TOOL),
+            new DebtValuation.MoneyMedium(SILVER));
+    assertThat(order)
+        .as("介质稳定键仍是 commodity:*（商品只作介质） / money:*（货币介质）")
+        .extracting(DebtValuation.RepaymentMedium::key)
+        .containsExactly("commodity:grain", "commodity:cloth", "commodity:tool", "money:silver");
   }
 
   @Test
@@ -238,7 +244,7 @@ class DebtBasedClearingAcceptanceTest {
         repayWorld(
             Map.of(GRAIN, 10_000L, CLOTH, 10_000L, TOOL, 10_000L),
             Map.of(SILVER, 10_000L),
-            DebtUnit.money(SILVER),
+            new DebtUnit.Money(SILVER),
             30L,
             pricedMarket());
 
@@ -273,7 +279,7 @@ class DebtBasedClearingAcceptanceTest {
         repayWorld(
             Map.of(GRAIN, 10_000L),
             Map.of(),
-            DebtUnit.money(SILVER),
+            new DebtUnit.Money(SILVER),
             1_000L,
             new MarketTable(SILVER, Set.of(), Map.of(GRAIN, 5L)));
     assertThat(world.rows().get(DEBTOR).naturalNeeds())
@@ -296,7 +302,8 @@ class DebtBasedClearingAcceptanceTest {
 
   @Test
   void householdWithNothingToPayKeepsTheDebtAndIsCountedAsNoStockToRepay() {
-    RepayWorld world = repayWorld(Map.of(), Map.of(), DebtUnit.money(SILVER), 30L, pricedMarket());
+    RepayWorld world =
+        repayWorld(Map.of(), Map.of(), new DebtUnit.Money(SILVER), 30L, pricedMarket());
 
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.SETTLEMENT_LOGGER_NAME)) {
       ProductionLedger ledger = repay(world);
@@ -349,7 +356,7 @@ class DebtBasedClearingAcceptanceTest {
   private static RepayWorld repayWorld(
       Map<CommodityId, Long> debtorGoods,
       Map<CurrencyId, Long> debtorMoney,
-      DebtUnit debtUnit,
+      DebtUnit.Money debtUnit,
       long principal,
       MarketTable market) {
     LinkedHashMap<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
@@ -445,44 +452,13 @@ class DebtBasedClearingAcceptanceTest {
     return world.ledger().toLedger();
   }
 
-  /** ★ 反射直调真 {@code EconomySettlement.repaymentMediumOrder}（S-5 介质序的唯一拼写点）。 */
-  private static List<DebtUnit> mediumOrderOf(RepayWorld world) {
-    Method method;
-    try {
-      method =
-          EconomySettlement.class.getDeclaredMethod(
-              "repaymentMediumOrder",
-              HouseholdId.class,
-              Map.class,
-              Map.class,
-              MarketTable.class,
-              DebtValuation.HouseholdPriceTable.class);
-    } catch (NoSuchMethodException missing) {
-      throw new IllegalStateException(
-          "EconomySettlement.repaymentMediumOrder 的签名变了（反射找不到）", missing);
-    }
-    method.setAccessible(true);
-    try {
-      Object result =
-          method.invoke(
-              null,
-              DEBTOR,
-              world.money().get(DEBTOR),
-              world.goods().get(DEBTOR),
-              pricedMarket(),
-              null);
-      @SuppressWarnings("unchecked")
-      List<DebtUnit> order = (List<DebtUnit>) result;
-      return order;
-    } catch (InvocationTargetException failure) {
-      Throwable cause = failure.getCause();
-      if (cause instanceof RuntimeException runtime) {
-        throw runtime;
-      }
-      throw new IllegalStateException("repaymentMediumOrder 反射调用失败", cause);
-    } catch (ReflectiveOperationException failure) {
-      throw new IllegalStateException("repaymentMediumOrder 反射调用失败", failure);
-    }
+  /**
+   * ★ 直调真 {@link DebtRepaymentSettlement#repaymentMediumOrder}（P2c 起 S-5 介质序的唯一拼写点； 旧 {@code
+   * EconomySettlement.repaymentMediumOrder} wrapper 已随拆分删除）。
+   */
+  private static List<DebtValuation.RepaymentMedium> mediumOrderOf(RepayWorld world) {
+    return DebtRepaymentSettlement.repaymentMediumOrder(
+        DEBTOR, world.money().get(DEBTOR), world.goods().get(DEBTOR), pricedMarket(), null);
   }
 
   private static Method declaredRepayDebts() {

@@ -14,8 +14,7 @@ import java.util.Objects;
  *
  * <p>★★ <b>唯一权威是合同表</b>：{@code HouseholdEconomy.debts} 只是债务人方向派生引用，本类不读它 —— 每个数与 {@code
  * DebtContractBook} 写下的本金逐值一致。{@link #totalPrincipal} 是 P9 核对 {@code 债务 = 发行 − 还款 − 删债（利息另列）}
- * 的左侧；{@link #principalByUnit} 把实物债与各币种货币债分开 （粮 {@code commodity:grain} 与币 {@code money:silver}
- * 不混加）。
+ * 的左侧；{@link #principalByUnit} 按币种分开（P2c 起合同本金只允许货币，商品只作还债介质）。
  *
  * <p>★ 逐项求和用 {@link Math#addExact} fail-closed（溢出不是"一个大数"，是账错了）。
  */
@@ -45,7 +44,7 @@ public final class DebtStock {
     return Collections.unmodifiableMap(totals);
   }
 
-  /** 逐计量标的本金合计（{@link DebtUnit} 键；只列本金 &gt; 0 的标的）。 */
+  /** 逐货币标的本金合计（{@link DebtUnit.Money} 键；只列本金 &gt; 0 的标的）。 */
   public static Map<DebtUnit, Long> principalByUnit(Map<DebtContractId, DebtContract> debts) {
     Objects.requireNonNull(debts, "debts");
     LinkedHashMap<DebtUnit, Long> totals = new LinkedHashMap<>();

@@ -152,6 +152,41 @@ final class SettlementIndex {
       Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
       Map<ProductionUnitId, ProductionRoster> productionRosters,
       long today) {
+    return build(
+        units,
+        industries,
+        assetShares,
+        laborCommitments,
+        householdEconomies,
+        debts,
+        relations,
+        enterprises,
+        assetOccupancies,
+        productionRosters,
+        today,
+        ProductionLandFilter.none());
+  }
+
+  /**
+   * ★★★ <b>P3b：带“本轮新取得土地排除集”的索引构建入口</b>。
+   *
+   * <p>★ D4 资产预算在构建时把 {@code excludedShareIds} 传给 {@link
+   * ProductionProcessBook#assetOccupancyBudget}， 因此 M3/M6/M7 读到的同一份 allocation 都不含本轮新土地。空集 ⇒ 与 P2
+   * 逐值相同。
+   */
+  static SettlementIndex build(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<DebtContractId, DebtContract> debts,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      long today,
+      Set<AssetShareId> excludedShareIds) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
@@ -173,7 +208,8 @@ final class SettlementIndex {
             industries,
             productionRosters,
             laborCommitments,
-            today);
+            today,
+            excludedShareIds);
     Map<ProductionUnitId, Map<AssetKind, Long>> allocations = d4Budget.allocations();
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, allocations);
     Map<ProductionUnitId, List<AssetShareId>> shareIds =

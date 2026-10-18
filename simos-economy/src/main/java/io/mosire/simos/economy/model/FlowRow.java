@@ -89,10 +89,11 @@ import java.util.Map;
  * @param repaidMoney ★★ <b>P11.1 / D-023：本期偿还**实际走货币腿**的逐币种毫钱</b>—— 键值非空、逐值 ≥ 0。 <b>不塞进 {@link
  *     #repaid()}</b>（那个标量是粮口径；把钱记成粮 = 篡改单位）。窗口与 {@code income}/消费同： 本周期累计、新周期第一天归零。★
  *     它不再等于“货币债本金”：钱可以按价折付任何计价口径的债务，这里记真实出账的钱；贷方收到的钱由 actor 账户与合同本金下降读，两处同值。
- * @param capitalizedArrears ★★ <b>E4c：本期资本化的欠租/欠薪（按 {@code DebtUnit.key()} 分组，例如 {@code
- *     "commodity:grain"} / {@code "money:silver"}）</b>—— 键为稳定 unit 串、值为本金增量（该 unit 的最小计量单位）。
- *     它<b>不是</b>库存/货币流动（资本化只记债权，不搬粮/钱），故<b>不</b>进 {@code newBorrowing}（借入才是那个字段）；
- *     它记的是"制度规定未付"转成合同债权的额度。窗口同上：本周期累计、新周期第一天归零； 读不到（旧档缺键）⇒ 空表 = 本周期没有资本化发生，而不是"没记账"。
+ * @param capitalizedArrears ★★ <b>E4c/P2c：本期资本化的欠租/欠薪（按 {@code DebtUnit.Money.key()} 分组，例如 {@code
+ *     "money:silver"}）</b>—— 键为稳定货币 unit 串、值为本金增量（该币种的最小计量单位）；商品欠款已在资本化前按 活动市场区价格折成货币，故这里不再出现
+ *     {@code commodity:*} 键。 它<b>不是</b>库存/货币流动（资本化只记债权，不搬粮/钱），故<b>不</b>进 {@code
+ *     newBorrowing}（借入才是那个字段）； 它记的是"制度规定未付"转成合同债权的额度。窗口同上：本周期累计、新周期第一天归零； 读不到（旧档缺键）⇒ 空表 =
+ *     本周期没有资本化发生，而不是"没记账"。
  */
 public record FlowRow(
     HouseholdId id,

@@ -76,7 +76,7 @@ public record EconomyHouseholdGap(
    * 当日有没有"吃不上"（口粮缺口那一支 &gt; 0）。
    *
    * <p>★ Social 的饥荒死亡率只认这一支（口径在 Social）：{@code productionCostGapByCommodity} 里的口粮维是 {@code
-   * naturalNeeds × 35 天} 的<b>前瞻保留</b>（W2 的 {@code MARKET_LIFE_RESERVE_DAYS}），拿它当"今天吃不上"的比例会得到 恒接近
+   * naturalNeeds × 5 tick} 的<b>前瞻保留</b>（W2 的 {@code MARKET_LIFE_RESERVE_DAYS}），拿它当"今天吃不上"的比例会得到 恒接近
    * 1000‰ 的比值 —— 两条腿的分工见 {@code simos-app} 的 {@code FamineMortalityBridge}。
    */
   public boolean hasRationGap() {

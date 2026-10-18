@@ -21,7 +21,7 @@ import java.util.Objects;
  * 的改值 ⇒ 具名拒绝）。<b>不</b>自行禁止被引用 mode 升级。
  *
  * <p>★★ <b>停用守卫冻结</b>（原 {@code :396} 的六类真实引用）：classStructures / classPositions /
- * productionOrganizations / assetRules / modeTransitions / pledges；由 economy 端口报告。
+ * productionOrganizations / assetRules / modeTransitions；由 economy 端口报告。
  */
 public final class ProductionModeUpserts {
 

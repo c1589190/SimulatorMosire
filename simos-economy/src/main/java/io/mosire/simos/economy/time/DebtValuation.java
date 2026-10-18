@@ -31,9 +31,9 @@ import org.slf4j.Logger;
  * <ol>
  *   <li><b>估值顺序</b>：先看调用方给的<b>单个家户价目表</b>（{@link HouseholdPriceTable}；当前正式状态没有这个字段 ⇒ 调用方传 {@code
  *       null}）；该户没有对应价格时，回落该户所在<b>市场区默认价目表</b>（{@link MarketTable#prices()}）；
- *   <li><b>任意 medium ↔ 任意 {@link DebtUnit} 的折算</b>：commodity ↔ commodity、commodity ↔ money、money ↔
- *       money；缺任一侧价格 ⇒ 该 medium 对这条债具名不可折算（{@link PaymentPlan#unpricedAssets()}），调用方据此跳下一条， <b>不静默当
- *       0</b>。
+ *   <li><b>还债介质 ↔ 货币本金</b>：{@link RepaymentMedium} 只表达“拿什么还”（货币或库存商品），合同本金仍是 {@link
+ *       DebtUnit.Money}；商品介质按市场价折成本币，缺任一侧价格 ⇒ 该介质对这条债具名不可折算 （{@link
+ *       PaymentPlan#unpricedAssets()}），调用方据此跳下一条，<b>不静默当 0</b>。
  * </ol>
  *
  * <p>★★ <b>共同尺度（唯一拼写点）</b>：一个单位的共同价值 {@code unitValue} 定义成
@@ -44,17 +44,14 @@ import org.slf4j.Logger;
  * </pre>
  *
  * <p>于是 {@code q(毫 medium) → debtUnits(毫 debt)} 的整数折算恒为 {@code ⌊q × unitValue(medium) ÷
- * unitValue(debt)⌋}。这条式子同时给出本类类注里那四条既有算式：粮价 {@code price(grain)} 作为分母把共同尺度落回“毫粮等值”时，商品债为 {@code
- * principal × price(c) / price(grain)}、 货币债为 {@code principal × 1000 / price(grain)}（D-030 §3.4）。
+ * unitValue(debt)⌋}。P2c 起合同本金只有货币；商品只作为还债介质，先折成 numeraire 货币再与货币本金同尺度比较。
  *
  * <p>★★ <b>量纲与整数口径</b>（与 {@link MarketTable#prices()} 一致；1 商品单位 = {@value
  * EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品）：
  *
  * <pre>
- * 商品 g（毫商品）按 p_g / p_c 折成合同商品 c（毫商品）:  ⌊q × p_g ÷ p_c⌋
  * 商品 g（毫商品）折成本格 numeraire 货币            :  ⌊q × p_g ÷ 1000⌋
- * numeraire 货币（毫钱）折成合同商品 c（毫商品）      :  ⌊money × 1000 ÷ p_c⌋
- * 同商品 / 同币种                                  :  1:1（identity，不需要价目表）
+ * 同币种货币                                        :  1:1（identity，不需要价目表）
  * </pre>
  *
  * <p>★★ <b>防 1000 倍错（量纲写死）</b>：{@link MarketTable#prices()} 的价格 p 是<b>毫 numeraire / 1 商品单位</b>，而 1
@@ -63,10 +60,10 @@ import org.slf4j.Logger;
  * price(c)/1000}），货币的“单位价”取 1000 —— 两条腿的毫数量乘各自的 unitValue 后才是同一量纲；{@code 商品↔货币} 的 1000 因子正是从 “1
  * 商品单位 = 1000 毫商品”来的。
  *
- * <p>★ <b>identity 腿为什么不需要价格</b>：粮还粮、银还银是"原物原还"，不是折算；没有市场的格子里这笔债也必须能还。
+ * <p>★ <b>identity 腿为什么不需要价格</b>：同币种货币还同币种货币是“原物原还”，不是折算；没有市场的格子里这笔债也必须能还。
  *
  * <p>★★ <b>不做 FX</b>：非本价目表 {@code numeraire} 的币种没有比价 ⇒ 该腿不折算、进 {@link
- * PaymentPlan#unpricedAssets()}；缺价不等于付 0。
+ * PaymentPlan#unpricedAssets()}；商品债已删除，商品只可能出现在还债介质侧。缺价不等于付 0。
  */
 public final class DebtValuation {
 
@@ -131,6 +128,42 @@ public final class DebtValuation {
 
     /** 解析收款 actor；返回 {@code null} = 说不出收款人（调用方必须具名 fail-closed，不许静默吞款）。 */
     ActorRef resolve(HouseholdId creditor);
+  }
+
+  /**
+   * ★★★ <b>还债介质（P2c）</b>：合同的 {@link DebtUnit} 只表达本金标的（只能是 {@link DebtUnit.Money}）；库存商品只能作为
+   * <b>付款介质</b>出现在这里。把两者拆开，避免“商品债”借 {@code DebtUnit.Commodity} 复活。
+   */
+  public sealed interface RepaymentMedium permits MoneyMedium, CommodityMedium {
+
+    /** 介质稳定键：{@code money:<currency>} / {@code commodity:<id>}（日志与缺价清单的唯一拼写）。 */
+    String key();
+  }
+
+  /** 货币介质：某个币种的最小币值单位。 */
+  public record MoneyMedium(CurrencyId currency) implements RepaymentMedium {
+
+    public MoneyMedium {
+      Objects.requireNonNull(currency, "DebtValuation.MoneyMedium.currency 不得为 null");
+    }
+
+    @Override
+    public String key() {
+      return "money:" + currency.value();
+    }
+  }
+
+  /** 商品介质：库存里的某商品（只可折价还货币债，不构成本金标的）。 */
+  public record CommodityMedium(CommodityId commodity) implements RepaymentMedium {
+
+    public CommodityMedium {
+      Objects.requireNonNull(commodity, "DebtValuation.CommodityMedium.commodity 不得为 null");
+    }
+
+    @Override
+    public String key() {
+      return "commodity:" + commodity.value();
+    }
   }
 
   /** 一条实际付款腿：把 {@code quantity/amount} 的真实商品/货币交出去，折成 {@code contractUnits} 合同计价单位。 */
@@ -240,11 +273,10 @@ public final class DebtValuation {
   // ── 共同尺度的唯一拼写点（D-030 §3.4 / §3.5）──────────────────────────────────────────────
 
   /**
-   * ★★ <b>任意 {@link DebtUnit} 本金 → 毫粮等值</b>（D-030 §3.4，市场默认价目表口径）：
+   * ★★ <b>货币本金 → 毫粮等值</b>（D-030 §3.4，市场默认价目表口径）：
    *
    * <pre>
-   * Commodity(c): amount × price(c) ÷ price(grain)
-   * Money(cur):   amount × 1000 ÷ price(grain)      // 仅 cur == market.numeraire
+   * Money(cur): amount × 1000 ÷ price(grain)      // 仅 cur == market.numeraire
    * </pre>
    *
    * <p>返回空 = 不可定价（market 缺、缺 grain 价、缺该单位价）。{@code amount == 0} ⇒ 返回 0（已结清的历史合同不再占 unpriced）。本方法是
@@ -264,7 +296,7 @@ public final class DebtValuation {
     }
     Pricing pricing = new Pricing(market.numeraire(), market, null, null);
     long grainPrice = pricing.priceOf(EconomyCommodities.GRAIN);
-    long unitValue = commonUnitValue(pricing, unit);
+    long unitValue = contractUnitValue(pricing, unit);
     if (grainPrice <= 0L || unitValue <= 0L) {
       return OptionalLong.empty();
     }
@@ -272,7 +304,7 @@ public final class DebtValuation {
   }
 
   /**
-   * ★★ <b>任意 {@link DebtUnit} 本金 → 共同价值</b>（D-030 §3.5 的债务排序用）：价目表按家户表优先、市场默认回退。
+   * ★★ <b>货币本金 → 共同价值</b>（D-030 §3.5 的债务排序用）：价目表按家户表优先、市场默认回退。
    *
    * <p>返回空 = 这条债在该债务人的价目表下不可定价（不可定价的债在 {@code repayDebts} 排最后）。
    */
@@ -291,7 +323,7 @@ public final class DebtValuation {
       return OptionalLong.of(0L);
     }
     Pricing pricing = resolvePricing(debtor, market, householdPrices);
-    long unitValue = commonUnitValue(pricing, unit);
+    long unitValue = contractUnitValue(pricing, unit);
     if (unitValue <= 0L) {
       return OptionalLong.empty();
     }
@@ -299,13 +331,24 @@ public final class DebtValuation {
   }
 
   /** 一条单位在已解析价目表下的共同价值（毫 numeraire / 商品单位，或货币的 1000）：<b>不要</b>在别处重写这条 switch。 */
-  private static long commonUnitValue(Pricing pricing, DebtUnit unit) {
+  /** 合同本金单位的共同价值（P2c 起只有货币；本币 = 1000 毫/单位面值）。 */
+  private static long contractUnitValue(Pricing pricing, DebtUnit unit) {
     return switch (unit) {
-      case DebtUnit.Commodity commodity -> pricing.priceOf(commodity.commodity());
       case DebtUnit.Money money ->
           pricing.numeraire() != null && money.currency().equals(pricing.numeraire())
               ? EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
               : 0L;
+    };
+  }
+
+  /** 还债介质的共同价值：货币按本币面值、商品按价目表单价；说不出价 ⇒ 0。 */
+  private static long repaymentMediumValue(Pricing pricing, RepaymentMedium medium) {
+    return switch (medium) {
+      case MoneyMedium money ->
+          pricing.numeraire() != null && money.currency().equals(pricing.numeraire())
+              ? EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+              : 0L;
+      case CommodityMedium commodity -> pricing.priceOf(commodity.commodity());
     };
   }
 
@@ -322,20 +365,57 @@ public final class DebtValuation {
    * <p>★★ <b>用户原话（第二批第 5 条）</b>：「偿还顺序不是先还钱或者先还粮还工具之类的，而是只取决于这个家户的哪个种类商品， <b>预估价值最低</b>」⇒ 介质序 =
    * 本值<b>升序</b>（不再是 D-030 §4 的"钱永远第一 → 商品按数量降序"）。
    *
-   * <p>★ <b>它就是 {@link #commonUnitValue} 的公开读口</b>（同一条 switch、同一个 {@code Pricing}）——
+   * <p>★ <b>它就是 {@link #repaymentMediumValue} 的公开读口</b>（同一条 switch、同一个 {@code Pricing}）——
    * 排序与付款选择因此不可能用两把尺。{@code <= 0} 同时表达"不可定价"与"价值为 0"（0 价商品）： 两者在介质序里都排最前（都不值钱 ⇒ 先付掉），故不需要在排序里区分它们。
    *
    * @param debtor 债务人（家户价目表按它取价）；不得为 null
-   * @param unit 待估值的单位；不得为 null
+   * @param unit 待估值的还债介质；不得为 null
    * @param market 该户所在市场区默认价目表（可为 null）
    * @param householdPrices 家户价目表（可为 null）
    * @return 毫 numeraire / 单位（货币 = 1000 毫/单位面值）；说不出价 ⇒ 0
    */
   public static long estimatedUnitValueMilli(
-      HouseholdId debtor, DebtUnit unit, MarketTable market, HouseholdPriceTable householdPrices) {
+      HouseholdId debtor,
+      RepaymentMedium unit,
+      MarketTable market,
+      HouseholdPriceTable householdPrices) {
     Objects.requireNonNull(debtor, "estimatedUnitValueMilli 的 debtor 不得为 null");
     Objects.requireNonNull(unit, "estimatedUnitValueMilli 的 unit 不得为 null");
-    return commonUnitValue(resolvePricing(debtor, market, householdPrices), unit);
+    return repaymentMediumValue(resolvePricing(debtor, market, householdPrices), unit);
+  }
+
+  /**
+   * ★★ <b>P2e：把「某介质的毫数量」按共同价值折成「合同计价单位」</b>——{@link #convert(long, long, long)}
+   * 的包内读口。债务最先清算（M2）用它处理非本币货币腿；与 {@link #choosePayment} 内部是同一句整数 floor 算式， 不引入第二把尺。
+   *
+   * @param quantity 介质的毫数量（毫钱/毫商品）
+   * @param mediumValue 该介质的共同价值（微 numeraire / 单位；&gt; 0）
+   * @param contractValue 合同计价单位的共同价值（微 numeraire / 单位；&gt; 0）
+   * @return {@code ⌊quantity × mediumValue ÷ contractValue⌋}；非正输入 ⇒ 0
+   */
+  static long convertedContractUnits(long quantity, long mediumValue, long contractValue) {
+    return convert(quantity, mediumValue, contractValue);
+  }
+
+  /**
+   * ★★ <b>P2e：在「折成合同单位后不得超过 targetContractUnits」的约束下，取最大的介质毫数量</b>。
+   *
+   * <p>它直接复用 {@link #maxAssetQuantity} 的整数精确反解（不是 {@code target × den ÷ num} 的近似）， 保证 M2
+   * 的「不找零/不多扣」与 {@link #choosePayment} 逐值同式。
+   *
+   * @param targetContractUnits 本次最多可减少的合同单位（&gt; 0）
+   * @param mediumValue 介质共同价值（&gt; 0）
+   * @param contractValue 合同单位共同价值（&gt; 0）
+   * @param available 介质可用量（&gt; 0）
+   * @return 最大可用量（≤ available）；任何非正输入 ⇒ 0
+   */
+  static long maxRepaymentQuantity(
+      long targetContractUnits, long mediumValue, long contractValue, long available) {
+    if (targetContractUnits <= 0L || mediumValue <= 0L || contractValue <= 0L || available <= 0L) {
+      return 0L;
+    }
+    return maxAssetQuantity(
+        targetContractUnits, mediumValue, contractValue, available, Long.MAX_VALUE);
   }
 
   // ── 付款选择 ───────────────────────────────────────────────────────────────────────────────
@@ -343,15 +423,14 @@ public final class DebtValuation {
   /**
    * ★★ <b>按调用方给定的介质序，给一笔债挑一组"能付得最多"的实际介质腿</b>（纯函数；D-030 §3.5 的逐 debt × 逐 medium 口径）。
    *
-   * <p>介质序由调用方定（生产路径 = 全部货币按余额降序、再全部商品按余额降序）；本方法只按该序逐项尝试：identity 直接 1:1；其它单位用 {@link
-   * #commonValueMilli} 同一套价目表折成共同价值，floor、最多还清本金；缺价项进 {@link PaymentPlan#unpricedAssets()}
-   * 具名跳过，换下一条 medium。
+   * <p>介质序由调用方定（生产路径按预案估值升序）；本方法只按该序逐项尝试：同币种 identity 直接 1:1；商品介质用 {@link #commonValueMilli}
+   * 同一套价目表折成共同价值，floor、最多还清本金；缺价项进 {@link PaymentPlan#unpricedAssets()} 具名跳过，换下一条 medium。
    *
    * @param outstandingPrincipal 合同未偿本金（合同计价单位；必须 &gt; 0）
-   * @param unit 合同计价口径（商品 / 货币）
+   * @param unit 合同计价口径（P2c 起只能是货币）
    * @param debtor 债务人（家户价目表按它取价）
-   * @param mediumOrder 介质顺序（不得含 null / 重复单位；本方法不重排）
-   * @param availableByUnit 当前可动余额（毫单位；值不得为负；缺键 = 0）
+   * @param mediumOrder 还债介质顺序（不得含 null / 重复介质；本方法不重排）
+   * @param availableByMedium 当前可动余额（毫单位；值不得为负；缺键 = 0）
    * @param market 该户所在市场区默认价目表（可为 null = 没有市场默认价目表；identity 腿仍可用）
    * @param householdPrices 单个家户价目表（可为 null；非 null 时优先，缺价回落同 numeraire 的市场默认）
    * @return 付款计划；无任何可折介质时为空计划（{@link PaymentPlan#unpricedAssets()} 具名说明缺价资产）
@@ -360,80 +439,81 @@ public final class DebtValuation {
       long outstandingPrincipal,
       DebtUnit unit,
       HouseholdId debtor,
-      List<DebtUnit> mediumOrder,
-      Map<DebtUnit, Long> availableByUnit,
+      List<RepaymentMedium> mediumOrder,
+      Map<RepaymentMedium, Long> availableByMedium,
       MarketTable market,
       HouseholdPriceTable householdPrices) {
     Objects.requireNonNull(unit, "DebtValuation.choosePayment 的 unit 不得为 null");
     Objects.requireNonNull(debtor, "DebtValuation.choosePayment 的 debtor 不得为 null");
     Objects.requireNonNull(mediumOrder, "DebtValuation.choosePayment 的 mediumOrder 不得为 null");
     Objects.requireNonNull(
-        availableByUnit, "DebtValuation.choosePayment 的 availableByUnit 不得为 null");
+        availableByMedium, "DebtValuation.choosePayment 的 availableByMedium 不得为 null");
     if (outstandingPrincipal <= 0L) {
       throw new IllegalArgumentException(
           "DebtValuation.choosePayment 的 outstandingPrincipal 必须 > 0: " + outstandingPrincipal);
     }
-    LinkedHashSet<DebtUnit> seenMedia = new LinkedHashSet<>();
-    for (DebtUnit mediumUnit : mediumOrder) {
-      if (mediumUnit == null) {
+    LinkedHashSet<RepaymentMedium> seenMedia = new LinkedHashSet<>();
+    for (RepaymentMedium medium : mediumOrder) {
+      if (medium == null) {
         throw new IllegalArgumentException("DebtValuation.choosePayment 的 mediumOrder 不得含 null");
       }
-      if (!seenMedia.add(mediumUnit)) {
+      if (!seenMedia.add(medium)) {
         throw new IllegalArgumentException(
-            "DebtValuation.choosePayment 的 mediumOrder 不得含重复单位: " + mediumUnit.key());
+            "DebtValuation.choosePayment 的 mediumOrder 不得含重复单位: " + medium.key());
       }
     }
-    for (Map.Entry<DebtUnit, Long> entry : availableByUnit.entrySet()) {
+    for (Map.Entry<RepaymentMedium, Long> entry : availableByMedium.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
-            "DebtValuation.choosePayment 的 availableByUnit 键与值都不得为 null: " + entry.getKey());
+            "DebtValuation.choosePayment 的 availableByMedium 键与值都不得为 null: " + entry.getKey());
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "DebtValuation.choosePayment 的 availableByUnit 不得为负: "
+            "DebtValuation.choosePayment 的 availableByMedium 不得为负: "
                 + entry.getKey().key()
                 + " = "
                 + entry.getValue());
       }
     }
     Pricing pricing = resolvePricing(debtor, market, householdPrices);
-    long contractUnitValue = commonUnitValue(pricing, unit);
+    long contractValue = contractUnitValue(pricing, unit);
     List<PaymentLeg> legs = new ArrayList<>();
     LinkedHashSet<String> unpriced = new LinkedHashSet<>();
     long remaining = outstandingPrincipal;
-    for (DebtUnit mediumUnit : mediumOrder) {
+    for (RepaymentMedium medium : mediumOrder) {
       if (remaining <= 0L) {
         break;
       }
-      long available = availableByUnit.getOrDefault(mediumUnit, 0L);
+      long available = availableByMedium.getOrDefault(medium, 0L);
       if (available <= 0L) {
         continue;
       }
-      // ① identity：原物原还，不需要价格（与 D-023/H2 的既有口径一致）。
-      if (mediumUnit.equals(unit)) {
+      // ① identity：同币种原物原还，不需要价格（与 D-023/H2 的既有口径一致）。
+      if (unit instanceof DebtUnit.Money money
+          && medium instanceof MoneyMedium moneyMedium
+          && money.currency().equals(moneyMedium.currency())) {
         long pay = Math.min(remaining, available);
-        legs.add(legOf(mediumUnit, pay, pay));
+        legs.add(legOf(medium, pay, pay));
         remaining -= pay;
         continue;
       }
       // ② 非 identity：先用同一价目表把两边都折成共同价值；任一缺价 ⇒ 具名跳过，不静默付 0。
-      long mediumUnitValue = commonUnitValue(pricing, mediumUnit);
-      if (contractUnitValue <= 0L || mediumUnitValue <= 0L) {
-        unpriced.add(assetKey(mediumUnit));
+      long mediumValue = repaymentMediumValue(pricing, medium);
+      if (contractValue <= 0L || mediumValue <= 0L) {
+        unpriced.add(assetKey(medium));
         continue;
       }
-      long maxPayable = convert(available, mediumUnitValue, contractUnitValue);
+      long maxPayable = convert(available, mediumValue, contractValue);
       if (maxPayable <= 0L) {
         continue;
       }
       long target = Math.min(remaining, maxPayable);
-      long used =
-          maxAssetQuantity(target, mediumUnitValue, contractUnitValue, available, maxPayable);
-      long actual = convert(used, mediumUnitValue, contractUnitValue);
+      long used = maxAssetQuantity(target, mediumValue, contractValue, available, maxPayable);
+      long actual = convert(used, mediumValue, contractValue);
       if (used <= 0L || actual <= 0L) {
         continue;
       }
-      legs.add(legOf(mediumUnit, used, actual));
+      legs.add(legOf(medium, used, actual));
       remaining -= actual;
     }
     return new PaymentPlan(legs, outstandingPrincipal - remaining, new ArrayList<>(unpriced));
@@ -447,7 +527,7 @@ public final class DebtValuation {
    * 生产偿还路径使用显式介质序的重载。
    *
    * @param outstandingPrincipal 合同未偿本金（合同计价单位；必须 &gt; 0）
-   * @param unit 合同计价口径（商品 / 货币）
+   * @param unit 合同计价口径（P2c 起只能是货币）
    * @param debtor 债务人（家户价目表按它取价）
    * @param availableGoods 已扣除冻结/口粮保留的可动商品（毫商品；值 &gt; 0）
    * @param availableMoney 已扣除冻结的可动货币（毫钱；值 &gt; 0）
@@ -471,14 +551,14 @@ public final class DebtValuation {
       throw new IllegalArgumentException(
           "DebtValuation.choosePayment 的 outstandingPrincipal 必须 > 0: " + outstandingPrincipal);
     }
-    LinkedHashMap<DebtUnit, Long> availableByUnit = new LinkedHashMap<>();
+    LinkedHashMap<RepaymentMedium, Long> availableByMedium = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : availableGoods.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
             "DebtValuation.choosePayment 的 availableGoods 键与值都不得为 null: " + entry.getKey());
       }
       if (entry.getValue() > 0L) {
-        availableByUnit.put(DebtUnit.commodity(entry.getKey()), entry.getValue());
+        availableByMedium.put(new CommodityMedium(entry.getKey()), entry.getValue());
       }
     }
     for (Map.Entry<CurrencyId, Long> entry : availableMoney.entrySet()) {
@@ -487,7 +567,7 @@ public final class DebtValuation {
             "DebtValuation.choosePayment 的 availableMoney 键与值都不得为 null: " + entry.getKey());
       }
       if (entry.getValue() > 0L) {
-        availableByUnit.put(DebtUnit.money(entry.getKey()), entry.getValue());
+        availableByMedium.put(new MoneyMedium(entry.getKey()), entry.getValue());
       }
     }
     return choosePayment(
@@ -495,50 +575,44 @@ public final class DebtValuation {
         unit,
         debtor,
         legacyMediumOrder(unit, availableGoods, availableMoney),
-        availableByUnit,
+        availableByMedium,
         market,
         householdPrices);
   }
 
-  /** 旧 P11.1 的介质序：identity → 其它商品 id 升序 → 币种 id 升序（唯一的旧顺序拼写点）。 */
-  private static List<DebtUnit> legacyMediumOrder(
+  /** 旧 P11.1 的介质序：合同币种 identity → 其它商品 id 升序 → 币种 id 升序（唯一的旧顺序拼写点）。 */
+  private static List<RepaymentMedium> legacyMediumOrder(
       DebtUnit contractUnit,
       Map<CommodityId, Long> availableGoods,
       Map<CurrencyId, Long> availableMoney) {
-    LinkedHashSet<DebtUnit> order = new LinkedHashSet<>();
-    order.add(contractUnit);
+    LinkedHashSet<RepaymentMedium> order = new LinkedHashSet<>();
+    if (contractUnit instanceof DebtUnit.Money money) {
+      order.add(new MoneyMedium(money.currency()));
+    }
     for (CommodityId commodity : sortedCommodities(availableGoods.keySet())) {
-      if (contractUnit instanceof DebtUnit.Commodity commodityUnit
-          && commodityUnit.commodity().equals(commodity)) {
-        continue;
-      }
-      order.add(DebtUnit.commodity(commodity));
+      order.add(new CommodityMedium(commodity));
     }
     for (CurrencyId currency : sortedCurrencies(availableMoney.keySet())) {
-      if (contractUnit instanceof DebtUnit.Money moneyUnit
-          && moneyUnit.currency().equals(currency)) {
+      if (contractUnit instanceof DebtUnit.Money money && money.currency().equals(currency)) {
         continue;
       }
-      order.add(DebtUnit.money(currency));
+      order.add(new MoneyMedium(currency));
     }
     return new ArrayList<>(order);
   }
 
-  /** 按介质单位构造一条实际付款腿；调用方保证 quantity/units &gt; 0。 */
-  private static PaymentLeg legOf(DebtUnit mediumUnit, long quantityMilli, long contractUnits) {
-    return switch (mediumUnit) {
-      case DebtUnit.Commodity commodity ->
+  /** 按还债介质构造一条实际付款腿；调用方保证 quantity/units &gt; 0。 */
+  private static PaymentLeg legOf(RepaymentMedium medium, long quantityMilli, long contractUnits) {
+    return switch (medium) {
+      case CommodityMedium commodity ->
           new CommodityLeg(commodity.commodity(), quantityMilli, contractUnits);
-      case DebtUnit.Money money -> new MoneyLeg(money.currency(), quantityMilli, contractUnits);
+      case MoneyMedium money -> new MoneyLeg(money.currency(), quantityMilli, contractUnits);
     };
   }
 
   /** 缺价资产的稳定具名键（与现有 {@link #UNPRICED_ASSET_REASON_PREFIX} 的清单格式一致）。 */
-  private static String assetKey(DebtUnit unit) {
-    return switch (unit) {
-      case DebtUnit.Commodity commodity -> "commodity:" + commodity.commodity().value();
-      case DebtUnit.Money money -> "money:" + money.currency().value();
-    };
+  private static String assetKey(RepaymentMedium medium) {
+    return medium.key();
   }
 
   // ── 估值顺序的唯一拼写点 ────────────────────────────────────────────────────────────────────

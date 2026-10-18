@@ -643,7 +643,7 @@ final class MoneyMarketSettlement {
             borrower,
             lender,
             // ★ 单位 = 本区计价币（{@code DebtUnit.money} 是唯一工厂；{@code DebtUnit.Money} 是 record 变体本身）。
-            DebtUnit.money(currency),
+            new DebtUnit.Money(currency),
             DebtTerms.legacyDefault((int) termsRate),
             DebtSource.ORDINARY_LOAN,
             amount,

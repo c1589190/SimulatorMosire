@@ -10,7 +10,6 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.ClassShare;
@@ -19,7 +18,6 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionEnterprise.Status;
 import io.mosire.simos.economy.model.ProductionRole;
@@ -49,7 +47,7 @@ import java.util.TreeSet;
  *   <li><b>迁移（按模式身份）</b>：旧组织 → {@code EXITING}（保留 unitId/operator/laborSources/assetSources/
  *       inputSources/outputOwnership/relationTemplateRef）；新组织 {@code ACTIVE} 复用**同一条** {@code
  *       ProductionProcess}（不复制实物、不新 progress）；该 unit 的 {@code modeKey} 改为新 mode key；旧 {@code
- *       Pledge.modeId == fromMode} 的质押改成 toMode（暴露出的 mode 维）；对旧组织 laborSources ∪ organizer 家户逐户写
+ *       新位置/保留份额；对旧组织 laborSources ∪ organizer 家户逐户写
  *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link
  *       HouseholdClassMembership}
  *       （currentPosition/retainedShares/lastTransitionDay=day/reason；originalPosition 不动）。
@@ -57,7 +55,7 @@ import java.util.TreeSet;
  *       债务是家户间债权，不随 mode 复制；已有 {@code HouseholdLaborCommitment} 的 activity 就是复用中的 unit id，原样有效；
  *       relation 挂在 unit 上，原样有效。
  *   <li><b>失败不改状态</b>：规划阶段（找 mode/structure/position/hex/unit）任一具名失败 ⇒ 该 transition 落 {@code FAILED
- *       + 具名原因}，不修改组织/unit/质押/份额/standing；其余 transition 继续（逐条独立）。
+ *       + 具名原因}，不修改组织/unit/份额/standing；其余 transition 继续（逐条独立）。
  * </ul>
  *
  * <p>★★ <b>位置匹配</b>：由旧 position 的 {@code (relationToMeans, surplusRole)} 在 toMode 的 ClassStructure
@@ -68,7 +66,7 @@ import java.util.TreeSet;
  * AMBIGUOUS_HEX_KEY}。★ 家户 = organizer 是 HOUSEHOLD 时直接反查，否则取唯一的 laborSource；推不出 ⇒ {@code
  * NO_ORGANIZER_HOUSEHOLD}。
  *
- * <p>★ <b>确定性</b>：transition 按 id 升序；家户按 id 升序；份额/standing/Pledge 的写入序稳定；无随机、无时钟、无
+ * <p>★ <b>确定性</b>：transition 按 id 升序；家户按 id 升序；份额/standing 的写入序稳定；无随机、无时钟、无
  * UUID。本类是协调器单线程阶段：只写调用方交进来的工作副本；一次 revision 的原子性由 {@code EconomySession} 的一次 {@code build()} 承担。
  */
 final class EconomyModeTransitionSettlement {
@@ -121,7 +119,6 @@ final class EconomyModeTransitionSettlement {
    * @param enterprises 生产组织工作副本（读旧组织、写旧 EXITING + 新 ACTIVE）
    * @param units 生产单元工作副本（写复用 unit 的 modeKey）
    * @param assetShares 实物资产份额表（只读；用于推导 org 的格键）
-   * @param pledges 质押表工作副本（写 modeId）
    * @param classStandings 家户阶层归属工作副本（写 current/retained/lastTransition/reason）
    * @param modeTransitions 模式变迁工作副本（PENDING → APPLIED/FAILED）
    * @param classShares 阶层保留份额工作副本（新增成功户的份额）
@@ -134,7 +131,6 @@ final class EconomyModeTransitionSettlement {
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, OwnershipStake> assetShares,
-      LinkedHashMap<PledgeId, Pledge> pledges,
       LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions,
       LinkedHashMap<ClassShareId, ClassShare> classShares) {
@@ -144,7 +140,6 @@ final class EconomyModeTransitionSettlement {
     Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(assetShares, "assetShares");
-    Objects.requireNonNull(pledges, "pledges");
     Objects.requireNonNull(classMemberships, "classStandings");
     Objects.requireNonNull(modeTransitions, "modeTransitions");
     Objects.requireNonNull(classShares, "classShares");
@@ -174,7 +169,6 @@ final class EconomyModeTransitionSettlement {
               enterprises,
               units,
               assetShares,
-              pledges,
               classMemberships,
               classShares);
       if (plan.failureReason != null) {
@@ -235,7 +229,6 @@ final class EconomyModeTransitionSettlement {
                 + " reason="
                 + rejected.reason());
       }
-      pledges.putAll(plan.updatedPledges);
       classMemberships.putAll(plan.updatedClassMemberships);
       classShares.putAll(plan.newClassShares);
       modeTransitions.put(transition.id(), plan.appliedTransition);
@@ -272,7 +265,6 @@ final class EconomyModeTransitionSettlement {
       ProductionEnterprise exitingOrganization,
       ProductionEnterprise newOrganization,
       ProductionProcess updatedUnit,
-      Map<PledgeId, Pledge> updatedPledges,
       Map<ClassShareId, ClassShare> newClassShares,
       Map<HouseholdId, HouseholdClassMembership> updatedClassMemberships,
       ModeTransition appliedTransition) {}
@@ -285,7 +277,6 @@ final class EconomyModeTransitionSettlement {
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, OwnershipStake> assetShares,
-      Map<PledgeId, Pledge> pledges,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<ClassShareId, ClassShare> classShares) {
     ProductionEnterprise enterprise = enterprises.get(transition.organizationId());
@@ -434,24 +425,6 @@ final class EconomyModeTransitionSettlement {
       updatedClassMemberships.put(household, nextClassMembership);
     }
 
-    // ★ Pledge 的 mode 维：凡 modeId == fromMode 的质押（含非 ACTIVE）改挂 toMode；其余字段逐值不动。
-    Map<PledgeId, Pledge> updatedPledges = new LinkedHashMap<>();
-    for (Map.Entry<PledgeId, Pledge> entry : pledges.entrySet()) {
-      Pledge pledge = entry.getValue();
-      if (pledge.modeId().equals(transition.fromModeId())) {
-        updatedPledges.put(
-            entry.getKey(),
-            new Pledge(
-                pledge.id(),
-                pledge.debtContractId(),
-                pledge.assetShareId(),
-                pledge.quantity(),
-                transition.toModeId(),
-                pledge.priority(),
-                pledge.status()));
-      }
-    }
-
     ProductionProcess updatedUnit =
         new ProductionProcess(
             unit.id(),
@@ -500,14 +473,13 @@ final class EconomyModeTransitionSettlement {
         exitingOrganization,
         newOrganization,
         updatedUnit,
-        updatedPledges,
         newShares,
         updatedClassMemberships,
         transition.withStatus(ModeTransition.Status.APPLIED, transition.reason()));
   }
 
   private static Plan failed(String reason) {
-    return new Plan(reason, null, null, null, Map.of(), Map.of(), Map.of(), null);
+    return new Plan(reason, null, null, null, Map.of(), Map.of(), null);
   }
 
   /** 由 (relationToMeans, surplusRole) 在结构内匹配新位置；多个取 id 字典序最小；没有 ⇒ null。 */

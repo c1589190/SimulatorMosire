@@ -11,10 +11,8 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.time.OwnershipStakeBook;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -65,7 +63,7 @@ import org.slf4j.Logger;
  * 0（{@code EconomyData} 不再要求非 EXITED unit 必须有份额）。
  *
  * <p>★★ <b>E5a：份额表写入委托 {@link OwnershipStakeBook#transfer}</b>（计划 §4 硬约束 2 的唯一写口）。本类只做
- * 命令语义的准入判断（份额存在/数量范围/至少一栏变化），真正的校验/新 id/守恒/活跃质押上界全在 Book 里一次完成： 任一失败 ⇒ 调用方的表一字不动（不再有"先改源行、后生成 id
+ * 命令语义的准入判断（份额存在/数量范围/至少一栏变化），真正的校验/新 id/守恒全在 Book 里一次完成： 任一失败 ⇒ 调用方的表一字不动（不再有"先改源行、后生成 id
  * 抛错"的半笔风险）。
  */
 public final class EconomyTransferOwnershipStakeHandler implements CommandHandler {
@@ -208,13 +206,10 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
                     kind != share.kind()));
       }
       Map<AssetShareId, OwnershipStake> updated = new LinkedHashMap<>(base.assetShares());
-      // ★ 2026-10-09：质押表也要可写 —— ACTIVE 质押按比例跟到新份额（OwnershipStakeBook 就地写）。
-      Map<PledgeId, Pledge> updatedPledges = new LinkedHashMap<>(base.pledges());
       try {
         OwnershipStakeBook.transfer(
             updated,
             EconomyProductionDefinitions.of(state).industries(),
-            updatedPledges,
             shareId,
             quantity,
             toOwner,
@@ -257,14 +252,9 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
                   "sharesBefore",
                   base.assetShares().size(),
                   "sharesAfter",
-                  updated.size(),
-                  "pledgesBefore",
-                  base.pledges().size(),
-                  "pledgesAfter",
-                  updatedPledges.size()));
+                  updated.size()));
       return new HandlerOutcome.Applied(
-          EconomyChangeSet.between(
-              base, base.withOwnershipStakes(updated).withPledges(updatedPledges)));
+          EconomyChangeSet.between(base, base.withOwnershipStakes(updated)));
     } catch (IllegalArgumentException | JsonProcessingException e) {
       EventLog.channel(LOG)
           .info(

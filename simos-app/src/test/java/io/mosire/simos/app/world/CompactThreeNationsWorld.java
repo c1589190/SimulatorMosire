@@ -615,7 +615,6 @@ public final class CompactThreeNationsWorld {
     out.put("classPositions", (long) economy.classPositions().size());
     out.put("classStandings", (long) economy.classStandings().size());
     out.put("assetRules", (long) economy.assetRules().size());
-    out.put("liquidationPolicies", (long) economy.liquidationPolicies().size());
     out.put("productionOrganizations", (long) economy.productionOrganizations().size());
     out.put(
         "orgActive",
@@ -641,9 +640,8 @@ public final class CompactThreeNationsWorld {
     out.put("commodityIds", List.copyOf(commodities));
     out.put("debts", (long) economy.debtContracts().size());
     // ★★ P3：初始条件相关读数（不改旧键语义）——
-    //   · pledges/assetShares/initialDebts 直接来自 economy 状态（真实表）；
+    //   · assetShares/initialDebts 直接来自 economy 状态（真实表）；
     //   · condition* 来自本夹具**最近一次** initializeNations 传入的条件报告（诊断口径，见 lastConditionReport）。
-    out.put("pledges", (long) economy.pledges().size());
     out.put("assetShares", (long) economy.assetShares().size());
     long initialDebts = 0L;
     for (DebtContract debt : economy.debtContracts().values()) {
@@ -654,7 +652,6 @@ public final class CompactThreeNationsWorld {
     out.put("initialDebts", initialDebts);
     TestConditions.Report report = lastConditionReport;
     out.put("conditionDebtContracts", (long) report.debtContractCount());
-    out.put("conditionPledges", (long) report.pledgeCount());
     out.put("conditionSplitShares", (long) report.splitShareCount());
     out.put("conditionInjectedGoods", sumValues(report.injectedGoods()));
     out.put("conditionInjectedMoney", sumValues(report.injectedMoney()));

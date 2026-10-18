@@ -286,7 +286,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
         + " economyProfile?(唯一值 production-runtime，缺省 production-runtime),"
-        + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
+        + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
         + ")}。"
@@ -326,7 +326,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         "economyTestConditions",
         ToolSupport.prop(
             "string",
-            "P3 测试条件 JSON（缺省 null=无条件）：initialDebts/initialPledges/assetSplits/"
+            "P3 测试条件 JSON（缺省 null=无条件）：initialDebts/assetSplits/"
                 + "extraGoodsByHousehold/extraMoneyByHousehold；每条条件都在播种期有真实对价/守恒校验，"
                 + "非法条件 BAD_REQUEST 具名拒绝"));
     props.put(
@@ -665,7 +665,7 @@ public final class WorldgenInitializeTool implements SimosTool {
 
   /**
    * ★★ <b>P3：人口+城市+经济+家户 actor 批 + 测试条件</b> —— 条件只透传给<b>同一次</b> {@link EconomySeeder#plan}（于是
-   * {@code economy.Seed} 的债/质押/份额与 {@code actor.Seed} 的库存/货币是同一次 plan 的同一份事实；无条件的旁路逐值等于 P1）。
+   * {@code economy.Seed} 的债/份额与 {@code actor.Seed} 的库存/货币是同一次 plan 的同一份事实；无条件的旁路逐值等于 P1）。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,

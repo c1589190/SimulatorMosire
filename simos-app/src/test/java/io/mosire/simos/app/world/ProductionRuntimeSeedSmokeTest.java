@@ -101,8 +101,8 @@ class ProductionRuntimeSeedSmokeTest {
     }
     assertThat(payload.path("modes").size()).as("默认生产方式目录 ≥ 7").isGreaterThanOrEqualTo(7);
     assertThat(payload.path("classStructures").size()).as("默认阶层结构 ≥ 7").isGreaterThanOrEqualTo(7);
-    assertThat(payload.hasNonNull("liquidationPolicies"))
-        .as("P2 资产规则的清算政策与 assetRules 同源发出")
+    assertThat(payload.path("liquidationPolicies").isMissingNode())
+        .as("P2d 已删除抵押/清算配置：载荷不得再出现 liquidationPolicies 字段")
         .isTrue();
     assertThat(payload.path("classFirst").isMissingNode())
         .as("production-runtime 不发顶层 classFirst")

@@ -11,7 +11,6 @@ import io.mosire.simos.economy.api.debt.DefaultRemedy;
 import io.mosire.simos.economy.api.debt.InterestTiming;
 import io.mosire.simos.economy.api.debt.MonetaryConversion;
 import io.mosire.simos.economy.api.debt.RepaymentRule;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -19,7 +18,6 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.time.DebtContractBook;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -39,7 +37,7 @@ import org.slf4j.Logger;
  * {"unitId":"u-prov",
  *  "borrowerHousehold":"hh-gov-u-prov",   // 借款单位的国库家户（= 债务人；资金入账方）
  *  "lenderHousehold":"hh-0_0-urban-landlord",
- *  "unit":"money"|"grain",
+ *  "unit":"money",
  *  "principal":5000,
  *  "interestRatePerMille":20,
  *  "nextDueTick":400,
@@ -89,9 +87,6 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets {
   public static final String TERMS_UNIT_DEBT = "unit-debt";
 
   private static final Logger LOG = EconomyLog.debt();
-
-  /** 粮的商品 id（{@link EconomyVocabulary} 的唯一拼写点）。 */
-  private static final CommodityId GRAIN = CommodityId.parse(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
   /** 银的货币 id（{@link MoneyVocabulary} 的唯一拼写点）。 */
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
@@ -155,7 +150,7 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets {
               + " 的 borrowerHousehold 与 lenderHousehold 不得相同: "
               + request.borrowerHousehold().value());
     }
-    DebtUnit debtUnit = debtUnit(request.unit());
+    DebtUnit.Money debtUnit = debtUnit(request.unit());
     DebtTerms terms =
         new DebtTerms(
             request.interestRatePerMille(),
@@ -219,14 +214,17 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets {
     }
   }
 
-  /** 计量标的词表：只认 {@code money}/{@code grain} 两个字面量（不做别名/大小写归一）。 */
-  private static DebtUnit debtUnit(String unit) {
+  /** 计量标的词表：P2c 起只认 {@code money}；商品债稳定拒绝。 */
+  private static DebtUnit.Money debtUnit(String unit) {
     return switch (unit) {
       case "money" -> new DebtUnit.Money(SILVER);
-      case "grain" -> new DebtUnit.Commodity(GRAIN);
-      default ->
+      case "grain" ->
           throw new IllegalArgumentException(
-              TYPE + " 的 unit 只认 \"money\"/\"grain\"（不做别名/大小写归一）: " + unit);
+              "legacy-commodity-debt-unsupported: "
+                  + TYPE
+                  + " 的 unit=grain 已删除；商品欠款必须先按活动所在地市场区价格折成货币");
+      default ->
+          throw new IllegalArgumentException(TYPE + " 的 unit 只认 \"money\"（不做别名/大小写归一）: " + unit);
     };
   }
 

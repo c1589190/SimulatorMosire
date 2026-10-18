@@ -303,7 +303,7 @@ class D031P1DefinitionCommandNegativeTest {
   // ── ③ mode：无效 mode↔阶层结构、版本、被引用停用 ──────────────────────────────────────
 
   @Test
-  void deactivateModeRejectsAnUnknownModeAndAModeWithAnyOfTheSixReferenceClasses() {
+  void deactivateModeRejectsAnUnknownModeAndAModeWithAnyOfTheFiveReferenceClasses() {
     ProductionData base =
         ProductionData.empty()
             .withMode(mode(MODE, 1, STRUCTURE))
@@ -319,18 +319,25 @@ class D031P1DefinitionCommandNegativeTest {
     port.modeReferences(
         MODE,
         new ProductionConsumerPort.ModeReferenceReport(
-            List.of("cs-1"), List.of(), List.of("org-1"), List.of(), List.of(), List.of("pl-1")));
+            List.of("cs-1"),
+            List.of("cp-1"),
+            List.of("org-1"),
+            List.of("ar-1"),
+            List.of("mt-1")));
     HandlerOutcome referenced =
         new DeactivateProductionModeHandler(port)
             .handle(state(base, port), "{\"id\":\"" + MODE.value() + "\"}");
     assertThat(referenced).as("★ 被引用 mode ⇒ 具名拒绝").isInstanceOf(HandlerOutcome.Rejected.class);
     String reason = ((HandlerOutcome.Rejected) referenced).reason();
     assertThat(reason)
-        .as("六类引用者按类具名列出（可核对）")
+        .as("五类引用者按类具名列出（可核对）")
         .contains("仍被引用")
         .contains("classStructures=[cs-1]")
+        .contains("classPositions=[cp-1]")
         .contains("productionOrganizations=[org-1]")
-        .contains("pledges=[pl-1]");
+        .contains("assetRules=[ar-1]")
+        .contains("modeTransitions=[mt-1]")
+        .doesNotContain("pledges");
     // ★ 裁定二十七清扫（T2a）：原断言"两个 mode 都还在"对不可变 base 恒真，已删；
     //   本方法的真读数是上面两条 Rejected 的具名理由 + 下面"无引用 mode 允许停用"的 Applied 逐值。
 
@@ -530,7 +537,7 @@ class D031P1DefinitionCommandNegativeTest {
       return modeReports.getOrDefault(
           id,
           new ProductionConsumerPort.ModeReferenceReport(
-              List.of(), List.of(), List.of(), List.of(), List.of(), List.of()));
+              List.of(), List.of(), List.of(), List.of(), List.of()));
     }
   }
 

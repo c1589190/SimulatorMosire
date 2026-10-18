@@ -58,9 +58,10 @@ class LotMigrationBookTest {
   private static final HouseholdId CREDITOR =
       HouseholdIds.ofSeed(CREDITOR_HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CurrencyId SILVER = new CurrencyId("silver");
   private static final DebtTerms TERMS = DebtTerms.legacyDefault();
   private static final DebtContractId SOURCE_DEBT =
-      DebtContractId.idOf(SOURCE, CREDITOR, DebtUnit.commodity(GRAIN), TERMS);
+      DebtContractId.idOf(SOURCE, CREDITOR, DebtUnit.money(SILVER), TERMS);
 
   private static final long SOURCE_POPULATION = 100L;
   private static final long SOURCE_LABOR = 70_000L;
@@ -96,7 +97,7 @@ class LotMigrationBookTest {
         .as("源合同 ⌊1,000,000×20÷100⌋ 减少")
         .isEqualTo(800_000L);
     DebtContractId targetDebt =
-        DebtContractId.idOf(target, CREDITOR, DebtUnit.commodity(GRAIN), TERMS);
+        DebtContractId.idOf(target, CREDITOR, DebtUnit.money(SILVER), TERMS);
     assertThat(after.debtContracts()).as("目标侧按同一四元组新建债务").containsKey(targetDebt);
     assertThat(after.debtContracts().get(targetDebt).principal())
         .as("债务随行 200,000")
@@ -127,7 +128,7 @@ class LotMigrationBookTest {
             sourceWageDebt,
             SOURCE,
             CREDITOR,
-            DebtUnit.money(silver),
+            new DebtUnit.Money(silver),
             wageTerms,
             DebtSource.WAGE_ARREARS,
             SOURCE_PRINCIPAL,
@@ -315,7 +316,7 @@ class LotMigrationBookTest {
             SOURCE_DEBT,
             SOURCE,
             CREDITOR,
-            DebtUnit.commodity(GRAIN),
+            new DebtUnit.Money(SILVER),
             TERMS,
             DebtSource.ORDINARY_LOAN,
             SOURCE_PRINCIPAL,

@@ -37,14 +37,14 @@ import org.junit.jupiter.api.Test;
  * <p>★ <b>夹具（单区两格：卖方/承运在 H1、唯一的买方在 H2）</b>：跨格需求只有一条，量的算式因此是判据级的（不依赖任何撮合内部实现）：
  *
  * <pre>
- * 卖方挂单      S = 4,000 毫粮           买方缺口（生产花费 = 生活保留）D = 2,905 毫粮（1 人 × 83 毫/天 × 35 天）
+ * 卖方挂单      S = 4,000 毫粮           买方缺口（生产花费 = 生活保留）D = 2,915 毫粮（7 人 × 583 毫/天 × 5 tick）
  * 参考价 p = 10,000 毫银/单位，α = 50‰（区表缺省，见 MarketZone.DEFAULT_PRICE_ALPHA_PER_MILLE）
  *
- * 无运力：跨格量 min(买余 2,905, 卖余 4,000) = 2,905 整条截断（blockLaneWithoutCapacity 两侧各记 2,905）
- *        ⇒ (D, S) = (2,905, 1,095) ⇒ r = 1,810/1,095 = 1.65 ⇒ step = min(50, 82) = 50 ⇒ p_next = 10,500（**涨满 α**）
- *        ★ 旧口径（D 也剔）会得到 (0, 1,095) ⇒ S &gt; D ⇒ step = 50 ⇒ p_next = 9,500 —— **跌**，与"缺货逐步涨"相反
- *        ★ 若把 S 侧的扣除取消：(2,905, 4,000) ⇒ S &gt; D ⇒ step = ⌊50×1,095/2,905⌋ = 18 ⇒ p_next = 9,820
- * 有运力（运力 ≥ D）：一分钱没截断 ⇒ (D, S) = (2,905, 4,000) ⇒ step = 18 ⇒ p_next = 9,820（= 上面第三个候选）
+ * 无运力：跨格量 min(买余 2,915, 卖余 4,000) = 2,915 整条截断（blockLaneWithoutCapacity 两侧各记 2,915）
+ *        ⇒ (D, S) = (2,915, 1,085) ⇒ r = 1,830/1,085 = 1.69 ⇒ step = min(50, 84) = 50 ⇒ p_next = 10,500（**涨满 α**）
+ *        ★ 旧口径（D 也剔）会得到 (0, 1,085) ⇒ S &gt; D ⇒ step = 50 ⇒ p_next = 9,500 —— **跌**，与"缺货逐步涨"相反
+ *        ★ 若把 S 侧的扣除取消：(2,915, 4,000) ⇒ S &gt; D ⇒ step = ⌊50×1,085/2,915⌋ = 18 ⇒ p_next = 9,820
+ * 有运力（运力 ≥ D）：一分钱没截断 ⇒ (D, S) = (2,915, 4,000) ⇒ step = 18 ⇒ p_next = 9,820（= 上面第三个候选）
  * </pre>
  *
  * <p>★ 价格表读两处（同一事实的两个读口，必须一致）：{@code report().priceUpdates()} 与 {@code outcome.marketTables()}
@@ -68,16 +68,23 @@ class CapacityTruncationPricingAcceptanceTest {
   private static final long PRICE_MILLI = 10_000L;
 
   /**
+   * P2a：补货窗口从 35 tick 收到 5 tick 后，1 人户的保留缺口只有 415 毫粮，无法再触发"运输截断 vs 正常滞销"的 判别区。把买方提高到 7 人（7 × 583 ×
+   * 5 = 2,915 毫粮），保持判据所需的量级；这仍是生活保留算式，不是新规则。
+   */
+  private static final long BUYER_POPULATION = 7L;
+
+  /**
    * ★ W2：本世界的 α = **出厂缺省** {@value MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}‰/轮 —— 夹具走派生市场 （没有声明
    * {@code MarketZone}）⇒ {@code priceAlphaPerMilleOf} 取缺省，与生产路径同一个读口。
    */
   private static final long ALPHA_PER_MILLE = MarketZone.DEFAULT_PRICE_ALPHA_PER_MILLE;
 
   /**
-   * 跨格需求 = 买方的"生产花费"（本户名下没有 unit ⇒ 第一项为空 ⇒ 生产花费 = 生活保留 = 当日需求 × 35 天）。 ★
+   * 跨格需求 = 买方的"生产花费"（本户名下没有 unit ⇒ 第一项为空 ⇒ 生产花费 = 生活保留 = 当日需求 × 5 tick）。 ★
    * W2/S-10：家户的买盘目标从"只口粮"改成"生产花费（内含口粮）"；本夹具无 unit ⇒ 两种口径**逐值相同**。
    */
-  private static final long CROSS_DEMAND = MarketSettlementFixtures.lifeReserveGrain(1L);
+  private static final long CROSS_DEMAND =
+      MarketSettlementFixtures.lifeReserveGrain(BUYER_POPULATION);
 
   /**
    * @param carrierLabor 承运户劳动投入；{@code < 0} ⇒ 世界里<b>没有</b>跑商家户（= 发货格零运力，跨格车道根本不建）
@@ -88,7 +95,7 @@ class CapacityTruncationPricingAcceptanceTest {
             .market(H1, PRICE_MILLI)
             .market(H2, PRICE_MILLI)
             .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
-            .household(CROSS_BUYER, H2, 1L, 0L, BUYER_SILVER);
+            .household(CROSS_BUYER, H2, BUYER_POPULATION, 0L, BUYER_SILVER);
     if (carrierLabor >= 0L) {
       // ★ A3（2026-10-10）：工具存量**不再是跑商门槛**（旧 MerchantHaul.TOOL_MILLI_PER_HAUL 已退役）——本夹具只用它
       //   让缺省口径（本世界只给 grain 定价 ⇒ 服务不成市）的派生运力 = 劳动 + 工具**逐值可复算**。
@@ -126,7 +133,7 @@ class CapacityTruncationPricingAcceptanceTest {
    */
   @Test
   void truncatedCrossHexQuantityStaysInDemandButNeverEntersSupply() {
-    // ── 案 1：发货格没有运力 ⇒ 跨格量整条截断（两侧各记 2,905；新口径下 D 不剔、S 剔）──────────────
+    // ── 案 1：发货格没有运力 ⇒ 跨格量整条截断（两侧各记 2,915；新口径下 D 不剔、S 剔）──────────────
     MarketSettlementFixtures.World noCapacity = world(-1L);
     MarketSettlement.MarketOutcome noCapacityOutcome = settle(noCapacity);
 
@@ -140,7 +147,7 @@ class CapacityTruncationPricingAcceptanceTest {
     long offered = noCapacityOutcome.report().sellerOutcomes().get(0).offeredQty();
     long demand = noCapacityOutcome.report().buyerOutcomes().get(0).orderedQty();
     assertThat(offered).as("卖方挂单量（供给侧算式的原料）").isEqualTo(SELLER_GRAIN);
-    assertThat(demand).as("买方缺口（需求侧算式的原料 D；本夹具它的算式 = 生产花费 = 生活保留 35 天）").isEqualTo(CROSS_DEMAND);
+    assertThat(demand).as("买方缺口（需求侧算式的原料 D；本夹具它的算式 = 生产花费 = 生活保留 5 tick）").isEqualTo(CROSS_DEMAND);
     assertThat(demand).as("★ 有缺口才可能截断（否则本用例测不到东西）").isPositive();
     assertThat(offered).as("★ 供给足够（截断与「供给不足」可区分）").isGreaterThan(demand);
 
@@ -155,15 +162,14 @@ class CapacityTruncationPricingAcceptanceTest {
         MarketSettlement.adaptiveNextPrice(PRICE_MILLI, demand, offered, ALPHA_PER_MILLE);
 
     assertThat(bothSidesExcluded)
-        .as(
-            "★ 旧 V-20 口径（D 也剔光）= 9,500：S=1,095 > D=0 ⇒ step=min(50, 54,750)=50 ⇒ ⌊10,000×950/1000⌋（**跌**）")
+        .as("★ 旧 V-20 口径（D 也剔光）= 9,500：S=1,085 > D=0 ⇒ step=50 ⇒ ⌊10,000×950/1000⌋（**跌**）")
         .isEqualTo(9_500L);
     assertThat(supplyNotExcluded)
-        .as("★ S 不剔 = 9,820：S=4,000 > D=2,905 ⇒ step=⌊50×1,095/2,905⌋=18 ⇒ ⌊10,000×982/1000⌋")
+        .as("★ S 不剔 = 9,820：S=4,000 > D=2,915 ⇒ step=⌊50×1,085/2,915⌋=18 ⇒ ⌊10,000×982/1000⌋")
         .isEqualTo(9_820L);
     assertThat(expectedNoCapacity)
         .as(
-            "★ 新口径（D 全额、S 扣截断）= 10,500：D=2,905 > S=1,095 ⇒ r=1,810/1,095=1.65 ⇒ step=min(50, 82)=50 ⇒ 涨满 α")
+            "★ 新口径（D 全额、S 扣截断）= 10,500：D=2,915 > S=1,085 ⇒ r=1,830/1,085=1.69 ⇒ step=min(50, 84)=50 ⇒ 涨满 α")
         .isEqualTo(10_500L);
     assertThat(java.util.List.of(expectedNoCapacity, bothSidesExcluded, supplyNotExcluded))
         .as("★ 三个候选值互不相等 ⇒ 本用例对两个口径方向都有判别力（否则是等价存活）")
@@ -197,7 +203,7 @@ class CapacityTruncationPricingAcceptanceTest {
     long expectedWithCapacity =
         MarketSettlement.adaptiveNextPrice(PRICE_MILLI, demand, offered, ALPHA_PER_MILLE);
     assertThat(expectedWithCapacity)
-        .as("★ 没截断 ⇒ (D, S) = (2,905, 4,000) ⇒ 滞销 ⇒ step=18 ⇒ 9,820（= 案 1 的「S 不剔」候选：同一口径）")
+        .as("★ 没截断 ⇒ (D, S) = (2,915, 4,000) ⇒ 滞销 ⇒ step=18 ⇒ 9,820（= 案 1 的「S 不剔」候选：同一口径）")
         .isEqualTo(9_820L)
         .isEqualTo(supplyNotExcluded);
     assertThat(nextPriceOf(withCapacityOutcome, withCapacity, H1))
@@ -213,11 +219,11 @@ class CapacityTruncationPricingAcceptanceTest {
    * α，**供给侧的剔除因此在价格上可见**。
    *
    * <pre>
-   * 卖方 S（H1）挂 10,000；本地买方 L（H1）缺口 2,905（同格成交，不受运力影响）
-   * 跨格买方 X（H2）缺口 2,905；发货格 H1 无运力 ⇒ X 的跨格需求整条不进 S（但仍在 D 里）
-   * ⇒ 正确口径 (D, S) = (5,810, 10,000 − 2,905 = 7,095) ⇒ step = ⌊50×1,285/5,810⌋ = 11 ⇒ 9,890
-   *   D 也剔（旧 V-20 对称口径） ⇒ (2,905, 7,095) ⇒ step = min(50, ⌊50×4,190/2,905⌋=72) = 50 ⇒ 9,500
-   *   S 不剔                   ⇒ (5,810, 10,000) ⇒ step = ⌊50×4,190/5,810⌋ = 36 ⇒ 9,640
+   * 卖方 S（H1）挂 10,000；本地买方 L（H1）缺口 2,915（同格成交，不受运力影响）
+   * 跨格买方 X（H2）缺口 2,915；发货格 H1 无运力 ⇒ X 的跨格需求整条不进 S（但仍在 D 里）
+   * ⇒ 正确口径 (D, S) = (5,830, 10,000 − 2,915 = 7,085) ⇒ step = ⌊50×1,255/5,830⌋ = 10 ⇒ 9,900
+   *   D 也剔（旧 V-20 对称口径） ⇒ (2,915, 7,085) ⇒ step = min(50, ⌊50×4,170/2,915⌋=71) = 50 ⇒ 9,500
+   *   S 不剔                   ⇒ (5,830, 10,000) ⇒ step = ⌊50×4,170/5,830⌋ = 35 ⇒ 9,650
    * ⇒ 三个数互不相等 ⇒「D 全额 / S 扣截断」两侧在同一案内都可分辨
    * </pre>
    */
@@ -230,8 +236,8 @@ class CapacityTruncationPricingAcceptanceTest {
             .market(H1, PRICE_MILLI)
             .market(H2, PRICE_MILLI)
             .household(SELLER, H1, 0L, sellerGrain, 0L)
-            .household(localBuyer, H1, 1L, 0L, BUYER_SILVER)
-            .household(CROSS_BUYER, H2, 1L, 0L, BUYER_SILVER)
+            .household(localBuyer, H1, BUYER_POPULATION, 0L, BUYER_SILVER)
+            .household(CROSS_BUYER, H2, BUYER_POPULATION, 0L, BUYER_SILVER)
             .build();
     MarketSettlement.MarketOutcome outcome = settle(world);
 
@@ -262,14 +268,14 @@ class CapacityTruncationPricingAcceptanceTest {
             PRICE_MILLI, localFilled + crossOrdered, offered, ALPHA_PER_MILLE);
     assertThat(correct)
         .as(
-            "★ 正确口径 = 9,890：(D, S) = (5,810, 7,095) ⇒ step = ⌊50×1,285/5,810⌋ = 11 ⇒ ⌊10,000×989/1000⌋")
-        .isEqualTo(9_890L);
+            "★ 正确口径 = 9,900：(D, S) = (5,830, 7,085) ⇒ step = ⌊50×1,255/5,830⌋ = 10 ⇒ ⌊10,000×990/1000⌋")
+        .isEqualTo(9_900L);
     assertThat(demandAlsoExcluded)
-        .as("★ D 也剔（旧对称口径）= 9,500：(2,905, 7,095) ⇒ step 打满 α")
+        .as("★ D 也剔（旧对称口径）= 9,500：(2,915, 7,085) ⇒ step 打满 α")
         .isEqualTo(9_500L);
     assertThat(supplyNotExcluded)
-        .as("★ S 不剔 = 9,640：(5,810, 10,000) ⇒ step = ⌊50×4,190/5,810⌋ = 36")
-        .isEqualTo(9_640L);
+        .as("★ S 不剔 = 9,650：(5,830, 10,000) ⇒ step = ⌊50×4,170/5,830⌋ = 35")
+        .isEqualTo(9_650L);
     assertThat(java.util.List.of(correct, demandAlsoExcluded, supplyNotExcluded))
         .as("★ 三个候选值互不相等 ⇒「D 全额 / S 扣截断」两侧都可分辨（否则本用例是等价存活）")
         .doesNotHaveDuplicates();

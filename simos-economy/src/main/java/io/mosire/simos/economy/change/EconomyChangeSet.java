@@ -20,7 +20,6 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -51,21 +50,17 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
-import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.ChangeSet;
@@ -76,17 +71,16 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 37 个；★ D-032 B4 / §13.14.2 裁定十五起
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（D-032 P4c3 起为 34 个；★ D-032 B4 / §13.14.2 裁定十五起
  * <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
  * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
  * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
  * operatorConditions} / {@code units} / {@code demands} / {@code modes} / {@code classStructures} /
  * {@code classPositions} / {@code classStandings} / {@code productionOrganizations} / {@code
- * assetRules} + E3 的 {@code governments} / {@code moneyIssuances} + E4a 的 {@code debtContracts} /
- * {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code crisisSignals} + E6a 的 {@code
- * modeTransitions} / {@code classShares} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code
- * outputQuantityOverrides} / {@code productionEfficiency} + A1 的 {@code currencies} / {@code
- * moneyInstruments} + B2 的 {@code marketZones}）。
+ * assetRules} + E3 的 {@code governments} / {@code moneyIssuances} + E4a 的 {@code debtContracts} +
+ * E5a 的 {@code crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P4a 的 {@code
+ * periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} / {@code productionEfficiency} + A1 的
+ * {@code currencies} / {@code moneyInstruments} + B2 的 {@code marketZones}）。
  *
  * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
  * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★
@@ -98,11 +92,10 @@ import java.util.function.Function;
  * <p>★★ **E1–E6 追加组件与 {@link EconomyData} 逐条对应**：E1 {@code
  * modes/classStructures/classPositions/classStandings}； E2 {@code
  * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
- * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
- * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
- * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 的 {@code merchantFirms}（商号表）已于 2026-10-10 M-A1
- * **退役**（运力改派生量，用户裁定"旧设计和数据类型直接重建不用留"）；P4a 追加 {@code periodicAdjustments} 后，本变更集与 {@link
- * EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
+ * debtContracts} （替换旧 {@code debts} 槽）；E5 {@code crisisSignals}；E6 {@code
+ * modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一 dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 的
+ * {@code merchantFirms}（商号表）已于 2026-10-10 M-A1 **退役**（运力改派生量，用户裁定"旧设计和数据类型直接重建不用留"）；P4a 追加 {@code
+ * periodicAdjustments} 后，本变更集与 {@link EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
  *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} / {@code UnitChangeSet} / {@code SdChangeSet} / {@code
@@ -161,8 +154,6 @@ public record EconomyChangeSet(
     FieldDelta<AssetRule> assetRules,
     FieldDelta<Government> governments,
     FieldDelta<MoneyIssuanceRecord> moneyIssuances,
-    FieldDelta<Pledge> pledges,
-    FieldDelta<LiquidationPolicy> liquidationPolicies,
     FieldDelta<HexCrisisSignal> crisisSignals,
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
@@ -191,16 +182,14 @@ public record EconomyChangeSet(
     // ── ★★★ D-032 C2（D2 §5.3）：第 32 个组件 —— 生产参与名册（键 = ProductionUnitId）────────────
     //   与 EconomyData 的第 32 个组件一一对应（铁律 5）。键解析器 = ProductionUnitId::parse（与 toString 互逆）。
     FieldDelta<ProductionRoster> productionRosters,
-    // ── ★★★ D-032 W2a：第 33/34 个组件（与 EconomyData 一一对应，铁律 5）──────────────────────
-    //   键解析器 = WageDefaultKey::parse / WagePostingKey::parse（各自的 toString 与 parse 互逆）。
-    //   空表/Unchanged 均为合法中性态；第 35 个 wageCarryRemainders 归 W2b，不在此批。
-    FieldDelta<ProductionWageDefault> productionWageDefaults,
-    FieldDelta<ProductionWagePosting> productionWagePostings,
-    // ── ★★★ D-032 W2b：第 35 个组件 —— 逐 (unit, role, worker) 工资进位余数（0..999）──
+    // ── ★★★ D-032 W2b：逐 (unit, role, worker) 工资进位余数（0..999）──
     FieldDelta<Long> wageCarryRemainders,
     // ── ★★★ D-032 D4-Ib1：第 36/37 个组件（键解析器与 toString 互逆，铁律 5）──────────────
     FieldDelta<AssetOccupancyGrant> assetOccupancies,
-    FieldDelta<InventoryReservation> inventoryReservations)
+    FieldDelta<InventoryReservation> inventoryReservations,
+    // ── ★★★ D-032 P4c3：U20 工资锚（唯一工资报价权威；与 EconomyData 一一对应，铁律 5）──────────
+    //   键解析器 = WageAnchorKey::parse（toString/parse 互逆）；缺键 ⇒ Unchanged（旧变更集没动该组件）。
+    FieldDelta<ProductionWageAnchor> productionWageAnchors)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -274,14 +263,7 @@ public record EconomyChangeSet(
     if (moneyIssuances == null) {
       moneyIssuances = new FieldDelta.Unchanged<>();
     }
-    // ★★ E4a 第 25 个组件：同一口径（旧变更集没提该组件，就是没动它）。
-    if (pledges == null) {
-      pledges = new FieldDelta.Unchanged<>();
-    }
-    // ★★ E5a 第 26/27 个组件：同一口径（旧变更集没提该组件，就是没动它）。
-    if (liquidationPolicies == null) {
-      liquidationPolicies = new FieldDelta.Unchanged<>();
-    }
+    // ★★ E5a 的危机信号组件：同一口径（旧变更集没提该组件，就是没动它）。
     if (crisisSignals == null) {
       crisisSignals = new FieldDelta.Unchanged<>();
     }
@@ -307,13 +289,6 @@ public record EconomyChangeSet(
     if (productionRosters == null) {
       productionRosters = new FieldDelta.Unchanged<>();
     }
-    // ★★ D-032 W2a：工资 default/posting 两维（旧档/旧变更集没提该组件，就是没动它）。
-    if (productionWageDefaults == null) {
-      productionWageDefaults = new FieldDelta.Unchanged<>();
-    }
-    if (productionWagePostings == null) {
-      productionWagePostings = new FieldDelta.Unchanged<>();
-    }
     // ★★★ D-032 W2b：进位维（旧档/旧变更集没提该组件，就是没动它）。
     if (wageCarryRemainders == null) {
       wageCarryRemainders = new FieldDelta.Unchanged<>();
@@ -324,6 +299,10 @@ public record EconomyChangeSet(
     }
     if (inventoryReservations == null) {
       inventoryReservations = new FieldDelta.Unchanged<>();
+    }
+    // ★★★ D-032 P4b1：U20 工资锚维（旧档/旧变更集没提该组件，就是没动它）。
+    if (productionWageAnchors == null) {
+      productionWageAnchors = new FieldDelta.Unchanged<>();
     }
     // ★★ B2b：Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）的变更集维已删除
     //   （两维的唯一权威在 production 的 {@code ProductionChangeSet}）。
@@ -375,8 +354,6 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.assetRules(), target.assetRules()),
         FieldDelta.diff(base.governments(), target.governments()),
         FieldDelta.diff(base.moneyIssuances(), target.moneyIssuances()),
-        FieldDelta.diff(base.pledges(), target.pledges()),
-        FieldDelta.diff(base.liquidationPolicies(), target.liquidationPolicies()),
         FieldDelta.diff(base.crisisSignals(), target.crisisSignals()),
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
@@ -391,11 +368,10 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.govMarketMandates(), target.govMarketMandates()),
         FieldDelta.diff(base.marketRoundStats(), target.marketRoundStats()),
         FieldDelta.diff(base.productionRosters(), target.productionRosters()),
-        FieldDelta.diff(base.productionWageDefaults(), target.productionWageDefaults()),
-        FieldDelta.diff(base.productionWagePostings(), target.productionWagePostings()),
         FieldDelta.diff(base.wageCarryRemainders(), target.wageCarryRemainders()),
         FieldDelta.diff(base.assetOccupancies(), target.assetOccupancies()),
-        FieldDelta.diff(base.inventoryReservations(), target.inventoryReservations()));
+        FieldDelta.diff(base.inventoryReservations(), target.inventoryReservations()),
+        FieldDelta.diff(base.productionWageAnchors(), target.productionWageAnchors()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -430,9 +406,6 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.assetRules(), cs.assetRules(), AssetRuleId::parse),
         FieldDelta.rebuild(base.governments(), cs.governments(), GovernmentId::parse),
         FieldDelta.rebuild(base.moneyIssuances(), cs.moneyIssuances(), MoneyIssuanceId::parse),
-        FieldDelta.rebuild(base.pledges(), cs.pledges(), PledgeId::parse),
-        FieldDelta.rebuild(
-            base.liquidationPolicies(), cs.liquidationPolicies(), AssetRuleId::parse),
         FieldDelta.rebuild(base.crisisSignals(), cs.crisisSignals(), CrisisSignalId::parse),
         FieldDelta.rebuild(base.modeTransitions(), cs.modeTransitions(), ModeTransitionId::parse),
         FieldDelta.rebuild(base.classShares(), cs.classShares(), ClassShareId::parse),
@@ -459,11 +432,6 @@ public record EconomyChangeSet(
         // ★★ D-032 C2：名册维（键解析器 = ProductionUnitId::parse）。
         FieldDelta.rebuild(
             base.productionRosters(), cs.productionRosters(), ProductionUnitId::parse),
-        // ★★ D-032 W2a：候选 default / 执行期 posting 两维（键解析器各自 toString/parse 互逆）。
-        FieldDelta.rebuild(
-            base.productionWageDefaults(), cs.productionWageDefaults(), WageDefaultKey::parse),
-        FieldDelta.rebuild(
-            base.productionWagePostings(), cs.productionWagePostings(), WagePostingKey::parse),
         FieldDelta.rebuild(
             base.wageCarryRemainders(), cs.wageCarryRemainders(), WageCarryKey::parse),
         FieldDelta.rebuild(
@@ -471,7 +439,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(
             base.inventoryReservations(),
             cs.inventoryReservations(),
-            InventoryReservationId::parse));
+            InventoryReservationId::parse),
+        // ★★★ D-032 P4b1：U20 工资锚维（键解析器 = WageAnchorKey::parse）。
+        FieldDelta.rebuild(
+            base.productionWageAnchors(), cs.productionWageAnchors(), WageAnchorKey::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -494,8 +465,6 @@ public record EconomyChangeSet(
         || assetRules.changed()
         || governments.changed()
         || moneyIssuances.changed()
-        || pledges.changed()
-        || liquidationPolicies.changed()
         || crisisSignals.changed()
         || modeTransitions.changed()
         || classShares.changed()
@@ -508,11 +477,10 @@ public record EconomyChangeSet(
         || govMarketMandates.changed()
         || marketRoundStats.changed()
         || productionRosters.changed()
-        || productionWageDefaults.changed()
-        || productionWagePostings.changed()
         || wageCarryRemainders.changed()
         || assetOccupancies.changed()
-        || inventoryReservations.changed());
+        || inventoryReservations.changed()
+        || productionWageAnchors.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

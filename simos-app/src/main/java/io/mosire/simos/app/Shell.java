@@ -111,8 +111,7 @@ import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySetPlanSourcesHandler;
 import io.mosire.simos.economy.spi.EconomySetProductionRosterHandler;
-import io.mosire.simos.economy.spi.EconomySetProductionWageDefaultHandler;
-import io.mosire.simos.economy.spi.EconomySetProductionWagePostingHandler;
+import io.mosire.simos.economy.spi.EconomySetProductionWageAnchorHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
@@ -898,12 +897,9 @@ public final class Shell implements AutoCloseable {
                 //   ★ schema / 具名拒 / 跨切片校验的唯一权威 = {@link EconomySetProductionRosterHandler} 与
                 //     {@code EconomyReferenceValidation#validateProductionRosters}，本组合根只注册、不复制校验。
                 new EconomySetProductionRosterHandler(),
-                // ★★★ D-032 W2a：工资默认（第 33 组件）与执行期 posting（第 34 组件）的两条 GM 写口。
-                //   ★ 两条 handler 都不实现 {@code DmUsableCommand} ⇒ 仅 GM（不进令白名单 / RegisterEffect /
-                //   决策人目录）；schema/具名拒/跨切片校验的唯一权威在 handler 与 EconomyReferenceValidation，
-                //   组合根只注册，不复制公式。
-                new EconomySetProductionWageDefaultHandler(),
-                new EconomySetProductionWagePostingHandler(),
+                // ★★★ D-032 P4c3：U20 工资锚的 GM-only 显式写口（唯一工资报价权威）。
+                //   不实现 DmUsableCommand ⇒ 不进令白名单 / RegisterEffect / 决策人目录。
+                new EconomySetProductionWageAnchorHandler(),
                 // ★★ 2026-10-13 批次 4（② 凭空注入/改写经济对象）：需求账本两条**摘掉**
                 //   {@code DmUsableCommand} ⇒ 仅 GM（两条的 handler 类注本就写明 GM 路径）。
                 //   ★★★ B2c（D-032 §13.12.2 裁定八）：候选面**整体退役** —— `ProductionCandidate` 类型、
@@ -1210,7 +1206,7 @@ public final class Shell implements AutoCloseable {
     //   而 simos-map 永远不知道 GOV 存在（铁律 3），simos-gov 也看不见区表（见类注）。
     coreSimos.register(new GovJurisdictionGuard());
     // ★★ D-031 P1 §9.3：候选态落库前跨片校验 —— economy 实例对 production 定义权威的引用（unit/assetShare→industry、
-    //   progressDays≤cycleDays、classStructure/position/组织/规则/质押/变迁→mode、输出覆盖→配方产出键）。
+    //   progressDays≤cycleDays、classStructure/position/组织/规则/变迁→mode、输出覆盖→配方产出键）。
     //   单条命令 / submitBatch 最终候选态 / restore / Advance 都在落库前拦；领域判断在 economy，app 只注册。
     coreSimos.register(new io.mosire.simos.economy.EconomyProductionReferenceValidator());
 

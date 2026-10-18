@@ -135,8 +135,46 @@ public record OwnershipStake(
   }
 
   /**
+   * ★★ <b>土地块稳定 id 的唯一拼写点</b>：{@code share-<industry>-LAND-<location>-<sequence>}。
+   *
+   * <p>土地块的身份只由 {@code (industry, LAND, location, sequence)} 决定；{@code owner}/{@code
+   * operator}/{@code kind} 不进入 id。因此整块所有权转移只改行内主体字段，id/location/quantity/industry/kind 全部保持不变。
+   *
+   * <p>★ {@code sequence} 由确定性状态/载荷计数给出（同一状态的重放/分支得到同一批 id；禁止随机数/时间戳/UUID）。 ★ <b>不含 {@code
+   * "."}</b>：地址 {@code economy:<mapId>:assetShare.<id>} 会被第一个点截断 ⇒ 当场抛。
+   */
+  public static AssetShareId landBlockIdOf(
+      IndustryId industry, ProductionLocation location, long sequence) {
+    if (industry == null) {
+      throw new IllegalArgumentException("OwnershipStake.landBlockIdOf 的 industry 不得为 null");
+    }
+    requireSpecifiedLocation(location);
+    if (sequence < 0L) {
+      throw new IllegalArgumentException(
+          "OwnershipStake.landBlockIdOf 的 sequence 不得为负: " + sequence);
+    }
+    String value =
+        "share-"
+            + industry.value()
+            + "-"
+            + AssetKind.LAND.name()
+            + "-"
+            + location.value()
+            + "-"
+            + sequence;
+    if (value.indexOf('.') >= 0) {
+      throw new IllegalArgumentException(
+          "OwnershipStake 土地块 id 不得含 '.'（地址 economy:<mapId>:assetShare.<id> 会被第一个点截断）: " + value);
+    }
+    return new AssetShareId(value);
+  }
+
+  /**
    * ★★ <b>资产份额 id 的唯一拼写点</b>： {@code
    * share-<industry>-<asset>-<owner.kind>-<owner.id>-<operator.kind>-<operator.id>-<kind>-<location.value>-<sequence>}。
+   *
+   * <p>★ {@code LAND} 是唯一例外：土地块走 {@link #landBlockIdOf(IndustryId, ProductionLocation, long)}，id 不含
+   * owner/operator/kind；非土地资产继续使用本条既有拼写规则。
    *
    * <p>★ {@code sequence} 由状态内确定性计数给出（同一状态的重放/分支得到同一批 id；禁止随机数/时间戳/UUID）。 ★ <b>不含 {@code
    * "."}</b>：若任一段带点会与 {@code AddressParser} 的第一个点截断约定冲突 ⇒ 当场抛， 不静默造一个解析不到的地址。
@@ -170,6 +208,10 @@ public record OwnershipStake(
     requireSpecifiedLocation(location);
     if (sequence < 0L) {
       throw new IllegalArgumentException("OwnershipStake.idOf 的 sequence 不得为负: " + sequence);
+    }
+    if (asset == AssetKind.LAND) {
+      // ★ LAND 走稳定资产块 id：即使调用点没有显式分支，也不能把 owner/operator/kind 编进土地块身份。
+      return landBlockIdOf(industry, location, sequence);
     }
     String value =
         "share-"

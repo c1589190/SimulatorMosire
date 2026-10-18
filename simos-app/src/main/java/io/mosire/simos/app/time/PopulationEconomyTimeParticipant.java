@@ -108,25 +108,19 @@ import java.util.Set;
  * simos-app}** （唯一认识所有模块的地方）"。★ 它**内联调用** {@link EconomySettlement} 的包内可见日结算入口， 从而与 {@code
  * EconomyTimeParticipant} 共用同一个结算实现（**只有一条真相**，不是两份公式）。
  *
- * <p>★★ **一天的次序**（★★ W3 2026-10-11 起 = **两段式 tick**；缺一不可）：
+ * <p>★★ **一天的次序（D-032 P1，2026-10-18：Social 先 + 单槽 PendingFamineFacts）**：
  *
  * <pre>
- * ① Social 出当日视图：用**当刻** Social 刷新经济侧 composition / laborBudgets / naturalNeeds
- * ② 经济结算一天（消费 / 市场 / 借粮 / 还债 / 收获 / 迁移执行）
- * ③ 经济报"逐户缺口/满足率"：drain 瞬态 outbox → FamineMortalityBridge（缺口 = 生产花费未满足量 +
- *    口粮缺口那一支；家户 id 是稳定身份）
- * ④ 断顿→饱食度回写（既有 Z7d-1；劳动口径仍归 Social）+ P0 迁移桥（经济 outbox → Social 工单 → 经济 delta）
- * ⑤ ★★ Social 算死亡率（含饿死）：HouseholdBook.settleOneTick(..., famineInput) —— **口径在 Social**
- * ⑥ 回写人口 delta 到经济行 + 用**新** Social 重刷 composition / laborBudgets / naturalNeeds
+ * ① M0 Social 用**上一 tick** 的 PendingFamineFacts 结算生死（首 tick = 空事实，不伪造死亡）
+ * ② M1 经济载入活着的家户：population-only 回写 → composition / laborBudgets / naturalNeeds 投影刷新
+ * ③ 经济 step(day)
+ * ④ 经济缺口 outbox → FamineMortalityBridge → 局部 nextFacts（只给下一 tick Social，不在本日回灌）
+ * ⑤ 生死流水-only 补记 FlowRow.births/deaths（step 后补，避免新周期第一天被重置）
+ * ⑥ 断顿→饱食度回写（作用于下一 tick）+ 迁移桥
+ * ⑦ 整次 advance 成功构造 Proposal 后才把参与者单槽覆盖成最后成功日的 nextFacts
  * </pre>
  *
- * <p>★★ <b>W3 改了什么（与 2026-10-09 Batch B 的旧次序逐条对照）</b>：旧次序是"<b>日初</b>先算生死 → 刷新投影 → 经济结算"；W3 按用户 0–8
- * 第 0 条原话「经济模块算完之后才应该把经济情况报给社会模块，<b>让社会模块单独核算死亡率</b>」
- * 把生死结算整段<b>挪到经济之后</b>，并把"经济侧的判死/缩劳动"整段删除（违约的是旧设计，AGENTS §一.11）。 ⇒ 经济当天读到的是<b>上一天末</b>的 Social
- * 投影；Social 是在<b>看见当日经济事实之后</b>决定谁活着。
- *
- * <p>★ 旧口径的"日末生理压力 + 每 30 天月度出生/死亡"已在 Batch B 整体删除；出生/死亡不再进 {@code FlowRow.births/deaths}
- * 的逐户流水（本批只同步行人口，见报告"未完成/风险"）。
+ * <p>★ 这样 tick t 的经济看不到 tick t 的出生/死亡，只看到 M0 后活着的家户；失败 advance 保留上一份有效事实。
  *
  * <p>★★ <b>H4：两份副本（商品 + 货币）按同一顺序收尾</b>：<b>载入</b>（{@link OwnershipBooks#loadHouseholdGoods} / {@link
  * OwnershipBooks#loadHouseholdMoney}）→ step（两者都由 {@code EconomyDayStepper} 就地更新）→ 条目落账 （{@link
@@ -199,6 +193,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    */
   private final List<GovernmentServiceDesertionBridge.Eviction> pendingFlightEvictions =
       new ArrayList<>();
+
+  /**
+   * ★★★ D-032 P1：上一 tick 经济缺口 → 本 tick Social 的单槽事实。
+   *
+   * <p>只在一次 {@code simulateWorld} 成功构造返回 Proposal 时才推进到最新日；异常/提前返回保留旧值。 不落盘、不进 ChangeSet/Codec。首
+   * tick / 进程重启 = {@link PendingFamineFacts#empty()}。
+   */
+  private PendingFamineFacts pendingFamineFacts = PendingFamineFacts.empty();
 
   /** 旧调用点（测试/夹具）兼容：并行度取缺省 {@link ShellConfig#DEFAULT_ECONOMY_WORKER_COUNT}（单线程退化路径）。 */
   public PopulationEconomyTimeParticipant(String mapId) {
@@ -290,6 +292,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Objects.requireNonNull(range, "range");
     // ★ Z7d-2：新一次提案从零开始记逃亡摘除（旧提案被拒/重放都不会把请求带进下一次）。
     pendingFlightEvictions.clear();
+    // ★★★ D-032 P1：本方法只改局部 currentFacts；成功构造 Proposal 后才覆盖 this.pendingFamineFacts。
+    PendingFamineFacts currentFacts = this.pendingFamineFacts;
     EconomyData economyBase = economyOf(state);
     SocialData socialBase = socialOf(state);
     // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
@@ -587,7 +591,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       writes.add(accountAddress(key));
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
-    // ★★★ D-032 D4-Ib2b：同一 revision 的真实只读依赖一次装好（资产占用/工资报价/可支付库存）。
+    // ★★★ D-032 D4-Ib2b：同一 revision 的真实只读依赖一次装好（资产占用/属性；工资报价 P4c3 起直接读锚）。
     //   账户读口绑定本段推进的 AccountSession；不得另造余额表，也不得在缺账户时回退成 0。
     AppProductionLookups.Lookups productionLookups =
         AppProductionLookups.forState(state, productionRuntime, session);
@@ -618,11 +622,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               flightTopology,
               EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
               parallelism,
-              // ★★★ D-032 D4-Ib2b：四类跨切片只读依赖由组合根唯一装配点显式注入；资产占用与工资报价已是真实实现。
+              // ★★★ D-032 D4-Ib2b：跨切片只读依赖由组合根唯一装配点显式注入；P4c3 起工资报价直接读锚表。
               productionLookups.assetOccupancy(),
-              productionLookups.wageQuotes(),
               productionLookups.participantAttributes(),
               AppProductionLookups.expectedRevision(state));
+      WorldTimeProposal proposal;
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
         TIME.info(
@@ -661,37 +665,98 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         Set<String> missingAdminRegions = new LinkedHashSet<>();
         for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
           // ════════════════════════════════════════════════════════════════════════════════════════
-          // ★★★ W3（2026-10-11）**两段式 tick**：① Social 出当日视图 → ② 经济结算 → ③ 经济报"逐户缺口/满足率"
-          //   → ④ Social 算死亡率（含饿死）→ ⑤ 回写人口 delta。用户 0–8 第 0 条原话：
-          //   「经济模块算完之后才应该把经济情况报给社会模块，让社会模块单独核算死亡率」。
-          //   ★ 旧次序（2026-10-09 Batch B 起）是"**日初**先算生死、再结算经济"——本批把它整段挪到经济之后：
-          //     · 经济结算当天读到的是**上一天末**的 Social（composition/labor/needs 的投影）；
-          //     · 死亡率由 Social 在**看见当日经济事实之后**算（饥荒输入见 FamineMortalityBridge）。
-          //   ★ 缺一不可：⑥ 的回写与 ② 的经济结算在**同一条 revision** 内（同一次 simulateWorld），
-          //     任一步失败 ⇒ 具名抛、整次 advance 不落 revision（经济腿与 Social 腿一并作废）。
+          // ★★★ D-032 P1（2026-10-18）日序：**Social 先**消费上一 tick 记录的
+          //   {@link PendingFamineFacts}，经济只载入 Social 结算后活着的家户。
+          //   ★ 本 tick 经济产生的缺口只写局部 nextFacts；整次 advance 成功构造 Proposal 后才推进参与者单槽。
+          //   ★ 任一步失败 ⇒ 整次 advance 不落 revision，待 Social 事实也保留旧值（不把失败日写成事实）。
           // ════════════════════════════════════════════════════════════════════════════════════════
-          // ── ① Social 出当日视图（把 Social 的 composition / 劳动预算 / 当日自然需求投影进经济会话）──
+          // ── ① M0：Social 用上一 tick 的 PendingFamineFacts 结算本日生死 ─────────────────────────
+          VitalSettlementResult vital =
+              HouseholdBook.settleOneTick(
+                  currentSocial, day, CalendarClock.julianDefault(), currentFacts.input());
+          currentSocial = vital.data();
+          // ── ② M1：经济载入活着的家户 —— 先落 population-only，再刷新本 tick 只读投影 ───────────
+          stepper.applyHouseholdPopulationDeltasOnly(vital.populationDeltas());
           stepper.updateComposition(compositionOf(currentSocial));
           stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
           Map<HouseholdId, Map<CommodityId, Long>> dayNaturalNeeds =
               naturalNeedsOf(currentSocial, day);
           stepper.updateNaturalNeeds(dayNaturalNeeds);
-          // ★★★ D-032 W4：用同一份当刻 Social 现算**下一 tick** 的逐需求行与劳动预算；economy 只消费只读事实，
-          //   并由 W2b 的 SurvivalOutlookEvaluator/NextTickIncomeProjection 组装生存资格（app 不复制任何生存/匹配公式）。
+          // ★★★ D-032 W4：用同一份结算后的 Social 现算下一 tick 的逐需求行与劳动预算。
           stepper.updateSurvivalSocialFacts(
               SocialSurvivalFacts.forNextTick(currentSocial, day + 1L));
-          // ── ★★ D-032（D2 直接删）：原"文化加成中性接线点"（CultureAptitudeBridge）已随
-          //   "文化 → 生产效率倍率"整条通路退役（用户 U5）。⇒ 这里**不再有任何效率修正注入**：
-          //   生产效率的新口径 = 家户熟练度经方案公式解释出的倍率，归 production（见
-          //   {@code production.contract.ProductionExperienceUse} 与 {@code ProductionEfficiency}）
-          //   由生产运行时在试算/执行里算，不由经济日循环注入。
-          // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：**每 tick 恰开一次生产推进**
-          //   （先按明确日序衰减一次经验，再冻结本 tick 的生效条件）。必须在**任何**试算/执行之前。
-          //   ★ 为什么 tick 身份用世界日：日循环的 `day` 就是既有调度上下文给出的世界 tick（与
-          //     `new EconomyDayStepper` 的 range 同一把尺子）；引擎按它判"同一 tick 重复开启/回退"，
-          //     并让本 tick 的全部实例读**同一份**熟练度快照（实例处理先后不再改变另一实例的加成）。
-          //   ★ "同 tick 重复开启/回退/未开启即衰减"是**契约故障**，由引擎具名抛出（ERROR 不降级）
-          //     ⇒ 整次 Advance 被拒；这里**不**捕获、不吞错（§13.7 第 2 条）。
+          // 饥荒读数：缺口来自**上一 tick** facts（不是本日缺口），死亡来自本日 Social 结算（vital）。
+          long currentRationGapHouseholds = 0L;
+          long currentProductionCostGapHouseholds = 0L;
+          long currentRationGapTotalMilli = 0L;
+          long currentRationNeedTotalMilli = 0L;
+          for (var shortage : currentFacts.input().shortages().values()) {
+            if (shortage.hasRationGap()) {
+              currentRationGapHouseholds++;
+              currentRationGapTotalMilli =
+                  Math.addExact(currentRationGapTotalMilli, shortage.rationGapMilli());
+            }
+            if (!shortage.productionCostGapByCommodity().isEmpty()) {
+              currentProductionCostGapHouseholds++;
+            }
+            currentRationNeedTotalMilli =
+                Math.addExact(currentRationNeedTotalMilli, shortage.rationNeedMilli());
+          }
+          if (vital.famineDeaths() > 0L || currentRationGapHouseholds > 0L) {
+            // ★§一.9 / W3 判据⑤：跨域汇总（Social 侧还有一条同事件名）。
+            //   ★ P1 起这条日志只描述“上一 tick facts 让本 tick Social 算出多少死亡”，绝不使用本日缺口冒充死亡。
+            TIME.info(
+                LogEvent.of(
+                    "FAMINE_MORTALITY_BRIDGED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "mapId",
+                    mapId,
+                    "householdsWithRationGap",
+                    currentRationGapHouseholds,
+                    "rationGapTotalMilli",
+                    currentRationGapTotalMilli,
+                    "rationNeedTotalMilli",
+                    currentRationNeedTotalMilli,
+                    "famineDeaths",
+                    vital.famineDeaths(),
+                    "deaths",
+                    vital.deaths(),
+                    "births",
+                    vital.births(),
+                    "why",
+                    "d032-p1: pending-famine-facts-from-prior-tick-drive-social-settlement"));
+          }
+          if (TIME.isDebugEnabled()) {
+            long deltaNet = 0L;
+            for (long delta : vital.populationDeltas().values()) {
+              deltaNet = Math.addExact(deltaNet, delta);
+            }
+            TIME.debug(
+                LogEvent.of(
+                    "POPULATION_SETTLE_APP",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "births",
+                    vital.births(),
+                    "deaths",
+                    vital.deaths(),
+                    "famineDeaths",
+                    vital.famineDeaths(),
+                    "events",
+                    vital.events().size(),
+                    "deltaHouseholds",
+                    vital.populationDeltas().size(),
+                    "deltaNet",
+                    deltaNet,
+                    "rationGapHouseholds",
+                    currentRationGapHouseholds,
+                    "householdsWithProductionCostGap",
+                    currentProductionCostGapHouseholds));
+          }
+          // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：每 tick 恰开一次生产推进 ─────────────
           productionRuntime.beginTick(day);
           // ── ② 经济结算一天（消费/市场/借粮/还债/收获/迁移…；只推事实，不判死、不缩劳动）──────────
           //   ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
@@ -699,11 +764,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
           //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
           ProductionLedger ledger = stepper.step(day);
-          // ── ③ 经济报"逐户缺口/满足率"（瞬态 outbox；W2 的读口，不重算）────────────────────────
-          //   ★ 逐日现算、逐日取走 ⇒ 即使把 advance(0,360) 切成 3 段，每一天看到的仍是那一天自己的缺口
-          //     （B2 分段等价的硬前提：不引入跨日/跨 advance 的瞬态记忆）。
+          // ── ③ 经济报"逐户缺口/满足率"：本 tick 的缺口只交给下一 tick 的 Social ─────────────────────
+          //   ★ 逐日现算、逐日取走 ⇒ 不引入跨日/跨 advance 的缺口基线；本日缺口绝不回灌本日 Social。
           List<EconomyHouseholdGap> householdGaps = stepper.drainPendingHouseholdGaps();
-          FamineMortalityBridge.Report famineGaps = FamineMortalityBridge.apply(householdGaps);
+          FamineMortalityBridge.Report dayGapReport = FamineMortalityBridge.apply(householdGaps);
           if (!householdGaps.isEmpty() && TIME.isDebugEnabled()) {
             // ★ 级别：跨域翻译的池子读数 = DEBUG（§一.9：INFO 留给"这一轮发生了什么"，逐阶段池子归 DEBUG）。
             TIME.debug(
@@ -715,19 +779,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     "mapId",
                     mapId,
                     "households",
-                    famineGaps.households(),
+                    dayGapReport.households(),
                     "householdsWithRationGap",
-                    famineGaps.householdsWithRationGap(),
+                    dayGapReport.householdsWithRationGap(),
                     "householdsWithProductionCostGap",
-                    famineGaps.householdsWithProductionCostGap(),
+                    dayGapReport.householdsWithProductionCostGap(),
                     "rationGapTotalMilli",
-                    famineGaps.rationGapTotalMilli(),
+                    dayGapReport.rationGapTotalMilli(),
                     "rationNeedTotalMilli",
-                    famineGaps.rationNeedTotalMilli(),
+                    dayGapReport.rationNeedTotalMilli(),
                     "productionCostGapTotalMilli",
-                    famineGaps.productionCostGapTotalMilli(),
+                    dayGapReport.productionCostGapTotalMilli(),
                     "why",
-                    "w3: economy-reports-gap (S-11 second half)"));
+                    "d032-p1: economy-gap-reported-for-next-tick-social"));
             if (TIME.isTraceEnabled()) {
               for (String detail : FamineMortalityBridge.detailLines(householdGaps)) {
                 TIME.trace(
@@ -741,16 +805,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               }
             }
           }
-          // ── ④ 断顿→饱食度回写（Z7d-1；劳动口径仍归 Social）────────────────────────────────
-          // ★★ Z7d-1/B12：经济→Social 断顿回写（同一 revision；当日结算后立刻生效于下一 tick 的劳动预算）。
-          //   数据源 = ③ 那份**当日** {@link EconomyHouseholdGap}（{@code rationGapMilli} = 当日
-          //   {@code unmetToday[grain]}，{@code rationNeedMilli} = 当日需求）与当日注入的粮自然需求；
-          //   规则（用户冻结）：有粮 unmet ⇒ 快降 −150‰/日 × min(1000, unmet×1000/need)；无粮 unmet ⇒ 慢升 +20‰；
-          //   布不足不降劳动。Social 不反向依赖 economy —— 本回写由 app 组合根编排、经 HouseholdSatietyBridge 纯函数。
-          //   ★ 没有 gap 条目的经济行 = 当日无缺口（outbox 只报"口粮缺口 > 0 或生产花费缺口非空"的户）。
+          // ── ④ 生死流水-only：step 后补记，避免新周期第一天 step 重置 FlowRow 时丢生死读数 ────────
+          //   ★ 先快照 step 后的 flow 键集，供 satiety 沿用“只有本日经济流水行的户才回写”的旧语义。
+          Set<HouseholdId> flowHouseholdsAfterStep = new LinkedHashSet<>(stepper.flows().keySet());
+          stepper.applyHouseholdLifecycleOnly(
+              vital.birthsByHousehold(), vital.deathsByHousehold(), day);
+          // ── ⑤ 断顿→饱食度回写（仍作用于下一 tick 的劳动预算）────────────────────────────────
           currentSocial =
               applyHouseholdSatietyWriteback(
-                  currentSocial, householdGaps, stepper.flows().keySet(), dayNaturalNeeds, day);
+                  currentSocial, householdGaps, flowHouseholdsAfterStep, dayNaturalNeeds, day);
           // ★★ P0（2026-10-10）：经济腿迁移 outbox → Social 工单 → 经济行人口回写。次序（缺一不可）：
           //   ① drain：ModeMigrationSettlement 已在 step 内按投影账把资产/钱/债/组织/劳动配额落好，
           //      只把"搬了多少人、从谁到谁"留在瞬态 outbox；
@@ -794,82 +857,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     "economyPopulationAfter",
                     totalEconomyPopulation(stepper.householdEconomies())));
           }
-          // ★★ B12：日末**不刷新任何缺口基线**（旧稿在这里把 `previousCumulativeGrainUnmet` 刷成当日累计）——
-          //   当日缺口已由 ③ 的 outbox 一天一份交给 ④，跨日记忆整体废除（见上面对 N22 的说明）。
-          // ── ⑤ Social 算死亡率（含饿死）────────────────────────────────────────────────────────
-          //   ★ 输入 = ③ 那份逐户缺口（经济只给事实：口粮缺口 + 当日需求 + 逐商品生产花费未满足量）；
-          //     **口径在 Social**（FamineMortality：断顿比例 → ppm/tick，走既有 DEATH 余数累加器）。
-          //   ★ 这里是"两段式"的分界：此刻经济当日的账已经算完，Social 是在**看见经济结果之后**决定谁活着。
-          VitalSettlementResult vital =
-              HouseholdBook.settleOneTick(
-                  currentSocial, day, CalendarClock.julianDefault(), famineGaps.input());
-          currentSocial = vital.data();
-          // ── ⑥ 回写人口 delta + 社会报来的出生/死亡落进流水 + 用新 Social 刷新投影（供同日 gov 阶段与下一天）──
-          stepper.updateComposition(compositionOf(currentSocial));
-          stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
-          stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
-          //   ★★★ W3-fix（2026-10-11）读数接线：把 Social 报来的**逐户出生/死亡原值**一并交回经济 ——
-          //     经济只把它们落进流水读数（FlowRow.births / FlowRow.deaths，唯一写口 withLifecycle），**不判定、不缩劳动**。
-          //     ★ 饥荒那一份（vital.famineDeaths()）= 本 tick **cause 含饥荒的那些死亡事件携带的人数之和**（≤ vital.deaths()；
-          //     W3-fix2 / D2 + W3-fix3 裁定，不再按 ppm 占比分摊）⇒ 从这一行起"饿死多少"在经济读数里也读得到；
-          //     此前它只进 Social 的 FAMINE_MORTALITY 日志，FlowRow.deaths 恒 0 ⇒ CrisisMonitor 的 MORTALITY
-          // 灯永不亮。
-          //     逐户明细仍在 Social 侧事件日志；三张表逐户自洽（出生−死亡 == delta）由两侧各自 fail-closed 核。
-          stepper.applyHouseholdPopulationDeltas(
-              vital.populationDeltas(), vital.birthsByHousehold(), vital.deathsByHousehold(), day);
-          if (vital.famineDeaths() > 0L || famineGaps.householdsWithRationGap() > 0L) {
-            // ★★ §一.9 / W3 判据⑤：一条 INFO「谁因什么死了多少」—— 跨域汇总（Social 侧还有一条同事件名）。
-            TIME.info(
-                LogEvent.of(
-                    "FAMINE_MORTALITY_BRIDGED",
-                    AppLogSource.DAILY_LOOP,
-                    "day",
-                    day,
-                    "mapId",
-                    mapId,
-                    "householdsWithRationGap",
-                    famineGaps.householdsWithRationGap(),
-                    "rationGapTotalMilli",
-                    famineGaps.rationGapTotalMilli(),
-                    "rationNeedTotalMilli",
-                    famineGaps.rationNeedTotalMilli(),
-                    "famineDeaths",
-                    vital.famineDeaths(),
-                    "deaths",
-                    vital.deaths(),
-                    "births",
-                    vital.births(),
-                    "why",
-                    "w3: economy-reports-gap-social-decides-mortality (S-11 second half)"));
-          }
-          if (TIME.isDebugEnabled()) {
-            long deltaNet = 0L;
-            for (long delta : vital.populationDeltas().values()) {
-              deltaNet = Math.addExact(deltaNet, delta);
-            }
-            TIME.debug(
-                LogEvent.of(
-                    "POPULATION_SETTLE_APP",
-                    AppLogSource.DAILY_LOOP,
-                    "day",
-                    day,
-                    "births",
-                    vital.births(),
-                    "deaths",
-                    vital.deaths(),
-                    "famineDeaths",
-                    vital.famineDeaths(),
-                    "events",
-                    vital.events().size(),
-                    "deltaHouseholds",
-                    vital.populationDeltas().size(),
-                    "deltaNet",
-                    deltaNet,
-                    "rationGapHouseholds",
-                    famineGaps.householdsWithRationGap(),
-                    "householdsWithProductionCostGap",
-                    famineGaps.householdsWithProductionCostGap()));
-          }
+          // ── ⑥ 本 tick 缺口写入局部 next facts；只有整次 advance 成功提交后才覆盖参与者单槽 ────────
+          currentFacts = new PendingFamineFacts(day, dayGapReport.input());
           // ★★ P2-D/Z3c：日结算之后的税 / 预算 / 行政俸禄 / 军俸 / 工资 —— **同一账户会话、同一个日循环**
           //   （不另起 participant，避免 gov/actor 同名模块冲突）。顺序：先税（收入侧）→ Z3c 预算规划
           //   （GovBudgetPolicy 类别顺序/min/cap）→ GovDaily 行政俸禄（预算 oracle）→ 军俸/工资（预算裁剪后执行）
@@ -1323,10 +1312,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         }
         // ★ Z3b：推进结束后把"已知 GOV"刷成本轮结果——下一 tick 的注入与调用方看到的状态一致。
         rememberKnownGovUnits(currentGov);
-        return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
+        proposal = new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
       } finally {
         stepper.close();
       }
+      // ★★★ D-032 P1：只有整次 advance 已成功构造 Proposal（且 stepper 已正常关闭）才推进单槽 facts。
+      this.pendingFamineFacts = currentFacts;
+      return proposal;
     } catch (RuntimeException | Error failure) {
       // stepper 构造失败 ⇒ 池从未交给 finish()/close()；这里补关一次（已关时幂等）。
       parallelism.close();

@@ -92,7 +92,7 @@ public final class DebtContractBook {
    * @param contracts 债务工作表（就地更新；键 = 值内 id）；不得为 null
    * @param debtor 债务人；不得为 null
    * @param creditor 债权人；不得为 null
-   * @param unit 计量单位；不得为 null
+   * @param unit 货币计量单位；P2c 起只能 {@link DebtUnit.Money}；不得为 null
    * @param terms 条款（参与身份）；不得为 null
    * @param source 债务来源；不得为 null；同 id 同 terms 但 source 不同 ⇒ {@code debt-source-mismatch}
    * @param amount 增加的本金；必须 {@code > 0}（0/负增量不是一种本金变化）
@@ -104,7 +104,7 @@ public final class DebtContractBook {
       Map<DebtContractId, DebtContract> contracts,
       HouseholdId debtor,
       HouseholdId creditor,
-      DebtUnit unit,
+      DebtUnit.Money unit,
       DebtTerms terms,
       DebtSource source,
       long amount,
@@ -118,8 +118,7 @@ public final class DebtContractBook {
     if (source == null) {
       throw contractFault("debt-source-missing", "DebtContractBook.upsert source 不得为 null");
     }
-    if (source == DebtSource.WAGE_ARREARS
-        && (!DebtTerms.wageArrearsDefault().equals(terms) || !(unit instanceof DebtUnit.Money))) {
+    if (source == DebtSource.WAGE_ARREARS && !DebtTerms.wageArrearsDefault().equals(terms)) {
       throw contractFault(
           "wage-debt-terms-unsupported",
           "WAGE_ARREARS 必须是 DebtUnit.Money + wageArrearsDefault()（0‰）: unit="
@@ -525,7 +524,7 @@ public final class DebtContractBook {
    * @param contracts 债务工作表（就地更新）；不得为 null
    * @param debtor 债务人；不得为 null
    * @param creditor 债权人；不得为 null
-   * @param unit 计量单位；不得为 null
+   * @param unit 货币计量单位；P2c 起只能 {@link DebtUnit.Money}；不得为 null
    * @param terms 条款；不得为 null
    * @param amount 减免金额；{@code > 0} 且 ≤ 当前本金
    * @param reason 减免原因；不得空白
@@ -534,7 +533,7 @@ public final class DebtContractBook {
       Map<DebtContractId, DebtContract> contracts,
       HouseholdId debtor,
       HouseholdId creditor,
-      DebtUnit unit,
+      DebtUnit.Money unit,
       DebtTerms terms,
       long amount,
       String reason) {

@@ -357,24 +357,29 @@ class GovGenesisZ6Test {
           .as("两 GOV 官俸 332 粮/8 布 + 工资 640 粮/64 银，逐项零缺口")
           .isTrue();
 
-      // ★★★ W5.5 测试批（2026-10-11，显式重新基线化 + 加牙）：这条断言原为裸数字 `4801`，而实测是 **4799**
-      //   —— 且**改动前就已经是 4799**（判别实验见 W5.5-fix2 账本 ③-3：改前/改后 day1 的 POPULATION_SETTLE
-      //   逐值同一行 `births=1 deaths=2 famineDeaths=2`；那一轮测试在 `:239` 就红了、没跑到这里，所以旧数字一直没被发现）。
-      //   ⇒ 按"不许留僵死数字"的口径改成**能自证的算式**：人口' == 创世人口 + 当日出生 − 当日死亡。
-      //   三个量全部是当场读到的真值（人口 = Social 家户表求和；出生/死亡 = Social 唯一结算口 POPULATION_SETTLE 的真日志）
-      //   ⇒ 世界再变时这条断言会指出**是哪一项变了**，而不是只喊"数字不对"。
+      // ★★★ W5.5 测试批（2026-10-11）把人口断言从裸数字改成**能自证的算式**：
+      //   人口' == 创世人口 + 当日出生 − 当日死亡。三个量全部是当场读到的真值
+      //   （人口 = Social 家户表求和；出生/死亡 = Social 唯一结算口 POPULATION_SETTLE 的真日志）。
+      //   ★★ D-032 P1（2026-10-18）重新基线化：首 tick 的 PendingFamineFacts = empty ⇒ Social 不伪造饥荒死亡；
+      //   本日经济缺口只写入 nextFacts，留给下一 tick 才结算。因此 day1 deaths = 0（famineDeaths = 0）。
       SocialData socialAfter = GovZ6WorldFixture.socialSlice(after);
       long genesisPopulation = totalSocialPopulation(GovZ6WorldFixture.socialSlice(before));
       String populationSettle = theOnlyPopulationSettleLine(socialLog);
       assertThat(longFieldOf(populationSettle, "day")).as("当天那一行结算日志属于第 1 天").isEqualTo(1L);
       long day1Births = longFieldOf(populationSettle, "births");
       long day1Deaths = longFieldOf(populationSettle, "deaths");
+      long day1FamineDeaths = longFieldOf(populationSettle, "famineDeaths");
       assertThat(genesisPopulation).as("创世人口（算式左项；与 tick0 用例同一口径）").isEqualTo(4800L);
       assertThat(day1Births).as("第 1 天出生 = 1（真日志读数）").isEqualTo(1L);
-      assertThat(day1Deaths).as("第 1 天死亡 = 2（含 famineDeaths=2；真日志读数）").isEqualTo(2L);
+      assertThat(day1Deaths)
+          .as("第 1 天死亡 = 0（P1：首 tick 空 PendingFamineFacts，不伪造饥荒死亡）")
+          .isZero();
+      assertThat(day1FamineDeaths)
+          .as("首 tick famineDeaths = 0（本日经济缺口只留给下一 tick，不得回灌同日 Social）")
+          .isZero();
       assertThat(totalSocialPopulation(socialAfter))
           .as(
-              "人口 == 创世人口 %d + 出生 %d − 死亡 %d = %d（算式自证；原裸数字 4801 改动前即已失效）",
+              "人口 == 创世人口 %d + 出生 %d − 死亡 %d = %d（算式自证；不硬编码结果）",
               genesisPopulation,
               day1Births,
               day1Deaths,

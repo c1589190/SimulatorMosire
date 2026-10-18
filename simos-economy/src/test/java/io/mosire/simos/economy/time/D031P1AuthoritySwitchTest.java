@@ -481,8 +481,7 @@ class D031P1AuthoritySwitchTest {
         @Override
         public ModeReferenceReport modeReferences(
             SimulationState state, io.mosire.simos.economy.api.id.ProductionModeId id) {
-          return new ModeReferenceReport(
-              List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+          return new ModeReferenceReport(List.of(), List.of(), List.of(), List.of(), List.of());
         }
       };
 

@@ -10,7 +10,6 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -353,7 +352,7 @@ public record ProductionLedger(
       HouseholdId debtor,
       HouseholdId creditor,
       DebtContractId contractId,
-      DebtUnit unit,
+      DebtUnit.Money unit,
       long amount,
       long day,
       long dueCycle,
@@ -445,7 +444,7 @@ public record ProductionLedger(
   public record DebtRepaymentSkip(
       HouseholdId debtor,
       DebtContractId contractId,
-      DebtUnit unit,
+      DebtUnit.Money unit,
       long principalOutstanding,
       String reason) {
 
@@ -465,7 +464,7 @@ public record ProductionLedger(
 
   /**
    * ★★ <b>E5b：清算阶段的瞬态审计条目</b>（只活在当天的 {@link ProductionLedger} 里，不落盘；持久真值仍是 {@code EconomyData} 的
-   * assetShares/debtContracts/pledges/classStandings/crisisSignals）。
+   * assetShares/debtContracts/classStandings/crisisSignals）。
    *
    * <p>★★ <b>为什么需要它</b>：清算选路里有一批"<b>处置不了</b>"的具名原因（无价格源、无政策、租佃份额、保护量吃满、无市场 acteur
    * …）——它们不改任何状态，如果不在这里留名，读口只能看到"什么都没发生"，分不清"没触发"与"触发了但处置不了"。{@code action} 是稳定的动作词：
@@ -491,14 +490,12 @@ public record ProductionLedger(
       String action,
       Optional<HouseholdId> household,
       Optional<DebtContractId> contractId,
-      Optional<PledgeId> pledgeId,
       Optional<AssetShareId> sourceAssetShareId,
       Optional<AssetShareId> createdAssetShareId,
       long quantity,
       long pricePerUnitMilli,
       long debtReductionMilli,
       long debtPrincipalAfter,
-      long pledgeQuantityAfter,
       String reason,
       Map<String, Long> evidence) {
 
@@ -515,8 +512,7 @@ public record ProductionLedger(
       if (quantity < 0L
           || pricePerUnitMilli < 0L
           || debtReductionMilli < 0L
-          || debtPrincipalAfter < 0L
-          || pledgeQuantityAfter < 0L) {
+          || debtPrincipalAfter < 0L) {
         throw new IllegalArgumentException(
             "LiquidationAudit 的数量/价格/减额不得为负: "
                 + quantity
@@ -525,13 +521,10 @@ public record ProductionLedger(
                 + "/"
                 + debtReductionMilli
                 + "/"
-                + debtPrincipalAfter
-                + "/"
-                + pledgeQuantityAfter);
+                + debtPrincipalAfter);
       }
       if (household == null
           || contractId == null
-          || pledgeId == null
           || sourceAssetShareId == null
           || createdAssetShareId == null) {
         throw new IllegalArgumentException("LiquidationAudit 的可选引用不得为 null（没有给 Optional.empty()）");

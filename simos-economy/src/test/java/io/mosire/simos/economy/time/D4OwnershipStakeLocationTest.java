@@ -12,12 +12,10 @@ import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.production.contract.AllocationRule;
@@ -100,14 +98,7 @@ class D4OwnershipStakeLocationTest {
 
     AssetShareId moved =
         OwnershipStakeBook.transfer(
-            shares,
-            Map.of(),
-            new LinkedHashMap<PledgeId, Pledge>(),
-            source.id(),
-            50L,
-            TENANT,
-            OWNER,
-            AssetRightKind.TENANCY);
+            shares, Map.of(), source.id(), 50L, TENANT, OWNER, AssetRightKind.TENANCY);
 
     assertThat(moved)
         .as("Move 的目标合并键包含 location ⇒ 不得落到 3_4 的同 tuple 行")
@@ -126,14 +117,7 @@ class D4OwnershipStakeLocationTest {
     splitShares.put(differentLocation.id(), differentLocation);
     AssetShareId split =
         OwnershipStakeBook.split(
-            splitShares,
-            Map.of(),
-            new LinkedHashMap<PledgeId, Pledge>(),
-            source.id(),
-            40L,
-            TENANT,
-            OWNER,
-            AssetRightKind.TENANCY);
+            splitShares, Map.of(), source.id(), 40L, TENANT, OWNER, AssetRightKind.TENANCY);
 
     assertThat(split).isNotEqualTo(differentLocation.id());
     assertThat(splitShares).hasSize(3);
@@ -158,7 +142,6 @@ class D4OwnershipStakeLocationTest {
         OwnershipStakeBook.rebuild(
             shares,
             industries,
-            new LinkedHashMap<PledgeId, Pledge>(),
             List.of(
                 new OwnershipStakeBook.RebuildMove(
                     source.id(), 100L, FARM_NEXT, TENANT, OWNER, AssetRightKind.OWNED)));
