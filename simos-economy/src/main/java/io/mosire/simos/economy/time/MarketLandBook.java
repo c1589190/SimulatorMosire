@@ -31,7 +31,7 @@ import java.util.Objects;
  * </ol>
  *
  * <p>★ 本类只做纯派生（不写状态）；成交写口在 {@link MarketTradeExecutor#executeLandTrade}，撮合在 {@link
- * MarketLandMatcher}。
+ * MarketMatcher#matchAll} 内部的土地私有分支。
  */
 final class MarketLandBook {
 
@@ -139,7 +139,7 @@ final class MarketLandBook {
   }
 
   /**
-   * ★★ <b>土地订单的具名拒因</b>（业务拒绝 = INFO，§一.9）：每一条都对应 {@link MarketLandMatcher}/{@link
+   * ★★ <b>土地订单的具名拒因</b>（业务拒绝 = INFO，§一.9）：每一条都对应 {@link MarketMatcher#matchAll} 内部土地分支/{@link
    * MarketOrderPlanner} 里一个真实的跳过分支，不许"静默不成交"。
    */
   enum LandRejectReason {

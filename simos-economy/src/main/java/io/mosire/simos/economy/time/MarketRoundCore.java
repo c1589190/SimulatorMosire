@@ -134,7 +134,7 @@ class MarketRoundCore {
    *
    * <p>★★ <b>公共入口/生命周期只有一个</b>：{@code MarketRoundRunner.clearOncePerCycle} 只调
    * {@code MarketMatcher.matchAll} 一次；商品与土地是同一本订单簿里的订单变体（保留内部 typed slot 只是最小改动，
-   * 不是独立市场阶段）。{@link MarketLandMatcher#match} 只是 {@code matchAll} 内部的 package-private 土地分支。
+   * 不是独立市场阶段）。{@code MarketMatcher.matchLand} 只是 {@code matchAll} 内部的私有土地分支。
    */
   final List<LandOrder> landOrders = new ArrayList<>();
 
@@ -168,7 +168,7 @@ class MarketRoundCore {
   /**
    * ★★ <b>P2f：下一轮的土地价</b>（键 = 市场区；值 = 毫计价货币 / 整亩）。
    *
-   * <p>★ 由 {@link MarketLandMatcher} 用 {@link MarketPricer#adaptiveNextPrice} 的同一口径算出；<b>轮末</b>由
+   * <p>★ 由 {@link MarketMatcher#matchAll} 内部的土地私有分支用 {@link MarketPricer#adaptiveNextPrice} 的同一口径算出；<b>轮末</b>由
    * {@code SettlementDayMarketPipeline} 写回对应 {@link
    * io.mosire.simos.economy.model.MarketTable#withLandPrice(long)}。★ 只对原本 {@code hasLandPrice()}
    * 的市场写；empty 市场不生成、不改价、不当免费。
@@ -665,7 +665,7 @@ class MarketRoundCore {
     return Collections.unmodifiableMap(nextLandPrices);
   }
 
-  /** ★★ P2f：登记一个市场区的下一轮土地价（唯一写入点 = {@link MarketLandMatcher}）。 */
+  /** ★★ P2f：登记一个市场区的下一轮土地价（唯一写入点 = {@link MarketMatcher#matchAll} 内部土地分支）。 */
   void recordNextLandPrice(MarketZoneId zoneId, long nextLandPrice) {
     Objects.requireNonNull(zoneId, "recordNextLandPrice 的 zoneId 不得为 null");
     if (nextLandPrice < 0L) {

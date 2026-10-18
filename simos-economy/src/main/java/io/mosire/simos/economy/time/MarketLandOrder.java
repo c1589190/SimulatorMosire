@@ -11,8 +11,8 @@ import java.util.Objects;
  *
  * <p>★★ <b>它取代了什么</b>：P2f 之前商品订单/撮合/冻结/结算全部以 {@link io.mosire.simos.economy.api.id.CommodityId}
  * 为键，土地没有订单形状，也不可能进入同一个市场轮。本记录让土地成为<b>同一本订单簿里的另一种订单</b> —— 它仍由 {@code
- * MarketSettlement.clearOncePerCycle} 的<b>唯一</b>统一撮合入口 {@code MarketMatcher.matchAll} 处理（土地是入口内部
- * 的 package-private 分支 {@link MarketLandMatcher#match}），没有第二个市场阶段、没有第二个 public matcher。
+ * MarketSettlement.clearOncePerCycle} 的<b>唯一</b>统一撮合入口 {@code MarketMatcher.matchAll} 处理（土地是该入口
+ * 内部私有分支 {@code MarketMatcher.matchLand}），没有第二个市场阶段、没有第二个 matcher。
  *
  * <pre>
  * side              BUY / SELL

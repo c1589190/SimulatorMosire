@@ -7,8 +7,8 @@ import static io.mosire.simos.economy.time.MarketGovernmentOrderBook.collectGovM
 import static io.mosire.simos.economy.time.MarketIndexBook.MarketIndexes;
 import static io.mosire.simos.economy.time.MarketIndexBook.applyProcurementPriority;
 import static io.mosire.simos.economy.time.MarketIndexBook.sortBuySlotsByOrdering;
-import static io.mosire.simos.economy.time.MarketLandMatcher.logRoundSummary;
 import static io.mosire.simos.economy.time.MarketMatchSupport.arbitragePlanLostByClone;
+import static io.mosire.simos.economy.time.MarketMatcher.logRoundSummary;
 import static io.mosire.simos.economy.time.MarketMatcher.matchAll;
 import static io.mosire.simos.economy.time.MarketModelBook.BuySlot;
 import static io.mosire.simos.economy.time.MarketModelBook.MatchContext;
@@ -495,10 +495,10 @@ final class MarketRoundRunner {
     commitFreezes(ctx);
     try {
       // ── 3. ★★★ P3d：**唯一统一撮合入口**（商品区内 → 商品跨区 → 土地私有分支，全部在 matchAll 内部）──
-      //   ★ runner 不再保留“商品 matcher 调完再另调 MarketLandMatcher.match”的两段结构：
+      //   ★ runner 不再保留“商品 matcher 调完再另调土地 matcher”的两段结构：
       //     商品与土地是同一本 MarketRound 订单簿里的订单变体，同一轮冻结生命周期、同一写口回放。
-      //   ★ 土地分支仍在商品区内/跨区撮合之后、releaseAllFreezes 之前运行 ⇒ 土地买单只能使用
-      //     spendableMoneyOf（余额 − 商品冻结）的剩余可花额，同一买方同一币种不可能双付。
+      //   ★ 土地私有分支（MarketMatcher.matchLand）仍在商品区内/跨区撮合之后、releaseAllFreezes
+      //     之前运行 ⇒ 土地买单只能使用 spendableMoneyOf（余额 − 商品冻结）的剩余可花额，同一买方同一币种不可能双付。
       matchAll(ctx, parallelism, indexes);
       // ── 4a0. ★★ M-A1：逐格运力池与本轮分配汇总（INFO = 每格运力池与分配汇总；§一.9）────────────
       //   ★ 位置：区内 + 跨区撮合都做完之后（此时"谁用了多少运力"才是本轮的事实）。

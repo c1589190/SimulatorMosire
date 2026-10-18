@@ -755,8 +755,8 @@ final class SettlementDayMarketPipeline {
         ctx.markets.clear();
         ctx.markets.putAll(updatedMarkets);
       }
-      // ★★★ P2f：**轮末写回土地价**（唯一落点；键 = 市场区，同一区一个价）。地价由 MarketLandMatcher 用
-      //   MarketPricer.adaptiveNextPrice 的同一算式算好放进 MarketRound.nextLandPrices；这里只把它落到价目表的
+      // ★★★ P2f：**轮末写回土地价**（唯一落点；键 = 市场区，同一区一个价）。地价由 MarketMatcher.matchAll
+      //   内部土地分支用 MarketPricer.adaptiveNextPrice 的同一算式算好放进 MarketRound.nextLandPrices；这里只把它落到价目表的
       //   withLandPrice(...)。只对原本 hasLandPrice() 的市场写 —— empty 市场不生成、不改价、不当免费。
       Map<MarketZoneId, Long> nextLandPrices = ctx.marketRound.nextLandPrices();
       if (!nextLandPrices.isEmpty()) {
