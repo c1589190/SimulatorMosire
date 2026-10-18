@@ -11,9 +11,13 @@ import static io.mosire.simos.app.world.IndustrySeeder.householdWeaving;
 import static io.mosire.simos.app.world.IndustrySeeder.planOf;
 import static io.mosire.simos.app.world.IndustrySeeder.trade;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.collectiveRelation;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.grainFarmRosterNode;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.grainFarmUnits;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.organizerRelation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.ownershipStakeNode;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.ownershipStakesOf;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.plannedLaborOf;
+import static io.mosire.simos.app.world.LandOwnershipSeeder.retargetFarmAllocation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.secondaryAllocation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.splitIndustry;
 import static io.mosire.simos.app.world.MarketSeeder.derivedMarketTables;
@@ -126,6 +130,8 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
     Map<CurrencyId, Set<HexCoord>> hexesByNumeraire = new LinkedHashMap<>();
     // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
     List<OperatorSeed> operators = new ArrayList<>();
+    // ★★★ P5b1：grain_farm 多角色 unit 的显式名册（Seed 顶层 productionRosters[] 的唯一出口）。
+    List<Map<String, Object>> productionRosters = new ArrayList<>();
     for (HexCoord hex : hexes) {
       // ★★ P2-A：家户身份/人口从 Social 侧读入；劳动池要排除流民批次（D-023：流民没有工作），
       //   但成员份额投影要用**全部**批次（流民户也是真实的成员归属）。
@@ -163,19 +169,22 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       ActorRef merchantPrincipalActor =
           hasCraft ? HouseholdActors.of(merchantPrincipalHousehold) : null;
       List<IndustryPlan> plans = new ArrayList<>(hasCraft ? 4 : 3);
-      // ★★ P2-A §13.3：庄园/作坊不是账户主体 —— 主 unit 的经营者改成**组织者家户**：
-      //   · farm（feudal 自营庄园）⇒ 该格农村地主家户（{@code tenancy_fixed_kind.landlord} 的庄园主人）；
+      // ★★ P2-A §13.3：作坊不是账户主体 —— 主 unit 的经营者改成**组织者家户**：
       //   · craft（handicraft 作坊）⇒ 该格城镇中农家户（{@code handicraft_workshop.workshop_owner}）。
       //   ★ 家户纺织（household）保持聚合主体：它是**多个家户共同经营**的 unit，账户主体 = unit 名下劳动家户的集合
       //     （见 HouseholdRouting）；trade 的经营者本来就是商号本金主家户。
-      ActorRef farmOrganizer =
-          HouseholdActors.of(ruralCohorts.classHouseholds().get(LANDLORD_SLOT_INDEX));
+      //   ★★ P5b1：farm 不再有"地主主 unit"—— grain_farm 由一个共享 plan + 逐家户 unit 组成（见下）。
       ActorRef craftOrganizer =
           hasCraft
               ? HouseholdActors.of(urbanCohorts.classHouseholds().get(WORKSHOP_OWNER_SLOT_INDEX))
               : null;
-      IndustryPlan farmPlanMain = agriculture(hex, landMilliMu).withOperator(farmOrganizer);
-      plans.add(farmPlanMain);
+      IndustryPlan farmPlan = agriculture(hex, landMilliMu);
+      plans.add(farmPlan);
+      // ★★★ P5b1：本 hex 的 grain_farm 逐户 unit —— 四个阶层家户按确定性权重分 LAND（owner=operator=家户），
+      //   流民/无地户保留 0 土地 unit。跨 hex 不伪造：份额 location 恒为本 hex。
+      List<GrainFarmUnit> farmUnits =
+          grainFarmUnits(
+              farmPlan, hex, ruralCohorts.classHouseholds(), ruralCohorts.displacedHousehold());
       if (hasRural) {
         // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + SMALL_TOOL → CLOTH，由**同一批农村人**承担（见
         // appendAllocation）。
@@ -188,13 +197,9 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         // ★★ P11.7/D-024：城市 trade 产业 —— 制度 merchant、产出运输服务、以**工具**为作业资本（W7-fix）；经营者 = 商号本金主。
         plans.add(trade(hex, merchantPrincipalActor));
       }
-      // ★★ P2-A：主 unit 的显式关系 —— operator/residualOwner = 组织者家户，inputSupplier 仍指**原产业主体 actor**
+      // ★★ P2-A：作坊主 unit 的显式关系 —— operator/residualOwner = 组织者家户，inputSupplier 仍指**原产业主体 actor**
       //   （{@code ToActor(org)} 在 supplierAccountsOf 里代理到 unit 名下劳动家户 ⇒ 播种期"谁出种/出料"逐字不变）。
-      ProductionRules farmMainRelation =
-          organizerRelation(
-              farmPlanMain,
-              Set.of(ResidenceKind.RURAL),
-              new ActorRef(ActorKind.ORGANIZATION, farmId.value()));
+      //   ★ P5b1：farm 的 unit 关系已在 {@code grainFarmUnits} 里逐户显式给出（空 rules + SELF），不再走这里。
       ProductionRules craftMainRelation =
           hasCraft
               ? organizerRelation(
@@ -222,7 +227,6 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       //   总和仍 ≤ 该批次的可用劳动 —— 由 {@code EconomyData} 的构造期守卫判死）。
       List<Map<String, Object>> allocations = new ArrayList<>();
       // ★★ S1：成员份额（逐 lot → 家户）：由 cohortGroup 按 row population × pool 各批次人数权重拆出。
-      IndustryPlan farmPlan = planOf(plans, farmId);
       if (hasRural) {
         IndustryPlan weavePlan = planOf(plans, weaveId);
         long ruralDaily =
@@ -233,6 +237,8 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         //   ★★ M1.8 起不等于"实际发出的配额之和"：预算按**逐批次折扣后的可用劳动**封顶，性别权重偏斜时某些批次会
         //      被压到上限 ⇒ 总配额可以**分不满**（合法状态；见 appendAllocation / laborBudget 的类注）。
         Map<PeopleLotId, Long> budget = laborBudget(ruralPool);
+        // ★★★ P5b1：先按既有算法发农业配额（占位 unit = plan.unitId），随后逐行改挂到该家户自己的 grain_farm unit。
+        //   只换 unit/actor；laborMilli / group / household 一个不动 ⇒ 家户劳动守恒与预算封顶逐值不变。
         appendAllocation(
             allocations,
             budget,
@@ -251,6 +257,26 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
             weavePlan.operator(),
             ACTIVITY_WEAVE,
             weaveQuota);
+        Map<HouseholdId, GrainFarmUnit> farmUnitByHousehold = new LinkedHashMap<>();
+        for (GrainFarmUnit unit : farmUnits) {
+          farmUnitByHousehold.put(unit.household(), unit);
+        }
+        String farmPlaceholder = farmPlan.unitId().value();
+        for (Map<String, Object> allocation : allocations) {
+          if (!farmPlaceholder.equals(allocation.get("activity"))) {
+            continue;
+          }
+          HouseholdId household = HouseholdId.parse((String) allocation.get("household"));
+          GrainFarmUnit unit = farmUnitByHousehold.get(household);
+          if (unit == null) {
+            throw new IllegalStateException(
+                "农业配额找不到家户 grain_farm unit（seed 内部不一致）: household="
+                    + household
+                    + " hex="
+                    + hex);
+          }
+          retargetFarmAllocation(allocation, unit);
+        }
       }
       if (hasCraft) {
         IndustryPlan craftPlan = planOf(plans, craftId);
@@ -276,14 +302,21 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       //   · 分不出 ≥ 一份 capacityPerUnit 的家户跳过（其劳动与份额都留在主 unit）；
       //   · Σ 份额逐 asset 不变、Σ 配额逐 (批次, 家户) 不变（见 splitIndustry 的守恒注）。
       //   ★ 必须在 allocations 发完之后做：候选家户 = "在本格配额里出现过的家户"，只有发完才知道。
-      long landlordPopulation =
-          hasRural ? ruralCohorts.classPopulations()[LANDLORD_SLOT_INDEX] : 0L;
+      //   ★★ P5b1：farm 不走 splitIndustry（农村 grain_farm 已逐户直接物化，无主 unit/tenant 副 unit）。
       List<IndustrySplit> splits = new ArrayList<>(plans.size());
       for (IndustryPlan plan : plans) {
-        splits.add(splitIndustry(plan, allocations, hex, landlordPopulation));
+        if (FARM.equals(plan.kind())) {
+          continue;
+        }
+        splits.add(splitIndustry(plan, allocations, hex));
       }
       List<Map<String, Object>> units = new ArrayList<>();
       List<Map<String, Object>> assetShares = new ArrayList<>();
+      // ★★★ P5b1：farm 的逐户 unit + LAND 份额（owner=operator=家户；无地户份额 0 也登记）。
+      for (GrainFarmUnit unit : farmUnits) {
+        units.add(unit.unitNode());
+        assetShares.add(unit.shareNode());
+      }
       List<Map<String, Object>> splitAllocations = new ArrayList<>();
       // ★★★ D-032 C3（裁定选项 (a)）：逐 plan 收集**主 unit + 全部副 unit** 的旧规则；全部 unit 建好后由
       //   {@link #applyLegacyRoleMapping} 统一决定"整体映射并清空"或"原样保留走旧路径"。
@@ -296,7 +329,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         if (!TRADE.equals(plan.kind())) {
           ProductionRules mainRelation =
               switch (plan.kind()) {
-                case FARM -> farmMainRelation;
+                case FARM -> null; // P5b1：farm 不走主 unit（逐户 unit 已在上面加入）。
                 case CRAFT -> craftMainRelation;
                 case WEAVE -> weaveMainRelation;
                 default -> null;
@@ -338,8 +371,21 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         }
       }
       allocations.addAll(splitAllocations);
+      // ★★★ P5b1：farm 名册必须在配额落定后生成（plannedLabor = 本 unit 的配额合计）。
+      //   多角色模板必须显式名册；没有真实 hired_laborer 参与项时不塞假 worker。
+      for (GrainFarmUnit unit : farmUnits) {
+        productionRosters.add(
+            grainFarmRosterNode(unit, plannedLaborOf(allocations, unit.unitId())));
+      }
       // ★★★ D-032 C3：plan 级映射/回退（可映射 ⇒ roles + 清空旧 rules；不可表示 ⇒ 原样保留旧 rules + INFO BLOCKED）。
-      applyLegacyRoleMapping(plans, units, legacyRulesByPlan);
+      //   ★ P5b1：farm 的 roles 是显式两角色、且 unit 已有显式名册 ⇒ 不进入旧规则映射（否则会被单 operator 覆盖）。
+      List<IndustryPlan> legacyRolePlans = new ArrayList<>(plans.size());
+      for (IndustryPlan plan : plans) {
+        if (!FARM.equals(plan.kind())) {
+          legacyRolePlans.add(plan);
+        }
+      }
+      applyLegacyRoleMapping(legacyRolePlans, units, legacyRulesByPlan);
       // ★★ M-A1：商号行（merchantFirms）已退役 —— 创世不再为城市格播商号状态。运力改由**派生量**给出
       //   （MerchantCapacityPool：该格"选了跑商"的家户的劳动投入 + 工具可投入量）。
       //   ★ 保留：本格的 trade 产业（{@link #TRADE}）与它的作业资本（SMALL_TOOL）份额 —— 那是 merchant 生产方式的产业落点、
@@ -468,11 +514,9 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
     Map<MarketZoneId, MarketTable> markets = derivedMarketTables(hexesByNumeraire);
     AppliedConditions applied =
         applyTestConditions(mapId, entries, householdStocks, householdMoney, conditions);
-    // ★★★ D-032 C3（D2 §5.5）：创世名册节点。当前播种器的全部方案都是**单角色**（production 的
-    //   defaultOperator）⇒ 单角色 unit 由 C2 自动路径补默认名册，这里发空表；若将来出现多角色 plan，
-    //   必须在这里显式给出参与者（{unit, participants[]}），否则 economyPayload() 的
-    //   requireRostersForMultiRoleUnits 会以 seed-roster-missing:<unit> 整体拒绝。
-    List<Map<String, Object>> productionRosters = List.of();
+    // ★★★ D-032 C3（D2 §5.5）：创世名册节点。P5b1 的 grain_farm 是多角色（operator + hired_laborer）⇒
+    //   每个 farm unit 都在上面显式给出名册；economyPayload() 的 requireRostersForMultiRoleUnits 会以
+    //   seed-roster-missing:<unit> 拒绝任何多角色 unit 的缺名册。其他单角色 plan 仍由 C2 自动路径补默认名册。
     if (LOG.isDebugEnabled()) {
       io.mosire.simos.util.log.EventLog.channel(LOG)
           .debug(

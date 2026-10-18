@@ -14,9 +14,11 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RolePayment;
 import java.util.ArrayList;
@@ -29,35 +31,45 @@ import java.util.Map;
 class IndustrySeeder extends WorldBalanceSeeder {
 
   /**
-   * 农业（**恒有**，§十）：制度 = **领主自营庄园**（{@link #REGIME_FEUDAL}）；★★ **H0.3 起产能 = 本格可耕地**， 不再按人口切进四行。
+   * ★★ <b>P5b1：农业 = 单一 {@code grain_farm} 模板</b>（所有农村家户共用；自耕/雇工是同一实例内的连续选择）。
    *
-   * <p>★ 本注原写"制度 = 封建租佃" —— 那是**同词两义**：租佃（佃农家户）是另立的 {@code tenant} 档，而本方法写进载荷的是 {@link
-   * #REGIME_FEUDAL}（**领主自营庄园**）。它原与同文件里 {@code REGIME_FEUDAL} 常量注**直接矛盾**， 已在 S1 阶段 3 D8 就地改对（同 D7
-   * 的口径）。
+   * <p>本方法只产出**产业模板**（产能 = 本格可耕地 + 配方 + 角色）。具体 unit / LAND 份额 / 名册由 {@link
+   * ProductionRuntimeSeeder} 按家户逐户物化（owner = operator = 家户）。
+   *
+   * <p>★★ <b>角色定义是显式两条</b>：{@code operator}（PRODUCT_SHARE，1000‰）+ {@code hired_laborer}（MONEY_WAGE，0‰）。
+   * 不再只发 {@code singleOperatorRoleNodes()} —— 否则雇工只能靠旧 posting/default，无法表达同一农场内的工资劳动。
+   *
+   * <p>★★ <b>制度标签不再用 {@code feudal}（庄园）</b>：grain_farm 没有租佃/地租/领主自营模板；这里用已登记的 {@code
+   * household} 制度名，且每个 unit 在播种时都带**显式空规则关系**（{@code rules=[] + SELF}），因此不会回落到任何旧
+   * 300‰ rent / TENANT / ESTATE 默认。{@code acceptedRightKinds} 也只接受 {@code OWNED}。
    *
    * <p>★★ **H0.2：它名下不再有四行** —— 那一格的四行农村家户搬到 entry 级（{@link #ruralCohort}），
    * 因为"这一格有多少地"是**产业**的事、"这一格的人有多少粮/多少活"是**家户**的事（K2/K3 的分工）。
    */
   static IndustryPlan agriculture(HexCoord hex, long landMilliMu) {
-    return industry(
-        FARM,
-        IndustryHexKeys.id(FARM, hex.q(), hex.r()).value(),
-        "农业",
-        REGIME_FEUDAL,
-        // ★★ **K3：产能从"行"搬到"产业"** —— 本格农业的产能总量 = 本格可耕地（千分亩）。
-        //   旧版是"按各行人口切成四份、每行写一份 LAND"（Σ 才等于格土地）；现在总量只有一处真相，
-        //   而"地归谁"由产权读口回答，不再与经济结算抢同一个字段。
-        //   ★ 值**允许 0**（沙漠/山地/海洋格：可耕地 0）—— 0 是合法产能（"这格没有地"），不是缺键。
-        Map.of("LAND", landMilliMu),
-        orderedTable("meansWeightPerMille", 700, "laborWeightPerMille", 300),
-        // ★★ **V7 配方**：规模单位 = **亩**（每 1 亩要 1,000 千分亩，故 {@code 规模 == 产能的亩数}）；
-        //   每一亩需要 {@link #LABOR_MILLI_PER_MU} 千分劳动；每亩产 {@link #GRAIN_OUTPUT_PER_MU} 粮 + {@link
-        // #FIBER_OUTPUT_PER_MU} 单位纤维
-        //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
-        Map.of("LAND", MILLI_MU_PER_MU),
-        LABOR_MILLI_PER_MU,
-        orderedTable(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
-        Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
+    IndustryPlan plan =
+        industry(
+            FARM,
+            IndustryHexKeys.id(FARM, hex.q(), hex.r()).value(),
+            "农业",
+            REGIME_HOUSEHOLD,
+            // ★★ **K3：产能从"行"搬到"产业"** —— 本格农业的产能总量 = 本格可耕地（千分亩）。
+            //   旧版是"按各行人口切成四份、每行写一份 LAND"（Σ 才等于格土地）；现在总量只有一处真相，
+            //   而"地归谁"由产权读口回答，不再与经济结算抢同一个字段。
+            //   ★ 值**允许 0**（沙漠/山地/海洋格：可耕地 0）—— 0 是合法产能（"这格没有地"），不是缺键。
+            Map.of("LAND", landMilliMu),
+            orderedTable("meansWeightPerMille", 700, "laborWeightPerMille", 300),
+            // ★★ **V7 配方**：规模单位 = **亩**（每 1 亩要 1,000 千分亩，故 {@code 规模 == 产能的亩数}）；
+            //   每一亩需要 {@link #LABOR_MILLI_PER_MU} 千分劳动；每亩产 {@link #GRAIN_OUTPUT_PER_MU} 粮 + {@link
+            // #FIBER_OUTPUT_PER_MU} 单位纤维
+            //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
+            Map.of("LAND", MILLI_MU_PER_MU),
+            LABOR_MILLI_PER_MU,
+            orderedTable(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
+            Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
+    // ★★★ P5b1：农业必须显式给两条角色（operator + hired_laborer），不再走单 operator 缺省。
+    plan.payload().put("roles", grainFarmRoleNodes());
+    return plan;
   }
 
   /**
@@ -390,14 +402,15 @@ class IndustrySeeder extends WorldBalanceSeeder {
   /**
    * ★★★ <b>D-032 W5-E：seed 方案的产业 kind → 它实际物化的份额权利性质</b>（唯一映射点）。
    *
-   * <p>★ <b>按实播份额精确列出</b>（不是"能多接受就多写"）：farm / craft 的主 unit {@code capacity} 物化为 {@code OWNED}、家户副
-   * unit 物化为 {@code TENANCY}；weave / trade 只物化 {@code OWNED}。新增 seed 产业 kind 时必须在这里 显式给映射 —— 未知
-   * kind 直接 {@link IllegalStateException}，绝不静默落成空集。
+   * <p>★ <b>按实播份额精确列出</b>（不是"能多接受就多写"）：P5b1 起 <b>farm 的每个 unit 都物化 {@code OWNED} LAND 份额</b>
+   * （owner = operator = 家户），不再有 TENANCY 农村默认；craft 的副 unit 仍是 {@code TENANCY}（城市工坊，非本批范围）；
+   * weave / trade 只物化 {@code OWNED}。新增 seed 产业 kind 时必须在这里显式给映射 —— 未知 kind 直接 {@link
+   * IllegalStateException}，绝不静默落成空集。
    */
   private static List<String> seedAcceptedRightKinds(String kind) {
     return switch (kind) {
-      case FARM, CRAFT -> SEED_ACCEPTED_RIGHT_KINDS_OWNED_OR_TENANCY;
-      case WEAVE, TRADE -> SEED_ACCEPTED_RIGHT_KINDS_OWNED;
+      case FARM, WEAVE, TRADE -> SEED_ACCEPTED_RIGHT_KINDS_OWNED;
+      case CRAFT -> SEED_ACCEPTED_RIGHT_KINDS_OWNED_OR_TENANCY;
       default ->
           throw new IllegalStateException(
               "seed 产业 kind="
@@ -405,6 +418,46 @@ class IndustrySeeder extends WorldBalanceSeeder {
                   + " 没有声明 acceptedRightKinds（production 缺键会落成空集，"
                   + "采用侧将具名拒 asset-right-kind-missing）");
     };
+  }
+
+  /**
+   * ★★★ <b>P5b1：{@code grain_farm} 的显式角色目录（operator + hired_laborer）</b> —— 与 {@link
+   * #singleOperatorRoleNodes()} 同一套 wire 字段名，逐字段对应 {@code
+   * ProductionDefinitionPayloads.role}。
+   *
+   * <pre>
+   * operator      PRODUCT_SHARE  sharePerMille=1000  standardLaborMilliPerCycle=defaultOperator() 的工程默认（0）
+   * hired_laborer MONEY_WAGE     sharePerMille=0     standardLaborMilliPerCycle=工程默认（0，0 = 未定）
+   * </pre>
+   *
+   * <p>★ <b>为什么 hired_laborer 必须显式存在</b>：否则同一 {@code grain_farm} 实例只能表达"单 operator"，雇工只能靠旧
+   * posting/default；D-032 要求工资劳动是同一个模板内的角色。★ <b>不塞标准劳动数字</b>：角色目录只表达形态；实际雇工目标由
+   * M3/M6 的 roster 实际计划劳动或 P5b2 的工资锚给出（0 = 未定，不当成 0 工资）。
+   */
+  public static List<Map<String, Object>> grainFarmRoleNodes() {
+    long standardLabor = ProductionRoleDefinition.defaultOperator().standardLaborMilliPerCycle();
+    List<Map<String, Object>> roles = new ArrayList<>(2);
+    // operator：组织者/自家劳动/剩余索取；支付形态 = 产品份额。
+    Map<String, Object> operator = new LinkedHashMap<>();
+    operator.put("id", DefaultProductionModes.ROLE_OPERATOR);
+    operator.put("name", "农场经营者");
+    operator.put("sharePerMille", 1000L);
+    operator.put("intraRoleSplit", IntraRoleSplitRule.EQUAL.key());
+    operator.put("standardLaborMilliPerCycle", standardLabor);
+    operator.put("payment", "product_share");
+    roles.add(Collections.unmodifiableMap(operator));
+    // hired_laborer：只拿市场工资，不拿产品份额。
+    Map<String, Object> wagePayment = new LinkedHashMap<>();
+    wagePayment.put("kind", "money_wage");
+    Map<String, Object> hired = new LinkedHashMap<>();
+    hired.put("id", DefaultProductionModes.ROLE_HIRED_LABORER);
+    hired.put("name", "雇农");
+    hired.put("sharePerMille", 0L);
+    hired.put("intraRoleSplit", IntraRoleSplitRule.EQUAL.key());
+    hired.put("standardLaborMilliPerCycle", standardLabor);
+    hired.put("payment", Collections.unmodifiableMap(wagePayment));
+    roles.add(Collections.unmodifiableMap(hired));
+    return Collections.unmodifiableList(roles);
   }
 
   /**

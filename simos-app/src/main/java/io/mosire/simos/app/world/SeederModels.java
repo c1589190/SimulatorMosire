@@ -148,6 +148,19 @@ record HouseholdUnit(
     Map<String, Long> quantities,
     ProductionRules relation) {}
 
+/**
+ * ★★ <b>P5b1：一个农村家户在所在 hex 的 {@code grain_farm} unit 创世形态</b>。
+ *
+ * <p>{@code owner = operator = 家户 actor}；{@code unitNode} 带显式 {@code relation}（空 {@code rules} + {@code
+ * SELF}）；{@code shareNode} 是该户自己的 {@code LAND / OWNED} 份额（无地户数量 0，仍要登记）。
+ */
+record GrainFarmUnit(
+    HouseholdId household,
+    ActorRef operator,
+    ProductionUnitId unitId,
+    Map<String, Object> unitNode,
+    Map<String, Object> shareNode) {}
+
 /** 拆分**中间态**：一条候选配额行（household/moved 已算好，副 unit 是否建尚未定）。 */
 record MovedRow(Map<String, Object> row, HouseholdId household, long moved) {}
 
