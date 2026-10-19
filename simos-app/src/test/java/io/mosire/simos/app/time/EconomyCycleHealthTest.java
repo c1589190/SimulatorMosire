@@ -48,8 +48,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       有货/有钱/同价却不成交才是"市场冻结"；
  * </ol>
  *
- * <p>★★ <b>2026-10-19 D-032 T1 语义收口（控制方工程裁定，依据目标运行设计 M4/tick contract
- * 的“无可成交供给/无重叠需求时零成交合法”）</b>：目标运行设计/契约允许“没有可成交供给或没有重叠需求 ⇒ 本轮零成交”，
+ * <p>★★ <b>2026-10-19 D-032 T1 语义收口（控制方工程裁定，依据目标运行设计 M4/tick contract；
+ * 不是用户新裁定）</b>：目标运行设计 M4/tick contract 允许“无可成交供给/无重叠需求时零成交合法”，
  * 这是合法结果，不是市场冻结。旧断言把“所有 0 成交”一律判红，已不符合新语义。现在的精确防线 =
  * ① 当日报告存在（市场开了）+ ② 订单流非空（撮合有输入）+ ③ **仅当同 hex 买卖重叠 &gt; 0** 时才要求 fills 非空。
  * 跨格运力不足导致的未成交由 {@code CapacityTruncationPricingAcceptanceTest} / 市场日志覆盖，不在这里重复当冻结。
@@ -166,7 +166,7 @@ class EconomyCycleHealthTest {
           .isLessThanOrEqualTo(initialPopulation * 2L);
 
       // ── ④ 市场在运转：当日有报告 + 订单流非空；同 hex 有重叠时必须成交 ──
-      //   ★ 2026-10-19 控制方工程裁定（依据目标运行设计 M4/tick contract）：
+      //   ★ 2026-10-19 控制方工程裁定（依据目标运行设计 M4/tick contract；不是用户新裁定）：
       //     零成交在“无可成交供给 / 无重叠需求”时是合法结果；
       //     只有「同 hex 有货、有钱、同价却不成交」才是真正的冻结。
       assertThat(reading.market())
