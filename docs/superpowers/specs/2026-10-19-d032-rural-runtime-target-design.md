@@ -139,17 +139,17 @@ actor / Social / 其他持账方
 | **P3c1 两遍计划类型** | M3/M6 | `ExpectedProductionPlan`/`ActualProductionPlan`/`EmploymentLock`/`PositionPlan`/`WageDemand` | economy 瞬态 | 两遍同公式；锁不可改；第二轮不下单 | 已完成 |
 | **P3c2 生产阶段机械拆分** | M3–M7 | 拆分 prepare/draw/consume/execute；保持旧行为 | economy | 编译 + 既有回归 | 已完成 |
 | **P3c3 两遍日序 + 雇佣锁** | M3/M4/M5/M6/M7 | 新链 M3→市场→M5→M6→M7；legacy fallback 仅旧世界 | economy | A2/A3/A4；锁只读；失败转无业 | 已完成（零劳动/锁过滤由 P3e 修） |
-| **P3d 土地意向 + 统一撮合** | M3/M4 | 从生产位置产生 LAND BUY；未使用土地 LAND SELL；商品/土地统一订单序列/统一 matcher 入口；整块、区级价、新土地标记 | economy 轮内瞬态 | 有生产缺口⇒有土地需求；未使用土地⇒供给；同轮同预算；一个 matcher 入口 | 代码完成、编译过；测试待迁移 |
-| **P3e 日常计划纠错** | M3/M5/M6/M8 | 5 tick 基础消费；零劳动位置入选；WageDemand 用 roster 实际雇工；roster-only fallback；不可行锁不 materialize；全链日志 | economy | 5 tick、A3/A4、锁过滤、D032_TICK_CHAIN | 已完成（编译过；测试待迁移） |
+| **P3d 土地意向 + 统一撮合** | M3/M4 | 从生产位置产生 LAND BUY；未使用土地 LAND SELL；商品/土地统一订单序列/统一 matcher 入口；整块、区级价、新土地标记 | economy 轮内瞬态 | 有生产缺口⇒有土地需求；未使用土地⇒供给；同轮同预算；一个 matcher 入口 | 代码完成、编译过；T1 已迁移 |
+| **P3e 日常计划纠错** | M3/M5/M6/M8 | 5 tick 基础消费；零劳动位置入选；WageDemand 用 roster 实际雇工；roster-only fallback；不可行锁不 materialize；全链日志 | economy | 5 tick、A3/A4、锁过滤、D032_TICK_CHAIN | 已完成（编译过；T1 已迁移） |
 | **P4a 工资只现金 + 普通债** | M8/M2 | 只付货币；未付成 `WAGE_ARREARS` 0‰ 普通货币债；删工资抵物/库存 lookup | economy | 部分/零现金、库存零变化、债 source/terms、下一轮 M2 | 已完成 |
 | **P4b1 工资锚状态/命令/seed** | M3/M8b | `productionWageAnchors` 状态/命令/seed；旧 posting/default 逐渐退役 | economy | 0 合法；缺锚≠0；跨雇主共享 | 已完成 |
 | **P4c1 WageDemand + 锚消费** | M3/M6/M8 | M3 生成 WageDemand；M3/M6/M8 读同一 tick 锚快照 | economy | target 公式、同 tick 不追改、缺锚拒绝 | 已完成 |
 | **P4c2 U20 观测/调价** | M8b | 市场日 M8 后聚合 target/matched；调下一 tick 锚；非市场日不变 | economy | 缺工加价、招满延迟降价、本 tick due 不变 | 已完成 |
-| **P4c3 旧工资表/命令/fallback 退役** | 全状态/M3/M8 | 只留 `productionWageAnchors` + carry；删旧两表/两命令/seed/codec/fallback；组件 36→34 | economy | 旧标识符 0；锚唯一报价；编译绿 | 代码完成；测试待迁移 |
-| **P4d production barter schema 清理** | M3/M7/M8 定义面 | 删 `RolePayment.MoneyWage.barterDiscount`、`BarterDiscountPolicy`、`BarterReferencePrice`、payload/tool schema | production | 旧 payload fail-closed；无 barter 字段 | 代码完成、编译过；测试待迁移 |
-| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | P5a/P5b1/P5b2 完成；P2fix 后 12 tick 真链全程提交；T1 测试迁移进行中 |
-| **P6 独立测试/变异/小世界** | 全阶段 | T1 迁移测试；文件大小守卫；变异自证；`clean verify`；小世界全链日志模拟 | 测试/控制方 | 每条不变量正负用例；真实链路日志可诊断 | 未开始 |
-| **T1 测试迁移** | P3e/P3d/P4d/P5 后 | 迁移旧类型/旧 seed/组件计数/命令清单；不动生产代码 | 测试 | testCompile/全量测试绿 | 待代码收口 |
+| **P4c3 旧工资表/命令/fallback 退役** | 全状态/M3/M8 | 只留 `productionWageAnchors` + carry；删旧两表/两命令/seed/codec/fallback；组件 36→34 | economy | 旧标识符 0；锚唯一报价；编译绿 | 代码完成；T1 已迁移 |
+| **P4d production barter schema 清理** | M3/M7/M8 定义面 | 删 `RolePayment.MoneyWage.barterDiscount`、`BarterDiscountPolicy`、`BarterReferencePrice`、payload/tool schema | production | 旧 payload fail-closed；无 barter 字段 | 代码完成、编译过；T1 已迁移 |
+| **P5 grain_farm + Seeder** | M1b/M3/M7/初始状态 | 单一 `grain_farm`；operator + hired_laborer；删 tenancy/rent/阶级 mode 映射；初始土地/锚/demands/roster；跨 hex 本地雇农 | economy/app | 同 mode 自耕/雇工；无 rent；无地户买地；跨 hex；土地守恒 | P5a/P5b1/P5b2 完成；P2fix 后 12 tick 真链全程提交；T1 完成（clean test 3574/0/0/7） |
+| **P6 独立测试/变异/小世界** | 全阶段 | T1 迁移测试；文件大小守卫；变异自证；`clean verify`；32hex/360 tick 小世界全链日志模拟 | 测试/控制方 | 每条不变量正负用例；真实链路日志可诊断 | T1 完成（3574/0/0/7）；`clean verify`/`gate.sh` 与 P6a 未开始 |
+| **T1 测试迁移** | P3e/P3d/P4d/P5 后 | 迁移旧类型/旧 seed/组件计数/命令清单；不动生产代码 | 测试 | testCompile/全量测试绿 | 完成：test-compile rc=0；clean test 3574/0/0/7（app 1017/0/0/7；economy 454/0/0/0；7 skip = RealLlm 门控） |
 
 ## 5. 裁定 → 运行阶段映射
 
@@ -201,50 +201,65 @@ INFO 只放阶段汇总/业务拒绝；DEBUG 放逐户原因；TRACE 放逐笔�
 - P6 变异自证重点：守恒、身份不丢、静默付 0、断粮/缺口、两轮锁、统一市场；
 - 多 tick 长跑不进 `clean verify`，用独立小世界模拟。
 
-### 6.3 小世界模拟（P6 之后）
+### 6.3 32hex 单市场区小世界 + 360 tick 数据表
 
-用户要求：测试迁移完成后，直接搞一个有完整新数据结构的农村小世界跑模拟，用日志看真实链路、找问题。
+用户 2026-10-19 要求：小世界规模大一些，**32 hex、1 个市场区、1 个地方政府**，先测单市场区经济系统稳定性；测试完**不要控制方自行解读**，把 **360 tick 的数据表**交给用户核对、找问题。
 
-建议最小世界：
+目标世界：
 
 ```text
-1 个市场区，2–3 个 hex，4–8 个农村家户；
-1 个 grain_farm 定义；
-有地/无地/多劳/少劳家户各至少 1 户；
-初始土地有差异、初始工资锚有差异；
-有 1 个本地雇农、1 个跨 hex 地主、1 个可卖地块；
-带粮食/种子/货币/债务；
-关闭旧 mode/tenancy/rent 默认。
+32 hex（显式确定性格表，六邻连通）
+1 个市场区（所有 hex 同一市场/同一地价）
+1 个地方政府（1 个 GOV 家户/1 个地方 GOV unit；不建中央+省两级）
+每个农村 hex 一个 grain_farm plan；农村家户按 P5b1 规则分 LAND，流民户 0 地
+初始 19+ 条 hired_laborer 关系、初始 wageAnchors、landPrice
+关闭旧 mode/tenancy/rent；只保留 grain_farm / displaced / 必要的非农占位
 ```
 
 运行方式：
 
-- 不进程序化测试，不塞多 tick 到 `clean verify`；
-- 独立 sim（如 `tools/multitick-sim.sh` 新 case 或等价 main）；
-- 打开 `D032_TICK_CHAIN` INFO + 逐户 `D032_HOUSEHOLD_CHAIN` DEBUG；
-- 检查：M2 债→M3 需求→M4 土地/商品订单→M5 消费→M6 重排→M7 产出→M8 工资→M9 缺口；
-- 任何“该有订单没有、该有劳动没有、该有产出没有、工资静默为 0”都回到阶段锚点定位。
+- 独立 sim（`tools/multitick-sim.sh rural-32hex-360d` 或等价 main），**不进** `clean verify`；
+- 360 次 `advanceDays(1)`，每 tick 收一行数据；发生拒绝/异常时该行 `status=REJECTED` 并带原因，但继续记录；
+- 打开 `D032_TICK_CHAIN` INFO + `D032_HOUSEHOLD_CHAIN` DEBUG；
+- 输出两份同内容表：`rural-32hex-360d.csv`（机器读）与 `rural-32hex-360d.md`（人读）。控制方只交付表格和路径，不替用户下结论。
+
+每行必备列（按此固定顺序）：
+
+```text
+tick, marketDay, revision, status,
+population, households, births, deaths,
+moneyTotalMilli, grainStockMilli, fiberStockMilli, toolStockMilli,
+landTotalMilliMu, landPriceMilliPerMu, landTradedMilliMu, landDebtTransferredBlocks,
+productionGrainMilli, productionFiberMilli, seedInputMilli,
+marketTrades, marketUnfilled, grainPriceMilli, fiberPriceMilli,
+wageDueMilli, wagePaidMilli, wageArrearsMilli, wageDebtOutstandingMilli,
+debtPrincipalMilli, debtContractCount,
+productionLaborMilli, hiredLaborMilli, unemployedLaborMilli,
+note
+```
+
+`note` 只放具名事件摘要（如 `DEBT_LAND_TRANSFER=19;WAGE_ARREARS_NEW=...`），不写分析结论。
 
 ## 7. 当前实现差异（不冒充目标已实现）
 
 | 项 | 目标 | 当前事实 |
 |---|---|---|
-| 土地需求从生产位置产生 | M3 从 `assetRequired[LAND]`/scale 计算，正缺口挂买盘 | P3d 已写入 `landQuantityMilliMu` 并生成 LAND BUY/SELL；测试待迁移 |
-| 未使用土地供给 | M3 自动生成 LAND SELL | P3d 已生成；测试待迁移 |
+| 土地需求从生产位置产生 | M3 从 `assetRequired[LAND]`/scale 计算，正缺口挂买盘 | P3d 已写入 `landQuantityMilliMu` 并生成 LAND BUY/SELL；T1 已迁移 |
+| 未使用土地供给 | M3 自动生成 LAND SELL | P3d 已生成；T1 已迁移 |
 | 同一订单簿/同一撮合器 | 商品/土地一个 matcher 入口 | P3d 已将 `MarketLandMatcher` 并入 `MarketMatcher`；runner 只调 `matchAll` 一次 |
-| 5 tick 基础消费 | 市场买盘只到下一市场轮 | P3e 已修（`MARKET_RESTOCK_INTERVAL_DAYS=5`）；测试待迁移 |
-| 零劳动 organizer/产品份额 | 正收益可入选且不占劳动预算 | P3e 已修 M3/M6；测试待迁移 |
-| WageDemand target | 先 roster 实际计划雇工，0 才回退工程默认 | P3e 已修；测试待迁移 |
-| legacy fallback | 只有 roster 真正为空才回退 | P3e 已修；测试待迁移 |
-| 不可行雇佣锁 | 不得 materialize/进 ActualProductionPlan | P3e 已修；测试待迁移 |
+| 5 tick 基础消费 | 市场买盘只到下一市场轮 | P3e 已修（`MARKET_RESTOCK_INTERVAL_DAYS=5`）；T1 已迁移 |
+| 零劳动 organizer/产品份额 | 正收益可入选且不占劳动预算 | P3e 已修 M3/M6；T1 已迁移 |
+| WageDemand target | 先 roster 实际计划雇工，0 才回退工程默认 | P3e 已修；T1 已迁移 |
+| legacy fallback | 只有 roster 真正为空才回退 | P3e 已修；T1 已迁移 |
+| 不可行雇佣锁 | 不得 materialize/进 ActualProductionPlan | P3e 已修；T1 已迁移 |
 | M6/M7 每 tick | 非市场日也实排/生产/入库 | 当前已每天跑；合同已按用户纠正更新 |
 | M3 跨 tick 边界 | 待审阅：市场日 M3 + 持久锁，或每日 M3 | 当前 M3 每天跑；见 §1.3 待确认项 |
 | 多地点工资付款人 | 跨 hex 雇主可按 location/roster 支付 | 当前 `wage-payer-location-unsupported` 会拒绝多地点 payer；P5/P6 前需修 |
 | 买地后自动建 unit | 无地户买地后下一轮可组织 | entry 依赖非空 `demands`；P5 需播种 demands 或显式 candidate unit |
 | 文件 ≤1000 | 所有 economy main Java ≤1000 | P3e 后最大 997；P3d/P5 新文件必须继续守住 |
-| 测试 | 全量迁移/绿 | 当前 testCompile 在 5 个 economy 测试红；app 未到 |
-| P4d barter | production 无 barter schema | P4d 已删除；production/app 编译绿；测试待迁移 |
-| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | P5a/P5b1/P5b2 完成；P2fix 后 12 tick 真链全程提交（REF_CONSISTENT）；T1 测试迁移进行中 |
+| 测试 | 全量迁移/绿 | T1 完成：test-compile rc=0；clean test 3574/0/0/7；`clean verify`/`gate.sh` 未跑 |
+| P4d barter | production 无 barter schema | P4d 已删除；production/app 编译绿；T1 已迁移 |
+| P5 grain_farm/Seeder | 单一模式、无 rent/tenancy、初始土地/锚 | P5a/P5b1/P5b2 完成；P2fix 后 12 tick 真链全程提交（REF_CONSISTENT）；T1 完成（clean test 3574/0/0/7） |
 
 ## 8. 待用户审阅/裁定的边界
 

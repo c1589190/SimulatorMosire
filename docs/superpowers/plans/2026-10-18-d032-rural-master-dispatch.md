@@ -284,9 +284,9 @@ simos-app/.../time/
 | P1 | Social 先 + 单槽 `PendingFamineFacts` | W1 `app-tick` | T1 | **完成（app 1017/0/0/7、reactor 3572/0/0/7 绿）** |
 | P2 | 统一市场（商品+土地）+ 债务最先 + 删 Pledge | W2 `economy-market-debt` | T1 | **完成（P2a–P2f；economy 452/0/0/0、app 1017/0/0/7、reactor 3572/0/0/7 绿）** |
 | P3 | 两阶段单家户生产 + 雇佣锁 + 纯库存财富 | W3 `economy-production-tick` | T1 | **P3a–P3c3 完成；P3e 已修 5 tick/零劳动/WageDemand target/roster-only fallback/lock过滤/全链路日志；P3d 土地意向已生成，`MarketLandMatcher` 已并入 `MarketMatcher`，runner 只调 `matchAll` 一次；economy/app 编译绿；测试待 T1** |
-| P4 | 工资现金支付 + 普通债 + U20 工资锚 | W4 `economy-wage` | T1 | **P4a/P4b1/P4c1/P4c2 完成，reactor 3574/0/0/7 绿；P4c3 旧工资表/命令/fallback 已删除且 economy/app 编译绿（34 组件）；P4d production barter schema 已清理，production/app 编译绿；P5 `grain_farm`/Seeder/P2fix 已完成；T1 测试迁移进行中** |
-| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | **P5a/P5b1/P5b2 完成：单一 grain_farm、逐户 LAND/unit/roster、19 anchors、landPrice=10、19 hired participants；day1-9 真链跑通；P2fix 后 day10 抵地引用清理完成、12 tick 全程提交；T1 测试迁移进行中** |
-| P6 | 独立测试、变异自证、全量门禁 | T1 `verification` | T1 | 未开始 |
+| P4 | 工资现金支付 + 普通债 + U20 工资锚 | W4 `economy-wage` | T1 | **P4a/P4b1/P4c1/P4c2 完成，reactor 3574/0/0/7 绿；P4c3 旧工资表/命令/fallback 已删除且 economy/app 编译绿（34 组件）；P4d production barter schema 已清理，production/app 编译绿；P5 `grain_farm`/Seeder/P2fix 已完成；T1 完成（clean test 3574/0/0/7）** |
+| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | **P5a/P5b1/P5b2 完成：单一 grain_farm、逐户 LAND/unit/roster、19 anchors、landPrice=10、19 hired participants；day1-9 真链跑通；P2fix 后 day10 抵地引用清理完成、12 tick 全程提交；T1 完成（clean test 3574/0/0/7）** |
+| P6 | 独立测试、变异自证、全量门禁 | T1 `verification` | T1 | T1 测试迁移完成（3574/0/0/7）；P6a/P6b/clean verify/gate 未开始 |
 
 > 任一时刻只允许一个写代码 owner；上一阶段编译/既有回归通过、控制方验收后才进入下一阶段。**P0.5 必须先于 P1 全部完成**；不允许边改行为边拆文件。
 
@@ -945,6 +945,16 @@ tools/gate.sh
 - 写者全停手后才跑全量门禁；服务在跑时用 `./mvnw test` 不动 jar。
 - 证据落 `.superpowers/sdd/<topic>/evidence/`；报告写“未做/未验证”清单。
 
+### 13.5 32hex 单市场区 360 tick 模拟（用户 2026-10-19 指定）
+
+- 世界：**32 hex、1 个市场区、1 个地方政府**，完整新数据（grain_farm/LAND/anchors/landPrice/roster），不用旧 mode/tenancy/rent。
+- 独立 sim：`tools/multitick-sim.sh rural-32hex-360d`（不进 `clean verify`）；360 次 `advanceDays(1)`。
+- 日志：`D032_TICK_CHAIN` INFO + `D032_HOUSEHOLD_CHAIN` DEBUG；失败也继续记录该 tick。
+- 输出：`rural-32hex-360d.csv` + `rural-32hex-360d.md`，每 tick 一行；列固定包含
+  tick/marketDay/revision/status、population/households/births/deaths、money/goods/land、landPrice/landTraded/landDebtTransferred、
+  production/seed input、marketTrades/unfilled/prices、wageDue/paid/arrears/debt、production/hired/unemployed labor、note。
+- **交付纪律**：控制方只把 360 tick 表格与路径交给用户核对，不自行做结论/筛问题；用户指定问题后再回代码定位。
+
 ## §14 文件所有权与交接表
 
 | 文件/目录 | P0.5 | P1 | P2 | P3 | P4 | P5 | P6 |
@@ -994,6 +1004,9 @@ tools/gate.sh
 
 ## §16 当前状态与下一步
 
+- **2026-10-19 T1 完成**：test-compile rc=0；全仓 clean test **3574 / 0F / 0E / 7S**（app 1017/0/0/7；economy 454/0/0/0；7 skip = 既有 RealLlm 门控）。
+- **2026-10-19 集成修复完成**：P4fix1（锚 zone 允许 marketZones/marketTables；ClearRegion 过滤锚）、P4fix2（DefineMarketZone 重键派生锚）、MKTfix2/2b（per-buyer seller 游标 + 同 hex 残余回退）；当前无已知生产 bug。
+- **P6 未做**：clean verify/gate/SpotBugs/Checkstyle/前端门禁；P6a 32hex/1市场区/1地方政府/360 tick 模拟与数据表尚未开始（用户要求：控制方只交表，不自行解读）。
 - **P0 已完成**：总派单、tick contract、农业模板、差距表、文件拆分方案、阅读覆盖清单。
 - **未做**：没有改 Java/XML/POM/测试；没有跑 Maven；没有提交/推送；没有动主树。
 - **P0.5 已完成**：economy 无 >1000 行 main Java；`EconomySeeder` 941 行；已有 economy 452/0/0/0、app 1017/0/0/7 绿；Spotless economy/app 0 needs changes。
