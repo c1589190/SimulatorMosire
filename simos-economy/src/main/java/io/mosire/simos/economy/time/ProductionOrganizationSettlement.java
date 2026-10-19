@@ -29,6 +29,8 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionParticipant;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.time.EconomySettlement.MoneyIssuanceJournal;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -265,19 +267,31 @@ final class ProductionOrganizationSettlement {
   }
 
   /**
-   * ★★ <b>GAP-2：退出处置后的组织引用清理</b>。{@link #settleOperatorExits} 会把 TENANCY/委托份额的 {@code operator} 改回
-   * {@code owner}；这些份额随即不再由退出 operator 经营，而它的 {@link ProductionEnterprise#assetSources()} 里可能仍留着旧引用
-   * ⇒ revision 边界的 {@code EconomyData} 守卫会以「份额 operator 必须等于
-   * organizer」fail-closed。这里按份额回主的事实把引用摘掉，<b>不改份额本身、
-   * 不改组织身份/unit/laborSources</b>；份额退主后重新成为可租赁的闲置资产，下一期计划可见。
+   * ★★ <b>GAP-2：处置后不再由该 operator 经营的份额 → 组织引用清理</b>。
+   *
+   * <p>两个调用现场共用同一条事实：份额的 {@code operator} 已不是某组织的 {@code organizer}，而该组织的 {@link
+   * ProductionEnterprise#assetSources()} 里可能仍留着旧引用 ⇒ revision 边界的 {@code EconomyData} 守卫会以「份额
+   * operator 必须等于 organizer」fail-closed：
+   *
+   * <ul>
+   *   <li>{@link #settleOperatorExits}：TENANCY/委托份额的 {@code operator} 改回 {@code owner}；
+   *   <li>{@link DebtFirstSettlement}：M2 债务把债务人的 LAND 整块抵给债权人后，份额 {@code operator} 变成债权人，
+   *       而债务人组织仍引用它。
+   * </ul>
+   *
+   * <p>这里按“份额已不再由该 operator 经营”的事实把引用摘掉，<b>不改份额本身、不改组织身份/unit/laborSources/inputSources/
+   * status</b>；同一份额若被该 operator 的多个组织引用，全部摘除；份额退主/抵债后重新成为下一期计划可见的资产，不在本方法里 强行塞给任何新组织。
+   *
+   * @return 被摘除的 {@code assetSources} 引用条数（跨该 operator 的全部组织累计；0 = 无需清理）
    */
-  static void detachReturnedSharesFromEnterprises(
+  static int detachReturnedSharesFromEnterprises(
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       ActorRef operator,
       Set<AssetShareId> returnedShareIds) {
     if (returnedShareIds.isEmpty()) {
-      return;
+      return 0;
     }
+    int detachedReferences = 0;
     List<ProductionOrganizationId> enterpriseIds = new ArrayList<>(enterprises.keySet());
     enterpriseIds.sort(Comparator.comparing(ProductionOrganizationId::value));
     for (ProductionOrganizationId organizationId : enterpriseIds) {
@@ -286,9 +300,11 @@ final class ProductionOrganizationSettlement {
         continue;
       }
       List<AssetShareId> kept = new ArrayList<>(enterprise.assetSources());
+      int before = kept.size();
       if (!kept.removeIf(returnedShareIds::contains)) {
         continue; // 该组织没有引用这批退回份额：一字不动
       }
+      detachedReferences += before - kept.size();
       enterprises.put(
           organizationId,
           new ProductionEnterprise(
@@ -305,6 +321,63 @@ final class ProductionOrganizationSettlement {
               enterprise.status(),
               enterprise.statusReason()));
     }
+    return detachedReferences;
+  }
+
+  /**
+   * ★★★ <b>D-032 P2fix：抵地后名册 rightsStakes 的陈旧引用清理</b>。
+   *
+   * <p>{@code ProductionRoster.participants[].rightsStakes} 只存 {@link AssetShareId} 引用；份额被 M2
+   * 抵给债权人后， 原债务人参与项里的旧引用会在 {@code HouseholdReferenceValidation.validateProductionRosters} 的
+   * `rights-not-owned` 处失败（owner 已不是该参与户）。这里只对 {@code debtor} 自己的参与项摘掉这些被转走的 share id，<b>不动名册的
+   * unit/plan/participant 家户/角色/计划劳动/权重，不动份额本身</b>；没有引用时返回 0。
+   *
+   * @return 被摘除的 rightsStakes 引用条数
+   */
+  static int detachRightsStakesFromRosters(
+      Map<ProductionUnitId, ProductionRoster> rosters,
+      HouseholdId debtor,
+      Set<AssetShareId> detachedShareIds) {
+    if (rosters == null || rosters.isEmpty() || detachedShareIds.isEmpty()) {
+      return 0;
+    }
+    int detachedReferences = 0;
+    List<ProductionUnitId> unitIds = new ArrayList<>(rosters.keySet());
+    unitIds.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : unitIds) {
+      ProductionRoster roster = rosters.get(unitId);
+      if (roster == null) {
+        continue;
+      }
+      boolean rosterChanged = false;
+      List<ProductionParticipant> participants = new ArrayList<>(roster.participants().size());
+      for (ProductionParticipant participant : roster.participants()) {
+        if (!participant.household().equals(debtor) || participant.rightsStakes().isEmpty()) {
+          participants.add(participant);
+          continue;
+        }
+        List<AssetShareId> kept = new ArrayList<>(participant.rightsStakes());
+        int before = kept.size();
+        if (!kept.removeIf(detachedShareIds::contains)) {
+          participants.add(participant);
+          continue;
+        }
+        detachedReferences += before - kept.size();
+        rosterChanged = true;
+        participants.add(
+            new ProductionParticipant(
+                participant.household(),
+                participant.role(),
+                participant.organizer(),
+                participant.plannedLaborMilliPerDay(),
+                kept,
+                participant.configuredWeight()));
+      }
+      if (rosterChanged) {
+        rosters.put(unitId, new ProductionRoster(roster.unit(), roster.plan(), participants));
+      }
+    }
+    return detachedReferences;
   }
 
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────

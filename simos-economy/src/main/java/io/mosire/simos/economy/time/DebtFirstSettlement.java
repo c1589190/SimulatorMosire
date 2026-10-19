@@ -12,6 +12,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -29,10 +30,12 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
+import java.util.Set;
 import org.slf4j.Logger;
 
 /**
@@ -111,6 +114,9 @@ final class DebtFirstSettlement {
     long paidContracts = 0L;
     long forgivenContracts = 0L;
     long landBlocksTransferred = 0L;
+    long detachedEnterpriseRefs = 0L;
+    long detachedOccupancyGrants = 0L;
+    long detachedRosterRights = 0L;
 
     for (HouseholdId debtor : debtors) {
       HouseholdEconomy debtorRow = ctx.householdEconomies.get(debtor);
@@ -178,6 +184,9 @@ final class DebtFirstSettlement {
                 householdPrices,
                 landByHousehold.getOrDefault(debtor, List.of()));
         landBlocksTransferred += outcome.landBlocksTransferred();
+        detachedEnterpriseRefs += outcome.detachedEnterpriseRefs();
+        detachedOccupancyGrants += outcome.detachedOccupancyGrants();
+        detachedRosterRights += outcome.detachedRosterRights();
         if (outcome.paidContractUnits() > 0L) {
           paidContracts++;
         }
@@ -211,6 +220,27 @@ final class DebtFirstSettlement {
                 traceMoneyByCurrency(ctx.repaidMoneyToday),
                 "why",
                 "P2e-M2: market-open debt-first, pure-inventory-wealth creditor order"));
+    if (landBlocksTransferred > 0L) {
+      // ★★★ D-032 P2fix：土地整块抵债会改份额 operator（→ 债权人），债务人侧三类旧引用（组织 assetSources /
+      //   占用 grant / 名册 rightsStakes）都不能再指名这些份额；本事件把“转了多少块 / 摘掉多少条”留成 INFO 证据。
+      EventLog.channel(DEBT)
+          .info(
+              LogEvent.of(
+                  "DEBT_FIRST_M2_LAND_ORG_DETACH",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  ctx.day,
+                  "transferredLandBlocks",
+                  landBlocksTransferred,
+                  "detachedEnterpriseRefs",
+                  detachedEnterpriseRefs,
+                  "detachedOccupancyGrants",
+                  detachedOccupancyGrants,
+                  "detachedRosterRights",
+                  detachedRosterRights,
+                  "reason",
+                  "transferred-land-share-operator-no-longer-debtor-organizer"));
+    }
     if (TRACE.isDebugEnabled()) {
       EventLog.channel(DEBT)
           .debug(
@@ -359,6 +389,7 @@ final class DebtFirstSettlement {
     // ③ 土地：整块、不找零、不拆分；价值升序 → AssetShareId 升序。
     long landContractUnits = 0L;
     int landBlocksTransferred = 0;
+    Set<AssetShareId> transferredLandShareIds = new LinkedHashSet<>();
     if (remaining > 0L && !landBlocks.isEmpty()) {
       List<LandBlock> priced = pricedLandBlocks(landBlocks, debt, ctx, currencyValuation);
       for (LandBlock block : priced) {
@@ -376,6 +407,7 @@ final class DebtFirstSettlement {
         OwnershipStakeBook.transferLandBlock(
             ctx.assetShares, block.share().id(), creditorActor, creditorActor);
         ctx.markLandAcquired(block.share().id());
+        transferredLandShareIds.add(block.share().id());
         landBlocksTransferred++;
         EventLog.channel(TRACE)
             .trace(
@@ -399,6 +431,26 @@ final class DebtFirstSettlement {
                     "remainingDebtAfter",
                     remaining));
       }
+    }
+    // ★★★ D-032 P2fix：抵地成功后份额 operator 已改成债权人；债务人侧所有还指名这些 share 的旧引用都必须摘除，
+    //   否则 revision 边界的 EconomyData / production-reference 校验会 fail-closed：
+    //   ① 生产组织 assetSources；② 资产占用 grant（scope 校验先于 STATUS，不能只置 RELEASED）；③ 名册 rightsStakes。
+    //   不改份额、不改组织身份/unit/laborSources/inputSources/status，也不把新 share 塞给债权人组织。
+    int detachedEnterpriseRefs = 0;
+    int detachedOccupancyGrants = 0;
+    int detachedRosterRights = 0;
+    if (!transferredLandShareIds.isEmpty()) {
+      detachedEnterpriseRefs =
+          ProductionOrganizationSettlement.detachReturnedSharesFromEnterprises(
+              ctx.session.sheet().productionOrganizations(),
+              HouseholdActors.of(debtor),
+              transferredLandShareIds);
+      detachedOccupancyGrants =
+          AssetOccupancyBook.detachGrantsForShares(
+              ctx.session.sheet().assetOccupancies(), transferredLandShareIds);
+      detachedRosterRights =
+          ProductionOrganizationSettlement.detachRightsStakesFromRosters(
+              ctx.session.sheet().productionRosters(), debtor, transferredLandShareIds);
     }
     if (landContractUnits > 0L) {
       DebtContractBook.reduce(ctx.debts, debt.id(), landContractUnits);
@@ -437,9 +489,20 @@ final class DebtFirstSettlement {
                   "goodsLegs",
                   goodsLegs,
                   "landBlocks",
-                  landBlocksTransferred));
+                  landBlocksTransferred,
+                  "detachedEnterpriseRefs",
+                  detachedEnterpriseRefs,
+                  "detachedOccupancyGrants",
+                  detachedOccupancyGrants,
+                  "detachedRosterRights",
+                  detachedRosterRights));
     }
-    return new PaymentOutcome(paid, landBlocksTransferred);
+    return new PaymentOutcome(
+        paid,
+        landBlocksTransferred,
+        detachedEnterpriseRefs,
+        detachedOccupancyGrants,
+        detachedRosterRights);
   }
 
   /** 货币付款选择：本币 identity 1:1；异币必须经本区 CurrencyValuation，缺价返回 null（调用方具名 skip）。 */
@@ -680,5 +743,10 @@ final class DebtFirstSettlement {
 
   private record LandBlock(OwnershipStake share, long contractValue, long landPrice) {}
 
-  private record PaymentOutcome(long paidContractUnits, int landBlocksTransferred) {}
+  private record PaymentOutcome(
+      long paidContractUnits,
+      int landBlocksTransferred,
+      int detachedEnterpriseRefs,
+      int detachedOccupancyGrants,
+      int detachedRosterRights) {}
 }

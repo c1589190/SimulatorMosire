@@ -285,7 +285,7 @@ simos-app/.../time/
 | P2 | 统一市场（商品+土地）+ 债务最先 + 删 Pledge | W2 `economy-market-debt` | T1 | **完成（P2a–P2f；economy 452/0/0/0、app 1017/0/0/7、reactor 3572/0/0/7 绿）** |
 | P3 | 两阶段单家户生产 + 雇佣锁 + 纯库存财富 | W3 `economy-production-tick` | T1 | **P3a–P3c3 完成；P3e 已修 5 tick/零劳动/WageDemand target/roster-only fallback/lock过滤/全链路日志；P3d 土地意向已生成，`MarketLandMatcher` 已并入 `MarketMatcher`，runner 只调 `matchAll` 一次；economy/app 编译绿；测试待 T1** |
 | P4 | 工资现金支付 + 普通债 + U20 工资锚 | W4 `economy-wage` | T1 | **P4a/P4b1/P4c1/P4c2 完成，reactor 3574/0/0/7 绿；P4c3 旧工资表/命令/fallback 已删除且 economy/app 编译绿（34 组件）；P4d production barter schema 已清理，production/app 编译绿；P5 `grain_farm`/Seeder 进行中；测试待 T1 迁移** |
-| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | **P5a 完成（单一 grain_farm/无 rent/阶级只投影）；P5b1 完成（按家户初始 LAND/unit/roster，SmallWorld 19 plans/95 units/95 rosters，Σland 守恒）；P5b2 初始工资锚/地价/真实雇工关系进行中** |
+| P5 | 农村范围收口 + 无级农业模板 + Seeder | W5 `rural-scope` | T1 | **P5a 完成（单一 grain_farm/无 rent/阶级只投影）；P5b1 完成（按家户初始 LAND/unit/roster，SmallWorld 19 plans/95 units/95 rosters，Σland 守恒）；P5b2 完成（19 anchors / 19 hired participants / landPrice=10；day1-9 真链跑通；已知 P2 day10 抵地组织引用缺口）** |
 | P6 | 独立测试、变异自证、全量门禁 | T1 `verification` | T1 | 未开始 |
 
 > 任一时刻只允许一个写代码 owner；上一阶段编译/既有回归通过、控制方验收后才进入下一阶段。**P0.5 必须先于 P1 全部完成**；不允许边改行为边拆文件。
@@ -1009,6 +1009,7 @@ tools/gate.sh
 - **P4c2 完成**：市场日 M8 后按 M3 target/M8 matched 聚合观测并调 U20 锚；逐义务 readout 带锚键；app 增锚级只读列表；app 1017/0/0/7、reactor 3574/0/0/7 绿（2026-10-19）。
 - **P3e 完成**：5 tick 基础消费、零劳动 organizer 入选、WageDemand target 改用 roster 实际雇工、legacy fallback 只按 roster 存在性、M6 不可行锁过滤、`D032_TICK_CHAIN`；economy/app 编译绿（2026-10-19）。
 - **P5a 完成**：农村目录只余 grain_farm/handicraft/merchant/displaced；grain_farm=operator+hired_laborer；农村四槽→operator，landless→displaced；farm LAND 不再 300‰ rent；economy/app 编译绿（2026-10-19）。
+- **P5b2 完成**：`hired_laborer.standardLabor=120000/周期（1000/日）`；SmallWorld 19 条 wageAnchors（single-region×farm@q_r×hired_laborer，wage=20）、19 条真实 hired_laborer roster participant（planned=5160/日）、landPrice=10；day1-9 M3→lock→M8→M8b 真链，day5 target=matched=98040；economy/app 编译绿（2026-10-19）。
 - **P5b1 完成**：每农村 hex 一个 grain_farm plan，每农村家户一个 unit；LAND 权重 100/250/300/350，流民 0；Σ=本格容量；SmallWorld 19 plans/95 units/95 rosters/95 LAND stakes，总 land 54,758,400；economy/app 编译绿（2026-10-19）。
 - **P4d 完成**：`MoneyWage` 无字段、Barter* 删除、旧 payload barterDiscount 按未知键 fail-closed；production/app 编译绿（2026-10-19）。
 - **P3d 代码完成（测试待迁移）**：`PositionPlan.landQuantityMilliMu` 从 production probe 的 `assetRequired[LAND]` 写入；`MarketLandIntentBook` 生成 LAND BUY/SELL；`MarketRoundRunner.clearOncePerCycle` 只调 `MarketMatcher.matchAll` 一次；`MarketLandMatcher` 已并入 `MarketMatcher`，全仓 main 旧引用清零；商品/土地仍同一 `MarketRound`、同轮、同预算/冻结（2026-10-19）。

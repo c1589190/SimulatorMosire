@@ -123,6 +123,28 @@ public final class AssetOccupancyBook {
     return AssetOccupancyReadout.release(grant, releasedAtTick);
   }
 
+  /**
+   * ★★★ <b>D-032 P2fix：份额不再属于/不再由原主体经营后的占用事实清理</b>。
+   *
+   * <p>用于 M2 债务把 LAND 整块抵给债权人之后：grant 是“某 unit 占用某 share”的事实，share 的 owner/operator/location 已改变后，旧
+   * grant 在 {@code ProductionReferenceValidation.validateAssetOccupancies} 里会在检查 STATUS 之前先撞上
+   * `asset-occupancy-scope-mismatch`。仅置 RELEASED 不够，必须从工作副本删除这些授予行。
+   *
+   * <p>★ 只删指向 {@code shareIds} 的 grant；不新建 grant、不改 share/unit/名册/计划。返回删除条数。
+   */
+  static int detachGrantsForShares(
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> grants, Set<AssetShareId> shareIds) {
+    if (grants == null || grants.isEmpty() || shareIds == null || shareIds.isEmpty()) {
+      return 0;
+    }
+    int before = grants.size();
+    grants
+        .entrySet()
+        .removeIf(
+            entry -> entry.getValue() != null && shareIds.contains(entry.getValue().shareId()));
+    return before - grants.size();
+  }
+
   static int reconcileGrantQuantitiesWithShares(
       Map<AssetOccupancyGrantId, AssetOccupancyGrant> grants,
       Map<AssetShareId, OwnershipStake> assetShares) {
