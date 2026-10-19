@@ -50,7 +50,7 @@ import org.junit.jupiter.api.Test;
 /**
  * ★★ <b>D-024 修复 1b：{@code ExpectedProfitBook.employerOf} 的新口径（只读当天 units）</b>。
  *
- * <p>{@code employerOf} 是私有方法，这里全部通过 {@code prospect(base, …, WAGE_FARM, …)} 的可观察输出判定：
+ * <p>{@code employerOf} 是私有方法，这里全部通过 {@code prospect(base, …, GRAIN_FARM, …)} 的可观察输出判定：
  *
  * <ul>
  *   <li>{@code base.productionOrganizations()} 为空 + 当天 units 有 farm 主 unit ⇒ wage prospect 可行，规模 =
@@ -60,7 +60,7 @@ import org.junit.jupiter.api.Test;
  *   <li>本户自己的 unit 被排除（只有自有 unit ⇒ NO_EMPLOYER）；
  *   <li>错格 / 错产业 unit 被排除；
  *   <li>同秩同规模取 unitId 升序第一个（用两条不同的 FIXED_MONEY_WAGE 关系从收入反证选中哪条）；
- *   <li>modeKey 直接命中（秩 2）优先于规模更大的同产业 regime 相符 unit（秩 1）；
+ *   <li>modeKey 直接命中（秩 2）优先于规模更大的同产业回退 unit（秩 0）；
  *   <li>只有零产能 unit ⇒ NO_EMPLOYER（且零产能不得挡掉低秩的可用雇主）。
  * </ul>
  */
@@ -81,7 +81,11 @@ class ExpectedProfitBookEmployerOfTest {
   private static final IndustryId FARM2 = IndustryHexKeys.id("farm", H2.q(), H2.r());
   private static final IndustryId CRAFT = IndustryHexKeys.id("craft", H.q(), H.r());
 
-  /** WAGE_FARM 的默认 regime = feudal（秩 1 的判据）；laborPerUnit=1,000、cycleDays=10、LAND 1/规模。 */
+  /**
+   * ★★ D-032 P5a：{@code grain_farm} 没有租佃/雇农/家庭农场的默认制度模板（{@code
+   * RegimeOperators.defaultRegimeForMode} ⇒ empty）；同产业 unit 落**秩 0（同产业回退）**，
+   * 只有 {@code mode:grain_farm} 直命中的 unit 落秩 2。laborPerUnit=1,000、cycleDays=10、LAND 1/规模。
+   */
   private static IndustryDefinitionView farm(IndustryId id) {
     return IndustryViews.industry(
         id,
@@ -195,7 +199,7 @@ class ExpectedProfitBookEmployerOfTest {
             0L);
     ClassPositionId wagePosition =
         DefaultProductionModes.positionId(
-                DefaultProductionModes.WAGE_FARM, DefaultProductionModes.ROLE_WAGE_LABORER)
+                DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_HIRED_LABORER)
             .orElseThrow();
     // 夹具把三个产业都登记进 base.industries，便于“错格/错产业”用例的份额通过 EconomyData 的跨表引用守卫；
     // 具体对哪个 (industry, hex) 求 prospect 仍由调用方显式传入。
@@ -233,7 +237,7 @@ class ExpectedProfitBookEmployerOfTest {
     return ExpectedProfitBook.prospect(
         base,
         WORKER,
-        DefaultProductionModes.WAGE_FARM,
+        DefaultProductionModes.GRAIN_FARM,
         H,
         industry,
         market(),
@@ -368,14 +372,14 @@ class ExpectedProfitBookEmployerOfTest {
   }
 
   @Test
-  void modeKeyDirectHitWinsOverLargerRegimeMatchedUnit() {
+  void modeKeyDirectHitWinsOverLargerSameIndustryUnit() {
     IndustryDefinitionView industry = farm(FARM);
     String directModeKey =
-        EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.WAGE_FARM.value();
+        EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.GRAIN_FARM.value();
     // 秩 2：modeKey 直接命中，但规模只有 2。
     ProductionProcess directHit = unit("unit-direct-hit", FARM, ESTATE_A, directModeKey);
     OwnershipStake directHitLand = share(FARM, AssetKind.LAND, ESTATE_A, ESTATE_A, 2L, 0L);
-    // 秩 1：产业 regime=feudal 与 WAGE_FARM 默认 regime 相符，规模 10（更大）。
+    // 秩 0：同产业回退（grain_farm 无默认制度可匹配），规模 10（更大）。
     ProductionProcess regimeMatch = unit("unit-regime-match", FARM, ESTATE_B, FARM.value());
     OwnershipStake regimeLand = share(FARM, AssetKind.LAND, ESTATE_B, ESTATE_B, 10L, 1L);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
@@ -393,7 +397,7 @@ class ExpectedProfitBookEmployerOfTest {
 
     assertThat(p.feasible()).isTrue();
     assertThat(p.feasibleScale())
-        .as("★ modeKey 直接命中优先 ⇒ 用秩 2 unit 的规模 2，而不是秩 1 unit 的 10")
+        .as("★ modeKey 直接命中优先 ⇒ 用秩 2 unit 的规模 2，而不是秩 0 同产业 unit 的 10")
         .isEqualTo(2L);
     assertThat(p.revenueMilli())
         .as("★ 收入来自 modeKey 命中 unit 的 100，而不是规模更大 unit 的 777")
@@ -422,8 +426,8 @@ class ExpectedProfitBookEmployerOfTest {
   void zeroCapacityHigherRankUnitDoesNotShadowLowerRankEmployer() {
     IndustryDefinitionView industry = farm(FARM);
     String directModeKey =
-        EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.WAGE_FARM.value();
-    // 秩 2 但零产能：必须被跳过，不能挡住下面秩 1 的可用雇主。
+        EconomyEnterpriseSettlement.MODE_KEY_PREFIX + DefaultProductionModes.GRAIN_FARM.value();
+    // 秩 2 但零产能：必须被跳过，不能挡住下面秩 0 的同产业可用雇主。
     ProductionProcess zeroRank2 = unit("unit-zero-rank2", FARM, ESTATE_A, directModeKey);
     OwnershipStake zeroLand = share(FARM, AssetKind.LAND, ESTATE_A, ESTATE_A, 0L, 0L);
     ProductionProcess usableRank1 = unit("unit-usable-rank1", FARM, ESTATE_B, FARM.value());
@@ -441,7 +445,7 @@ class ExpectedProfitBookEmployerOfTest {
         prospect(base(industry, shares, units, relations), industry, shares, units, relations);
 
     assertThat(p.feasible()).isTrue();
-    assertThat(p.feasibleScale()).as("跳过零产能高秩后取秩 1 的规模 7").isEqualTo(7L);
+    assertThat(p.feasibleScale()).as("跳过零产能高秩后取秩 0 同产业回退的规模 7").isEqualTo(7L);
     assertThat(p.revenueMilli()).isEqualTo(500L);
   }
 }

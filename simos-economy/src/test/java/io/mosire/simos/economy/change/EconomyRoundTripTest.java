@@ -95,12 +95,9 @@ import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
@@ -537,7 +534,7 @@ class EconomyRoundTripTest {
    * marketZones} / 2026-10-09 选项 A 的 {@code householdDebtRefs}。
    *
    * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P4a 29 → Z1 31 → A1 33 → B2 34 → 选项 A
-   * 35）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   * 35 → P4b1 36 → P4c3 34）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
    *
    * <p>★★ <b>本条的欠账如实记（2026-10-09 选项 A 迁移时实测发现）</b>：这个数字自 A1/B2 起就**已经过期**（那两批各加了组件却 没改这里：31 →
    * 34），也就是说在本轮拆表<b>之前</b>它就已经是红的 —— 不是本次结构改动弄红的。本次按**实测**改成 35（ {@code EconomyChangeSet} 与 {@code
@@ -565,11 +562,15 @@ class EconomyRoundTripTest {
    * 组件数**实测值**，两侧子集断言仍然双向成立 ⇒ 再动状态必须同步本用例。
    *
    * <p>★★ <b>D-032 P4b1：35 → 36</b>：末尾追加第 36 个组件 {@code productionWageAnchors}（U20 工资锚；键 = {@code
-   * WageAnchorKey}）。本批只恢复组件形状基线，不测锚业务（P4c 再补）。
+   * WageAnchorKey}）。
+   *
+   * <p>★★★ <b>D-032 P4c3：36 → 34</b>：旧 {@code productionWageDefaults} / {@code productionWagePostings}
+   * 两张工资表整段删除，工资报价的唯一权威只剩 {@code productionWageAnchors}（U20 锚）。本用例按实测把两侧组件数
+   * 钉成 <b>34</b>；锚表与 {@code wageCarryRemainders} 的往返仍由逐组件用例覆盖，旧两维不再有夹具（Alpha：不补兼容位）。
    */
   @Test
-  void changeSetHasExactlyThirtySixComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
+  void changeSetHasExactlyThirtyFourComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(34);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -613,27 +614,6 @@ class EconomyRoundTripTest {
   private static ProductionRoster roster() {
     return new ProductionRoster(
         FARM_UNIT, FARM, List.of(ProductionParticipant.of(KEY_HH, OPERATOR_ROLE, true, 1_000L)));
-  }
-
-  private static ProductionWageDefault wageDefault() {
-    return new ProductionWageDefault(FARM, OPERATOR_ROLE, MARKET, 5L, 1_000L);
-  }
-
-  private static ProductionWagePosting wagePosting() {
-    return new ProductionWagePosting(
-        FARM_UNIT,
-        OPERATOR_ROLE,
-        1_000L,
-        SILVER,
-        5L,
-        WageQuoteSource.SEED,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L);
   }
 
   /**
@@ -742,7 +722,7 @@ class EconomyRoundTripTest {
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
       // ★★ M-A1（2026-10-10）：第 30 个组件 merchantFirms 已退役（运力改为派生量）⇒ 本条不再存在。
-      //    组件数随之 37 → 36（见 changeSetHasExactlyThirtySixComponents）。
+      //    组件数随之 37 → 36（见 changeSetHasExactlyThirtyFourComponents）。
       // ★ P4a 的第 31 个组件：规则只描述"从谁扣多少"，不落账户；键 == 值内 id 是唯一守卫。
       case "periodicAdjustments" ->
           base.withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, periodicAdjustment()));
@@ -816,14 +796,6 @@ class EconomyRoundTripTest {
       case "productionRosters" -> {
         ProductionRoster value = roster();
         yield base.withProductionRosters(Map.of(value.unit(), value));
-      }
-      case "productionWageDefaults" -> {
-        ProductionWageDefault value = wageDefault();
-        yield base.withProductionWageDefaults(Map.of(value.key(), value));
-      }
-      case "productionWagePostings" -> {
-        ProductionWagePosting value = wagePosting();
-        yield base.withProductionWagePostings(Map.of(value.key(), value));
       }
       case "wageCarryRemainders" ->
           base.withWageCarryRemainders(
@@ -899,8 +871,6 @@ class EconomyRoundTripTest {
       // ★★ W1 的第 40 个组件（见 mutate 的同名 case）
       case "marketRoundStats" -> cs.marketRoundStats().changed();
       case "productionRosters" -> cs.productionRosters().changed();
-      case "productionWageDefaults" -> cs.productionWageDefaults().changed();
-      case "productionWagePostings" -> cs.productionWagePostings().changed();
       case "wageCarryRemainders" -> cs.wageCarryRemainders().changed();
       case "assetOccupancies" -> cs.assetOccupancies().changed();
       case "inventoryReservations" -> cs.inventoryReservations().changed();
@@ -1316,7 +1286,7 @@ class EconomyRoundTripTest {
    * {@code classes}+{@code classStandings} 的处理同款： <b>两个互相约束的组件必须在同一次规范构造里改变</b>。
    *
    * <p>★ <b>代价与护栏</b>：这里显式列出全部 36 个组件 ⇒ 将来新增组件时本调用**编译不过**（不是静默丢字段）， 且本文件的 {@code
-   * changeSetHasExactlyThirtySixComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
+   * changeSetHasExactlyThirtyFourComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
    *
    * <p>★★ <b>2026-10-11 W1d 更正（W1 收尾批核对代码时发现，本注原先已过期）</b>：上面"两个单组件 wither 之间没有合法 中间态"这条理由**已不成立**
    * —— {@code EconomyData} 构造期那条"每个持久区必须有价表条目"的守卫已按设计书 §4.2 N-4 **删除**（"缺表 =
@@ -1357,8 +1327,6 @@ class EconomyRoundTripTest {
         base.govMarketMandates(),
         base.marketRoundStats(),
         base.productionRosters(),
-        base.productionWageDefaults(),
-        base.productionWagePostings(),
         base.wageCarryRemainders(),
         base.assetOccupancies(),
         base.inventoryReservations(),

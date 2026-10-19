@@ -15,12 +15,9 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -34,15 +31,12 @@ import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWagePosting;
-import io.mosire.simos.economy.model.WagePostingKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionRuntimeEngine;
 import io.mosire.simos.production.contract.AllocationRule;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
-import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
@@ -93,10 +87,10 @@ class W3WageSettlementTickIntegrationTest {
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final ProductionRoleId ROLE_ORGANIZER = ProductionRoleId.parse("operator");
   private static final ProductionRoleId ROLE_WORKER = ProductionRoleId.parse("hired-hand");
-  private static final PeopleLotId WORKER_LOT = new PeopleLotId("rural:0_0:MALE:1");
   private static final long WORKER_LABOR_MILLI = 100_000L;
   private static final long PAYER_MONEY = 4L;
   private static final long PAYER_GRAIN = 1_000L;
+  private static final PeopleLotId WORKER_LOT = new PeopleLotId("rural:0_0:MALE:1");
 
   @Test
   void moneyWageTickPaysFirstCreatesZeroInterestDebtAndDoesNotRepayItSameDay() {
@@ -222,32 +216,11 @@ class W3WageSettlementTickIntegrationTest {
             30L,
             InventoryReservationStatus.ACTIVE,
             -1L);
-    HouseholdLaborCommitment commitment =
-        new HouseholdLaborCommitment(
-            new LaborAllocationId("alloc-w3-tick"),
-            WORKER_LOT,
-            WORKER,
-            PAYER_ACTOR,
-            UNIT.value(),
-            WORKER_LABOR_MILLI,
-            1L,
-            LaborCommitmentKind.PRODUCTION,
-            Optional.of(ROLE_WORKER));
-    ProductionWagePosting posting =
-        new ProductionWagePosting(
-            UNIT,
-            ROLE_WORKER,
-            1_000L,
-            SILVER,
-            1L,
-            WageQuoteSource.EXPLICIT,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L);
+    // ★★ D-032 T1：不再预种一条 PRODUCTION 劳动配额 —— 名册参与者已声明真实劳动，
+    //   本 tick 的配额由劳动队列从 roster 物化（预种会与队列写回同键并存 ⇒ 生产回执 2× 劳动）。
+    // ★★★ P4c3：工资报价只读 U20 锚（键 = 市场区 × 产业 × 角色）；缺锚具名拒绝、不按 0 兜底。
+    WageAnchorKey anchorKey = new WageAnchorKey(EconomyFixtures.marketIdOf(HEX), FARM, ROLE_WORKER);
+    ProductionWageAnchor anchor = new ProductionWageAnchor(SILVER, 1L, 0L, 0L, -1L, 0L, 0L, 0L);
     EconomyData base =
         EconomyData.empty()
             .withMeta(
@@ -263,10 +236,9 @@ class W3WageSettlementTickIntegrationTest {
                     PAYER, row(PAYER, PAYER_GRAIN, PAYER_MONEY),
                     WORKER, row(WORKER, 0L, 0L)))
             .withProductionRosters(Map.of(UNIT, roster()))
-            .withProductionWagePostings(Map.of(new WagePostingKey(UNIT, ROLE_WORKER), posting))
+            .withProductionWageAnchors(Map.of(anchorKey, anchor))
             .withOwnershipStakes(Map.of(land.id(), land))
             .withInventoryReservations(Map.of(reservation.id(), reservation))
-            .withLaborCommitments(Map.of(commitment.id(), commitment))
             .withRelations(
                 Map.of(
                     UNIT,
@@ -280,12 +252,17 @@ class W3WageSettlementTickIntegrationTest {
     accounts.registerHousehold(
         PAYER, HEX, Map.of(GRAIN, PAYER_GRAIN), Map.of(SILVER, payerMoney), Map.of(), Map.of());
     accounts.registerHousehold(WORKER, HEX, Map.of(), Map.of(), Map.of(), Map.of());
-    return new EconomyDayStepper(
-        base,
-        definitions,
-        new ProductionRuntimeEngine(definitions),
-        accounts,
-        MarketTopology.singleHex(base.marketTables(), base.marketZones()));
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            base,
+            definitions,
+            new ProductionRuntimeEngine(definitions),
+            accounts,
+            MarketTopology.singleHex(base.marketTables(), base.marketZones()));
+    // ★★ D-032 T1：劳动队列要靠 composition 给雇工选批次；旧夹具用一条预种配额"代替" composition，
+    //   但那会与新架构的队列写回同键并存 ⇒ 回执 2× 劳动。这里显式给 composition，配额完全由队列物化。
+    stepper.updateComposition(Map.of(WORKER, Map.of(WORKER_LOT, 100L)));
+    return stepper;
   }
 
   private static IndustryDefinitionView industry() {
@@ -310,8 +287,7 @@ class W3WageSettlementTickIntegrationTest {
             0L,
             Optional.empty(),
             List.of(),
-            new RolePayment.MoneyWage(
-                new BarterDiscountPolicy(BarterReferencePrice.LOCAL_ASK, 0L)));
+            new RolePayment.MoneyWage());
     return new IndustryDefinitionView(
         FARM,
         "W3 tick 夹具",

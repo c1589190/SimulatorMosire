@@ -127,11 +127,14 @@ class N20ThreeCommandSeedOrderEndToEndTest {
       assertThat(outcomes).as("逐条结局齐全（一批三条）").hasSize(3);
       assertThat(outcomes.get(0).rejected()).as("★ 第 1 条（economy.Seed）就是被拒的那条").isTrue();
       String reason = ((CommandResult.Rejected) outcomes.get(0).result()).reason();
+      // ★★ D-032 T1：economy.Seed 的拒绝点已随"名册/实例唯一权威在 production"上移 —— 现在是名册指名的
+      //   生产实例在 production 片里不存在（`roster-instance-unknown`），仍具名到 production 权威，
+      //   不是一句通用话。旧断言钉的是更早一版的 `production 当刻定义权威` 文案。
       assertThat(reason)
-          .as("★★ 拒因具名到 production 当刻定义权威（不是一句通用话）：economy 的 unit 引用在生产片里找不到方案")
-          .contains("production 当刻定义权威")
-          .contains("unit=")
-          .contains("farm@");
+          .as("★★ 拒因具名到 production 当刻权威（不是一句通用话）：economy.Seed 引用的生产实例/方案在生产片里不存在")
+          .contains("roster-instance-unknown")
+          .contains("production")
+          .contains("unit-farm@");
       assertThat(outcomes.get(1).committed())
           .as("★ 第 2 条（production.Seed）合法也不落 —— 整批零部分提交")
           .isFalse();

@@ -29,15 +29,12 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WagePostingKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.contract.AllocationRule;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
-import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.CycleContribution;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -82,8 +79,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★ P4a 起没有 barter/抵物判据：原“抵物优先级”位改由“库存零变化 + 未付成债”的等价强判据承担。
  *
- * <p>★ 夹具仍暂时用 {@link RolePayment.MoneyWage} 构造（P4d 才删 barter 字段），但本类<b>不断言</b>工资支付读取或使用
- * 任何 barter 折价。
+ * <p>★ P4d 起 {@link RolePayment.MoneyWage} 是无字段 record；P4c3 起工资报价只读 {@code
+ * productionWageAnchors}（键 = 市场区 × 产业 × 角色），缺锚具名拒绝、不按 0 兜底。
  */
 class W3WageSettlementContractTest {
 
@@ -105,13 +102,6 @@ class W3WageSettlementContractTest {
   private static final long DUE_CYCLE = 2L;
   private static final long QUOTE = 1L;
   private static final long LABOR_MILLI = 100_000L; // 100 小时 ⇒ due = 1 × 100,000 / 1000 = 100
-
-  /**
-   * P4d 前 {@link RolePayment.MoneyWage} 仍带 barter 折价字段；夹具保留占位值，但 P4a 的工资结算不读它
-   * （下面每条断言都不依赖它）。
-   */
-  private static final BarterDiscountPolicy COMPAT_DISCOUNT =
-      new BarterDiscountPolicy(BarterReferencePrice.LOCAL_ASK, 500L);
 
   /** 现金足额：money 腿支付、库存一毫不动、不新债。 */
   @Test
@@ -389,7 +379,8 @@ class W3WageSettlementContractTest {
                         Optional.empty())))
             .withHouseholdEconomies(households)
             .withProductionRosters(Map.of(UNIT, roster(workers)))
-            .withProductionWagePostings(Map.of(postingKey(), posting(quote)))
+            // ★★★ P4c3：工资报价的唯一权威 = U20 锚（键 = 市场区 × 产业 × 角色）；旧 posting 表已删。
+            .withProductionWageAnchors(Map.of(anchorKey(), anchor(quote)))
             .withWageCarryRemainders(carryBefore)
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(HEX, quote(SILVER, prices))))
             .withRelations(
@@ -529,7 +520,7 @@ class W3WageSettlementContractTest {
             0L,
             Optional.empty(),
             List.of(),
-            new RolePayment.MoneyWage(COMPAT_DISCOUNT));
+            new RolePayment.MoneyWage());
     return new IndustryDefinitionView(
         INDUSTRY,
         "W3 工资结算夹具",
@@ -579,25 +570,13 @@ class W3WageSettlementContractTest {
     return new ProductionRoster(UNIT, INDUSTRY, participants);
   }
 
-  private static WagePostingKey postingKey() {
-    return new WagePostingKey(UNIT, ROLE_WORKER);
+  /** 锚键 = unit 所在市场区（{@link EconomyFixtures#marketIdOf}）× 产业 × 角色。 */
+  private static WageAnchorKey anchorKey() {
+    return new WageAnchorKey(EconomyFixtures.marketIdOf(HEX), INDUSTRY, ROLE_WORKER);
   }
 
-  private static ProductionWagePosting posting(long quote) {
-    return new ProductionWagePosting(
-        UNIT,
-        ROLE_WORKER,
-        1_000L,
-        SILVER,
-        quote,
-        WageQuoteSource.EXPLICIT,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L);
+  private static ProductionWageAnchor anchor(long quote) {
+    return new ProductionWageAnchor(SILVER, quote, 0L, 0L, -1L, 0L, 0L, 0L);
   }
 
   private static ProductionDayResult productionDay(List<WorkerObligation> workers) {

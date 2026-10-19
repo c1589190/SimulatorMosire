@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  *   <li>不做死亡/出生/资产买卖；这些留给正式运行时。
  * </ul>
  *
- * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许佃农/雇农/流民。 城市利润随该 mode
+ * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许单一 {@code grain_farm} 与流民。 城市利润随该 mode
  * 城市人口上升而下降，因此会形成均衡，而不是全部挤进城市。
  */
 class HomeModeMigrationProbeTest {
@@ -103,8 +103,8 @@ class HomeModeMigrationProbeTest {
 
   /** 生产方式：本轮探针只定义预期利润、单户承载与每格上限。 */
   enum Mode {
-    TENANCY_FIXED(200L, 3000L, false),
-    WAGE_FARM(200L, 2500L, false),
+    // ★ D-032 P5a：农村只剩一个 grain_farm（旧 tenancy_* / wage_farm / family_farm 已删除）。
+    GRAIN_FARM(200L, 3000L, false),
     HANDICRAFT(200L, 1200L, true),
     MERCHANT(200L, 700L, true),
     DISPLACED(300L, 2000L, false);
@@ -132,7 +132,7 @@ class HomeModeMigrationProbeTest {
     }
   }
 
-  /** 一个 hex：城市只允许手工业/商人；fertility 是佃农/雇农利润的固定加成。 */
+  /** 一个 hex：城市只允许手工业/商人；fertility 是 grain_farm 利润的固定加成。 */
   record Hex(String id, int q, int r, boolean city, int fertility) {
 
     int distance(Hex other) {
@@ -229,11 +229,11 @@ class HomeModeMigrationProbeTest {
               new Hex("R4", -1, 1, false, 2),
               new Hex("R5", 0, 1, false, 0));
       Hex c = hex("C");
-      add(new Household("H1", hex("R0"), Mode.TENANCY_FIXED, 250, 1000, 500));
-      add(new Household("H2", hex("R1"), Mode.TENANCY_FIXED, 250, 1000, 500));
-      add(new Household("H3", hex("R2"), Mode.WAGE_FARM, 220, 900, 400));
-      add(new Household("H4", hex("R3"), Mode.WAGE_FARM, 180, 800, 300));
-      add(new Household("H5", hex("R4"), Mode.TENANCY_FIXED, 200, 900, 400));
+      add(new Household("H1", hex("R0"), Mode.GRAIN_FARM, 250, 1000, 500));
+      add(new Household("H2", hex("R1"), Mode.GRAIN_FARM, 250, 1000, 500));
+      add(new Household("H3", hex("R2"), Mode.GRAIN_FARM, 220, 900, 400));
+      add(new Household("H4", hex("R3"), Mode.GRAIN_FARM, 180, 800, 300));
+      add(new Household("H5", hex("R4"), Mode.GRAIN_FARM, 200, 900, 400));
       add(new Household("H6", hex("R5"), Mode.DISPLACED, 100, 100, 200));
       add(new Household("H7", c, Mode.HANDICRAFT, 100, 2000, 100));
       add(new Household("H8", c, Mode.MERCHANT, 50, 1500, 50));
@@ -446,11 +446,8 @@ class HomeModeMigrationProbeTest {
       if (mode == Mode.DISPLACED) {
         return 0L;
       }
-      if (mode == Mode.TENANCY_FIXED) {
+      if (mode == Mode.GRAIN_FARM) {
         return 8L + hex.fertility;
-      }
-      if (mode == Mode.WAGE_FARM) {
-        return 7L + hex.fertility;
       }
       if (!hex.city) {
         return 3L + hex.fertility;

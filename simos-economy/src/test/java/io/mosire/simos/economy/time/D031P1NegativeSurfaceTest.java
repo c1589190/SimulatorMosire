@@ -101,9 +101,10 @@ class D031P1NegativeSurfaceTest {
         .as("★★ 旧定义表 industries/modes 必须从 economy 的完整状态里消失（定义权威在 production）")
         .doesNotContain("industries", "modes")
         // ★★ D-032 P2d 更新：37 → 35（Pledge 与 liquidationPolicies 两个组件已删）。
-        //   ★★★ D-032 P4b1 更新：35 → 36（末尾追加 productionWageAnchors）。计数是
-        //   "组件集没被悄悄塞回东西"的绊线；EconomyData 与 ChangeSet 必须同步。
-        .hasSize(36);
+        //   ★★★ D-032 P4b1：35 → 36（末尾追加 productionWageAnchors）。
+        //   ★★★ D-032 P4c3：36 → **34**（旧 productionWageDefaults/productionWagePostings 两张工资表已删；
+        //   工资报价唯一权威 = U20 锚）。计数是"组件集没被悄悄塞回东西"的绊线；EconomyData 与 ChangeSet 必须同步。
+        .hasSize(34);
 
     List<String> methods = new ArrayList<>();
     for (Method method : EconomyData.class.getMethods()) {

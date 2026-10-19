@@ -41,8 +41,8 @@ import org.junit.jupiter.api.Test;
  *   <li>载荷顶层带 P1/P2 目录五表：{@code modes/classStructures/classPositions/classStandings/assetRules}；
  *   <li>每条 entry 都是完整生产结构（{@code plans} + {@code units/assetShares/allocations}），
  *       且至少一条真的有方案节点/生产单元/资产份额/劳动配额（P2-A 后 {@code laborSupply}/{@code memberships} 已退役）；
- *   <li>载荷被真 {@link EconomySeedHandler} 接受（{@code Applied}），落出的 {@link EconomyData} 里 mode ≥ 7、
- *       classStructure ≥ 7、生产结构非空、classFirst 空。
+ *   <li>载荷被真 {@link EconomySeedHandler} 接受（{@code Applied}），落出的 {@link EconomyData} 里 mode = 4
+ *       （P5a 单一 grain_farm 收口）、classStructure = 4、生产结构非空、classFirst 空。
  * </ol>
  *
  * <p>★★ <b>D-032 T6（a 桶锚点，B5 裁定十九的后果）</b>：entry 里的产业声明键由 {@code industries} 改名 {@code plans} ——
@@ -99,8 +99,19 @@ class ProductionRuntimeSeedSmokeTest {
       assertThat(payload.path(catalogKey).isArray()).as("%s 必须是数组", catalogKey).isTrue();
       assertThat(payload.path(catalogKey)).as("%s 不得为空", catalogKey).isNotEmpty();
     }
-    assertThat(payload.path("modes").size()).as("默认生产方式目录 ≥ 7").isGreaterThanOrEqualTo(7);
-    assertThat(payload.path("classStructures").size()).as("默认阶层结构 ≥ 7").isGreaterThanOrEqualTo(7);
+    // ★★ D-032 P5a：农村目录收口为单一 grain_farm；目录整体 = grain_farm / handicraft_workshop /
+    //   merchant / displaced 四档（旧 tenancy_*/wage_farm/family_farm 已删除）。
+    assertThat(payload.path("modes").size())
+        .as("默认生产方式目录 = 4（P5a 单一 grain_farm 收口）")
+        .isEqualTo(4);
+    assertThat(payload.path("modes").toString())
+        .as("目录里必须有 grain_farm（农村唯一生产模式）")
+        .contains("grain_farm");
+    // ★★ D-032 P5a：阶层结构目录与生产方式目录同源（4 档）；旧"≥7"钉的是 tenancy_*/wage_farm/
+    //   family_farm 时代的目录，P5a 后已删除。
+    assertThat(payload.path("classStructures").size())
+        .as("默认阶层结构 = 4（与生产方式目录同源）")
+        .isEqualTo(4);
     assertThat(payload.path("liquidationPolicies").isMissingNode())
         .as("P2d 已删除抵押/清算配置：载荷不得再出现 liquidationPolicies 字段")
         .isTrue();
@@ -164,10 +175,10 @@ class ProductionRuntimeSeedSmokeTest {
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
     // ★ P1：生产定义权威在 production ⇒ modes/industries/instances 逐条读 production 落账后的切片。
-    assertThat(production.modes()).as("落盘 modes ≥ 7").hasSizeGreaterThanOrEqualTo(7);
+    assertThat(production.modes()).as("落盘 modes = 4（P5a）").hasSize(4);
     assertThat(economy.classStructures())
-        .as("落盘 classStructures ≥ 7")
-        .hasSizeGreaterThanOrEqualTo(7);
+        .as("落盘 classStructures = 4（与 modes 同源）")
+        .hasSize(4);
     assertThat(economy.classPositions()).as("落盘 classPositions 不得为空").isNotEmpty();
     assertThat(economy.classStandings()).as("落盘 classStandings 不得为空").isNotEmpty();
     assertThat(economy.assetRules()).as("落盘 assetRules 不得为空").isNotEmpty();

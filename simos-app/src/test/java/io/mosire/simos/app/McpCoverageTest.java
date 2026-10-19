@@ -201,8 +201,6 @@ class McpCoverageTest {
           "economy.SetProductionRoster",
           // ★★★ D-032 P4b1：U20 工资锚的 GM-only 显式写口（新命令类型 ⇒ 本表 +1）。
           "economy.SetProductionWageAnchor",
-          "economy.SetProductionWageDefault",
-          "economy.SetProductionWagePosting",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
@@ -420,8 +418,6 @@ class McpCoverageTest {
           //   ⇒ 载荷形状合法但域层具名拒（零 revision）。P4b1 的工资锚按 `wage-anchor-market-zone-missing` 拒。
           "economy.SetProductionRoster",
           "economy.SetProductionWageAnchor",
-          "economy.SetProductionWageDefault",
-          "economy.SetProductionWagePosting",
           // ★★★ D-032 T6：B2c 裁定十的实例写面；本夹具的定义权威是空的（`production.Seed` 空载荷）⇒ 具名拒。
           "production.CreateInstance",
           "unit.AssignExternalGovPost",
@@ -510,8 +506,8 @@ class McpCoverageTest {
           Map.entry("unit.SetFormationOffset", "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}"),
           // ★★★ D-032 T6：两条声明都不给 ⇒ handler 的 `no-declaration` 具名拒（形状合法、零 revision）。
           Map.entry("economy.SetPlanSources", "{\"plan\":\"farm\"}"),
-          // ★★★ D-032 C3 / D4-Ib2b：三条写口都要求 production 实例或方案定义；本夹具 `production.Seed`
-          //   是空载荷 ⇒ 分别具名拒 unit-unknown / wage-default-plan-unknown / wage-posting-unit-unknown。
+          // ★★★ D-032 C3 / D4-Ib2b + P4c3：名册写口要求 production 实例；本夹具 `production.Seed`
+          //   是空载荷 ⇒ 具名拒 unit-unknown（旧两条工资表写口已随 P4c3 退役）。
           Map.entry(
               "economy.SetProductionRoster", "{\"unit\":\"unit-missing\",\"participants\":[]}"),
           // ★★★ D-032 P4b1：工资锚写口在本夹具没有持久市场区 ⇒ 具名拒
@@ -519,11 +515,6 @@ class McpCoverageTest {
           Map.entry(
               "economy.SetProductionWageAnchor",
               "{\"marketZone\":\"zone-missing\",\"industry\":\"farm\",\"role\":\"operator\",\"wagePerLaborMilli\":1000}"),
-          Map.entry(
-              "economy.SetProductionWageDefault",
-              "{\"plan\":\"plan-missing\",\"marketZone\":\"zone-missing\",\"roles\":[]}"),
-          Map.entry(
-              "economy.SetProductionWagePosting", "{\"unit\":\"unit-missing\",\"postings\":[]}"),
           // ★★★ D-032 T6：plan 指一个 production 定义权威里不存在的方案（本夹具 industries=[]）⇒ 域层具名拒、零 revision。
           Map.entry(
               "production.CreateInstance",
@@ -1168,7 +1159,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 **153** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 T6（2026-10-17）：D1/D2 把"
+            "catalog 列出的 type 与 Shell 注册的 **151** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 P4c3 退役旧两条 SetProductionWageDefault/Posting ⇒ 153 → 151；★★★ D-032 T6（2026-10-17）：D1/D2 把"
                 + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
                 + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
                 + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148；"

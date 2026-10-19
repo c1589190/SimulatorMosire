@@ -68,7 +68,8 @@ class T2bInvalidEntryPointsAndProbeCostTest {
   @Test
   void n24TheRuntimeNullEntryPointsAreGoneAndOnlyTheExplicitRuntimeAssembliesRemain() {
     // ① `EconomyDayStepper` 的合法装配只有显式收 runtime 的四档：5 参（区域拓扑，出厂默认旋钮 + 单线程）、
-    //    7 参（全参）、10/11 参（C2 全参：D4-C 资产读口 + 工资读口 + 属性桥，11 参额外带权威 revision）。
+    //    7 参（行为旋钮全参）、9 参（D4-C 全参：资产占用读口 + 参与户属性桥）、
+    //    10 参（同上再加权威 revision —— 实测参数个数，P4c3 后工资读口已从装配面删除）。
     //    旧 4 参 / 3 参 / 6 参（都委托 `this(..., null, ...)`）已删。
     List<String> stepperCtors = new ArrayList<>();
     for (Constructor<?> constructor : EconomyDayStepper.class.getDeclaredConstructors()) {
@@ -78,11 +79,11 @@ class T2bInvalidEntryPointsAndProbeCostTest {
           .contains(ProductionRuntime.class);
     }
     assertThat(stepperCtors)
-        .as("★★ 旧 runtime=null 的构造器（4/3/6 参）必须已删；只剩 5/7/10/11 参且都显式收 runtime")
-        .containsExactlyInAnyOrder("5 参", "7 参", "10 参", "11 参");
+        .as("★★ 旧 runtime=null 的构造器（4/3/6 参）必须已删；只剩 5/7/9/10 参且都显式收 runtime")
+        .containsExactlyInAnyOrder("5 参", "7 参", "9 参", "10 参");
 
-    // ② `EconomySession` 的每个合法构造器都必须显式收 runtime（3 参最小装配、6 参 C2 装配、7 参含 revision）。
-    //    两个 runtime=null 的旧构造器已删（现场 EconomySession.java 与其上方注释）。
+    // ② `EconomySession` 的每个合法构造器都必须显式收 runtime（3 参最小装配、5 参显式 D4-C 读口、
+    //    6 参含权威 revision）。两个 runtime=null 的旧构造器已删（现场 EconomySession.java 与其上方注释）。
     List<String> sessionCtors = new ArrayList<>();
     for (Constructor<?> constructor : EconomySession.class.getDeclaredConstructors()) {
       sessionCtors.add(constructor.getParameterCount() + " 参");
@@ -91,8 +92,8 @@ class T2bInvalidEntryPointsAndProbeCostTest {
           .contains(ProductionRuntime.class);
     }
     assertThat(sessionCtors)
-        .as("★★ runtime=null 的旧构造器已删；合法构造器只剩 3/6/7 参且都显式收 runtime")
-        .containsExactlyInAnyOrder("3 参", "6 参", "7 参");
+        .as("★★ runtime=null 的旧构造器已删；合法构造器只剩 3/5/6 参且都显式收 runtime")
+        .containsExactlyInAnyOrder("3 参", "5 参", "6 参");
 
     // ③ `EconomyData` 不再持有实例表 / 定义表 / 候选面（P2d 后当前 35 组件）。
     List<String> components = new ArrayList<>();

@@ -253,7 +253,14 @@ class CapacityTruncationPricingAcceptanceTest {
             .mapToLong(MarketReport.BuyerOutcome::orderedQty)
             .sum();
     assertThat(offered).as("卖方挂单量（S 的原料）").isEqualTo(sellerGrain);
-    assertThat(localFilled).as("★ 同格买方被完整服务（它的需求不是「被截断的部分」⇒ 必须留在统计里）").isEqualTo(CROSS_DEMAND);
+    assertThat(localFilled)
+        .as(
+            "★ 同格买方被完整服务（它的需求不是「被截断的部分」⇒ 必须留在统计里）；"
+                + "诊断：fills=%s buyerOutcomes=%s sellerOutcomes=%s",
+            outcome.report().fills(),
+            outcome.report().buyerOutcomes(),
+            outcome.report().sellerOutcomes())
+        .isEqualTo(CROSS_DEMAND);
     assertThat(crossOrdered).as("★ 跨格买方缺口（= 该运走的那份 = 供给侧要剔掉的量；它仍全额在 D 里）").isEqualTo(CROSS_DEMAND);
     assertThat(outcome.report().fills()).as("跨格那笔一笔都不成交（同格那笔照常）").hasSize(1);
 

@@ -749,7 +749,10 @@ class SimosToolsTest {
    * handler 进扫描面 ⇒ 143 → <b>148</b>；本表与 {@code catalogCoversEveryCommandHandlerImplementation} 的
    * {@code hasSize(153)} 必须同轮改。★★ D-032 C4b：C3/D4-Ib2b 注册 economy.SetProductionRoster /
    * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>；
-   * ★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ <b>153</b>。 ★
+   * ★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ <b>153</b>。
+   * ★★★ D-032 P4c3（T1 按实测收口）：旧 {@code economy.SetProductionWageDefault} /
+   * {@code economy.SetProductionWagePosting} 两条命令整条退役 ⇒ 153 − 2 = <b>151</b>（实测：扫
+   * {@code *Handler.java} 的 {@code type()} = 151，catalog 同轮 151）。 ★
    * 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★ 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
    *
    * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
@@ -827,8 +830,6 @@ class SimosToolsTest {
           "economy.SetProductionRoster",
           // ★★★ D-032 P4b1：U20 工资锚的 GM-only 显式写口（新命令类型 ⇒ 本表 +1）。
           "economy.SetProductionWageAnchor",
-          "economy.SetProductionWageDefault",
-          "economy.SetProductionWagePosting",
           "economy.SetGovernmentMintScale",
           "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
@@ -1271,7 +1272,7 @@ class SimosToolsTest {
                 + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。"
                 + "；★★★ D-032 P4b1（2026-10-18）：新增 `economy.SetProductionWageAnchor`（U20 工资锚写口）"
                 + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。")
-        .hasSize(153);
+        .hasSize(151);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

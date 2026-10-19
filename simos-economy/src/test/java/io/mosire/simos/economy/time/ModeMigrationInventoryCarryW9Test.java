@@ -56,7 +56,7 @@ class ModeMigrationInventoryCarryW9Test {
   private static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
   private static final CommodityId HAUL = MerchantTradeTemplate.HAUL_COMMODITY;
   private static final SocialClassId POOR = new SocialClassId("poor_peasant");
-  private static final ProductionModeId FAMILY = DefaultProductionModes.FAMILY_FARM;
+  private static final ProductionModeId FAMILY = DefaultProductionModes.GRAIN_FARM;
   private static final HouseholdId SOURCE = HouseholdId.parse("hh-w9-carry-source");
   private static final HouseholdId HOST = HouseholdId.parse("hh-w9-carry-host");
 
@@ -237,7 +237,7 @@ class ModeMigrationInventoryCarryW9Test {
   }
 
   private static EconomyData base() {
-    ClassPositionId position = familyPosition();
+    ClassPositionId position = grainPosition();
     Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     rows.put(SOURCE, row(SOURCE, H1, 100L));
     rows.put(HOST, row(HOST, H2, 100L));
@@ -255,9 +255,9 @@ class ModeMigrationInventoryCarryW9Test {
         .withClassMemberships(memberships);
   }
 
-  private static ClassPositionId familyPosition() {
+  private static ClassPositionId grainPosition() {
     return DefaultProductionModes.positionId(
-            DefaultProductionModes.FAMILY_FARM, DefaultProductionModes.ROLE_FAMILY_FARMER)
+            DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_OPERATOR)
         .orElseThrow();
   }
 

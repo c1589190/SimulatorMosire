@@ -64,12 +64,9 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWageDefault;
-import io.mosire.simos.economy.model.ProductionWagePosting;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
-import io.mosire.simos.economy.model.WageDefaultKey;
-import io.mosire.simos.economy.model.WagePostingKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
 import io.mosire.simos.economy.testing.IndustryViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.AllocationRule;
@@ -935,27 +932,13 @@ class EconomyCodecTest {
                 roundStats(11L, 900L, 1_800L, 1_200L)))
         // ★★ D-032 C2/W2a/W2b/D4-Ib1：六个新组件都非空 ⇒ 键解析/线格式真的被走到。
         .withProductionRosters(Map.of(FARM_UNIT, codecRoster()))
-        .withProductionWageDefaults(
+        // ★★★ D-032 P4c3：旧 productionWageDefaults/postings 两表已删；唯一工资报价权威 = U20 锚。
+        //   本夹具用**非默认**历史字段（streak/lastObserved 全非 0、lastAdjustedTick 非 -1）⇒ 锚键的
+        //   长度前缀线格式与 8 个字段都真的过一遍编解码。
+        .withProductionWageAnchors(
             Map.of(
-                new WageDefaultKey(FARM, OPERATOR_ROLE, MARKET),
-                new ProductionWageDefault(FARM, OPERATOR_ROLE, MARKET, 5L, 1_000L)))
-        .withProductionWagePostings(
-            Map.of(
-                new WagePostingKey(FARM_UNIT, OPERATOR_ROLE),
-                new ProductionWagePosting(
-                    FARM_UNIT,
-                    OPERATOR_ROLE,
-                    1_000L,
-                    CURRENCY,
-                    5L,
-                    WageQuoteSource.SEED,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L)))
+                new WageAnchorKey(MARKET, FARM, OPERATOR_ROLE),
+                new ProductionWageAnchor(CURRENCY, 1_250L, 1L, 2L, 3L, 4L, 5L, -6L)))
         .withWageCarryRemainders(
             Map.of(
                 new WageCarryKey(FARM_UNIT, OPERATOR_ROLE, new HouseholdId("hh-codec-wage-carry")),

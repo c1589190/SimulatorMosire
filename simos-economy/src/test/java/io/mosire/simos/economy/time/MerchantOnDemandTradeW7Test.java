@@ -592,7 +592,7 @@ class MerchantOnDemandTradeW7Test {
             H2_FARM,
             ProductionLocation.ofPlan(H2_FARM).orElseThrow(),
             busy.operator(),
-            "mode:family_farm",
+            "mode:grain_farm",
             0L,
             Map.of(),
             Map.of());
@@ -851,7 +851,7 @@ class MerchantOnDemandTradeW7Test {
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
         .withClassMemberships(
-            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.FAMILY_FARM)))
+            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
         .withOwnershipStakes(shares)
         .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H1, market())));
   }
@@ -915,7 +915,7 @@ class MerchantOnDemandTradeW7Test {
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
         .withClassMemberships(
-            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.FAMILY_FARM)))
+            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
         .withOwnershipStakes(shares)
         .withMarketZonesAndTables(zones, marketTables);
   }

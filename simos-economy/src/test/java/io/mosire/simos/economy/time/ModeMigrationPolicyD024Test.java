@@ -146,9 +146,9 @@ class ModeMigrationPolicyD024Test {
         0L);
   }
 
-  private static ClassPositionId familyPosition() {
+  private static ClassPositionId grainPosition() {
     return DefaultProductionModes.positionId(
-            DefaultProductionModes.FAMILY_FARM, DefaultProductionModes.ROLE_FAMILY_FARMER)
+            DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_OPERATOR)
         .orElseThrow();
   }
 
@@ -217,7 +217,7 @@ class ModeMigrationPolicyD024Test {
       boolean sourceHasOrganization,
       boolean targetShareOwnedByEstate,
       long h2ShareQuantity) {
-    ClassPositionId position = familyPosition();
+    ClassPositionId position = grainPosition();
     Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     classes.put(SOURCE, row(SOURCE, H1, 100L, 1_000L, Map.of(GRAIN, 100L)));
     classes.put(BUYER1, row(BUYER1, H1, 100L, 0L, Map.of(GRAIN, buyer1NeedPerDay)));
@@ -302,7 +302,7 @@ class ModeMigrationPolicyD024Test {
             SOURCE_INDUSTRY,
             ProductionLocation.ofPlan(SOURCE_INDUSTRY).orElseThrow(),
             sourceActor,
-            "mode:family_farm",
+            "mode:grain_farm",
             0L,
             Map.of(),
             Map.of());
@@ -335,7 +335,7 @@ class ModeMigrationPolicyD024Test {
     if (sourceHasOrganization) {
       ProductionOrganizationId organizationId =
           ProductionOrganizationId.idOf(
-              DefaultProductionModes.FAMILY_FARM,
+              DefaultProductionModes.GRAIN_FARM,
               position,
               SOURCE,
               IndustryHexKeys.hexKey(H1.q(), H1.r()));
@@ -345,7 +345,7 @@ class ModeMigrationPolicyD024Test {
                   organizationId,
                   new ProductionEnterprise(
                       organizationId,
-                      DefaultProductionModes.FAMILY_FARM,
+                      DefaultProductionModes.GRAIN_FARM,
                       position,
                       Optional.of(sourceUnitId),
                       sourceActor,
@@ -435,7 +435,7 @@ class ModeMigrationPolicyD024Test {
     return ExpectedProfitBook.prospect(
         EconomyFixtures.dayView(fixture.base(), fixture.definitions()),
         SOURCE,
-        DefaultProductionModes.FAMILY_FARM,
+        DefaultProductionModes.GRAIN_FARM,
         H1,
         fixture.definitions().industries().get(SOURCE_INDUSTRY),
         fixture.tableAt(H1),
@@ -501,7 +501,7 @@ class ModeMigrationPolicyD024Test {
         budget);
   }
 
-  private static final ProductionModeId FAMILY = DefaultProductionModes.FAMILY_FARM;
+  private static final ProductionModeId FAMILY = DefaultProductionModes.GRAIN_FARM;
 
   @Test
   void hasReadingFalseButPositiveExpectedCandidateYieldsPlan() {
@@ -686,7 +686,7 @@ class ModeMigrationPolicyD024Test {
     classes.put(shell, row(shell, hex, 0L, 0L, Map.of()));
     Map<HouseholdId, HouseholdClassMembership> standings =
         new LinkedHashMap<>(base.base().classStandings());
-    ClassPositionId position = familyPosition();
+    ClassPositionId position = grainPosition();
     standings.put(
         shell,
         new HouseholdClassMembership(
@@ -958,16 +958,16 @@ class ModeMigrationPolicyD024Test {
     // 计划是纯函数：调用后 base 的源户身份字段逐值不变。
     assertThat(before.classStandings().get(SOURCE)).isEqualTo(beforeStanding);
     assertThat(before.classPositions().get(beforeStanding.currentPositionId()).modeId())
-        .isEqualTo(DefaultProductionModes.FAMILY_FARM);
+        .isEqualTo(DefaultProductionModes.GRAIN_FARM);
     assertThat(
             before.productionOrganizations().values().stream()
                 .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
                 .findFirst()
                 .orElseThrow()
                 .modeId())
-        .isEqualTo(DefaultProductionModes.FAMILY_FARM);
+        .isEqualTo(DefaultProductionModes.GRAIN_FARM);
     assertThat(fixture.definitions().instances().get(fixture.sourceUnitId()).modeKey())
-        .isEqualTo("mode:family_farm");
+        .isEqualTo("mode:grain_farm");
 
     // 执行：源户只缩编、不被原地改成目标 mode；org/unit 身份字段不变。
     // ★★★ D-032 T1：实例读数改读 production 的**运行时**（唯一权威）——把 runtime 取到手上，
@@ -1012,8 +1012,8 @@ class ModeMigrationPolicyD024Test {
                 .classPositions()
                 .get(after.classStandings().get(SOURCE).currentPositionId())
                 .modeId())
-        .as("★ D-022：源户当前 position 仍指向 family_farm")
-        .isEqualTo(DefaultProductionModes.FAMILY_FARM);
+        .as("★ D-022：源户当前 position 仍指向 grain_farm")
+        .isEqualTo(DefaultProductionModes.GRAIN_FARM);
     ProductionEnterprise afterOrganization =
         after.productionOrganizations().values().stream()
             .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
@@ -1065,8 +1065,8 @@ class ModeMigrationPolicyD024Test {
 
     ProductionOrganizationId organizationId =
         ProductionOrganizationId.idOf(
-            DefaultProductionModes.FAMILY_FARM,
-            familyPosition(),
+            DefaultProductionModes.GRAIN_FARM,
+            grainPosition(),
             SOURCE,
             IndustryHexKeys.hexKey(H2.q(), H2.r()));
     Map<ProductionOrganizationId, ProductionEnterprise> workingCopy = new LinkedHashMap<>();
@@ -1074,8 +1074,8 @@ class ModeMigrationPolicyD024Test {
         organizationId,
         new ProductionEnterprise(
             organizationId,
-            DefaultProductionModes.FAMILY_FARM,
-            familyPosition(),
+            DefaultProductionModes.GRAIN_FARM,
+            grainPosition(),
             Optional.empty(),
             ESTATE,
             List.of(),

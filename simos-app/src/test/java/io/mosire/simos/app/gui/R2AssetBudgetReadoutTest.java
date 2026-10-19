@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -26,9 +27,8 @@ import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
 import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionWagePosting;
-import io.mosire.simos.economy.model.WagePostingKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
@@ -58,16 +58,21 @@ import org.junit.jupiter.api.Test;
 
 /**
  * ★★★ <b>D4-Ib2b 经济格只读视图</b>：{@code ApiViews.economyHex} 必须把 {@code assetOccupancies}/{@code
- * inventoryReservations}/{@code productionWagePostings} 作为**只读派生视图** 发出，且同时满足：
+ * inventoryReservations}（本格派生）与 {@code productionWageAnchors}（锚级）作为**只读派生视图** 发出，且满足：
  *
  * <ul>
  *   <li><b>稳定序</b>：与状态表插入序无关；同一 revision 反复读得到同一顺序；
- *   <li><b>本格过滤</b>：只发焦点格的事实，邻格事实不得混入；
+ *   <li><b>本格过滤</b>：{@code assetOccupancies}/{@code inventoryReservations} 只发焦点格的事实；
  *   <li><b>空表合法</b>：三类事实都为空时发空数组（不是缺键、不是 null、不是抛错）。
  * </ul>
  *
  * <p>★ 本文件取代旧 {@code AssetBudgetBook} 读口断言：{@code assetOccupancies} 从 grant + 份额 + 实例派生， {@code
- * inventoryReservations} 从预留事实派生，{@code productionWagePostings} 从执行期 posting 派生；三者都不得在 读口重算分配或改写状态。
+ * inventoryReservations} 从预留事实派生；{@code productionWageAnchors} 从 economy 的 U20 锚表派生
+ * （P4c3 起旧 {@code productionWagePostings} 视图与旧 posting 表整段删除）。三者都不得在读口重算分配或改写状态。
+ *
+ * <p>★★ D-032 T1：工资视图由“逐 posting”改为“锚级” ⇒ 它的**本格过滤**不再成立（锚键 = 市场区 × 产业 × 角色，
+ * 没有 unit/hex 字段）；本格过滤只由 {@code assetOccupancies}/{@code inventoryReservations} 承担。锚的稳定序 =
+ * {@link WageAnchorKey#toString()}（长度前缀线格式）。
  */
 class R2AssetBudgetReadoutTest {
 
@@ -85,6 +90,8 @@ class R2AssetBudgetReadoutTest {
   private static final ProductionUnitId SECOND = new ProductionUnitId("unit-b-readout-second");
   private static final ProductionUnitId OTHER = new ProductionUnitId("unit-c-readout-other");
   private static final CommodityId GRAIN = new CommodityId("grain");
+  /** 锚级视图的键之一；本夹具不落 marketZones ⇒ 不触发锚币种 == 区法定币的跨表校验。 */
+  private static final MarketZoneId ZONE = new MarketZoneId("r2-readout-zone");
   private static final long LAND = 100L;
 
   @Test
@@ -95,7 +102,7 @@ class R2AssetBudgetReadoutTest {
     Map<String, Object> body = ApiViews.economyHex(HEX, state);
     assertThat(body)
         .as("D4-Ib2b：三类新只读栏必须都在 economyHex 中")
-        .containsKeys("assetOccupancies", "inventoryReservations", "productionWagePostings");
+        .containsKeys("assetOccupancies", "inventoryReservations", "productionWageAnchors");
 
     List<Map<String, Object>> occupancies = rows(body, "assetOccupancies");
     assertThat(occupancies).as("只发焦点格；邻格份额的占用不得混入").hasSize(3);
@@ -167,38 +174,39 @@ class R2AssetBudgetReadoutTest {
         .as("付款人嵌套主体键序固定")
         .containsExactly("kind", "id");
 
-    List<Map<String, Object>> postings = rows(body, "productionWagePostings");
-    assertThat(postings).as("只发本格实例的 posting；邻格实例的 posting 不得混入").hasSize(3);
-    assertThat(postings)
-        .extracting(row -> row.get("unit"), row -> row.get("role"))
-        .as("稳定序 = unit → role")
+    List<Map<String, Object>> anchors = rows(body, "productionWageAnchors");
+    assertThat(anchors)
+        .as("锚级视图：夹具的 3 条锚都发出，插入序无关（按 WageAnchorKey 线格式稳定排序）")
+        .hasSize(3);
+    assertThat(anchors)
+        .extracting(row -> row.get("marketZone"), row -> row.get("industry"), row -> row.get("role"))
+        .as("稳定序 = WageAnchorKey.toString()（长度前缀：zone → industry → role）")
         .containsExactly(
-            org.assertj.core.groups.Tuple.tuple(FIRST.value(), "alpha"),
-            org.assertj.core.groups.Tuple.tuple(FIRST.value(), "zeta"),
-            org.assertj.core.groups.Tuple.tuple(SECOND.value(), "beta"));
-    assertThat(fieldNames(postings.get(0)))
-        .as("工资 posting 行只读键集")
+            org.assertj.core.groups.Tuple.tuple(ZONE.value(), FARM.value(), "alpha"),
+            org.assertj.core.groups.Tuple.tuple(ZONE.value(), FARM.value(), "beta"),
+            org.assertj.core.groups.Tuple.tuple(ZONE.value(), FARM.value(), "zeta"));
+    assertThat(fieldNames(anchors.get(0)))
+        .as("工资锚行只读键集（锚级，不是逐 posting）")
         .containsExactly(
-            "unit",
+            "marketZone",
+            "industry",
             "role",
-            "targetLaborMilliPerDay",
             "currency",
             "wagePerLaborMilli",
-            "quoteSource",
             "shortageStreak",
             "satisfiedStreak",
-            "lastAdjustedTick",
+            "lastObservedTargetLaborMilli",
+            "lastObservedMatchedLaborMilli",
             "lastAdjustmentDelta",
-            "lastObservedMatchedLabor",
-            "lastObservedEffectiveTarget",
-            "lastMaxAbsorbable");
-    assertThat(postings.get(0))
-        .containsEntry("unit", FIRST.value())
+            "lastAdjustedTick");
+    assertThat(anchors.get(0))
+        .containsEntry("marketZone", ZONE.value())
+        .containsEntry("industry", FARM.value())
         .containsEntry("role", "alpha")
-        .containsEntry("targetLaborMilliPerDay", 1_000L)
         .containsEntry("currency", "silver")
         .containsEntry("wagePerLaborMilli", 3L)
-        .containsEntry("quoteSource", "EXPLICIT");
+        .containsEntry("shortageStreak", 0L)
+        .containsEntry("lastAdjustedTick", -1L);
   }
 
   @Test
@@ -208,7 +216,7 @@ class R2AssetBudgetReadoutTest {
 
     assertThat(rows(body, "assetOccupancies")).as("无占用 ⇒ 空表，不是缺键/ null").isEmpty();
     assertThat(rows(body, "inventoryReservations")).as("无预留 ⇒ 空表，不是缺键/ null").isEmpty();
-    assertThat(rows(body, "productionWagePostings")).as("无 posting ⇒ 空表，不是缺键/ null").isEmpty();
+    assertThat(rows(body, "productionWageAnchors")).as("无锚 ⇒ 空表，不是缺键/ null").isEmpty();
   }
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
@@ -251,15 +259,15 @@ class R2AssetBudgetReadoutTest {
     reservations.put(firstReservationAtTen.id(), firstReservationAtTen);
     reservations.put(firstReservationAtTwo.id(), firstReservationAtTwo);
 
-    ProductionWagePosting firstZeta = posting(FIRST, "zeta", 900L, 4L);
-    ProductionWagePosting firstAlpha = posting(FIRST, "alpha", 1_000L, 3L);
-    ProductionWagePosting secondBeta = posting(SECOND, "beta", 800L, 2L);
-    ProductionWagePosting otherAlpha = posting(OTHER, "alpha", 700L, 1L);
-    Map<WagePostingKey, ProductionWagePosting> postings = new LinkedHashMap<>();
-    postings.put(otherAlpha.key(), otherAlpha);
-    postings.put(secondBeta.key(), secondBeta);
-    postings.put(firstZeta.key(), firstZeta);
-    postings.put(firstAlpha.key(), firstAlpha);
+    // ★ D-032 P4c3：旧逐 posting 表已删，唯一工资报价权威 = U20 锚（键 = 市场区 × 产业 × 角色）。
+    //   插入序刻意乱序；读口必须按 WageAnchorKey 线格式稳定排序。
+    ProductionWageAnchor zetaAnchor = anchor("zeta", 900L, 4L);
+    ProductionWageAnchor alphaAnchor = anchor("alpha", 1_000L, 3L);
+    ProductionWageAnchor betaAnchor = anchor("beta", 800L, 2L);
+    Map<WageAnchorKey, ProductionWageAnchor> anchors = new LinkedHashMap<>();
+    anchors.put(new WageAnchorKey(ZONE, FARM, new ProductionRoleId("zeta")), zetaAnchor);
+    anchors.put(new WageAnchorKey(ZONE, FARM, new ProductionRoleId("beta")), betaAnchor);
+    anchors.put(new WageAnchorKey(ZONE, FARM, new ProductionRoleId("alpha")), alphaAnchor);
 
     EconomyData economy =
         EconomyData.empty()
@@ -281,7 +289,7 @@ class R2AssetBudgetReadoutTest {
                     otherShare))
             .withAssetOccupancies(grants)
             .withInventoryReservations(reservations)
-            .withProductionWagePostings(postings);
+            .withProductionWageAnchors(anchors);
     return state(production, economy);
   }
 
@@ -343,21 +351,18 @@ class R2AssetBudgetReadoutTest {
         -1L);
   }
 
-  private static ProductionWagePosting posting(
-      ProductionUnitId unit, String role, long targetLaborMilliPerDay, long wagePerLaborMilli) {
-    return new ProductionWagePosting(
-        unit,
-        new ProductionRoleId(role),
-        targetLaborMilliPerDay,
+  private static ProductionWageAnchor anchor(
+      String role, long targetLaborMilli, long wagePerLaborMilli) {
+    // role 只用于构造键（调用方持有键）；锚值只带读口会输出的字段（其余历史字段取默认）。
+    assertThat(role).as("role 仅作夹具标签").isNotBlank();
+    return new ProductionWageAnchor(
         new io.mosire.simos.economy.api.id.CurrencyId("silver"),
         wagePerLaborMilli,
-        WageQuoteSource.EXPLICIT,
         0L,
         0L,
+        -1L,
         0L,
-        0L,
-        0L,
-        0L,
+        targetLaborMilli,
         0L);
   }
 

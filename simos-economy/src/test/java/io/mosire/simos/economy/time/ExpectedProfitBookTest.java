@@ -407,11 +407,18 @@ class ExpectedProfitBookTest {
             List.of(new ClassSlot(POOR, "贫农", 800)),
             new AllocationRule.Split(500, 500));
     Fixture familyFixture = fixture(family, 1L, 10_000L, demandBook(CRAFT2, CLOTH, 4_000L));
+    // ★★ D-032 T1：grain_farm 的角色序按 id 排序时 hired_laborer 在 operator 之前；本用例要的是
+    //   **经营者自营**候选（与旧 family_farm 同口径），所以用 W9 的显式位置入口钉到 operator，
+    //   不让"位置怎么选"混进"两个候选 mode 的收益排序"这条判据。
+    io.mosire.simos.economy.api.id.ClassPositionId grainOperator =
+        DefaultProductionModes.positionId(
+                DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_OPERATOR)
+            .orElseThrow();
     ExpectedProfitBook.Prospect familyProspect =
         ExpectedProfitBook.prospect(
             EconomyFixtures.dayView(familyFixture.base(), familyFixture.definitions()),
             HOUSE,
-            DefaultProductionModes.FAMILY_FARM,
+            DefaultProductionModes.GRAIN_FARM,
             H,
             family,
             familyFixture.market(),
@@ -423,8 +430,8 @@ class ExpectedProfitBookTest {
             familyFixture.base().relations(),
             familyFixture.topology(),
             0L,
+            grainOperator,
             EconomyFixtures.runtimeOf(familyFixture.definitions()));
-
     // 手算 A：scale=min(3,10)=3；laborNeed=1,000×3×10=30,000；revenue=(1,000+3,000)×9/1000=36；
     //        inputCost=15,000×21/1000=315；laborCost=30,000×144×10/1e6=43；net=−322。见量纲专项用例逐值断言。
     // 手算 B：scale=min(1,1,000)=1；planned=10×1×1000=10,000；self=1,000；sell=3,000；

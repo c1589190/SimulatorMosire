@@ -28,16 +28,13 @@ import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRoster;
-import io.mosire.simos.economy.model.ProductionWagePosting;
-import io.mosire.simos.economy.model.WagePostingKey;
-import io.mosire.simos.economy.model.WageQuoteSource;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.testing.TestLogCapture;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionRuntimeEngine;
 import io.mosire.simos.production.contract.AllocationRule;
-import io.mosire.simos.production.contract.BarterDiscountPolicy;
-import io.mosire.simos.production.contract.BarterReferencePrice;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
@@ -78,6 +75,7 @@ class W4SurvivalTickIntegrationTest {
   private static final HouseholdId PAYER = HouseholdId.parse("hh-w4-tick-payer");
   private static final HouseholdId WORKER = HouseholdId.parse("hh-w4-tick-worker");
   private static final ActorRef PAYER_ACTOR = HouseholdActors.of(PAYER);
+  private static final ActorRef WORKER_ACTOR = HouseholdActors.of(WORKER);
   private static final CurrencyId SILVER = new CurrencyId("silver");
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final ProductionRoleId ROLE_ORGANIZER = ProductionRoleId.parse("operator");
@@ -97,7 +95,6 @@ class W4SurvivalTickIntegrationTest {
       try {
         stepper.updateSurvivalSocialFacts(socialFacts());
         stepper.step(1L);
-
         String outlook =
             log.lines().stream()
                 .filter(line -> line.contains("SURVIVAL_OUTLOOK"))
@@ -172,13 +169,16 @@ class W4SurvivalTickIntegrationTest {
 
   private static EconomyDayStepper stepper(Map<EconomyPolicyKey, Long> policies) {
     IndustryDefinitionView industry = industry();
+    // ★★ D-032 T1 重写：被观察的家户是**自营 grain_farm 经营者**（不是被 M3 雇佣锁占满预算的雇工）。
+    //   这样「idleEligible（资格）」与「idleChosen（策略选择）」才是两个可分开观察的量：
+    //   PREFER_IDLE 下不写劳动配额，BEST_EFFORT 下才写正收益生产配额。
     ProductionProcess unit =
         new ProductionProcess(
             UNIT,
             FARM,
             ProductionLocation.parse(HEX_KEY),
-            PAYER_ACTOR,
-            DefaultProductionModes.WAGE_FARM.value(),
+            WORKER_ACTOR,
+            DefaultProductionModes.GRAIN_FARM.value(),
             0L,
             new LinkedHashMap<>(),
             new LinkedHashMap<>());
@@ -193,33 +193,21 @@ class W4SurvivalTickIntegrationTest {
             OwnershipStake.idOf(
                 FARM,
                 AssetKind.LAND,
-                PAYER_ACTOR,
-                PAYER_ACTOR,
+                WORKER_ACTOR,
+                WORKER_ACTOR,
                 AssetRightKind.OWNED,
                 ProductionLocation.parse(HEX_KEY),
                 0L),
             FARM,
             AssetKind.LAND,
-            PAYER_ACTOR,
-            PAYER_ACTOR,
+            WORKER_ACTOR,
+            WORKER_ACTOR,
             1_000L,
             AssetRightKind.OWNED,
             ProductionLocation.parse(HEX_KEY));
-    ProductionWagePosting posting =
-        new ProductionWagePosting(
-            UNIT,
-            ROLE_WORKER,
-            1_000L,
-            SILVER,
-            1L,
-            WageQuoteSource.EXPLICIT,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L);
+    // ★★★ P4c3：工资报价只读 U20 锚（键 = 市场区 × 产业 × 角色）；缺锚具名拒绝、不按 0 兜底。
+    WageAnchorKey anchorKey = new WageAnchorKey(ZONE, FARM, ROLE_WORKER);
+    ProductionWageAnchor anchor = new ProductionWageAnchor(SILVER, 1L, 0L, 0L, -1L, 0L, 0L, 0L);
     EconomyData base =
         EconomyData.empty()
             .withMeta(
@@ -235,19 +223,21 @@ class W4SurvivalTickIntegrationTest {
                         Map.of())))
             .withHouseholdEconomies(Map.of(PAYER, row(PAYER), WORKER, row(WORKER)))
             .withProductionRosters(Map.of(UNIT, roster()))
-            .withProductionWagePostings(Map.of(new WagePostingKey(UNIT, ROLE_WORKER), posting))
+            .withProductionWageAnchors(Map.of(anchorKey, anchor))
             .withOwnershipStakes(Map.of(land.id(), land))
             .withRelations(
                 Map.of(
                     UNIT,
                     new ProductionRules(
-                        UNIT, PAYER_ACTOR, new Payee.ToActor(PAYER_ACTOR), List.of(), PAYER_ACTOR)))
+                        UNIT, WORKER_ACTOR, new Payee.ToActor(WORKER_ACTOR), List.of(), WORKER_ACTOR)))
             .withMarketZones(Map.of(ZONE, zone()))
             .withMarketTables(Map.of(ZONE, EconomyFixtures.quote(SILVER, Map.of(GRAIN, 1L))));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(PAYER, HEX, Map.of(), Map.of(), Map.of(), Map.of());
     accounts.registerHousehold(WORKER, HEX, Map.of(), Map.of(), Map.of(), Map.of());
+    // ★★ D-032 T1：产品份额的下一 tick 生存投影需要**权威 revision**（LaborSurvivalBook fail-closed）；
+    //   旧夹具是雇工所以从未走到这条，自营 organizer 夹具必须显式给 expectedRevision。
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             base,
@@ -274,24 +264,14 @@ class W4SurvivalTickIntegrationTest {
             Optional.empty(),
             List.of(),
             new RolePayment.ProductShare());
-    ProductionRoleDefinition worker =
-        new ProductionRoleDefinition(
-            ROLE_WORKER,
-            "雇工",
-            Optional.empty(),
-            0L,
-            IntraRoleSplitRule.EQUAL,
-            0L,
-            Optional.empty(),
-            List.of(),
-            new RolePayment.MoneyWage(
-                new BarterDiscountPolicy(BarterReferencePrice.LOCAL_ASK, 500L)));
     return new IndustryDefinitionView(
         FARM,
         "W4 tick 夹具",
-        new RegimeId("tenant"),
+        new RegimeId("household"),
         Optional.empty(),
-        1L,
+        // ★★ cycleDays=10 ⇒ 产品份额在下一 tick 还不可交付：生存投影按目标口径跳过该替代
+        //   （不伪造未来收入），但劳动队列里的正收益 offer 仍在 ⇒ 两种 idle 策略可分开观察。
+        10L,
         0L,
         Map.of(AssetKind.LAND, 1L),
         Map.of(),
@@ -305,20 +285,21 @@ class W4SurvivalTickIntegrationTest {
         ProductionExperienceUse.NONE,
         List.of(),
         Set.of(AssetRightKind.OWNED),
-        List.of(organizer, worker),
+        List.of(organizer),
         RoleShareRemainder.UNALLOCATED,
         List.of(),
         Optional.empty());
   }
 
   private static ProductionRoster roster() {
+    // ★ D-032 T1：自营名册只有 organizer（product share）一个参与项；没有 MONEY_WAGE 雇工，
+    //   因此 M3 不会产生雇佣锁，M6 的 idle 选择才是可观察的。
     return new ProductionRoster(
         UNIT,
         FARM,
         List.of(
-            io.mosire.simos.economy.model.ProductionParticipant.of(PAYER, ROLE_ORGANIZER, true, 0L),
             io.mosire.simos.economy.model.ProductionParticipant.of(
-                WORKER, ROLE_WORKER, false, LABOR_BUDGET)));
+                WORKER, ROLE_ORGANIZER, true, LABOR_BUDGET)));
   }
 
   private static HouseholdEconomy row(HouseholdId household) {
