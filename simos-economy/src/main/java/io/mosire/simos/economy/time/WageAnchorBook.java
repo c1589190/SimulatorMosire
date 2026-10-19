@@ -78,7 +78,7 @@ public final class WageAnchorBook {
 
   /** 只读、确定性序的锚快照。 */
   public Map<WageAnchorKey, ProductionWageAnchor> snapshot() {
-    return anchors;
+    return Collections.unmodifiableMap(new LinkedHashMap<>(anchors));
   }
 
   /**

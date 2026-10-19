@@ -211,9 +211,11 @@ final class LaborSurvivalBook {
   static ExistingClaims existingSurvivalClaims(HouseholdId household, EconomySession session) {
     List<DebtClaimFact> debts = new ArrayList<>();
     for (DebtContract debt : session.sheet().debtContracts().values()) {
-      if (!debt.debtor().equals(household) || !(debt.unit() instanceof DebtUnit.Money money)) {
+      if (!debt.debtor().equals(household)) {
         continue;
       }
+      // DebtContract.unit 的静态类型已是 DebtUnit.Money（sealed 唯一变体，构造期非 null）。
+      DebtUnit.Money money = debt.unit();
       long dueTick =
           debt.terms().dueDay().isPresent()
               ? debt.terms().dueDay().getAsLong()

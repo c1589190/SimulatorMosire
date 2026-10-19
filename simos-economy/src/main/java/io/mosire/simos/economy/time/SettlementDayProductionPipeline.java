@@ -384,10 +384,6 @@ final class SettlementDayProductionPipeline {
     //   三者一起进当日对账 INFO（见 4 段末的 HAUL_SERVICE_SETTLED）。
     ctx.haulServiceProducedMilli = 0L;
     ctx.haulServiceExpiredMilli = 0L;
-    // ★★ **R2：当日劳动的唯一来源 = 劳动分配表**（第三阶段设计稿 §四）。按 actor id 归集一次（O(配额条数)），
-    //   再逐产业取用 —— 产业 id 与 actor id 的对应关系由 EconomyData 的构造期守卫判死
-    //   （产业型主体必须指名已存在的产业、非产业型主体不得与产业 id 撞名）。
-    ctx.laborByUnit = ctx.settlementIndex.laborByUnit();
     // ★★ **H0：周期刚翻篇的 unit**（progressDays 归 0，含创世）—— 先算好，因为"家户的流水何时翻篇"要读它。
     for (Map.Entry<ProductionUnitId, ProductionProcess> entry : ctx.units.entrySet()) {
       if (entry.getValue().progressDays() == 0L) {
@@ -471,13 +467,10 @@ final class SettlementDayProductionPipeline {
       // id）。
       //   ★ R4-B.3a-perf：入口索引已按 unit 聚好（去重/排序口径与 householdKeysOf 逐值相同）。
       List<HouseholdId> keys = ctx.settlementIndex.householdsOf(id);
-      // ★★ **当日实际劳动取自该 unit 名下的全部配额**（不再从"本产业各行 laborMilli × participation"独立算）。
-      long laborToday = ctx.laborByUnit.getOrDefault(id.value(), 0L);
       long cycledLabor =
           unit.cycleContributions().values().stream()
               .mapToLong(io.mosire.simos.production.contract.CycleContribution::laborMilli)
               .sum();
-      long progressed = receipt.progressDaysAfter();
       // ★★ production 已经用**同一份**实际投入累计好了周期投入台账 ⇒ 这里读它，不再自己 merge 一遍
       //   （旧口径在现扣阶段 `units.put(withCycleState(..., accumulated))`，那是 economy 写实例状态的最后一处）。
       Map<CommodityId, Long> nextInputUsed = receipt.consumedInputs();

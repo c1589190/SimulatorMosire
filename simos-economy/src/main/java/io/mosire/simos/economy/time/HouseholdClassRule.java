@@ -207,7 +207,7 @@ public final class HouseholdClassRule {
     }
 
     public static Index of(EconomyData data, Map<ProductionUnitId, ProductionProcess> units) {
-      return ClassProjectionBook.of(data, units);
+      return ClassProjectionBook.build(data, units);
     }
 
     public static Index of(
@@ -218,7 +218,7 @@ public final class HouseholdClassRule {
         Map<ProductionUnitId, ProductionRules> relations,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts) {
-      return ClassProjectionBook.of(
+      return ClassProjectionBook.build(
           assetShares, laborCommitments, units, industries, relations, householdEconomies, debts);
     }
 
@@ -226,7 +226,7 @@ public final class HouseholdClassRule {
         EconomyData data,
         Map<ProductionUnitId, ProductionProcess> units,
         AssetOccupancyBudget assetOccupancyBudget) {
-      return ClassProjectionBook.of(data, units, assetOccupancyBudget);
+      return ClassProjectionBook.build(data, units, assetOccupancyBudget);
     }
 
     public static Index of(
@@ -238,7 +238,7 @@ public final class HouseholdClassRule {
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts,
         AssetOccupancyBudget assetOccupancyBudget) {
-      return ClassProjectionBook.of(
+      return ClassProjectionBook.build(
           assetShares,
           laborCommitments,
           units,
@@ -258,7 +258,7 @@ public final class HouseholdClassRule {
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts,
         SettlementIndex settlementIndex) {
-      return ClassProjectionBook.of(
+      return ClassProjectionBook.build(
           assetShares,
           laborCommitments,
           units,

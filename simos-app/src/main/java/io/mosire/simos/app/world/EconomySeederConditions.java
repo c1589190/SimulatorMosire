@@ -92,7 +92,6 @@ class EconomySeederConditions extends WorldBalanceSeeder {
     }
     // ── ② 初始债务（真实转账 / 真实外部对价）──────────────────────────────────────────────
     List<Map<String, Object>> debtNodes = new ArrayList<>();
-    Map<DebtContractId, TestConditions.InitialDebt> debtsById = new LinkedHashMap<>();
     Set<DebtContractId> seenContracts = new LinkedHashSet<>();
     for (int i = 0; i < conditions.initialDebts().size(); i++) {
       TestConditions.InitialDebt debt = conditions.initialDebts().get(i);
@@ -111,7 +110,6 @@ class EconomySeederConditions extends WorldBalanceSeeder {
                 + "不许静默合并或覆盖: "
                 + id);
       }
-      debtsById.put(id, debt);
       if (debt.moveInventory()) {
         transferForInitialDebt(debt, householdMoney);
       } else {

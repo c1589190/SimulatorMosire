@@ -4,6 +4,7 @@ import static io.mosire.simos.economy.time.MarketConstants.MARKET;
 import static io.mosire.simos.economy.time.MarketSettlement.HouseholdMarketRole;
 import static io.mosire.simos.economy.time.MarketSettlement.MarketRound;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -256,6 +257,10 @@ class MarketRoundCore {
     }
   }
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -306,6 +311,10 @@ class MarketRoundCore {
    * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 无税费；{@code deferredPaymentConfig}/{@code
    * debts} 为 {@code null} ⇒ 无记债能力、逐值退回"现金封顶"的旧口径。
    */
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -352,6 +361,10 @@ class MarketRoundCore {
   }
 
   /** ★★ <b>D-030：带市场信用的完整构造器（旧签名兼容）</b>：不含 Z7b 排除集 ⇒ 与改动前逐值同行为；生产、 只读计划轮与读口都走带排除集的下一支。 */
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -408,6 +421,10 @@ class MarketRoundCore {
    *     <b>不再表示"不生成任何订单"</b>：其中的家户按 {@link #householdMarketRole} 分为"只买不卖"（军户/官吏户）与
    *     "只按授权下单"（政府国库户，取自 {@code govMandates}）；本构造器<b>不再</b>并入任何国库户（那是第二个拼法）
    */
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,

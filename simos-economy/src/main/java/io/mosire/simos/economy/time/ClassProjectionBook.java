@@ -4,6 +4,7 @@ import static io.mosire.simos.economy.time.HouseholdClassRule.Classification;
 import static io.mosire.simos.economy.time.HouseholdClassRule.DEBT_STRESS_THRESHOLD_PER_MILLE;
 import static io.mosire.simos.economy.time.HouseholdClassRule.SELF_CULTIVATION_THRESHOLD_MILLI_MU;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -93,6 +94,10 @@ class ClassProjectionBook {
   /** 无 SettlementIndex 的读口所持同一 revision D4 预算；null = 不可用（读取资产时 fail-closed）。 */
   final AssetOccupancyBudget assetOccupancyBudget;
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "派生索引构造期必须对 D4 资产预算缺失/状态坏形 fail-closed（assetAllocationOf 抛具名 IllegalStateException），失败即整批不产出索引；本类不定义 finalizer，具体子类只有包内 Index 壳且不暴露半成品 ⇒ finalizer 攻击面不存在")
   ClassProjectionBook(
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
@@ -309,11 +314,11 @@ class ClassProjectionBook {
     }
   }
 
-  public static HouseholdClassRule.Index of(
+  public static HouseholdClassRule.Index build(
       EconomyData data, Map<ProductionUnitId, ProductionProcess> units) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
-    return of(
+    return build(
         data.assetShares(),
         data.allocations(),
         units,
@@ -327,7 +332,7 @@ class ClassProjectionBook {
         data.debtContracts());
   }
 
-  public static HouseholdClassRule.Index of(
+  public static HouseholdClassRule.Index build(
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, ProductionProcess> units,
@@ -349,14 +354,14 @@ class ClassProjectionBook {
   }
 
   /** 无索引读口：显式要求同一 revision 的 D4 预算；缺预算不得回退整池扫描。 */
-  public static HouseholdClassRule.Index of(
+  public static HouseholdClassRule.Index build(
       EconomyData data,
       Map<ProductionUnitId, ProductionProcess> units,
       AssetOccupancyBudget assetOccupancyBudget) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(assetOccupancyBudget, "assetOccupancyBudget（D4 预算不可用时 fail-closed）");
-    return of(
+    return build(
         data.assetShares(),
         data.allocations(),
         units,
@@ -368,7 +373,7 @@ class ClassProjectionBook {
   }
 
   /** 结算/读口显式预算入口（7 个状态分量 + 同一 revision D4 预算）。 */
-  public static HouseholdClassRule.Index of(
+  public static HouseholdClassRule.Index build(
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, ProductionProcess> units,
@@ -400,7 +405,7 @@ class ClassProjectionBook {
    * ★★ <b>结算侧入口（R4-B.3a-perf）</b>：产能/资产从日结算入口的 {@link SettlementIndex} 查，不再为每个 {@code
    * operatedActivity} 现扫整张 {@code OwnershipStake}。其余输入与旧重载逐字相同。
    */
-  public static HouseholdClassRule.Index of(
+  public static HouseholdClassRule.Index build(
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, ProductionProcess> units,

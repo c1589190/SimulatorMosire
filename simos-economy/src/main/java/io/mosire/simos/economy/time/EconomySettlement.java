@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -738,6 +739,10 @@ public final class EconomySettlement {
     return SettlementMath.rowsByHex(householdEconomies);
   }
 
+  @SuppressFBWarnings(
+      value = "UPM_UNCALLED_PRIVATE_METHOD",
+      justification =
+          "生产路径已改走 LaborSettlement.reallocateLaborPartitioned；本方法仍作为验收测试（GovServiceCommitmentC7Test）反射直调真实现的稳定入口，删除会破坏 T1 的反射夹具，故保留纯转发、不复制公式")
   private static void reallocateLabor(
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, IndustryDefinitionView> industries,
@@ -749,6 +754,10 @@ public final class EconomySettlement {
         units, industries, householdEconomies, laborCommitments, operatorConditions, index);
   }
 
+  @SuppressFBWarnings(
+      value = "UPM_UNCALLED_PRIVATE_METHOD",
+      justification =
+          "生产路径直接调用 DebtRepaymentSettlement.repayDebts；本方法仍作为验收测试（DebtBasedClearingAcceptanceTest）反射直调真实现的稳定入口，删除会破坏 T1 的反射夹具，故保留纯转发、不复制公式")
   private static void repayDebts(
       long day,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,

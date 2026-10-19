@@ -112,7 +112,6 @@ final class SettlementDayContext {
   List<ProductionProcess> haulExpiryUnits;
   long haulServiceProducedMilli;
   long haulServiceExpiredMilli;
-  Map<String, Long> laborByUnit;
   Map<String, List<IndustryId>> hexToIndustries;
   Set<HouseholdId> newCycleHouseholds;
   List<ClosedUnit> closed;

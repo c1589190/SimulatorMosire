@@ -223,8 +223,8 @@ public final class ProductionWageBook {
       throw new IllegalArgumentException("adjustPrice 的 tick 越域");
     }
     long nextWage = currentWage;
-    long nextShortageStreak = shortageStreak;
-    long nextSatisfiedStreak = satisfiedStreak;
+    long nextShortageStreak;
+    long nextSatisfiedStreak;
     long nextLastAdjustedTick = lastAdjustedTick;
     long nextLastAdjustmentDelta = lastAdjustmentDelta;
     boolean changed = false;

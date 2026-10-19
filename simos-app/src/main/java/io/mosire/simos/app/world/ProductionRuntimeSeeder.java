@@ -144,7 +144,6 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       PoolCohorts urbanCohorts = poolCohorts(seeding, hex, ResidenceKind.URBAN);
       List<PopulationGroup> ruralPool = withoutDisplaced(ruralAll, ruralCohorts);
       List<PopulationGroup> urbanPool = withoutDisplaced(urbanAll, urbanCohorts);
-      IndustryId farmId = IndustryHexKeys.id(FARM, hex.q(), hex.r());
       IndustryId craftId = IndustryHexKeys.id(CRAFT, hex.q(), hex.r());
       IndustryId weaveId = IndustryHexKeys.id(WEAVE, hex.q(), hex.r());
       // ★★ R3B.2：新载荷显式产生 unit —— 先建 plan（模板 + 经营者 + 产能），再逐 unit/份额落载荷。
@@ -378,13 +377,11 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       Map<ProductionUnitId, List<HiredLaborerParticipant>> hiredByUnit = new LinkedHashMap<>();
       HouseholdId displacedHousehold = ruralCohorts.displacedHousehold();
       if (hasRural && displacedHousehold != null) {
-        List<PopulationGroup> displacedPool = new ArrayList<>();
         long displacedAvailableLabor = 0L;
         for (PopulationGroup group : ruralAll) {
           if (!displacedHousehold.equals(ruralCohorts.householdOfGroup(group))) {
             continue;
           }
-          displacedPool.add(group);
           displacedAvailableLabor =
               Math.addExact(displacedAvailableLabor, participationAdjustedLaborMilli(group));
         }

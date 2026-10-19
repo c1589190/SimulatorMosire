@@ -311,7 +311,6 @@ final class MarketPairingBook {
                 offeredTotal,
                 executedTotal,
                 crossHexCapacityBlocked);
-        need -= residualExecuted;
         executedTotal = Math.addExact(executedTotal, residualExecuted);
       }
     }

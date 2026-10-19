@@ -62,8 +62,10 @@ final class MarketIntentBook {
       }
     }
     // ★ P3e：基础消费按家户逐户生成，与生产周期 cycleDaysByHousehold 完全解耦。
-    for (HouseholdId household : ctx.householdEconomies.keySet()) {
-      HouseholdEconomy row = ctx.householdEconomies.get(household);
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEntry :
+        ctx.householdEconomies.entrySet()) {
+      HouseholdId household = householdEntry.getKey();
+      HouseholdEconomy row = householdEntry.getValue();
       MarketTable market =
           markets.computeIfAbsent(household, key -> ProductionPlanBridge.marketOf(ctx, key));
       if (row == null || market == null) {
