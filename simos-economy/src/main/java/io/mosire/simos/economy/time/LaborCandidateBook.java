@@ -194,8 +194,7 @@ final class LaborCandidateBook {
    * <ul>
    *   <li>有 {@link ProductionRoster}：{@code PRODUCT_SHARE} 角色只取该角色 {@code plannedLaborMilliPerDay >
    *       0} 的 participant（纯收租/零计划劳动户不进自动劳动匹配）；{@code MONEY_WAGE} 角色不读 roster 的 planned labor， 但 C2
-   *       只读 U20 工资锚；缺锚 ⇒ 为每个工资角色发一条零额候选，具名 {@code
-   *       wage-quote-missing:<role>}（不伪造 worker、不按 0 报价）。
+   *       只读 U20 工资锚；缺锚 ⇒ 为每个工资角色发一条零额候选，具名 {@code wage-quote-missing:<role>}（不伪造 worker、不按 0 报价）。
    *   <li>无名册：单角色 plan ⇒ 用既有候选户 + 该唯一角色；多角色 plan 无名册 ⇒ 不产生任何候选（调用方记 {@code
    *       roster-required}），绝不按角色各建一份。
    * </ul>

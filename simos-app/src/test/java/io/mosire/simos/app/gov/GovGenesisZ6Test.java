@@ -371,9 +371,7 @@ class GovGenesisZ6Test {
       long day1FamineDeaths = longFieldOf(populationSettle, "famineDeaths");
       assertThat(genesisPopulation).as("创世人口（算式左项；与 tick0 用例同一口径）").isEqualTo(4800L);
       assertThat(day1Births).as("第 1 天出生 = 1（真日志读数）").isEqualTo(1L);
-      assertThat(day1Deaths)
-          .as("第 1 天死亡 = 0（P1：首 tick 空 PendingFamineFacts，不伪造饥荒死亡）")
-          .isZero();
+      assertThat(day1Deaths).as("第 1 天死亡 = 0（P1：首 tick 空 PendingFamineFacts，不伪造饥荒死亡）").isZero();
       assertThat(day1FamineDeaths)
           .as("首 tick famineDeaths = 0（本日经济缺口只留给下一 tick，不得回灌同日 Social）")
           .isZero();

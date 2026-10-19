@@ -102,9 +102,9 @@ class ProductionRoleSeeder extends WorldBalanceSeeder {
    * 任意居住类型：{@code landless_laborer}（流民槽位，{@link #DISPLACED_SLOT}）→ displaced.laborer
    * </pre>
    *
-   * <p>★★ <b>阶级只做投影，不决定生产方式</b>：农村槽位名是结算后的读数标签，不是 mode/role 选择键。这里只为初始 {@code
-   * classStandings} 提供默认位置；同一家户以后买地/失地/人口变化时，仍走同一个 {@code grain_farm} 模板。农村“雇工”不是单独的
-   * 初始槽位，而是在 {@code grain_farm} 实例内由 {@code hired_laborer} 角色表达。
+   * <p>★★ <b>阶级只做投影，不决定生产方式</b>：农村槽位名是结算后的读数标签，不是 mode/role 选择键。这里只为初始 {@code classStandings}
+   * 提供默认位置；同一家户以后买地/失地/人口变化时，仍走同一个 {@code grain_farm} 模板。农村“雇工”不是单独的 初始槽位，而是在 {@code grain_farm}
+   * 实例内由 {@code hired_laborer} 角色表达。
    *
    * <p>位置 id 只能经 {@link DefaultProductionModes#positionId} 查得 ⇒ 本类不拼第二份位置串；目录与映射漂开时具名抛，
    * 不静默少一条。词表外槽位（本类没有裁决过的值）同样 fail-closed。

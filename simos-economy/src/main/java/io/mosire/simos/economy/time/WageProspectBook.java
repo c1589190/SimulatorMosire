@@ -285,9 +285,7 @@ final class WageProspectBook {
       long target = 0L;
       for (ProductionRoleDefinition candidate : plan.roles()) {
         if (candidate.id().equals(role)) {
-          target =
-              WageQuoteBridge.wageTargetLaborMilliPerDay(
-                  0L, candidate, plan.cycleDays());
+          target = WageQuoteBridge.wageTargetLaborMilliPerDay(0L, candidate, plan.cycleDays());
           break;
         }
       }

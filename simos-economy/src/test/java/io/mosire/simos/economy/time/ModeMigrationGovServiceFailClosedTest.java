@@ -72,8 +72,7 @@ class ModeMigrationGovServiceFailClosedTest {
   private static final LaborAllocationId ALLOC = new LaborAllocationId("alloc-mig-gov");
   private static final ProductionModeId FAMILY = DefaultProductionModes.GRAIN_FARM;
   private static final ClassPositionId POSITION =
-      DefaultProductionModes.positionId(FAMILY, DefaultProductionModes.ROLE_OPERATOR)
-          .orElseThrow();
+      DefaultProductionModes.positionId(FAMILY, DefaultProductionModes.ROLE_OPERATOR).orElseThrow();
 
   /** 既有目标户的经营 unit/组织：让正对照真的能把 PRODUCTION 承诺搬到目标 unit（而不是只做扣源）。 */
   private static final IndustryId TARGET_INDUSTRY =

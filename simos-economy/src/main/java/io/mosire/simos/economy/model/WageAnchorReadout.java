@@ -6,8 +6,8 @@ import java.util.Objects;
 /**
  * ★★ <b>U20 工资锚的只读读数</b>（D-032 P4 §6.4）：键 + 锚的全部持久字段。
  *
- * <p>P4b1 只创建读口类型，<b>不在 app 接线</b>（P4c 才接 M3/M6/M8 与视图）。0 工资是合法读数； 缺锚不构造本类型，
- * 由 {@code WageAnchorBook#anchorFor} 的 {@code Optional.empty()} 表达。
+ * <p>P4b1 只创建读口类型，<b>不在 app 接线</b>（P4c 才接 M3/M6/M8 与视图）。0 工资是合法读数； 缺锚不构造本类型， 由 {@code
+ * WageAnchorBook#anchorFor} 的 {@code Optional.empty()} 表达。
  *
  * @param key 锚键
  * @param currency 锚币种

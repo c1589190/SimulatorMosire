@@ -136,8 +136,7 @@ import org.junit.jupiter.api.Test;
  * HouseholdId}（旧视图用 {@code HouseholdIds.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
  * operator / 周期进度住在 {@link ProductionProcess} 上（不是 {@code IndustryDefinitionView} 的旧档兼容位）；{@code
  * EconomyData} 是 36 组件记录（P2d 删除 {@code pledges}/{@code liquidationPolicies} 后为 35，P4b1 末尾追加 {@code
- * productionWageAnchors} 后为 36；全部在 {@link
- * EconomyChangeSet} 里逐一对齐）。
+ * productionWageAnchors} 后为 36；全部在 {@link EconomyChangeSet} 里逐一对齐）。
  *
  * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime；P2d 后本往返面为 35 组件，
  * P4b1（U20 工资锚）后为 36 组件。
@@ -533,8 +532,8 @@ class EconomyRoundTripTest {
    * A1（2026-10-08）的 {@code currencies} 与 {@code moneyInstruments} / B2（2026-10-08）的 {@code
    * marketZones} / 2026-10-09 选项 A 的 {@code householdDebtRefs}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P4a 29 → Z1 31 → A1 33 → B2 34 → 选项 A
-   * 35 → P4b1 36 → P4c3 34）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P4a 29 → Z1 31 → A1 33 → B2 34 → 选项 A 35 → P4b1 36 → P4c3
+   * 34）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
    *
    * <p>★★ <b>本条的欠账如实记（2026-10-09 选项 A 迁移时实测发现）</b>：这个数字自 A1/B2 起就**已经过期**（那两批各加了组件却 没改这里：31 →
    * 34），也就是说在本轮拆表<b>之前</b>它就已经是红的 —— 不是本次结构改动弄红的。本次按**实测**改成 35（ {@code EconomyChangeSet} 与 {@code
@@ -564,8 +563,8 @@ class EconomyRoundTripTest {
    * <p>★★ <b>D-032 P4b1：35 → 36</b>：末尾追加第 36 个组件 {@code productionWageAnchors}（U20 工资锚；键 = {@code
    * WageAnchorKey}）。
    *
-   * <p>★★★ <b>D-032 P4c3：36 → 34</b>：旧 {@code productionWageDefaults} / {@code productionWagePostings}
-   * 两张工资表整段删除，工资报价的唯一权威只剩 {@code productionWageAnchors}（U20 锚）。本用例按实测把两侧组件数
+   * <p>★★★ <b>D-032 P4c3：36 → 34</b>：旧 {@code productionWageDefaults} / {@code
+   * productionWagePostings} 两张工资表整段删除，工资报价的唯一权威只剩 {@code productionWageAnchors}（U20 锚）。本用例按实测把两侧组件数
    * 钉成 <b>34</b>；锚表与 {@code wageCarryRemainders} 的往返仍由逐组件用例覆盖，旧两维不再有夹具（Alpha：不补兼容位）。
    */
   @Test
@@ -616,10 +615,7 @@ class EconomyRoundTripTest {
         FARM_UNIT, FARM, List.of(ProductionParticipant.of(KEY_HH, OPERATOR_ROLE, true, 1_000L)));
   }
 
-  /**
-   * ★★★ D-032 P4b1：最小工资锚夹具（**只服务组件形状基线**）。字段取非默认值，确保"锚表非空 ⇒ 参与差异"
-   * 的判别力；不验证 U20 调价/观测业务（P4c 再补）。
-   */
+  /** ★★★ D-032 P4b1：最小工资锚夹具（**只服务组件形状基线**）。字段取非默认值，确保"锚表非空 ⇒ 参与差异" 的判别力；不验证 U20 调价/观测业务（P4c 再补）。 */
   private static ProductionWageAnchor wageAnchor() {
     return new ProductionWageAnchor(SILVER, 1_250L, 1L, 2L, 3L, 4L, 5L, -6L);
   }

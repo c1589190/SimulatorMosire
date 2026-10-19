@@ -31,8 +31,8 @@ import org.slf4j.Logger;
 /**
  * ★★★ <b>D-032 P3e：工资报价/招工目标的唯一职责类</b>（自 {@link ProductionPlanBridge} 机械抽取）。
  *
- * <p>本类只回答三类只读问题：① 某格属于哪个市场区、工资锚键是什么；② 本 tick 的工资报价（锚唯一权威，缺锚不按 0）；
- * ③ 某 {@code (unit, role)} 的招工目标（WageDemand → 实际计划 → 工程默认）。它不写任何锚、不支付工资、不读旧工资表。
+ * <p>本类只回答三类只读问题：① 某格属于哪个市场区、工资锚键是什么；② 本 tick 的工资报价（锚唯一权威，缺锚不按 0）； ③ 某 {@code (unit, role)}
+ * 的招工目标（WageDemand → 实际计划 → 工程默认）。它不写任何锚、不支付工资、不读旧工资表。
  */
 final class WageQuoteBridge {
 
@@ -70,8 +70,8 @@ final class WageQuoteBridge {
   }
 
   /**
-   * ★★ <b>这一格属于哪个市场区</b>：先按持久区成员格（{@link MarketZoneBook#zoneOfHex}），再按派生价表
-   * （{@link MarketTables#marketIdAt}）。两处都不命中 ⇒ 空（"这格没有市场"是合法状态，不猜）。
+   * ★★ <b>这一格属于哪个市场区</b>：先按持久区成员格（{@link MarketZoneBook#zoneOfHex}），再按派生价表 （{@link
+   * MarketTables#marketIdAt}）。两处都不命中 ⇒ 空（"这格没有市场"是合法状态，不猜）。
    */
   static Optional<MarketZoneId> marketZoneOf(EconomyDayView view, ProductionLocation location) {
     io.mosire.simos.map.hex.HexCoord hex = ProductionPlanBridge.hexOf(location);
@@ -105,13 +105,14 @@ final class WageQuoteBridge {
    * 锚缺   ⇒ quote = empty；日志 ANCHOR_MISSING（ERROR 或 INFO，由调用方语义给定）
    * </pre>
    *
-   * <p>★ <b>缺锚绝不当 0、不读旧表</b>：解析不到报价时返回 {@code Optional.empty()}，调用方必须拒绝（M3/M6 位置不可行 /
-   * M8 义务拒绝）。★ <b>同一 tick 快照</b>：{@code anchors} 必须来自本 tick 的当刻视图（{@code
+   * <p>★ <b>缺锚绝不当 0、不读旧表</b>：解析不到报价时返回 {@code Optional.empty()}，调用方必须拒绝（M3/M6 位置不可行 / M8 义务拒绝）。★
+   * <b>同一 tick 快照</b>：{@code anchors} 必须来自本 tick 的当刻视图（{@code
    * dayView.productionWageAnchors()}），调用方不得在 M8 内改锚。
    *
    * @param view 当刻只读视图（市场区 + 锚快照来源）
    * @param day 世界日（日志上下文）
-   * @param stage 调用阶段名（{@code m3-m6-position-economics} / {@code m6-labor-queue} / {@code m8-wage-due} …）
+   * @param stage 调用阶段名（{@code m3-m6-position-economics} / {@code m6-labor-queue} / {@code
+   *     m8-wage-due} …）
    * @param anchors 本 tick 的锚快照（缺锚 = 不在表里）
    * @param missingIsContractFault 缺锚是否按契约故障记 ERROR（M8 = true；M3/M6 业务拒绝 = false）
    */
@@ -125,13 +126,7 @@ final class WageQuoteBridge {
       boolean missingIsContractFault) {
     Objects.requireNonNull(view, "view");
     return resolveWageQuote(
-        day,
-        stage,
-        unit,
-        role,
-        wageAnchorKeyOf(view, unit, role),
-        anchors,
-        missingIsContractFault);
+        day, stage, unit, role, wageAnchorKeyOf(view, unit, role), anchors, missingIsContractFault);
   }
 
   /**
@@ -303,8 +298,8 @@ final class WageQuoteBridge {
    *
    * <ul>
    *   <li>只对入选（{@code chosenFacts}）且角色为 {@code MONEY_WAGE} 的位置生成；
-   *   <li>target 走 {@link #wageTargetLaborMilliPerDay}（hired &gt; 0 优先，否则标准劳动/周期天数的工程默认），
-   *       <b>target = 0 不生成</b>；
+   *   <li>target 走 {@link #wageTargetLaborMilliPerDay}（hired &gt; 0 优先，否则标准劳动/周期天数的工程默认）， <b>target
+   *       = 0 不生成</b>；
    *   <li>同 {@code (unit, role)} 至多一条（不重复累加；跨 unit 的锚级聚合是 P4c2 的事）；
    *   <li>marketZone 定不出 / 币种定不出 ⇒ 具名 {@code D032_P4_ANCHOR_MISSING} 并跳过该需求（不伪造区/币）。
    * </ul>
@@ -389,17 +384,14 @@ final class WageQuoteBridge {
         continue;
       }
       bySlot.put(
-          slot,
-          new WageDemand(
-              unit.id(), zone.get(), industry.id(), role.id(), target, currency));
+          slot, new WageDemand(unit.id(), zone.get(), industry.id(), role.id(), target, currency));
     }
     return List.copyOf(bySlot.values());
   }
 
   /** WageDemand 的币种：区法定币 → 该区价表计价币（派生市场形态）。两处都没有 ⇒ null（不猜）。 */
   private static CurrencyId demandCurrencyOf(SettlementDayContext ctx, MarketZoneId zone) {
-    io.mosire.simos.economy.api.market.MarketZone marketZone =
-        ctx.dayView.marketZones().get(zone);
+    io.mosire.simos.economy.api.market.MarketZone marketZone = ctx.dayView.marketZones().get(zone);
     if (marketZone != null) {
       return marketZone.legalTender();
     }

@@ -748,12 +748,11 @@ class SimosToolsTest {
    * <p>★★ <b>D-031 Z6（2026-10-16）</b>：{@code simos-production} / {@code simos-culture} 两个新模块的 5 条
    * handler 进扫描面 ⇒ 143 → <b>148</b>；本表与 {@code catalogCoversEveryCommandHandlerImplementation} 的
    * {@code hasSize(153)} 必须同轮改。★★ D-032 C4b：C3/D4-Ib2b 注册 economy.SetProductionRoster /
-   * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>；
-   * ★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ <b>153</b>。
-   * ★★★ D-032 P4c3（T1 按实测收口）：旧 {@code economy.SetProductionWageDefault} /
-   * {@code economy.SetProductionWagePosting} 两条命令整条退役 ⇒ 153 − 2 = <b>151</b>（实测：扫
-   * {@code *Handler.java} 的 {@code type()} = 151，catalog 同轮 151）。 ★
-   * 实测来源 = 扫码 {@code *Handler.java} 的 {@code type()}。★ 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
+   * economy.SetProductionWageDefault / economy.SetProductionWagePosting 三条 ⇒ 149 → <b>152</b>； ★★★
+   * D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ <b>153</b>。 ★★★ D-032 P4c3（T1 按实测收口）：旧 {@code
+   * economy.SetProductionWageDefault} / {@code economy.SetProductionWagePosting} 两条命令整条退役 ⇒ 153 − 2
+   * = <b>151</b>（实测：扫 {@code *Handler.java} 的 {@code type()} = 151，catalog 同轮 151）。 ★ 实测来源 = 扫码
+   * {@code *Handler.java} 的 {@code type()}。★ 与工具面**不同源**：本批工具面 GM/DM 各是净 0，命令面才是 +5。
    *
    * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
    * {@code catalogCoversEveryCommandHandlerImplementation} 的 {@code hasSize(141 → 142)} 必须同轮改。 ★

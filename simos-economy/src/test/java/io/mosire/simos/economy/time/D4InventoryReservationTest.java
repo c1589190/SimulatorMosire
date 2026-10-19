@@ -26,9 +26,8 @@ import org.junit.jupiter.api.Test;
 /**
  * D4 §4.4 / §7.2 / P18d：预留全地点 overcommit，以及 P4a 后工资可支付库存读口的退役判据。
  *
- * <p>★ P4a：工资改为只付现金 ⇒ {@code WagePayableInventoryLookup} 系列整体删除；本类把原先专测该读口的
- * 三段改成 <b>负向/静态判据</b>：类型不存在、WageSettlement 不接收任何 Lookup 依赖，且库存预留基础设施仍保留给其他
- * 预算用途（不得误删）。
+ * <p>★ P4a：工资改为只付现金 ⇒ {@code WagePayableInventoryLookup} 系列整体删除；本类把原先专测该读口的 三段改成
+ * <b>负向/静态判据</b>：类型不存在、WageSettlement 不接收任何 Lookup 依赖，且库存预留基础设施仍保留给其他 预算用途（不得误删）。
  */
 class D4InventoryReservationTest {
 
@@ -65,9 +64,7 @@ class D4InventoryReservationTest {
         .containsEntry(first.id(), first);
   }
 
-  /**
-   * P4a 负向判据（取代旧“读口扣除全地点 ACTIVE 预留”）：工资可支付库存读口的三个类型都已从类型系统删除。
-   */
+  /** P4a 负向判据（取代旧“读口扣除全地点 ACTIVE 预留”）：工资可支付库存读口的三个类型都已从类型系统删除。 */
   @Test
   void wagePayableInventoryLookupTypesAreRetired() {
     for (String retired :
@@ -82,8 +79,8 @@ class D4InventoryReservationTest {
   }
 
   /**
-   * P4a 负向判据（取代旧“空 Map vs 账户不可用”）：{@link WageSettlement} 的结算口径不再接收、也不再声明任何
-   * inventory lookup 字段/方法 ⇒ 工资支付不读库存、不因 lookup 不可用而 skip。
+   * P4a 负向判据（取代旧“空 Map vs 账户不可用”）：{@link WageSettlement} 的结算口径不再接收、也不再声明任何 inventory lookup 字段/方法 ⇒
+   * 工资支付不读库存、不因 lookup 不可用而 skip。
    */
   @Test
   void wageSettlementApiHasNoInventoryLookupDependency() {
@@ -111,8 +108,8 @@ class D4InventoryReservationTest {
   }
 
   /**
-   * P4a 不得误删库存基础设施（取代旧“缺/非法地点 fail-closed”）：{@link AccountInventorySnapshotLookup} 与
-   * {@link InventoryReservationBook} 仍存在并继续服务其他预算用途；只有工资路径不再依赖它们。
+   * P4a 不得误删库存基础设施（取代旧“缺/非法地点 fail-closed”）：{@link AccountInventorySnapshotLookup} 与 {@link
+   * InventoryReservationBook} 仍存在并继续服务其他预算用途；只有工资路径不再依赖它们。
    */
   @Test
   void inventoryInfrastructureSurvivesForNonWageBudgets() throws Exception {
@@ -130,7 +127,8 @@ class D4InventoryReservationTest {
     assertThat(Arrays.stream(settle.getParameterTypes()).map(Class::getName).toList())
         .as("P4a：工资结算不得把库存预留/账户库存读口纳入签名")
         .doesNotContain(
-            AccountInventorySnapshotLookup.class.getName(), InventoryReservationBook.class.getName());
+            AccountInventorySnapshotLookup.class.getName(),
+            InventoryReservationBook.class.getName());
   }
 
   private static InventoryReservation reservation(

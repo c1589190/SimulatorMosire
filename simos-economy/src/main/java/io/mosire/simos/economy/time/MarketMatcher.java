@@ -54,11 +54,10 @@ final class MarketMatcher {
    * ③ 土地私有分支（{@link #matchLand} 只在入口内部被调用，不是第二个 runner 级 matcher）
    * </pre>
    *
-   * <p>★ 商品先于土地：土地买单只能使用商品冻结后的剩余可花额（{@code spendableMoneyOf}），同一买方同一币种不会双付。
-   * ★ 土地分支的整块/区级价/纯库存财富买方序全部沿用既有实现，本入口只改“调用结构”不改数值。
+   * <p>★ 商品先于土地：土地买单只能使用商品冻结后的剩余可花额（{@code spendableMoneyOf}），同一买方同一币种不会双付。 ★
+   * 土地分支的整块/区级价/纯库存财富买方序全部沿用既有实现，本入口只改“调用结构”不改数值。
    */
-  static void matchAll(
-      MatchContext ctx, EconomyParallelism parallelism, MarketIndexes indexes) {
+  static void matchAll(MatchContext ctx, EconomyParallelism parallelism, MarketIndexes indexes) {
     matchWithinRegions(ctx, parallelism, indexes);
     matchAcrossRegions(ctx, indexes);
     // ★ 土地是同一本订单簿里的订单变体：作为统一入口内部的分支运行（公共入口/生命周期仍只有一个）。
@@ -70,10 +69,10 @@ final class MarketMatcher {
   /**
    * ★★★ <b>P2f/P3d：土地撮合 —— 统一撮合入口内部的私有分支</b>。
    *
-   * <p>★★ <b>位置（P3d 字面收口）</b>：<b>只</b>由 {@link #matchAll} 在<b>商品区内撮合 + 跨区撮合之后、
-   * 冻结释放之前</b>调用；{@code MarketRoundRunner.clearOncePerCycle} 不再直接调用任何土地 matcher（runner 只有一次
-   * matcher 调用 = {@code matchAll}）。商品订单先冻结/成交，土地买单因此只能使用 {@code spendableMoneyOf}
-   * 里<b>剩余的可花额</b>（余额 − 商品冻结），同一买方同一币种不可能双付。
+   * <p>★★ <b>位置（P3d 字面收口）</b>：<b>只</b>由 {@link #matchAll} 在<b>商品区内撮合 + 跨区撮合之后、 冻结释放之前</b>调用；{@code
+   * MarketRoundRunner.clearOncePerCycle} 不再直接调用任何土地 matcher（runner 只有一次 matcher 调用 = {@code
+   * matchAll}）。商品订单先冻结/成交，土地买单因此只能使用 {@code spendableMoneyOf} 里<b>剩余的可花额</b>（余额 −
+   * 商品冻结），同一买方同一币种不可能双付。
    *
    * <p>★ 商品与土地仍是<b>同一本</b> {@code MarketRound} 订单簿里的订单变体：公共入口/生命周期只有一个；
    * 本方法是该入口内部按订单变体分派出来的土地私有分支，不是第二个市场阶段/第二个 matcher。
@@ -89,12 +88,12 @@ final class MarketMatcher {
    *
    * <p>★ 土地卖单的冻结是 {@link MatchContext#landSellFrozen} 里的瞬态 {@code AssetShareId}
    * 集合（同一块本轮只卖一次），<b>不写</b> actor 的 {@code frozenGoods}、不写第二本库存。成交写口在 {@link
-   * MarketTradeExecutor#executeLandTrade}（现金腿走 {@code AccountTransferSettlement.applyTransfer}，产权腿只走
-   * {@code OwnershipStakeBook.transferLandBlock}）。
+   * MarketTradeExecutor#executeLandTrade}（现金腿走 {@code
+   * AccountTransferSettlement.applyTransfer}，产权腿只走 {@code OwnershipStakeBook.transferLandBlock}）。
    *
-   * <p>★ <b>地价</b>：只对 {@code hasLandPrice()} 的市场，按本轮<b>订单簿的 D/S</b>（D = 买单数量之和、S = 卖单数量之和）用现有 {@link
-   * MarketPricer#adaptiveNextPrice} 同口径算下一轮价；结果写入 {@code MarketRound.nextLandPrices}，轮末由 {@code
-   * SettlementDayMarketPipeline} 写回。empty 市场不生成订单、不改价。
+   * <p>★ <b>地价</b>：只对 {@code hasLandPrice()} 的市场，按本轮<b>订单簿的 D/S</b>（D = 买单数量之和、S = 卖单数量之和）用现有
+   * {@link MarketPricer#adaptiveNextPrice} 同口径算下一轮价；结果写入 {@code MarketRound.nextLandPrices}，轮末由
+   * {@code SettlementDayMarketPipeline} 写回。empty 市场不生成订单、不改价。
    */
   private static void matchLand(MatchContext ctx) {
     List<LandOrder> book = MarketOrderPlanner.planLandOrders(ctx, ctx.round.landOrders());

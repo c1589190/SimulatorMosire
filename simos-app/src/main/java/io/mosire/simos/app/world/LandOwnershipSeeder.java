@@ -40,11 +40,10 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   /**
    * ★★ <b>P5b1：农村四阶层家户的初始 LAND 分配权重（‰；按 {@link #CLASS_IDS} 序）。</b>
    *
-   * <p>这是一个**确定性工程权重**（不是玩家裁定、也不是从人口反推）：贫农 100 / 中农 250 / 富农 300 / 地主 350，合计
-   * 1000‰。它让初始土地有差异、同一 hex 的 Σ 恰好等于可分配土地；无地/流民户不在本表（权重 0）。改变它 = 改变新世界初态。
+   * <p>这是一个**确定性工程权重**（不是玩家裁定、也不是从人口反推）：贫农 100 / 中农 250 / 富农 300 / 地主 350，合计 1000‰。它让初始土地有差异、同一 hex
+   * 的 Σ 恰好等于可分配土地；无地/流民户不在本表（权重 0）。改变它 = 改变新世界初态。
    *
-   * <p>★ <b>为什么不用人口份额</b>：人口份额（450/350/150/50）会把土地按人头摊平，失去"有地/少地"的初始差异；本表只服务创世
-   * 土地分布，阶级标签仍不进生产选择。
+   * <p>★ <b>为什么不用人口份额</b>：人口份额（450/350/150/50）会把土地按人头摊平，失去"有地/少地"的初始差异；本表只服务创世 土地分布，阶级标签仍不进生产选择。
    */
   static final int[] RURAL_FARM_LAND_WEIGHT_PER_MILLE = {100, 250, 300, 350};
 
@@ -70,8 +69,8 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   }
 
   /**
-   * ★★ <b>P5b1：一个农村 hex 的 grain_farm 逐户 unit 种子</b> —— 四个阶层家户各拿一份自有 LAND；流民/无地户额外保留
-   * 0 土地 unit（下一轮买地后可组织）。owner = operator = 家户，LAND kind = OWNED。
+   * ★★ <b>P5b1：一个农村 hex 的 grain_farm 逐户 unit 种子</b> —— 四个阶层家户各拿一份自有 LAND；流民/无地户额外保留 0 土地
+   * unit（下一轮买地后可组织）。owner = operator = 家户，LAND kind = OWNED。
    *
    * <p>★ 跨 hex 不伪造：本方法只处理传入的 {@code hex}，每个家户的土地份额都登记在该 hex。
    */
@@ -123,11 +122,12 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   /**
    * ★★ <b>P5b1/P5b2：一个 grain_farm unit 的显式生产名册</b>（多角色模板必须显式，不能依赖单角色自动名册）。
    *
-   * <p>★ <b>organizer 参与项</b> = 该 unit 所有者家户的 {@code operator}，{@code plannedLabor} = 该户真实分到本 unit 的配额合计
-   * （无地户 / 未被分配到本 unit ⇒ 0，合法：它不靠名册二次计劳动）。
+   * <p>★ <b>organizer 参与项</b> = 该 unit 所有者家户的 {@code operator}，{@code plannedLabor} = 该户真实分到本 unit
+   * 的配额合计 （无地户 / 未被分配到本 unit ⇒ 0，合法：它不靠名册二次计劳动）。
    *
-   * <p>★ <b>hired_laborer 参与项</b> = 只有真实初始雇工关系时才写（{@link HiredLaborerParticipant}）；没有就**不塞假 worker**。
-   * 每个参与项的 {@code plannedLabor} 都来自该户的真实配额行，{@code rightsStakes} 空、{@code configuredWeight=0}（EQUAL 角色）。
+   * <p>★ <b>hired_laborer 参与项</b> = 只有真实初始雇工关系时才写（{@link HiredLaborerParticipant}）；没有就**不塞假
+   * worker**。 每个参与项的 {@code plannedLabor} 都来自该户的真实配额行，{@code rightsStakes} 空、{@code
+   * configuredWeight=0}（EQUAL 角色）。
    */
   static Map<String, Object> grainFarmRosterNode(
       GrainFarmUnit unit,
@@ -170,8 +170,8 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   }
 
   /**
-   * ★★ <b>P5b2：选择一个有地 grain_farm unit 承接真实初始雇工</b>——确定性规则 = LAND 份额最大者；同额按家户 id 升序。
-   * 没有任何有地 unit（全 0 土地）⇒ 返回 {@code null}（调用方记具名原因、不塞假雇工）。
+   * ★★ <b>P5b2：选择一个有地 grain_farm unit 承接真实初始雇工</b>——确定性规则 = LAND 份额最大者；同额按家户 id 升序。 没有任何有地 unit（全 0
+   * 土地）⇒ 返回 {@code null}（调用方记具名原因、不塞假雇工）。
    */
   static GrainFarmUnit chooseHiredFarmUnit(List<GrainFarmUnit> farmUnits) {
     GrainFarmUnit chosen = null;
@@ -197,8 +197,7 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
     long total = 0L;
     for (Map<String, Object> allocation : allocations) {
       if (unitId.value().equals(allocation.get("activity"))) {
-        total =
-            Math.addExact(total, ((Number) allocation.get("laborMilli")).longValue());
+        total = Math.addExact(total, ((Number) allocation.get("laborMilli")).longValue());
       }
     }
     return total;
@@ -224,17 +223,15 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   /**
    * ★★ <b>P5b1：把创世配额行从"产业占位 unit"改挂到该家户自己的 grain_farm unit</b>。
    *
-   * <p>创世仍用 {@code appendAllocation} 的既有性别/预算算法算出一批逐 (批次, 家户) 配额；本方法只改落的 unit 与 actor，
-   * 不动 laborMilli、不动批次/家户 —— 家户劳动守恒不变。
+   * <p>创世仍用 {@code appendAllocation} 的既有性别/预算算法算出一批逐 (批次, 家户) 配额；本方法只改落的 unit 与 actor， 不动
+   * laborMilli、不动批次/家户 —— 家户劳动守恒不变。
    */
   static void retargetFarmAllocation(Map<String, Object> allocation, GrainFarmUnit unit) {
     Object householdText = allocation.get("household");
-    if (!(householdText instanceof String household) || !unit.household().value().equals(household)) {
+    if (!(householdText instanceof String household)
+        || !unit.household().value().equals(household)) {
       throw new IllegalStateException(
-          "farm 配额的家户与目标 unit 不一致: allocation="
-              + allocation
-              + " unit="
-              + unit.unitId().value());
+          "farm 配额的家户与目标 unit 不一致: allocation=" + allocation + " unit=" + unit.unitId().value());
     }
     allocation.put(
         "id",
@@ -373,8 +370,8 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
    * 原行}。 ★ <b>确定性</b>：候选户按 {@link HouseholdId#value()} 升序（{@code ProportionalSplit} 的"同余数按下标序"
    * 因此正好是 canonical id 升序）；不读 {@code HashMap} 迭代序，不用随机数/时间。
    *
-   * <p>★★ <b>P5b1：farm 不再走本方法</b> —— 农村 grain_farm 由 {@link #grainFarmUnits} 逐户直接物化；本方法只服务
-   * weave / craft 等非 farm 产业（城市作坊的 TENANCY 副 unit 不在本批范围）。
+   * <p>★★ <b>P5b1：farm 不再走本方法</b> —— 农村 grain_farm 由 {@link #grainFarmUnits} 逐户直接物化；本方法只服务 weave /
+   * craft 等非 farm 产业（城市作坊的 TENANCY 副 unit 不在本批范围）。
    */
   static IndustrySplit splitIndustry(
       IndustryPlan plan, List<Map<String, Object>> allocations, HexCoord hex) {

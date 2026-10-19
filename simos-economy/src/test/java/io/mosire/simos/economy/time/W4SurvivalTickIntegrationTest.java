@@ -229,7 +229,11 @@ class W4SurvivalTickIntegrationTest {
                 Map.of(
                     UNIT,
                     new ProductionRules(
-                        UNIT, WORKER_ACTOR, new Payee.ToActor(WORKER_ACTOR), List.of(), WORKER_ACTOR)))
+                        UNIT,
+                        WORKER_ACTOR,
+                        new Payee.ToActor(WORKER_ACTOR),
+                        List.of(),
+                        WORKER_ACTOR)))
             .withMarketZones(Map.of(ZONE, zone()))
             .withMarketTables(Map.of(ZONE, EconomyFixtures.quote(SILVER, Map.of(GRAIN, 1L))));
 

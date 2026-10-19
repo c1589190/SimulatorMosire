@@ -77,8 +77,8 @@ final class LaborQueuePlanBook {
   }
 
   /**
-   * ★★★ <b>D-032 P3c3：M6 实际编排入口</b>。{@code allowedSlots == null} ⇒ 旧行为；非 null 时只排 M3/M6
-   * 实际计划内的 (unit, role) 槽，且 {@code locks} 对应的槽不进队列（保留既有承诺，锁定雇佣不可变）。
+   * ★★★ <b>D-032 P3c3：M6 实际编排入口</b>。{@code allowedSlots == null} ⇒ 旧行为；非 null 时只排 M3/M6 实际计划内的
+   * (unit, role) 槽，且 {@code locks} 对应的槽不进队列（保留既有承诺，锁定雇佣不可变）。
    */
   static LaborQueueReport applyInternal(
       EconomySession session,
@@ -363,8 +363,7 @@ final class LaborQueuePlanBook {
               ProductionPlanBridge.roleOf(industry, slot.role()).orElse(null);
           if (queueRole != null) {
             targetLaborMilliPerDay =
-                WageQuoteBridge.wageTargetLaborMilliPerDay(
-                    0L, queueRole, industry.cycleDays());
+                WageQuoteBridge.wageTargetLaborMilliPerDay(0L, queueRole, industry.cycleDays());
           }
           if (targetLaborMilliPerDay <= 0L) {
             offers.add(

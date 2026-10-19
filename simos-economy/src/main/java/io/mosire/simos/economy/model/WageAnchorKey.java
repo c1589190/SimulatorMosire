@@ -10,14 +10,13 @@ import java.util.Objects;
 /**
  * ★★★ <b>U20 工资锚的稳定复合键</b>（D-032 P4 §6.1）：{@code (marketZone, industry, role)}。
  *
- * <p>同一个锚在同一个市场区内跨 unit / 雇主共享；不同市场区的同名产业/角色各有自己的锚。键是
- * {@link io.mosire.simos.economy.EconomyData#productionWageAnchors()} 的唯一身份，值内不另存三元组
- * （P4 冻结形状）。
+ * <p>同一个锚在同一个市场区内跨 unit / 雇主共享；不同市场区的同名产业/角色各有自己的锚。键是 {@link
+ * io.mosire.simos.economy.EconomyData#productionWageAnchors()} 的唯一身份，值内不另存三元组 （P4 冻结形状）。
  *
- * <p>★ <b>线格式</b>：复用 {@link WageKeyWireFormat} 的长度前缀编码
- * （{@code <marketZone 字符数>:<marketZone><industry 字符数>:<industry><role>}）。{@link MarketZoneId} /
- * {@link IndustryId} / {@link ProductionRoleId} 的合法值可以含 {@code ':'} / {@code '|'} 等分隔符，
- * 裸拼无法与 {@link #parse(String)} 严格互逆；长度前缀使三段边界只由长度决定。最后一段 role 吃掉剩余全部字符。
+ * <p>★ <b>线格式</b>：复用 {@link WageKeyWireFormat} 的长度前缀编码 （{@code <marketZone
+ * 字符数>:<marketZone><industry 字符数>:<industry><role>}）。{@link MarketZoneId} / {@link IndustryId} /
+ * {@link ProductionRoleId} 的合法值可以含 {@code ':'} / {@code '|'} 等分隔符， 裸拼无法与 {@link #parse(String)}
+ * 严格互逆；长度前缀使三段边界只由长度决定。最后一段 role 吃掉剩余全部字符。
  *
  * @param marketZone 市场区稳定身份；不得为 null
  * @param industry 产业/方案稳定身份；不得为 null

@@ -168,13 +168,17 @@ final class LaborQueueWritebackBook {
       long budget,
       long govServiceLaborMilli) {
     preserveIntoBudget(
-        laborCommitments, householdLaborCommitments, queuedSlots, budget, govServiceLaborMilli,
+        laborCommitments,
+        householdLaborCommitments,
+        queuedSlots,
+        budget,
+        govServiceLaborMilli,
         Set.of());
   }
 
   /**
-   * ★★★ <b>D-032 P3c3：锁定雇佣不参与比例缩</b>。{@code protectedSlots} 里的行整额保留；缩放的可用预算 =
-   * {@code budget − govService − Σ protected}。
+   * ★★★ <b>D-032 P3c3：锁定雇佣不参与比例缩</b>。{@code protectedSlots} 里的行整额保留；缩放的可用预算 = {@code budget −
+   * govService − Σ protected}。
    */
   static void preserveIntoBudget(
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
@@ -197,8 +201,7 @@ final class LaborQueueWritebackBook {
         protectedLabor = Math.addExact(protectedLabor, Math.max(0L, laborCommitment.laborMilli()));
       }
     }
-    long availableForProduction =
-        Math.max(0L, budget - govServiceLaborMilli - protectedLabor);
+    long availableForProduction = Math.max(0L, budget - govServiceLaborMilli - protectedLabor);
     List<LaborAllocationId> ids = new ArrayList<>();
     List<Long> weights = new ArrayList<>();
     long productionPreserved = 0L;

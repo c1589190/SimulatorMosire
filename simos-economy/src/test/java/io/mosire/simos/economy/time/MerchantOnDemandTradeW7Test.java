@@ -850,8 +850,7 @@ class MerchantOnDemandTradeW7Test {
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
-        .withClassMemberships(
-            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
+        .withClassMemberships(Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
         .withOwnershipStakes(shares)
         .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H1, market())));
   }
@@ -914,8 +913,7 @@ class MerchantOnDemandTradeW7Test {
         .withClassStructures(DefaultProductionModes.classStructures())
         .withProductionRoles(DefaultProductionModes.classPositions())
         .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
-        .withClassMemberships(
-            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
+        .withClassMemberships(Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.GRAIN_FARM)))
         .withOwnershipStakes(shares)
         .withMarketZonesAndTables(zones, marketTables);
   }

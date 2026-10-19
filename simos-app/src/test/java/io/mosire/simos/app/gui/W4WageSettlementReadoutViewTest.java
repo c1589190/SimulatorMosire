@@ -169,8 +169,7 @@ class W4WageSettlementReadoutViewTest {
 
   @Test
   void feedOnlyServesThePublishingTickAndPreservesPublishedObjects() {
-    List<WageSettlementReadout> published =
-        List.of(readout(UNIT_A, WORKER_A, 100L, 4L, 96L));
+    List<WageSettlementReadout> published = List.of(readout(UNIT_A, WORKER_A, 100L, 4L, 96L));
     WageSettlementReadoutFeed.publish(MAP_ID, TICK, published);
 
     Optional<List<WageSettlementReadout>> sameTick = WageSettlementReadoutFeed.last(MAP_ID, TICK);
@@ -188,11 +187,7 @@ class W4WageSettlementReadoutViewTest {
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
 
   private static WageSettlementReadout readout(
-      ProductionUnitId unit,
-      HouseholdId worker,
-      long due,
-      long paidMoney,
-      long arrears) {
+      ProductionUnitId unit, HouseholdId worker, long due, long paidMoney, long arrears) {
     return new WageSettlementReadout(
         unit,
         ROLE,

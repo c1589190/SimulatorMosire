@@ -83,8 +83,8 @@ class ExpectedProfitBookEmployerOfTest {
 
   /**
    * ★★ D-032 P5a：{@code grain_farm} 没有租佃/雇农/家庭农场的默认制度模板（{@code
-   * RegimeOperators.defaultRegimeForMode} ⇒ empty）；同产业 unit 落**秩 0（同产业回退）**，
-   * 只有 {@code mode:grain_farm} 直命中的 unit 落秩 2。laborPerUnit=1,000、cycleDays=10、LAND 1/规模。
+   * RegimeOperators.defaultRegimeForMode} ⇒ empty）；同产业 unit 落**秩 0（同产业回退）**， 只有 {@code
+   * mode:grain_farm} 直命中的 unit 落秩 2。laborPerUnit=1,000、cycleDays=10、LAND 1/规模。
    */
   private static IndustryDefinitionView farm(IndustryId id) {
     return IndustryViews.industry(

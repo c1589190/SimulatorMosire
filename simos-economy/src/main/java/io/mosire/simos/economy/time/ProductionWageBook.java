@@ -20,13 +20,13 @@ import java.util.Objects;
 /**
  * ★★★ <b>工资进位工作副本与 due 计算</b>（D-032 P4a/P4c3）。
  *
- * <p>★★ <b>本类不持有任何工资报价权威</b>：报价的唯一来源是 {@code ProductionWageAnchors}。调用方先从锚解析出
- * {@link ProductionWageQuote}，再交给 {@link #dueFor(ProductionWageQuote, ProductionUnitId, ProductionRoleId,
- * HouseholdId, long)}。本类只保存逐 {@code (unit, role, worker)} 的进位余数工作副本，并在 tick 结束时由调用方写回
- * {@code wageCarryRemainders}。
+ * <p>★★ <b>本类不持有任何工资报价权威</b>：报价的唯一来源是 {@code ProductionWageAnchors}。调用方先从锚解析出 {@link
+ * ProductionWageQuote}，再交给 {@link #dueFor(ProductionWageQuote, ProductionUnitId, ProductionRoleId,
+ * HouseholdId, long)}。本类只保存逐 {@code (unit, role, worker)} 的进位余数工作副本，并在 tick 结束时由调用方写回 {@code
+ * wageCarryRemainders}。
  *
- * <p>★ <b>U20 公式的唯一计算核心仍在 {@link #adjustPrice}</b>：{@link WageAnchorBook#applyObservations} 与本类都只调用这一份
- * momentum/minStep/延迟降价公式；本类不再实现旧工资表或第二套调价。
+ * <p>★ <b>U20 公式的唯一计算核心仍在 {@link #adjustPrice}</b>：{@link WageAnchorBook#applyObservations}
+ * 与本类都只调用这一份 momentum/minStep/延迟降价公式；本类不再实现旧工资表或第二套调价。
  *
  * <p>★ <b>缺价 = 调用方拒绝</b>：{@link #dueFor} 显式要求非 null 报价；本类不会用 0 或旧表兜底。显式 0 工资是合法报价。
  */
@@ -194,9 +194,9 @@ public final class ProductionWageBook {
   /**
    * ★★★ <b>D3 §3.3/§3.4 的同一套调价公式</b>（anchor 观察调用；调用方保证 target &gt; 0）。
    *
-   * <p>缺工：shortagePerMille → momentum → raw/base/step 封顶；招满：satisfiedStreak 超过 delay 后才按 initial+accel
-   * 降价、每次至少 1（若 wage &gt; 0）、不穿 0。所有中间乘法用 BigInteger；改价才推进
-   * {@code lastAdjustedTick}/{@code lastAdjustmentDelta}。
+   * <p>缺工：shortagePerMille → momentum → raw/base/step 封顶；招满：satisfiedStreak 超过 delay 后才按
+   * initial+accel 降价、每次至少 1（若 wage &gt; 0）、不穿 0。所有中间乘法用 BigInteger；改价才推进 {@code
+   * lastAdjustedTick}/{@code lastAdjustmentDelta}。
    */
   static PriceAdjustment adjustPrice(
       long currentWage,
@@ -232,7 +232,8 @@ public final class ProductionWageBook {
     if (matchedLaborMilli < targetLaborMilli) {
       nextShortageStreak = Math.addExact(shortageStreak, 1L);
       nextSatisfiedStreak = 0L;
-      long shortagePerMille = shortagePerMille(targetLaborMilli - matchedLaborMilli, targetLaborMilli);
+      long shortagePerMille =
+          shortagePerMille(targetLaborMilli - matchedLaborMilli, targetLaborMilli);
       long momentum = Math.min(policy.increaseMomentumCapTicks(), nextShortageStreak);
       BigInteger raw =
           BigInteger.valueOf(currentWage)
@@ -263,9 +264,7 @@ public final class ProductionWageBook {
                         .multiply(BigInteger.valueOf(policy.decreaseRateAccelPerMille())))
                 .min(BigInteger.valueOf(policy.decreaseRateCapPerMille()));
         BigInteger raw =
-            BigInteger.valueOf(currentWage)
-                .multiply(rate)
-                .divide(BigInteger.valueOf(1000L));
+            BigInteger.valueOf(currentWage).multiply(rate).divide(BigInteger.valueOf(1000L));
         long step = Math.max(1L, raw.longValueExact());
         long delta = Math.min(step, currentWage);
         if (delta > 0L) {

@@ -300,8 +300,7 @@ class ProductionLocationFailClosedTest {
 
     @Override
     public ModeReferenceReport modeReferences(SimulationState state, ProductionModeId id) {
-      return new ModeReferenceReport(
-          List.of(), List.of(), List.of(), List.of(), List.of());
+      return new ModeReferenceReport(List.of(), List.of(), List.of(), List.of(), List.of());
     }
   }
 }

@@ -79,8 +79,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★ P4a 起没有 barter/抵物判据：原“抵物优先级”位改由“库存零变化 + 未付成债”的等价强判据承担。
  *
- * <p>★ P4d 起 {@link RolePayment.MoneyWage} 是无字段 record；P4c3 起工资报价只读 {@code
- * productionWageAnchors}（键 = 市场区 × 产业 × 角色），缺锚具名拒绝、不按 0 兜底。
+ * <p>★ P4d 起 {@link RolePayment.MoneyWage} 是无字段 record；P4c3 起工资报价只读 {@code productionWageAnchors}（键
+ * = 市场区 × 产业 × 角色），缺锚具名拒绝、不按 0 兜底。
  */
 class W3WageSettlementContractTest {
 
@@ -107,11 +107,7 @@ class W3WageSettlementContractTest {
   @Test
   void sufficientCashPaysMoneyOnlyAndNoDebtIsCreated() {
     Settlement settlement =
-        settle(
-            Map.of(SILVER, 100L),
-            Map.of(GRAIN, 50_000L),
-            Map.of(GRAIN, 10L),
-            Map.of());
+        settle(Map.of(SILVER, 100L), Map.of(GRAIN, 50_000L), Map.of(GRAIN, 10L), Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
     assertThat(readout.paidMoneyMilli()).as("due=100 全部由现金支付").isEqualTo(100L);
@@ -147,11 +143,7 @@ class W3WageSettlementContractTest {
   @Test
   void partialCashCreatesZeroInterestArrearsAndLeavesInventoryUntouched() {
     Settlement settlement =
-        settle(
-            Map.of(SILVER, 4L),
-            Map.of(FIBER, 50_000L),
-            Map.of(FIBER, 10L),
-            Map.of());
+        settle(Map.of(SILVER, 4L), Map.of(FIBER, 50_000L), Map.of(FIBER, 10L), Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
     assertThat(readout.paidMoneyMilli()).as("现金用完为止：先付 4").isEqualTo(4L);
@@ -201,11 +193,7 @@ class W3WageSettlementContractTest {
   @Test
   void cashShortfallNeverFallsBackToValuedInventory() {
     Settlement settlement =
-        settle(
-            Map.of(SILVER, 0L),
-            Map.of(GRAIN, 50_000L),
-            Map.of(GRAIN, 10L),
-            Map.of());
+        settle(Map.of(SILVER, 0L), Map.of(GRAIN, 50_000L), Map.of(GRAIN, 10L), Map.of());
 
     WageSettlementReadout readout = onlyReadout(settlement);
     assertThat(readout.paidMoneyMilli()).isZero();
@@ -220,8 +208,8 @@ class W3WageSettlementContractTest {
   }
 
   /**
-   * 现金预算按付款人共享、按稳定 {@code (unit, role, worker)} 序逐笔耗尽：两名工人各 due 100、现金 150
-   * ⇒ 先者足额 100、后者 50 + 50 欠款；库存不动。
+   * 现金预算按付款人共享、按稳定 {@code (unit, role, worker)} 序逐笔耗尽：两名工人各 due 100、现金 150 ⇒ 先者足额 100、后者 50 + 50
+   * 欠款；库存不动。
    */
   @Test
   void cashBudgetIsExhaustedInStableObligationOrder() {
@@ -257,8 +245,8 @@ class W3WageSettlementContractTest {
   }
 
   /**
-   * P4a 负向判据：工资可支付库存读口已从类型系统移除，且 {@link WageSettlement#settle} 的签名不再接收任何
-   * Lookup 依赖 ⇒ “工资支付不读库存 / 不因 inventory lookup 不可用而阻断”。
+   * P4a 负向判据：工资可支付库存读口已从类型系统移除，且 {@link WageSettlement#settle} 的签名不再接收任何 Lookup 依赖 ⇒ “工资支付不读库存 / 不因
+   * inventory lookup 不可用而阻断”。
    *
    * <p>本用例取代旧“lookup 不可用 ⇒ 跳过抵物且不回退账户库存”判据。
    */

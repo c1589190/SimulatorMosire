@@ -57,12 +57,7 @@ final class ProspectArithmetic {
     //   也不得因 mode 未登记而落到 TENANT/SERF。
     if (DefaultProductionModes.GRAIN_FARM.equals(modeId)) {
       return new ProductionRules(
-          unitId,
-          operator,
-          new Payee.ToActor(operator),
-          List.of(),
-          operator,
-          LaborSource.SELF);
+          unitId, operator, new Payee.ToActor(operator), List.of(), operator, LaborSource.SELF);
     }
     // ★ 制度默认的 regime 先取 mode 的默认制度；mode 未登记（如 merchant）或该 regime 无默认表 ⇒ 退回产业 regime。
     Optional<String> modeRegime = RegimeOperators.defaultRegimeForMode(modeId);

@@ -67,12 +67,12 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * <p>★ 本文件取代旧 {@code AssetBudgetBook} 读口断言：{@code assetOccupancies} 从 grant + 份额 + 实例派生， {@code
- * inventoryReservations} 从预留事实派生；{@code productionWageAnchors} 从 economy 的 U20 锚表派生
- * （P4c3 起旧 {@code productionWagePostings} 视图与旧 posting 表整段删除）。三者都不得在读口重算分配或改写状态。
+ * inventoryReservations} 从预留事实派生；{@code productionWageAnchors} 从 economy 的 U20 锚表派生 （P4c3 起旧 {@code
+ * productionWagePostings} 视图与旧 posting 表整段删除）。三者都不得在读口重算分配或改写状态。
  *
- * <p>★★ D-032 T1：工资视图由“逐 posting”改为“锚级” ⇒ 它的**本格过滤**不再成立（锚键 = 市场区 × 产业 × 角色，
- * 没有 unit/hex 字段）；本格过滤只由 {@code assetOccupancies}/{@code inventoryReservations} 承担。锚的稳定序 =
- * {@link WageAnchorKey#toString()}（长度前缀线格式）。
+ * <p>★★ D-032 T1：工资视图由“逐 posting”改为“锚级” ⇒ 它的**本格过滤**不再成立（锚键 = 市场区 × 产业 × 角色， 没有 unit/hex 字段）；本格过滤只由
+ * {@code assetOccupancies}/{@code inventoryReservations} 承担。锚的稳定序 = {@link
+ * WageAnchorKey#toString()}（长度前缀线格式）。
  */
 class R2AssetBudgetReadoutTest {
 
@@ -90,8 +90,10 @@ class R2AssetBudgetReadoutTest {
   private static final ProductionUnitId SECOND = new ProductionUnitId("unit-b-readout-second");
   private static final ProductionUnitId OTHER = new ProductionUnitId("unit-c-readout-other");
   private static final CommodityId GRAIN = new CommodityId("grain");
+
   /** 锚级视图的键之一；本夹具不落 marketZones ⇒ 不触发锚币种 == 区法定币的跨表校验。 */
   private static final MarketZoneId ZONE = new MarketZoneId("r2-readout-zone");
+
   private static final long LAND = 100L;
 
   @Test
@@ -175,11 +177,10 @@ class R2AssetBudgetReadoutTest {
         .containsExactly("kind", "id");
 
     List<Map<String, Object>> anchors = rows(body, "productionWageAnchors");
+    assertThat(anchors).as("锚级视图：夹具的 3 条锚都发出，插入序无关（按 WageAnchorKey 线格式稳定排序）").hasSize(3);
     assertThat(anchors)
-        .as("锚级视图：夹具的 3 条锚都发出，插入序无关（按 WageAnchorKey 线格式稳定排序）")
-        .hasSize(3);
-    assertThat(anchors)
-        .extracting(row -> row.get("marketZone"), row -> row.get("industry"), row -> row.get("role"))
+        .extracting(
+            row -> row.get("marketZone"), row -> row.get("industry"), row -> row.get("role"))
         .as("稳定序 = WageAnchorKey.toString()（长度前缀：zone → industry → role）")
         .containsExactly(
             org.assertj.core.groups.Tuple.tuple(ZONE.value(), FARM.value(), "alpha"),

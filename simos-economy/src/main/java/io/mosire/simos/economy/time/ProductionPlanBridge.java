@@ -226,8 +226,7 @@ final class ProductionPlanBridge {
   static boolean landAllExcluded(SettlementDayContext ctx, ProductionLocation location) {
     boolean sawLand = false;
     for (OwnershipStake share : ctx.assetShares.values()) {
-      if (share.asset() != AssetKind.LAND
-          || !location.value().equals(share.location().value())) {
+      if (share.asset() != AssetKind.LAND || !location.value().equals(share.location().value())) {
         continue;
       }
       sawLand = true;
@@ -249,8 +248,7 @@ final class ProductionPlanBridge {
   }
 
   /**
-   * ★ 有效名册：优先持久 {@link ProductionRoster}；没有时对“单角色方案”合成一份瞬态名册（organizer = unit
-   * operator 家户）。
+   * ★ 有效名册：优先持久 {@link ProductionRoster}；没有时对“单角色方案”合成一份瞬态名册（organizer = unit operator 家户）。
    *
    * <p>为什么不合成多角色名册：多角色无名册在既有路径里就是 {@code roster-required}（不猜角色），P3c3 不改变该语义。
    */
@@ -309,8 +307,7 @@ final class ProductionPlanBridge {
   /** 同上，按当刻 persisted/effective roster 解析（WageDemand 生成用；无 roster ⇒ 空表）。 */
   static Map<ProductionRoleId, Long> hiredWageLaborByRole(
       SettlementDayContext ctx, ProductionProcess unit, IndustryDefinitionView industry) {
-    Map<ProductionUnitId, ProductionRoster> rosters =
-        ctx.session.sheet().productionRostersOrBase();
+    Map<ProductionUnitId, ProductionRoster> rosters = ctx.session.sheet().productionRostersOrBase();
     ProductionRoster roster = effectiveRoster(ctx, unit, industry, rosters);
     return roster == null ? Map.of() : hiredWageLaborByRole(roster, industry);
   }
@@ -327,8 +324,8 @@ final class ProductionPlanBridge {
   // ── probeRoster（A2/A3 的唯一调用点）────────────────────────────────────────────────────
 
   /**
-   * 用 roster 形态调用 production 的只读试算：逐参与户条件、逐户效率、零劳动 organizer + U20 招工目标都在这一条入口表达。
-   * 物理产出/投入/规模一律取自 production，不在 economy 复制效率公式。
+   * 用 roster 形态调用 production 的只读试算：逐参与户条件、逐户效率、零劳动 organizer + U20 招工目标都在这一条入口表达。 物理产出/投入/规模一律取自
+   * production，不在 economy 复制效率公式。
    */
   static ProductionRosterProbeResult probeRosterOf(
       SettlementDayContext ctx,
@@ -339,8 +336,8 @@ final class ProductionPlanBridge {
   }
 
   /**
-   * ★★★ P4c1 重载：{@code wageTargets} 优先取本 tick 的 {@link WageDemand}（M6 传 M3 的清单），无则按同一
-   * target 公式的工程默认（{@link WageQuoteBridge#wageTargetsOf}）；不读旧工资表。
+   * ★★★ P4c1 重载：{@code wageTargets} 优先取本 tick 的 {@link WageDemand}（M6 传 M3 的清单），无则按同一 target
+   * 公式的工程默认（{@link WageQuoteBridge#wageTargetsOf}）；不读旧工资表。
    */
   static ProductionRosterProbeResult probeRosterOf(
       SettlementDayContext ctx,
@@ -414,8 +411,8 @@ final class ProductionPlanBridge {
   /**
    * 评估一份 roster 在本遍信息集下的逐参与户位置经济。
    *
-   * <p>收入 = 本户产品份额值（本地 bid）+ 工资应收；成本 = 工资应付（organizer）+ 投入负担（组织者/投入供方）。排序键 =
-   * {@link PositionEconomics#positionYieldPerLaborScaled()}，M3/M6 共用同一算式。
+   * <p>收入 = 本户产品份额值（本地 bid）+ 工资应收；成本 = 工资应付（organizer）+ 投入负担（组织者/投入供方）。排序键 = {@link
+   * PositionEconomics#positionYieldPerLaborScaled()}，M3/M6 共用同一算式。
    */
   static List<PositionFacts> evaluateRoster(
       SettlementDayContext ctx,
@@ -428,8 +425,8 @@ final class ProductionPlanBridge {
   /**
    * ★★★ P4c1 重载：M6 传 M3 的 {@link WageDemand} 清单（只读同一 tick 快照），M3 第一遍传空表。
    *
-   * <p>工资报价一律经 {@link WageQuoteBridge#resolveWageQuote}（锚唯一权威；缺锚 ⇒ 具名 {@code
-   * wage-anchor-missing} 的位置不可行）。
+   * <p>工资报价一律经 {@link WageQuoteBridge#resolveWageQuote}（锚唯一权威；缺锚 ⇒ 具名 {@code wage-anchor-missing}
+   * 的位置不可行）。
    */
   static List<PositionFacts> evaluateRoster(
       SettlementDayContext ctx,
@@ -539,24 +536,22 @@ final class ProductionPlanBridge {
       if (role.payment() instanceof RolePayment.MoneyWage
           && !quotes.containsKey(participant.role())) {
         // ★ P4c3：锚缺 ⇒ 位置不可行（具名 wage-anchor-missing 已由 resolveWageQuote 记日志）。
-        logPositionFailed(ctx, unit.id(), participant.household(), WageQuoteBridge.WAGE_ANCHOR_MISSING);
+        logPositionFailed(
+            ctx, unit.id(), participant.household(), WageQuoteBridge.WAGE_ANCHOR_MISSING);
         continue;
       }
       long productValue = outputValueByHousehold.getOrDefault(participant.household(), 0L);
       long receivable = 0L;
       ProductionWageQuote quote = quotes.get(participant.role());
       if (quote != null) {
-        long labor =
-            Math.multiplyExact(participant.plannedLaborMilliPerDay(), cycleDays);
+        long labor = Math.multiplyExact(participant.plannedLaborMilliPerDay(), cycleDays);
         receivable = Math.multiplyExact(quote.wagePerLaborMilli(), labor) / MILLI_PER_UNIT;
       }
-      long payable =
-          participant.organizer() ? organizerWageCost : 0L;
+      long payable = participant.organizer() ? organizerWageCost : 0L;
       long burden = participant.organizer() ? inputBurden : 0L;
       long expectedIncome = Math.addExact(productValue, receivable);
       long labor = Math.max(1L, participant.plannedLaborMilliPerDay());
-      PositionEconomics economics =
-          new PositionEconomics(expectedIncome, burden, payable, labor);
+      PositionEconomics economics = new PositionEconomics(expectedIncome, burden, payable, labor);
       if (economics.positionNetMilli() <= 0L) {
         continue;
       }
@@ -627,7 +622,8 @@ final class ProductionPlanBridge {
               ctx.dayView.productionWageAnchors(),
               false);
       if (resolution.quote().isEmpty()) {
-        logPositionFailed(ctx, unit.id(), participant.household(), WageQuoteBridge.WAGE_ANCHOR_MISSING);
+        logPositionFailed(
+            ctx, unit.id(), participant.household(), WageQuoteBridge.WAGE_ANCHOR_MISSING);
         continue;
       }
       ProductionWageQuote quote = resolution.quote().get();

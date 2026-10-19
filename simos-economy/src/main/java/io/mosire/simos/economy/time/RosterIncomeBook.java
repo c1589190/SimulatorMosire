@@ -45,8 +45,7 @@ final class RosterIncomeBook {
   private RosterIncomeBook() {}
 
   /**
-   * ★★★ <b>W1 名册工资估值</b>：报价只读 U20 锚，目标只走标准劳动/周期天数的工程默认，另带已有 settlement
-   * location。
+   * ★★★ <b>W1 名册工资估值</b>：报价只读 U20 锚，目标只走标准劳动/周期天数的工程默认，另带已有 settlement location。
    *
    * <p>★ <b>无旧表回退</b>：锚缺失 ⇒ 具名 {@code wage-quote-missing:<role>}；工程目标为 0 ⇒ 具名 {@code
    * wage-target-missing:<role>}，不会静默按 0。
@@ -212,8 +211,7 @@ final class RosterIncomeBook {
       for (ProductionRoleDefinition role : moneyRoles) {
         Optional<WageAnchorKey> anchorKey =
             WageQuoteBridge.wageAnchorKeyOf(dayView, unit, role.id());
-        ProductionWageAnchor anchor =
-            anchorKey.map(wageAnchors::get).orElse(null);
+        ProductionWageAnchor anchor = anchorKey.map(wageAnchors::get).orElse(null);
         if (anchor == null) {
           if (wageRejection == null) {
             wageRejection = "wage-quote-missing:" + role.id().value();

@@ -79,9 +79,9 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 一一对应**（铁律 5）：
- * ★★★ D-032 P4c3 删除旧两张工资表，只保留 {@code productionWageAnchors}（U20 工资锚唯一报价权威）。
- * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
+ * <p>★ **组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 一一对应**（铁律 5）： ★★★ D-032 P4c3
+ * 删除旧两张工资表，只保留 {@code productionWageAnchors}（U20 工资锚唯一报价权威）。 新增状态组件必须同时进变更集，由 {@code
+ * EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
  *
@@ -743,8 +743,7 @@ public record EconomyData(
   }
 
   /** ★★★ D-032 P4b1：U20 工资锚表的写口（空表 = 清除；缺锚 ≠ 0）。 */
-  public EconomyData withProductionWageAnchors(
-      Map<WageAnchorKey, ProductionWageAnchor> value) {
+  public EconomyData withProductionWageAnchors(Map<WageAnchorKey, ProductionWageAnchor> value) {
     return EconomyDataTransforms.withProductionWageAnchors(this, value);
   }
 

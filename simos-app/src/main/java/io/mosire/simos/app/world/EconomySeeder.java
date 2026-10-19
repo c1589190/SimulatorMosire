@@ -362,8 +362,8 @@ public final class EconomySeeder {
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
      * markets} 都在顶层）。production-runtime 的 entries 是完整生产结构，并在其后<b>追加</b> {@code modes} / {@code
      * classStructures} / {@code classPositions} / {@code classStandings} / {@code assetRules} /
-     * 五个键（{@code merchantFirms} 已于 M-A1 退役 ⇒ 不再发）。★ P3：无 conditions 时
-     * {@code debtContracts} 仍是空表、也不出现 {@code testConditions} 键。
+     * 五个键（{@code merchantFirms} 已于 M-A1 退役 ⇒ 不再发）。★ P3：无 conditions 时 {@code debtContracts}
+     * 仍是空表、也不出现 {@code testConditions} 键。
      */
     public String economyPayload() {
       return ProductionPayloadSeeder.jsonOf(

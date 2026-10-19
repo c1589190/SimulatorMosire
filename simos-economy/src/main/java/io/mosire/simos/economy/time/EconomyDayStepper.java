@@ -182,8 +182,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★★ <b>D-032 C2 全参构造器</b>：在原有行为旋钮之外显式注入 D4-C 资产占用读口与参与户属性桥。未接真实实现时必须传对应的 {@code
-   * Unavailable*} fail-closed 适配器（不得传 null）。
+   * ★★★ <b>D-032 C2 全参构造器</b>：在原有行为旋钮之外显式注入 D4-C 资产占用读口与参与户属性桥。未接真实实现时必须传对应的 {@code Unavailable*}
+   * fail-closed 适配器（不得传 null）。
    */
   public EconomyDayStepper(
       EconomyData base,

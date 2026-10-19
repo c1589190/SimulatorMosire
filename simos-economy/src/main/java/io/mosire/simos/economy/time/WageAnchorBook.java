@@ -21,15 +21,14 @@ import java.util.TreeMap;
 /**
  * ★★★ <b>U20 工资锚的只读读口 / 确定性视图</b>（D-032 P4 §6.4）。
  *
- * <p>★★ <b>缺锚 = empty，0 = 合法</b>：{@link #anchorFor} 只返回 {@code Optional.empty()} 表示"没有这个锚"；
- * {@code wagePerLaborMilli = 0} 的锚会原样返回。{@link #require} 把缺锚变成具名拒绝
- * {@code wage-anchor-missing:<key>}，调用方不得用 0 兜底。
+ * <p>★★ <b>缺锚 = empty，0 = 合法</b>：{@link #anchorFor} 只返回 {@code Optional.empty()} 表示"没有这个锚"； {@code
+ * wagePerLaborMilli = 0} 的锚会原样返回。{@link #require} 把缺锚变成具名拒绝 {@code
+ * wage-anchor-missing:<key>}，调用方不得用 0 兜底。
  *
- * <p>★ <b>确定性</b>：构造时按 {@link WageAnchorKey#toString()} 稳定排序（{@link TreeMap}），
- * {@link #snapshot()} / {@link #readouts()} 的迭代序与输入 Map 的插入序无关。
+ * <p>★ <b>确定性</b>：构造时按 {@link WageAnchorKey#toString()} 稳定排序（{@link TreeMap}）， {@link #snapshot()}
+ * / {@link #readouts()} 的迭代序与输入 Map 的插入序无关。
  *
- * <p>★ 本类不直接写会话/账户；{@link #applyObservations} 是纯函数，返回新的完整锚表，由日结算管线在
- * M8 完成后写回唯一锚账。
+ * <p>★ 本类不直接写会话/账户；{@link #applyObservations} 是纯函数，返回新的完整锚表，由日结算管线在 M8 完成后写回唯一锚账。
  */
 public final class WageAnchorBook {
 
@@ -52,13 +51,12 @@ public final class WageAnchorBook {
    */
   public static Map<WageAnchorKey, ProductionWageAnchor> validate(
       Map<WageAnchorKey, ProductionWageAnchor> anchors) {
-    Map<WageAnchorKey, ProductionWageAnchor> copy = new TreeMap<>(
-        Comparator.comparing(WageAnchorKey::toString));
+    Map<WageAnchorKey, ProductionWageAnchor> copy =
+        new TreeMap<>(Comparator.comparing(WageAnchorKey::toString));
     if (anchors != null) {
       for (Map.Entry<WageAnchorKey, ProductionWageAnchor> entry : anchors.entrySet()) {
         if (entry.getKey() == null || entry.getValue() == null) {
-          throw new IllegalArgumentException(
-              "WageAnchorBook 的键与值都不得为 null: " + entry.getKey());
+          throw new IllegalArgumentException("WageAnchorBook 的键与值都不得为 null: " + entry.getKey());
         }
         copy.put(entry.getKey(), entry.getValue());
       }
@@ -86,9 +84,9 @@ public final class WageAnchorBook {
   /**
    * ★★★ <b>D-032 P4c2：市场日 M8 结束后观察锚并生成下一 tick 的锚表</b>（纯函数，不写会话/账户）。
    *
-   * <p>★★ <b>只观察 target &gt; 0 的锚</b>：target=0（含缺 target）不重置 streak、不改任何字段。
-   * {@code matched < target} ⇒ 缺工分支；{@code matched >= target} ⇒ 招满分支；两分支都复用
-   * {@link ProductionWageBook#adjustPrice} 的同一 momentum/minStep/延迟降价公式。
+   * <p>★★ <b>只观察 target &gt; 0 的锚</b>：target=0（含缺 target）不重置 streak、不改任何字段。 {@code matched <
+   * target} ⇒ 缺工分支；{@code matched >= target} ⇒ 招满分支；两分支都复用 {@link ProductionWageBook#adjustPrice}
+   * 的同一 momentum/minStep/延迟降价公式。
    *
    * <p>★★ <b>非市场日逐值不变</b>：{@code marketDay=false} 直接返回原锚表的确定性只读副本；不写 streak、不调价。
    *
@@ -131,8 +129,7 @@ public final class WageAnchorBook {
       Objects.requireNonNull(key, "targetLaborMilliByAnchor 不得含 null 键");
       Long targetBoxed = targetLaborMilliByAnchor.get(key);
       if (targetBoxed == null || targetBoxed < 0L) {
-        throw contractFault(
-            "wage-anchor-target-invalid", key + " target=" + targetBoxed);
+        throw contractFault("wage-anchor-target-invalid", key + " target=" + targetBoxed);
       }
       long target = targetBoxed;
       if (target == 0L) {

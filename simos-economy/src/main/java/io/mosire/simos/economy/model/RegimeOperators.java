@@ -124,12 +124,12 @@ public final class RegimeOperators {
   }
 
   /**
-   * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code handicraft_workshop → handicraft}、{@code
-   * merchant → merchant}；其余 mode ⇒ 空（调用方按自己的 fail-closed 回退）。
+   * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code handicraft_workshop → handicraft}、{@code merchant →
+   * merchant}；其余 mode ⇒ 空（调用方按自己的 fail-closed 回退）。
    *
-   * <p>★★ <b>P5a：农村 {@code grain_farm} 不映射到任何旧制度模板</b>。旧 {@code tenancy_* → tenant}、{@code wage_farm →
-   * feudal}、{@code family_farm → household} 的农村分支已删除：{@code grain_farm} 的默认关系是<b>空规则 + SELF</b>
-   * （产出全归 operator；雇工工资走 MONEY_WAGE 工资锚），不产生 TENANT/SERF/地租/租约。此处返回空 ⇒ 调用方不得回头读产业
+   * <p>★★ <b>P5a：农村 {@code grain_farm} 不映射到任何旧制度模板</b>。旧 {@code tenancy_* → tenant}、{@code
+   * wage_farm → feudal}、{@code family_farm → household} 的农村分支已删除：{@code grain_farm} 的默认关系是<b>空规则 +
+   * SELF</b> （产出全归 operator；雇工工资走 MONEY_WAGE 工资锚），不产生 TENANT/SERF/地租/租约。此处返回空 ⇒ 调用方不得回头读产业
    * regime（农场产业的 {@code feudal} 是旧庄园模板，不能当 {@code grain_farm} 的默认）。
    *
    * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyEnterpriseSettlement.selectIndustry}、 {@code

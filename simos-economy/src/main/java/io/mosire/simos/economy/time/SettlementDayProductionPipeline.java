@@ -182,8 +182,7 @@ final class SettlementDayProductionPipeline {
     java.util.Set<LaborQueueWritebackBook.UnitRole> allowedSlots = new LinkedHashSet<>();
     for (PositionPlan.UnitPlan unitPlan : ctx.actualProductionPlan.byUnit().values()) {
       for (PositionPlan position : unitPlan.positions()) {
-        allowedSlots.add(
-            new LaborQueueWritebackBook.UnitRole(position.unit(), position.role()));
+        allowedSlots.add(new LaborQueueWritebackBook.UnitRole(position.unit(), position.role()));
       }
     }
     if (ctx.dayView.modes().isEmpty()) {
@@ -245,9 +244,9 @@ final class SettlementDayProductionPipeline {
   /**
    * ★★★ <b>P3c3 legacy 回退：`prepareProductionBase` 已跑过之后的旧消费/劳动次序</b>。
    *
-   * <p>无 production roster 的世界（旧生产形态）不走 M3/M6：M3 观察不到任何可编排位置时，日序回退到旧的
-   * `drawInputsAndPlanLabor + settleConsumption`（按 {@code plantingDrawsFirst} 保持原顺序），随后 `driveProduction`。
-   * 本方法**不重跑** {@link #prepareProductionBase}、不生成任何 P3 瞬态计划。
+   * <p>无 production roster 的世界（旧生产形态）不走 M3/M6：M3 观察不到任何可编排位置时，日序回退到旧的 `drawInputsAndPlanLabor +
+   * settleConsumption`（按 {@code plantingDrawsFirst} 保持原顺序），随后 `driveProduction`。 本方法**不重跑** {@link
+   * #prepareProductionBase}、不生成任何 P3 瞬态计划。
    */
   static void legacyConsumeAfterBase(SettlementDayContext ctx) {
     if (ctx.plantingDrawsFirst) {

@@ -319,11 +319,7 @@ class D031P1DefinitionCommandNegativeTest {
     port.modeReferences(
         MODE,
         new ProductionConsumerPort.ModeReferenceReport(
-            List.of("cs-1"),
-            List.of("cp-1"),
-            List.of("org-1"),
-            List.of("ar-1"),
-            List.of("mt-1")));
+            List.of("cs-1"), List.of("cp-1"), List.of("org-1"), List.of("ar-1"), List.of("mt-1")));
     HandlerOutcome referenced =
         new DeactivateProductionModeHandler(port)
             .handle(state(base, port), "{\"id\":\"" + MODE.value() + "\"}");

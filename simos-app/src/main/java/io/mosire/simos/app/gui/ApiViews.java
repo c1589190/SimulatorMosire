@@ -2098,8 +2098,7 @@ public final class ApiViews {
 
   /** ★★ E6c：资产市值没有可信口径的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE =
-      "资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、政策账面价不是市值）"
-          + "⇒ dashboard 只报实物数量，不折算成粮/钱";
+      "资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、政策账面价不是市值）" + "⇒ dashboard 只报实物数量，不折算成粮/钱";
 
   /** ★★ E6c：HouseholdEconomy.debts 引用悬空的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_DEBT_REF_DANGLING =
@@ -4146,8 +4145,7 @@ public final class ApiViews {
             + "是本周期实际非口粮投入的代理，不是真实下一轮投入");
     view.put("taxPaid", "本周期已缴（FlowRow.taxPaid；当前生产路径恒 0，照实读）");
     view.put("creditGrainSurplusValue", "时点：max(0, 粮库存 − 本周期自需)，与放贷方余粮同一算式、同一保留额；库存读不到 ⇒ null");
-    view.put(
-        "creditAssetPolicyValue", "时点：E4b 的显式钩子恒 0（当前没有资产政策价格源）；单独列出，不静默省略");
+    view.put("creditAssetPolicyValue", "时点：E4b 的显式钩子恒 0（当前没有资产政策价格源）；单独列出，不静默省略");
     view.put("existingDebt", "时点：该家户名下同 unit（粮）的债务本金合计；只减这一部分");
     view.put("unpricedDebtAmount", "时点：非粮 unit 且不能折算的债务本金原始和（各债各自计量单位；仅审计，不参与 headroom）");
     view.put("headroom", "时点：max(0, κ×F÷1000 + 可计入信用的真实资产价值 − existingDebt)");

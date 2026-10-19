@@ -11,8 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ <b>逐义务工资结算读数</b>（D-032 P4a）：一笔 {@code (unit, role, worker)} 的 due 被拆成
- * 现金/欠款两部分，且构造期核对两数守恒。
+ * ★★ <b>逐义务工资结算读数</b>（D-032 P4a）：一笔 {@code (unit, role, worker)} 的 due 被拆成 现金/欠款两部分，且构造期核对两数守恒。
  *
  * <pre>
  * dueMilli == paidMoneyMilli + arrearsMilli
@@ -22,8 +21,8 @@ import java.util.Optional;
  *
  * <p>★ <b>P4a 起没有 barter/库存腿</b>：工资只付货币，未付余额只形成 {@code WAGE_ARREARS} 普通货币债。
  *
- * <p>★ <b>P4c2</b>：{@code anchorKey} 是本义务解析到的 U20 锚键（定不出市场区时为空）；它只用于锚级
- * matched 聚合/读数，不把锚级目标或工资伪装成逐义务事实。
+ * <p>★ <b>P4c2</b>：{@code anchorKey} 是本义务解析到的 U20 锚键（定不出市场区时为空）；它只用于锚级 matched
+ * 聚合/读数，不把锚级目标或工资伪装成逐义务事实。
  */
 public record WageSettlementReadout(
     ProductionUnitId unit,
@@ -45,7 +44,8 @@ public record WageSettlementReadout(
   public WageSettlementReadout {
     Objects.requireNonNull(unit, "WageSettlementReadout.unit 不得为 null");
     Objects.requireNonNull(role, "WageSettlementReadout.role 不得为 null");
-    Objects.requireNonNull(anchorKey, "WageSettlementReadout.anchorKey 不得为 null（缺键用 Optional.empty()）");
+    Objects.requireNonNull(
+        anchorKey, "WageSettlementReadout.anchorKey 不得为 null（缺键用 Optional.empty()）");
     Objects.requireNonNull(worker, "WageSettlementReadout.worker 不得为 null");
     Objects.requireNonNull(payer, "WageSettlementReadout.payer 不得为 null");
     Objects.requireNonNull(currency, "WageSettlementReadout.currency 不得为 null");

@@ -161,8 +161,8 @@ public final class EconomySession {
   }
 
   /**
-   * ★★★ <b>D-032 C2 的装配口</b>：除定义来源与运行时外，再注入 D4-C 资产占用读口与属性桥。 两个 lookup
-   * 都必须显式给出（缺真实实现时用对应的 {@code Unavailable*} fail-closed 适配器，不得传 null）。
+   * ★★★ <b>D-032 C2 的装配口</b>：除定义来源与运行时外，再注入 D4-C 资产占用读口与属性桥。 两个 lookup 都必须显式给出（缺真实实现时用对应的 {@code
+   * Unavailable*} fail-closed 适配器，不得传 null）。
    */
   public EconomySession(
       EconomyData base,
@@ -170,13 +170,7 @@ public final class EconomySession {
       io.mosire.simos.production.contract.ProductionRuntime runtime,
       AssetOccupancyLookup assetOccupancyLookup,
       ParticipantAttributeLookup participantAttributeLookup) {
-    this(
-        base,
-        definitions,
-        runtime,
-        assetOccupancyLookup,
-        participantAttributeLookup,
-        null);
+    this(base, definitions, runtime, assetOccupancyLookup, participantAttributeLookup, null);
   }
 
   /**

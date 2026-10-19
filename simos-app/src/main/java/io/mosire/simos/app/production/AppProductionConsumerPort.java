@@ -190,11 +190,7 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
       }
     }
     return new ModeReferenceReport(
-        classStructures,
-        classPositions,
-        productionOrganizations,
-        assetRules,
-        modeTransitions);
+        classStructures, classPositions, productionOrganizations, assetRules, modeTransitions);
   }
 
   /**
@@ -241,9 +237,9 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
   /**
    * ★★★ <b>D-032 P4c2：U20 工资锚的只读视图（锚级，不是逐义务值）</b>。
    *
-   * <p>来源 = economy 切片持久化的 {@code productionWageAnchors}（唯一锚账）；按
-   * {@code (marketZone, industry, role)} 稳定排序，原样输出工资/streak/最近观测/最近调价。
-   * {@code wagePerLaborMilli=0} 是合法值；空表 = 世界还没有锚（不是错误）。本方法不重算、不写状态。
+   * <p>来源 = economy 切片持久化的 {@code productionWageAnchors}（唯一锚账）；按 {@code (marketZone, industry,
+   * role)} 稳定排序，原样输出工资/streak/最近观测/最近调价。 {@code wagePerLaborMilli=0} 是合法值；空表 =
+   * 世界还没有锚（不是错误）。本方法不重算、不写状态。
    */
   public List<Map<String, Object>> productionWageAnchors(SimulationState state) {
     Objects.requireNonNull(state, "state");
@@ -276,9 +272,7 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("unit", readout.unit().value());
     row.put("role", readout.role().value());
-    row.put(
-        "anchor",
-        readout.anchorKey().map(key -> key.toString()).orElse(null));
+    row.put("anchor", readout.anchorKey().map(key -> key.toString()).orElse(null));
     row.put("worker", readout.worker().value());
     row.put("payer", readout.payer().value());
     row.put("currency", readout.currency().value());

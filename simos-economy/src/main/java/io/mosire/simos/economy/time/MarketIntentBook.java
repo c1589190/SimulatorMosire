@@ -53,8 +53,7 @@ final class MarketIntentBook {
       for (Map.Entry<CommodityId, Long> need : entry.getValue().entrySet()) {
         long gap =
             Math.max(
-                0L,
-                need.getValue() - ProductionPlanBridge.goodsOf(ctx, household, need.getKey()));
+                0L, need.getValue() - ProductionPlanBridge.goodsOf(ctx, household, need.getKey()));
         if (gap > 0L) {
           buyNeeds
               .computeIfAbsent(household, ignored -> new LinkedHashMap<>())
@@ -76,9 +75,7 @@ final class MarketIntentBook {
       for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
         long period = Math.multiplyExact(need.getValue(), days);
         long gap =
-            Math.max(
-                0L,
-                period - ProductionPlanBridge.goodsOf(ctx, household, need.getKey()));
+            Math.max(0L, period - ProductionPlanBridge.goodsOf(ctx, household, need.getKey()));
         if (gap > 0L) {
           buyNeeds
               .computeIfAbsent(household, ignored -> new LinkedHashMap<>())

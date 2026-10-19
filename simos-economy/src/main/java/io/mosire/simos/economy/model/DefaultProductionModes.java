@@ -22,8 +22,8 @@ import java.util.Optional;
  * ProductionRole}。{@code EconomySeeder} 的 {@code production-runtime} profile 直接以本目录为唯一拼写点发 {@code
  * modes} / {@code classStructures} / {@code classPositions} / {@code classStandings} 四个顶层键。
  *
- * <p>★★ <b>P5a 农村收口：农村只有一个 {@code grain_farm} 生产方式</b>。有地/无地、富/穷、地主/小农都只做结算后的阶级投影，不再拆成
- * 不同的农村 mode。目录里的农村位置固定为：
+ * <p>★★ <b>P5a 农村收口：农村只有一个 {@code grain_farm} 生产方式</b>。有地/无地、富/穷、地主/小农都只做结算后的阶级投影，不再拆成 不同的农村
+ * mode。目录里的农村位置固定为：
  *
  * <pre>
  * mode          结构 id                 位置 role → relationToMeans / laborRole / surplusRole
@@ -40,14 +40,15 @@ import java.util.Optional;
  *
  * <p>★★ <b>为什么农村只有一个 mode</b>：自耕与雇工是同一个农场实例内的连续选择（{@code operator} 自家劳动 + {@code hired_laborer}
  * 货币工资），不是两种生产方式。旧 {@code tenancy_*} / {@code wage_farm} / {@code family_farm} 按阶级拆 mode 的映射已在 P5a
- * 删除；{@code landlord / rich_peasant / middle_peasant / poor_peasant / landless_laborer} 只做读数投影，不得进入生产选择键。
+ * 删除；{@code landlord / rich_peasant / middle_peasant / poor_peasant / landless_laborer}
+ * 只做读数投影，不得进入生产选择键。
  *
  * <p>★★ <b>ID 三条硬约束</b>：
  *
  * <ol>
- *   <li><b>mode id 是规范词表值</b>（{@code grain_farm} 等下划线），结构 id 与位置 id 一律 <b>kebab-case</b>：结构 =
- *       mode id 的下划线换连字符 + {@code -structure}；位置 = mode id 的下划线换连字符 + {@code -} + role（下划线换连字符）。
- *       全部不含 {@code "."}（地址在第一个点处切段，含点即被 ID 构造期拒绝）。
+ *   <li><b>mode id 是规范词表值</b>（{@code grain_farm} 等下划线），结构 id 与位置 id 一律 <b>kebab-case</b>：结构 = mode
+ *       id 的下划线换连字符 + {@code -structure}；位置 = mode id 的下划线换连字符 + {@code -} + role（下划线换连字符）。 全部不含
+ *       {@code "."}（地址在第一个点处切段，含点即被 ID 构造期拒绝）。
  *   <li><b>每个 mode 独立结构 + 独立位置 id</b>：{@link ProductionRole#modeId()} 在构造期判“同一个位置 id 不能在两个 mode
  *       下有两种形状”，故同形角色也按 mode 前缀各拿一个 id，不跨 mode 复用。
  *   <li><b>不留孤儿位置</b>：{@code classPositions()} 里的每个位置都恰属于本目录的一个 {@code ClassStructure}。
@@ -60,14 +61,14 @@ import java.util.Optional;
  * UUID、无文件系统；同一个查询在任意进程/任意时刻得到同一个值。{@code modes()} / {@code classStructures()} / {@code
  * classPositions()} 返回<b>防御性副本 + 不可变包装</b>，调用方拿不到也改不动类内常量表。
  *
- * <p>★ <b>本类不被任何生产/结算路径自动调用</b>：它只提供默认目录与稳定查询。运行期结算必须读 {@code EconomyData} 里的状态，
- * 而不是回头读本静态表；GM 编辑改的也是状态。
+ * <p>★ <b>本类不被任何生产/结算路径自动调用</b>：它只提供默认目录与稳定查询。运行期结算必须读 {@code EconomyData} 里的状态， 而不是回头读本静态表；GM
+ * 编辑改的也是状态。
  */
 public final class DefaultProductionModes {
 
   /**
-   * ★★ <b>P5a 农村唯一生产方式：{@code grain_farm}</b>。所有农村家户（有地/无地、富/穷）都走同一套位置/角色规则；自耕与雇工是同一
-   * 农场内的连续选择，不是两个 mode。阶级只做结算后投影。
+   * ★★ <b>P5a 农村唯一生产方式：{@code grain_farm}</b>。所有农村家户（有地/无地、富/穷）都走同一套位置/角色规则；自耕与雇工是同一 农场内的连续选择，不是两个
+   * mode。阶级只做结算后投影。
    */
   public static final ProductionModeId GRAIN_FARM = new ProductionModeId("grain_farm");
 
@@ -82,15 +83,11 @@ public final class DefaultProductionModes {
   public static final ProductionModeId DISPLACED = new ProductionModeId("displaced");
 
   /**
-   * ★★ 位置角色名：{@code grain_farm} 的经营者/自家劳动（产品份额、剩余索取；不是阶级标签）。位置 id = {@code
-   * grain-farm-operator}。
+   * ★★ 位置角色名：{@code grain_farm} 的经营者/自家劳动（产品份额、剩余索取；不是阶级标签）。位置 id = {@code grain-farm-operator}。
    */
   public static final String ROLE_OPERATOR = "operator";
 
-  /**
-   * ★★ 位置角色名：{@code grain_farm} 的雇工（市场工资锚，按实际劳动结算）。位置 id = {@code
-   * grain-farm-hired-laborer}。
-   */
+  /** ★★ 位置角色名：{@code grain_farm} 的雇工（市场工资锚，按实际劳动结算）。位置 id = {@code grain-farm-hired-laborer}。 */
   public static final String ROLE_HIRED_LABORER = "hired_laborer";
 
   /** ★ 位置角色名：作坊主。 */
@@ -147,8 +144,8 @@ public final class DefaultProductionModes {
   /**
    * ★ 默认生产方式目录（键 = {@link ProductionModeDefinitionView#id()}；保序）。
    *
-   * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（{@code grain_farm} → 手工业 → P6
-   * {@code merchant} → P10.1 {@code displaced}）。
+   * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（{@code grain_farm} → 手工业 → P6 {@code merchant} →
+   * P10.1 {@code displaced}）。
    */
   public static Map<ProductionModeId, ProductionModeDefinitionView> modes() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(MODES));
@@ -186,8 +183,8 @@ public final class DefaultProductionModes {
    * ★★ <b>按 (mode, role) 查默认位置 —— 本目录的稳定查询口</b>（供 seeder / 迁移器 / 后续 P6 用）。
    *
    * <p>role 是本类的 {@code ROLE_*} 常量（如 {@link #ROLE_OPERATOR}、{@link #ROLE_HIRED_LABORER}）； 未知
-   * mode、未知/空白 role ⇒ 空。哪个社会阶层槽位映射到哪个 (mode, role) 由调用方（{@code ProductionRoleSeeder}）决定；
-   * 本类不内建“贫农 → 雇农”一类按阶级拆分的判断。
+   * mode、未知/空白 role ⇒ 空。哪个社会阶层槽位映射到哪个 (mode, role) 由调用方（{@code ProductionRoleSeeder}）决定； 本类不内建“贫农 →
+   * 雇农”一类按阶级拆分的判断。
    */
   public static Optional<ProductionRole> position(ProductionModeId modeId, String role) {
     Objects.requireNonNull(modeId, "modeId");

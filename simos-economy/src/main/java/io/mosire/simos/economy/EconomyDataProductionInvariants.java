@@ -314,10 +314,9 @@ final class EconomyDataProductionInvariants {
   /**
    * productionWageAnchors：键/值非空、键身份合法、currency 与市场区 legalTender 一致（若区表提供该区），并冻结。
    *
-   * <p>★ <b>冻结形状</b>：{@link ProductionWageAnchor} 按 P4 §6.1 不携带三元组，故键的唯一身份就是本表键。
-   * 这里校验键/值非 null，并在区表能定位该区时把 currency 与 legalTender 对齐（不一致 ⇒
-   * {@code wage-anchor-currency-mismatch}）。★ 区表为空 / 缺该区时状态层不拒绝（本仓派生市场形态与分步
-   * seed 都允许“先有锚、后有区”的写序）；显式命令 / seed 边界另有具名 zone 存在性校验。
+   * <p>★ <b>冻结形状</b>：{@link ProductionWageAnchor} 按 P4 §6.1 不携带三元组，故键的唯一身份就是本表键。 这里校验键/值非
+   * null，并在区表能定位该区时把 currency 与 legalTender 对齐（不一致 ⇒ {@code wage-anchor-currency-mismatch}）。★ 区表为空
+   * / 缺该区时状态层不拒绝（本仓派生市场形态与分步 seed 都允许“先有锚、后有区”的写序）；显式命令 / seed 边界另有具名 zone 存在性校验。
    */
   static Map<WageAnchorKey, ProductionWageAnchor> validateProductionWageAnchors(
       Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors,
@@ -326,8 +325,7 @@ final class EconomyDataProductionInvariants {
       productionWageAnchors = Map.of();
     }
     Map<WageAnchorKey, ProductionWageAnchor> anchorsCopy = new LinkedHashMap<>();
-    for (Map.Entry<WageAnchorKey, ProductionWageAnchor> entry :
-        productionWageAnchors.entrySet()) {
+    for (Map.Entry<WageAnchorKey, ProductionWageAnchor> entry : productionWageAnchors.entrySet()) {
       WageAnchorKey key = entry.getKey();
       ProductionWageAnchor value = entry.getValue();
       if (key == null || value == null) {

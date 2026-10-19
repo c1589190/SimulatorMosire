@@ -676,9 +676,9 @@ final class MarketRoundRunner {
   /**
    * ★★★ <b>D-032 P3c3：用 M3 的 {@link MarketIntent} 替换同一 actor 的 planner 自动商品订单。</b>
    *
-   * <p>只移除 {@code round.injectedMarketIntents} 里出现过的 COMMODITY actor 的自动买/卖槽；随后
-   * {@link #appendInjectedCommodityOrders} 再把 M3 订单加入同一轮。缺方向的订单就是没有订单：不恢复该 actor 的自动腿。
-   * 政府/商号/未接计划的户不在 intent actor 集合里 ⇒ 自动订单逐值保留。
+   * <p>只移除 {@code round.injectedMarketIntents} 里出现过的 COMMODITY actor 的自动买/卖槽；随后 {@link
+   * #appendInjectedCommodityOrders} 再把 M3 订单加入同一轮。缺方向的订单就是没有订单：不恢复该 actor 的自动腿。 政府/商号/未接计划的户不在
+   * intent actor 集合里 ⇒ 自动订单逐值保留。
    */
   private static void replaceAutoCommodityOrdersForIntentActors(
       MatchContext ctx, MarketRound round) {

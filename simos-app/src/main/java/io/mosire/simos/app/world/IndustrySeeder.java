@@ -33,15 +33,16 @@ class IndustrySeeder extends WorldBalanceSeeder {
   /**
    * ★★ <b>P5b1：农业 = 单一 {@code grain_farm} 模板</b>（所有农村家户共用；自耕/雇工是同一实例内的连续选择）。
    *
-   * <p>本方法只产出**产业模板**（产能 = 本格可耕地 + 配方 + 角色）。具体 unit / LAND 份额 / 名册由 {@link
-   * ProductionRuntimeSeeder} 按家户逐户物化（owner = operator = 家户）。
+   * <p>本方法只产出**产业模板**（产能 = 本格可耕地 + 配方 + 角色）。具体 unit / LAND 份额 / 名册由 {@link ProductionRuntimeSeeder}
+   * 按家户逐户物化（owner = operator = 家户）。
    *
-   * <p>★★ <b>角色定义是显式两条</b>：{@code operator}（PRODUCT_SHARE，1000‰）+ {@code hired_laborer}（MONEY_WAGE，0‰）。
-   * 不再只发 {@code singleOperatorRoleNodes()} —— 否则雇工只能靠旧 posting/default，无法表达同一农场内的工资劳动。
+   * <p>★★ <b>角色定义是显式两条</b>：{@code operator}（PRODUCT_SHARE，1000‰）+ {@code
+   * hired_laborer}（MONEY_WAGE，0‰）。 不再只发 {@code singleOperatorRoleNodes()} —— 否则雇工只能靠旧
+   * posting/default，无法表达同一农场内的工资劳动。
    *
-   * <p>★★ <b>制度标签不再用 {@code feudal}（庄园）</b>：grain_farm 没有租佃/地租/领主自营模板；这里用已登记的 {@code
-   * household} 制度名，且每个 unit 在播种时都带**显式空规则关系**（{@code rules=[] + SELF}），因此不会回落到任何旧
-   * 300‰ rent / TENANT / ESTATE 默认。{@code acceptedRightKinds} 也只接受 {@code OWNED}。
+   * <p>★★ <b>制度标签不再用 {@code feudal}（庄园）</b>：grain_farm 没有租佃/地租/领主自营模板；这里用已登记的 {@code household}
+   * 制度名，且每个 unit 在播种时都带**显式空规则关系**（{@code rules=[] + SELF}），因此不会回落到任何旧 300‰ rent / TENANT / ESTATE
+   * 默认。{@code acceptedRightKinds} 也只接受 {@code OWNED}。
    *
    * <p>★★ **H0.2：它名下不再有四行** —— 那一格的四行农村家户搬到 entry 级（{@link #ruralCohort}），
    * 因为"这一格有多少地"是**产业**的事、"这一格的人有多少粮/多少活"是**家户**的事（K2/K3 的分工）。
@@ -65,7 +66,8 @@ class IndustrySeeder extends WorldBalanceSeeder {
             //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
             Map.of("LAND", MILLI_MU_PER_MU),
             LABOR_MILLI_PER_MU,
-            orderedTable(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
+            orderedTable(
+                COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
             Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
     // ★★★ P5b1：农业必须显式给两条角色（operator + hired_laborer），不再走单 operator 缺省。
     plan.payload().put("roles", grainFarmRoleNodes());
@@ -402,9 +404,9 @@ class IndustrySeeder extends WorldBalanceSeeder {
   /**
    * ★★★ <b>D-032 W5-E：seed 方案的产业 kind → 它实际物化的份额权利性质</b>（唯一映射点）。
    *
-   * <p>★ <b>按实播份额精确列出</b>（不是"能多接受就多写"）：P5b1 起 <b>farm 的每个 unit 都物化 {@code OWNED} LAND 份额</b>
-   * （owner = operator = 家户），不再有 TENANCY 农村默认；craft 的副 unit 仍是 {@code TENANCY}（城市工坊，非本批范围）；
-   * weave / trade 只物化 {@code OWNED}。新增 seed 产业 kind 时必须在这里显式给映射 —— 未知 kind 直接 {@link
+   * <p>★ <b>按实播份额精确列出</b>（不是"能多接受就多写"）：P5b1 起 <b>farm 的每个 unit 都物化 {@code OWNED} LAND 份额</b> （owner
+   * = operator = 家户），不再有 TENANCY 农村默认；craft 的副 unit 仍是 {@code TENANCY}（城市工坊，非本批范围）； weave / trade
+   * 只物化 {@code OWNED}。新增 seed 产业 kind 时必须在这里显式给映射 —— 未知 kind 直接 {@link
    * IllegalStateException}，绝不静默落成空集。
    */
   private static List<String> seedAcceptedRightKinds(String kind) {
@@ -424,19 +426,18 @@ class IndustrySeeder extends WorldBalanceSeeder {
    * ★★★ <b>P5b2：{@code hired_laborer} 的标准劳动工程默认（毫劳动/周期）</b>。
    *
    * <p>值 = <b>120,000 毫劳动/周期</b>；{@code cycleDays = 120} ⇒ <b>1,000 毫劳动/日</b>的正日目标。它是 {@code
-   * WageDemand} 在 roster 没有实际雇工计划时的 fallback（{@code floor(standardLaborMilliPerCycle / cycleDays)}）；
-   * <b>不得为 0</b>：0 会让 {@code WageDemand} 静默不生成（0 = 未定 ⇒ 无招工需求 ⇒ 工资链断在 M3）。
+   * WageDemand} 在 roster 没有实际雇工计划时的 fallback（{@code floor(standardLaborMilliPerCycle /
+   * cycleDays)}）； <b>不得为 0</b>：0 会让 {@code WageDemand} 静默不生成（0 = 未定 ⇒ 无招工需求 ⇒ 工资链断在 M3）。
    *
    * <p>★ 为什么不是 operator 缺省的 0：operator 是组织者/剩余索取者，标准劳动 0 合法；{@code hired_laborer} 是工资角色，
-   * 必须有一个正的招工边界。★ 标定口径：与 {@code LABOR_MILLI_PER_MU=143} 同量纲（毫劳动），1,000/日 ≈ 7 亩/日的耕地当量
-   * （与 {@code LAND_MU_PER_LABOR=7} 同一条工程口径）。这是工程默认，不是用户裁定。
+   * 必须有一个正的招工边界。★ 标定口径：与 {@code LABOR_MILLI_PER_MU=143} 同量纲（毫劳动），1,000/日 ≈ 7 亩/日的耕地当量 （与 {@code
+   * LAND_MU_PER_LABOR=7} 同一条工程口径）。这是工程默认，不是用户裁定。
    */
   static final long HIRED_LABORER_STANDARD_LABOR_MILLI_PER_CYCLE = 120_000L;
 
   /**
    * ★★★ <b>P5b1/P5b2：{@code grain_farm} 的显式角色目录（operator + hired_laborer）</b> —— 与 {@link
-   * #singleOperatorRoleNodes()} 同一套 wire 字段名，逐字段对应 {@code
-   * ProductionDefinitionPayloads.role}。
+   * #singleOperatorRoleNodes()} 同一套 wire 字段名，逐字段对应 {@code ProductionDefinitionPayloads.role}。
    *
    * <pre>
    * operator      PRODUCT_SHARE  sharePerMille=1000  standardLaborMilliPerCycle=defaultOperator() 的工程默认（0）

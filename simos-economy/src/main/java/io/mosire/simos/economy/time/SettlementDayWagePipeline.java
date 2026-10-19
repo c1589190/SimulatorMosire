@@ -148,12 +148,13 @@ final class SettlementDayWagePipeline {
       }
     }
   }
+
   /**
    * 市场日 M8 之后：按锚聚合 M3 target 与 M8 实际 matched，算下一 tick 锚并写回会话工作表。
    *
-   * <p>★ target 来源 = {@code ExpectedProductionPlan.wageDemands}（同锚多 unit 求和）；matched 来源 =
-   * {@code ProductionReceipt.laborContributionsMilli} 里 MONEY_WAGE 角色的实际 labor（同锚求和）。只计实际出工，
-   * 被拒/未执行 unit 没有回执 ⇒ 不虚报 matched。
+   * <p>★ target 来源 = {@code ExpectedProductionPlan.wageDemands}（同锚多 unit 求和）；matched 来源 = {@code
+   * ProductionReceipt.laborContributionsMilli} 里 MONEY_WAGE 角色的实际 labor（同锚求和）。只计实际出工， 被拒/未执行 unit
+   * 没有回执 ⇒ 不虚报 matched。
    */
   private static void observeAndAdjustWageAnchors(SettlementDayContext ctx, boolean marketDay) {
     if (!marketDay || ctx.expectedProductionPlan == null) {
@@ -284,5 +285,4 @@ final class SettlementDayWagePipeline {
                 cause == null ? "-" : cause.getClass().getSimpleName()));
     return new IllegalStateException(word + ": " + detail, cause);
   }
-
 }

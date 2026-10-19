@@ -89,11 +89,7 @@ public record TestConditions(
 
   /** 条件 JSON 的顶层键集合（未知键 fail-closed）。 */
   private static final Set<String> TOP_LEVEL_KEYS =
-      Set.of(
-          "initialDebts",
-          "assetSplits",
-          "extraGoodsByHousehold",
-          "extraMoneyByHousehold");
+      Set.of("initialDebts", "assetSplits", "extraGoodsByHousehold", "extraMoneyByHousehold");
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -470,9 +466,9 @@ public record TestConditions(
   // ── 资产份额确定性 id 助手（fixture 预测"拆分新建份额"的 id 用；与 EconomyPayloads 的序列口径同式）────
 
   /**
-   * ★★ <b>家户自有 OWNED 份额的确定性 id</b>：{@code LAND} 走 {@code
-   * OwnershipStake.landBlockIdOf(industry, location, sequence)}（owner/operator/kind 不入 id）；非土地资产走原 {@code
-   * OwnershipStake.idOf(industry, asset, household, household, OWNED, location, sequence)}。
+   * ★★ <b>家户自有 OWNED 份额的确定性 id</b>：{@code LAND} 走 {@code OwnershipStake.landBlockIdOf(industry,
+   * location, sequence)}（owner/operator/kind 不入 id）；非土地资产走原 {@code OwnershipStake.idOf(industry,
+   * asset, household, household, OWNED, location, sequence)}。
    *
    * <p>{@code location} 必须显式取自真实 seed/unit 格；{@code sequence} 是该 {@code entry} 内同键的第几条（从 0 起）——
    * 土地键只含 {@code (industry, LAND, location)}；非土地键含 owner/operator/kind。拆分出来的新份额通常 {@code
@@ -672,8 +668,7 @@ public record TestConditions(
               "test-condition: "
                   + where
                   + ".kind=commodity 已删除（P2c 起债务本金只允许货币）；商品欠款需在形成时按活动市场区价格折货币");
-      case "money" ->
-          new DebtUnit.Money(CurrencyId.parse(requireText(node, "currency", where)));
+      case "money" -> new DebtUnit.Money(CurrencyId.parse(requireText(node, "currency", where)));
       default ->
           throw new IllegalArgumentException(
               "test-condition: " + where + ".kind 只认 money: " + kind);

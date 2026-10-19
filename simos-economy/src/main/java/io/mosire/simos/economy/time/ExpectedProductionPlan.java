@@ -15,12 +15,11 @@ import java.util.Objects;
  *
  * <p>它保存三件 M6 必需的信息：① 家户选择的生产位置组合与家户级收益/劳动预算；② 本 tick 锁定的雇佣关系；③ M3 交给 M4 的 {@link
  * MarketIntent}。另外保存全部正收益候选，供 M6 只在非雇佣小生产的合法范围内重排；并保存 P4c1 的 {@link WageDemand} 清单（入选 MONEY_WAGE
- * 位置的招工需求，供 M6/M8 只读、P4c2 聚合）。它<b>不</b>写库存、货币、 土地、债务或生产实例；不落 {@code
- * EconomyData}/ChangeSet/Codec。
+ * 位置的招工需求，供 M6/M8 只读、P4c2 聚合）。它<b>不</b>写库存、货币、 土地、债务或生产实例；不落 {@code EconomyData}/ChangeSet/Codec。
  *
  * <p>★ 确定性：{@code byHousehold}、{@code byUnit}、{@code positiveCandidates} 的 key 一律按稳定 id 升序；{@code
- * locks} 按 (unit, employer, worker, role, currency, labor, wage) 升序；{@code wageDemands} 按 (unit, marketZone,
- * industry, role) 升序且同 {@code (unit, role)} 至多一条。{@code marketIntents} 的语义顺序由 M3 决定
+ * locks} 按 (unit, employer, worker, role, currency, labor, wage) 升序；{@code wageDemands} 按 (unit,
+ * marketZone, industry, role) 升序且同 {@code (unit, role)} 至多一条。{@code marketIntents} 的语义顺序由 M3 决定
  * （同优先级内的生成顺序会影响后续市场装配），因此保留调用方传入序；调用方必须用稳定生成序构造，不得从无序集合迭代。
  *
  * <p>★ 本类型只活在市场轮的一个 tick 内，不提供 {@code with}/{@code apply} 等状态改写口。
@@ -175,12 +174,11 @@ record ExpectedProductionPlan(
   }
 
   /**
-   * ★★★ P4c1：冻结 {@link WageDemand} 清单 —— 非 null、按 {@link WageDemand#CANONICAL_ORDER} 稳定排序、同 {@code (unit,
-   * role)} 至多一条（不重复累加；跨 unit 的锚级聚合留给 P4c2），并保持不可变。
+   * ★★★ P4c1：冻结 {@link WageDemand} 清单 —— 非 null、按 {@link WageDemand#CANONICAL_ORDER} 稳定排序、同 {@code
+   * (unit, role)} 至多一条（不重复累加；跨 unit 的锚级聚合留给 P4c2），并保持不可变。
    */
   private static List<WageDemand> copyWageDemands(List<WageDemand> source) {
-    Objects.requireNonNull(
-        source, "ExpectedProductionPlan.wageDemands 不得为 null（无招工需求请用空表）");
+    Objects.requireNonNull(source, "ExpectedProductionPlan.wageDemands 不得为 null（无招工需求请用空表）");
     List<WageDemand> copy = new ArrayList<>(source.size());
     for (WageDemand demand : source) {
       if (demand == null) {

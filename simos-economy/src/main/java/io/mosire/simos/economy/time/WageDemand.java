@@ -12,8 +12,8 @@ import java.util.Objects;
 /**
  * ★★★ <b>D-032 P4c1：M3 入选工资位置的招工需求（WageDemand）</b>。
  *
- * <p>它是 M3 第一遍编排的<b>瞬态</b>产物：每条记录说"这个 unit 的这个工资角色本 tick 想要多少劳动、按哪个市场区的
- * 法定币计价"。它只活在 {@link ExpectedProductionPlan} 里，<b>不落</b> {@code EconomyData}/ChangeSet/Codec，也不写任何账。
+ * <p>它是 M3 第一遍编排的<b>瞬态</b>产物：每条记录说"这个 unit 的这个工资角色本 tick 想要多少劳动、按哪个市场区的 法定币计价"。它只活在 {@link
+ * ExpectedProductionPlan} 里，<b>不落</b> {@code EconomyData}/ChangeSet/Codec，也不写任何账。
  *
  * <p>★★ <b>target 的唯一口径</b>（P4c1 冻结）：
  *
@@ -22,11 +22,11 @@ import java.util.Objects;
  *        : floor(role.standardLaborMilliPerCycle / max(1, cycleDays))   // 工程默认
  * </pre>
  *
- * <p>★ <b>target = 0 不生成 WageDemand</b>（没有招工需求 ≠ 需求为 0 的记录）；{@code targetLaborMilliPerDay} 构造期非负。
- * ★ <b>同 {@code (unit, role)} 至多一条</b>：M3 逐 unit/role 去重，不做跨位置累加（跨 unit 的锚级聚合是 P4c2 的事）。
+ * <p>★ <b>target = 0 不生成 WageDemand</b>（没有招工需求 ≠ 需求为 0 的记录）；{@code targetLaborMilliPerDay} 构造期非负。 ★
+ * <b>同 {@code (unit, role)} 至多一条</b>：M3 逐 unit/role 去重，不做跨位置累加（跨 unit 的锚级聚合是 P4c2 的事）。
  *
- * <p>★ {@link #anchorKey()} 是 {@link WageAnchorKey} 的唯一派生点：{@code (marketZone, industry, role)}。同一锚跨 unit /
- * 雇主共享，故多个 unit 可以带同一个键。
+ * <p>★ {@link #anchorKey()} 是 {@link WageAnchorKey} 的唯一派生点：{@code (marketZone, industry,
+ * role)}。同一锚跨 unit / 雇主共享，故多个 unit 可以带同一个键。
  *
  * @param unit 生产实例稳定身份；不得为 null
  * @param marketZone unit 所在市场区（锚的分区维度）；不得为 null

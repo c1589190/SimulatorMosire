@@ -16,8 +16,8 @@ import io.mosire.simos.economy.api.relation.RuleType;
  * 写成规则数据会要求每个场景显式写两遍次序；本策略把四档制度语义收在一处，读的人一眼能对到计划表。
  *
  * <p>★★ <b>P5a：农村 {@code grain_farm} 默认不产生 TENANT/SERF</b>。{@code grain_farm} 的默认关系是空规则 + {@link
- * LaborSource#SELF}（产出全归 operator），雇工工资走 MONEY_WAGE 锚而 {@link LaborSource#WAGE} 档只作用于显式工资关系。
- * 本类保留 TENANT/SERF 两档，只服务非农村/显式旧关系数据，不再作为农村默认值的生成来源。
+ * LaborSource#SELF}（产出全归 operator），雇工工资走 MONEY_WAGE 锚而 {@link LaborSource#WAGE} 档只作用于显式工资关系。 本类保留
+ * TENANT/SERF 两档，只服务非农村/显式旧关系数据，不再作为农村默认值的生成来源。
  */
 final class LaborSourcePolicy {
 

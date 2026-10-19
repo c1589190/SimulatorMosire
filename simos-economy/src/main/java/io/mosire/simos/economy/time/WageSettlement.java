@@ -56,11 +56,11 @@ import org.slf4j.Logger;
  *
  * <ol>
  *   <li>按 {@code (unit, role, household)} 稳定序构造本次实际劳动义务；
- *   <li>先按付款人做 {@link WagePayerLocationPrecheck}：已有 unit/roster 地点 ∪ 本次义务地点 &gt; 1 ⇒
- *       整组业务拒绝，零支付 / 零新债 / 零 carry 变化；
+ *   <li>先按付款人做 {@link WagePayerLocationPrecheck}：已有 unit/roster 地点 ∪ 本次义务地点 &gt; 1 ⇒ 整组业务拒绝，零支付 /
+ *       零新债 / 零 carry 变化；
  *   <li>通过预检后先算完全部 due（carry 是逐义务状态），再按稳定序逐笔付现金；
- *   <li>每笔 {@code paidMoney = min(dueRemaining, cash[currency])}，现金用完为止；未付差额立即形成
- *       {@link DebtSource#WAGE_ARREARS} 的货币普通债（{@code DebtTerms.wageArrearsDefault()}，0‰）。
+ *   <li>每笔 {@code paidMoney = min(dueRemaining, cash[currency])}，现金用完为止；未付差额立即形成 {@link
+ *       DebtSource#WAGE_ARREARS} 的货币普通债（{@code DebtTerms.wageArrearsDefault()}，0‰）。
  * </ol>
  *
  * <p>★ <b>不读库存/市场价/barter</b>：工资只付货币腿，绝不拿商品库存抵付，也不生成商品腿。
@@ -118,8 +118,8 @@ public final class WageSettlement {
   /**
    * 一条待结工资义务（内部；已按名册 organizer 解析出付款人）。
    *
-   * <p>★ P4c3：{@code anchorKey} 是 {@code (unit 所在市场区, unit.industry, role)} 的 U20 锚键；定不出市场区时为空。
-   * 缺锚 ⇒ 该义务按 {@code wage-anchor-missing} 业务拒绝，<b>不按 0、不读旧表</b>。
+   * <p>★ P4c3：{@code anchorKey} 是 {@code (unit 所在市场区, unit.industry, role)} 的 U20 锚键；定不出市场区时为空。 缺锚
+   * ⇒ 该义务按 {@code wage-anchor-missing} 业务拒绝，<b>不按 0、不读旧表</b>。
    */
   private record Obligation(
       ProductionUnitId unit,
@@ -201,8 +201,7 @@ public final class WageSettlement {
     ProductionWageBook wageBook = new ProductionWageBook(dayView);
     // ★★★ P4c1：U20 锚的**同一 tick 快照**（M8 开始时刻冻结）；M8 只读不写锚（调价是 P4c2），
     //   故本 tick 的 due 与 M3/M6 的锁不会被任何"新价"追改。
-    Map<WageAnchorKey, ProductionWageAnchor> wageAnchors =
-        new WageAnchorBook(dayView).snapshot();
+    Map<WageAnchorKey, ProductionWageAnchor> wageAnchors = new WageAnchorBook(dayView).snapshot();
     List<Rejection> rejections = new ArrayList<>();
     List<Obligation> obligations = collectObligations(dayView, rosters, units, productionDay);
     obligations.sort(OBLIGATION_ORDER);
@@ -221,8 +220,7 @@ public final class WageSettlement {
       groupObligations.sort(OBLIGATION_ORDER);
       PayerGroup group = new PayerGroup(payer, groupObligations);
       ActorRef payerActor = HouseholdActors.of(payer);
-      Set<ProductionLocation> existing =
-          existingSettlementLocations(payer, rosters, units);
+      Set<ProductionLocation> existing = existingSettlementLocations(payer, rosters, units);
       Set<ProductionLocation> candidates = new LinkedHashSet<>();
       for (Obligation obligation : group.obligations()) {
         candidates.add(obligation.location());

@@ -42,8 +42,7 @@ class EconomySeederConditions extends WorldBalanceSeeder {
    *       moveInventory=false} 只能消耗本批外部注入的**未承诺余量**（同一份注入不许被两条债重复当对价）；
    *   <li>{@code AssetSplit}：源 {@code OWNED} 份额减、同 industry/asset 的新 {@code OWNED}
    *       份额（owner=operator=目标家户）加， 逐 {@code (industry, asset)} 总量守恒（出口复核，不等即抛）；
-   *   <li>（P2d 起不再接受该初始条件）
-   *       modeId} 已被本 profile 种下。
+   *   <li>（P2d 起不再接受该初始条件） modeId} 已被本 profile 种下。
    * </ol>
    *
    * <p>★ 条件里的每一个家户都必须在<b>本次 seed 的格集</b>里（跨 seed 引用没有对侧，具名拒绝）。
@@ -381,8 +380,8 @@ class EconomySeederConditions extends WorldBalanceSeeder {
    * ★★ <b>与经济载荷解析器逐字同式的确定性 id 口径</b>：{@code LAND} 的序列键只含 {@code
    * industry|asset|location}（同一格多块稳定递增，owner/operator/kind 不进入身份）；非土地资产保持原键 {@code
    * industry|asset|owner|operator|kind|location}。序号 = 该键在<b>整份载荷</b>里出现的第几条（从 0 起）。本类先在拆分前对全部既有份额
-   * 算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id <b>逐值相同</b>（拆分创建的目标份额因此可被
-   * 调用方按同一 id 口径读取目标份额）。
+   * 算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id <b>逐值相同</b>（拆分创建的目标份额因此可被 调用方按同一 id
+   * 口径读取目标份额）。
    */
   private static String sequenceKeyOf(ShareHandle handle) {
     if (handle.asset() == AssetKind.LAND) {

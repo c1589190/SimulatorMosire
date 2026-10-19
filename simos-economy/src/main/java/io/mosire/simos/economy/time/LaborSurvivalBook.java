@@ -14,10 +14,10 @@ import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketZoneBook;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.WageAnchorKey;
-import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
@@ -272,14 +272,12 @@ final class LaborSurvivalBook {
         ProductionWageAnchor anchor =
             anchorKey.map(session.sheet().productionWageAnchorsOrBase()::get).orElse(null);
         long targetLaborMilliPerDay =
-            WageQuoteBridge.wageTargetLaborMilliPerDay(
-                0L, roleDefinition, plan.cycleDays());
+            WageQuoteBridge.wageTargetLaborMilliPerDay(0L, roleDefinition, plan.cycleDays());
         if (anchor == null || targetLaborMilliPerDay <= 0L) {
           continue; // 匹配阶段会按 wage-quote-missing/wage-target-missing 具名 skip；不在这里伪造收入。
         }
         Optional<ProductionWageQuote> quote =
-            Optional.of(
-                new ProductionWageQuote(anchor.currency(), anchor.wagePerLaborMilli()));
+            Optional.of(new ProductionWageQuote(anchor.currency(), anchor.wagePerLaborMilli()));
         long expectedLaborMilli = Math.min(laborBudgetMilli, offer.maxAbsorbableLaborMilli());
         if (expectedLaborMilli <= 0L) {
           continue;

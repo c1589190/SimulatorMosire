@@ -49,9 +49,8 @@ import java.util.Set;
  * @param carry 该实例当前周期已结转的精度余数；不得为 null（没有实例/没有余数给 {@link Optional#empty()}）
  * @param participantAttributes 逐参与户外部属性事实；不得为 null（无条件/无事实用空表）。角色级资格缺事实 ⇒ fail-closed
  * @param wageTargetLaborMilliPerDay ★ <b>工资招工目标</b>（按角色，毫小时/日）——A3 的"最小事实"。
- *     <p>★ <b>它是什么 / 不是什么</b>：它只是<b>劳动需求边界</b>（economy 侧工资招工目标的
- *     {@code targetLaborMilliPerDay} 只读投影），<b>不是</b>"已经招到人"的承诺，也<b>不</b>为它伪造 worker
- *     参与项。求值时：
+ *     <p>★ <b>它是什么 / 不是什么</b>：它只是<b>劳动需求边界</b>（economy 侧工资招工目标的 {@code targetLaborMilliPerDay}
+ *     只读投影），<b>不是</b>"已经招到人"的承诺，也<b>不</b>为它伪造 worker 参与项。求值时：
  *     <ul>
  *       <li>只对方案里 {@code payment = MONEY_WAGE} 的角色生效；键指向非工资角色 ⇒ 具名拒绝 {@code
  *           wage-target-role-not-money-wage:<role>}；

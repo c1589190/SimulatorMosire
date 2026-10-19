@@ -36,8 +36,8 @@ import org.junit.jupiter.api.Test;
  *   <li>不做死亡/出生/资产买卖；这些留给正式运行时。
  * </ul>
  *
- * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许单一 {@code grain_farm} 与流民。 城市利润随该 mode
- * 城市人口上升而下降，因此会形成均衡，而不是全部挤进城市。
+ * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许单一 {@code grain_farm} 与流民。 城市利润随该
+ * mode 城市人口上升而下降，因此会形成均衡，而不是全部挤进城市。
  */
 class HomeModeMigrationProbeTest {
 

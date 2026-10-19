@@ -47,8 +47,7 @@ final class SettlementDayActualProductionPipeline {
       throw new IllegalStateException(
           "M6 需要 M3 的 ExpectedProductionPlan（P3c3 日序被绕过）: day=" + ctx.day);
     }
-    Map<ProductionUnitId, ProductionRoster> rosters =
-        ctx.session.sheet().productionRostersOrBase();
+    Map<ProductionUnitId, ProductionRoster> rosters = ctx.session.sheet().productionRostersOrBase();
     // ★ P4c1：M6 只读 M3 的 WageDemand 清单（同一 tick 快照）；不重算、不改锁、不写锚。
     Map<ProductionUnitId, List<ProductionPlanBridge.PositionFacts>> actualFactsByUnit =
         actualFacts(ctx, rosters, expected.wageDemands());
@@ -204,8 +203,7 @@ final class SettlementDayActualProductionPipeline {
       if (industry == null) {
         continue;
       }
-      ProductionRoster roster =
-          ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
+      ProductionRoster roster = ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
       if (roster == null) {
         continue;
       }
@@ -250,8 +248,7 @@ final class SettlementDayActualProductionPipeline {
     if (industry == null) {
       return "position-industry-missing";
     }
-    ProductionRoster roster =
-        ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
+    ProductionRoster roster = ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
     if (roster == null) {
       return "position-roster-missing";
     }
@@ -268,13 +265,10 @@ final class SettlementDayActualProductionPipeline {
     if (!participantPresent) {
       return "position-worker-missing";
     }
-    return ProductionPlanBridge.positionLocationRejection(ctx, unit, roster, industry)
-        .orElse(null);
+    return ProductionPlanBridge.positionLocationRejection(ctx, unit, roster, industry).orElse(null);
   }
 
-  /**
-   * 把锁定雇佣写入既有 {@code laborCommitments} 工作副本：复用同 (unit, worker, role) 行 id，没有才新发；角色/雇主/劳动不改。
-   */
+  /** 把锁定雇佣写入既有 {@code laborCommitments} 工作副本：复用同 (unit, worker, role) 行 id，没有才新发；角色/雇主/劳动不改。 */
   private static void materializeLocks(
       SettlementDayContext ctx,
       List<EmploymentLock> locks,
@@ -349,7 +343,8 @@ final class SettlementDayActualProductionPipeline {
     return byUnit;
   }
 
-  private static String slotKey(ProductionUnitId unit, io.mosire.simos.economy.api.production.ProductionRoleId role) {
+  private static String slotKey(
+      ProductionUnitId unit, io.mosire.simos.economy.api.production.ProductionRoleId role) {
     return unit.value() + "\u0000" + role.value();
   }
 }

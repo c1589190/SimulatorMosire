@@ -111,9 +111,7 @@ class W3WageSettlementTickIntegrationTest {
       assertThat(wage.goods()).as("P4a：工资只现金 ⇒ 不得带商品腿").isEmpty();
       assertThat(wage.from()).isEqualTo(PAYER_ACTOR);
       assertThat(wage.to()).isEqualTo(WORKER_ACTOR);
-      assertThat(stepper.accounts().householdGoods().get(WORKER))
-          .as("收款人库存不得因工资而变动")
-          .isEmpty();
+      assertThat(stepper.accounts().householdGoods().get(WORKER)).as("收款人库存不得因工资而变动").isEmpty();
 
       DebtContractId expectedDebt =
           DebtContractId.idOf(
@@ -123,9 +121,7 @@ class W3WageSettlementTickIntegrationTest {
       assertThat(debt.source()).isEqualTo(DebtSource.WAGE_ARREARS);
       assertThat(debt.terms()).isEqualTo(DebtTerms.wageArrearsDefault());
       assertThat(debt.terms().interestRatePerMillePerCycle()).isZero();
-      assertThat(debt.principal())
-          .as("M8 在 M2 之后 ⇒ 本 tick 新工资债不被二次偿还；本金仍 96")
-          .isEqualTo(96L);
+      assertThat(debt.principal()).as("M8 在 M2 之后 ⇒ 本 tick 新工资债不被二次偿还；本金仍 96").isEqualTo(96L);
 
       assertThat(stepper.lastWageSettlementReadouts())
           .as("W4：同一 tick 的 W3 读数可经只读 accessor 取回")
@@ -145,8 +141,8 @@ class W3WageSettlementTickIntegrationTest {
   }
 
   /**
-   * P4a 库存零变化强判据（tick 级）：同一 tick 只把付款人现金从 4 改成足额 100，商品 grain 的最终库存必须逐毫相同
-   * ⇒ 工资现金不足没有动用任何库存（生产本身对库存的合法变化被差分消掉）。
+   * P4a 库存零变化强判据（tick 级）：同一 tick 只把付款人现金从 4 改成足额 100，商品 grain 的最终库存必须逐毫相同 ⇒
+   * 工资现金不足没有动用任何库存（生产本身对库存的合法变化被差分消掉）。
    */
   @Test
   void cashShortfallDoesNotChangeTickInventoryComparedToFullyPaid() {

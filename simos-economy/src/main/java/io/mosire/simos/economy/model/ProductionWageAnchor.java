@@ -10,15 +10,15 @@ import java.util.Objects;
  * 它是显式命令 / seed 写入的<b>唯一</b>锚状态，不另落第二份工资报价账。
  *
  * <p>★ <b>量纲</b>：{@code wagePerLaborMilli} = 毫货币 / 毫小时劳动；{@code wage = wagePerLaborMilli ×
- * laborMilli / 1000}。{@code wagePerLaborMilli = 0} 合法（U18/U19：零薪不是缺锚）；缺锚由
- * {@code Optional.empty()} / {@code WageAnchorBook#require} 具名区分，不用 0 冒充。
+ * laborMilli / 1000}。{@code wagePerLaborMilli = 0} 合法（U18/U19：零薪不是缺锚）；缺锚由 {@code Optional.empty()}
+ * / {@code WageAnchorBook#require} 具名区分，不用 0 冒充。
  *
  * <p>★ <b>历史字段</b>：{@code shortageStreak}/{@code satisfiedStreak}/{@code lastObserved*} 均 ≥ 0；
- * {@code lastAdjustedTick = -1} 表示从未改价（构造期显式允许 -1），{@code lastAdjustmentDelta} 可负。
- * 这些字段只服务 P4c 的 U20 观测/调价；P4b1 只负责持久与显式写入。
+ * {@code lastAdjustedTick = -1} 表示从未改价（构造期显式允许 -1），{@code lastAdjustmentDelta} 可负。 这些字段只服务 P4c 的
+ * U20 观测/调价；P4b1 只负责持久与显式写入。
  *
- * <p>★ 本类型只做本域构造期校验；{@code currency == 市场区 legalTender} 属跨表约束，由
- * {@code EconomyDataProductionInvariants} / {@code HouseholdReferenceValidation} / 命令与 seed 边界判。
+ * <p>★ 本类型只做本域构造期校验；{@code currency == 市场区 legalTender} 属跨表约束，由 {@code
+ * EconomyDataProductionInvariants} / {@code HouseholdReferenceValidation} / 命令与 seed 边界判。
  *
  * @param currency 锚的币种；不得为 null
  * @param wagePerLaborMilli 单位劳动工资（毫货币/毫小时；≥ 0，0 合法）

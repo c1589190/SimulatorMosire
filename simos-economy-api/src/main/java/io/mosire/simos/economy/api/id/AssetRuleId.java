@@ -3,9 +3,9 @@ package io.mosire.simos.economy.api.id;
 import io.mosire.simos.actor.api.asset.AssetKind;
 
 /**
- * ★★ <b>生产资料规则（{@code AssetRule}）的稳定身份</b>（理想架构 §2.5/§3.3；E2）：一个 mode 下"某种生产资料"
- * 的产权/租佃/转移规则。身份 = {@code (modeId, assetKind)} 的纯函数 —— 同一个 mode 的同一资产种类 <b>只允许一条规则</b>（由
- * {@code EconomyData} 的构造期守卫判死）。
+ * ★★ <b>生产资料规则（{@code AssetRule}）的稳定身份</b>（理想架构 §2.5/§3.3；E2）：一个 mode 下"某种生产资料" 的产权/租佃/转移规则。身份 =
+ * {@code (modeId, assetKind)} 的纯函数 —— 同一个 mode 的同一资产种类 <b>只允许一条规则</b>（由 {@code EconomyData}
+ * 的构造期守卫判死）。
  *
  * <p>★ 裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）；{@code parse} 是 opaque 的，不做格式再解释。 ★
  * <b>规范串不含 {@code "."}</b>：地址会被 {@code AddressParser} 在第一个点处截断 ⇒ 本类型在构造期当场抛。

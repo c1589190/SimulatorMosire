@@ -37,17 +37,17 @@ import org.slf4j.Logger;
  *  "currency":"silver","wagePerLaborMilli":1000}
  * }</pre>
  *
- * <p>★★ <b>键 = (marketZone, industry, role)</b>，单条 upsert（不整表替换；清除由 seed/后续命令面，不在本批）。
- * 币种省略时取该市场区 {@code legalTender}，给了就必须一致。{@code wagePerLaborMilli = 0} 合法；缺锚与 0 是两件事。
+ * <p>★★ <b>键 = (marketZone, industry, role)</b>，单条 upsert（不整表替换；清除由 seed/后续命令面，不在本批）。 币种省略时取该市场区
+ * {@code legalTender}，给了就必须一致。{@code wagePerLaborMilli = 0} 合法；缺锚与 0 是两件事。
  *
  * <p>★ <b>历史字段</b>：可选 {@code shortageStreak}/{@code satisfiedStreak}/{@code lastAdjustedTick}/
- * {@code lastObservedMatchedLaborMilli}/{@code lastObservedTargetLaborMilli}/{@code lastAdjustmentDelta}。
- * 新建时缺省 = 0（{@code lastAdjustedTick} = -1 = 从未）。已有锚且未显式给历史字段时：同价保留历史；改价则清两侧
+ * {@code lastObservedMatchedLaborMilli}/{@code lastObservedTargetLaborMilli}/{@code
+ * lastAdjustmentDelta}。 新建时缺省 = 0（{@code lastAdjustedTick} = -1 = 从未）。已有锚且未显式给历史字段时：同价保留历史；改价则清两侧
  * streak、写 {@code lastAdjustedTick = 命令日}、{@code lastAdjustmentDelta = 新-旧}，观测值保留。
  *
- * <p>业务拒绝（INFO、零变更）：{@code wage-anchor-market-zone-missing} / {@code wage-anchor-industry-unknown} /
- * {@code wage-anchor-role-unknown} / {@code wage-role-not-money} / {@code wage-anchor-currency-mismatch} /
- * {@code wage-anchor-quote-negative}。
+ * <p>业务拒绝（INFO、零变更）：{@code wage-anchor-market-zone-missing} / {@code wage-anchor-industry-unknown}
+ * / {@code wage-anchor-role-unknown} / {@code wage-role-not-money} / {@code
+ * wage-anchor-currency-mismatch} / {@code wage-anchor-quote-negative}。
  */
 public final class EconomySetProductionWageAnchorHandler implements CommandHandler {
 
@@ -160,8 +160,7 @@ public final class EconomySetProductionWageAnchorHandler implements CommandHandl
           EconomyCommandPayloads.optionalLong(TYPE, payload, "shortageStreak", 0L),
           EconomyCommandPayloads.optionalLong(TYPE, payload, "satisfiedStreak", 0L),
           EconomyCommandPayloads.optionalLong(TYPE, payload, "lastAdjustedTick", -1L),
-          EconomyCommandPayloads.optionalLong(
-              TYPE, payload, "lastObservedMatchedLaborMilli", 0L),
+          EconomyCommandPayloads.optionalLong(TYPE, payload, "lastObservedMatchedLaborMilli", 0L),
           EconomyCommandPayloads.optionalLong(TYPE, payload, "lastObservedTargetLaborMilli", 0L),
           EconomyCommandPayloads.optionalLong(TYPE, payload, "lastAdjustmentDelta", 0L));
     }
@@ -194,10 +193,7 @@ public final class EconomySetProductionWageAnchorHandler implements CommandHandl
             "lastObservedMatchedLaborMilli",
             existing.lastObservedMatchedLaborMilli()),
         EconomyCommandPayloads.optionalLong(
-            TYPE,
-            payload,
-            "lastObservedTargetLaborMilli",
-            existing.lastObservedTargetLaborMilli()),
+            TYPE, payload, "lastObservedTargetLaborMilli", existing.lastObservedTargetLaborMilli()),
         EconomyCommandPayloads.optionalLong(
             TYPE, payload, "lastAdjustmentDelta", existing.lastAdjustmentDelta()));
   }

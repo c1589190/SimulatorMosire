@@ -26,7 +26,8 @@ import java.util.Set;
  *
  * <ol>
  *   <li>按纯库存财富降序 → HouseholdId 升序遍历家户；
- *   <li>对每个已有名册调用 {@code probeRoster}（A2）与 {@link ProductionPlanBridge#evaluateRoster} 形成正收益位置候选（A4）；
+ *   <li>对每个已有名册调用 {@code probeRoster}（A2）与 {@link ProductionPlanBridge#evaluateRoster}
+ *       形成正收益位置候选（A4）；
  *   <li>本户按单位劳动净收益贪心选主位置与剩余位置，直到劳动预算用完/没有正收益；
  *   <li>把第一遍雇佣决策落成不可变 {@link EmploymentLock}（只读事实；P4 再支付）；
  *   <li>把生产投入缺口、基础消费缺口、可售剩余与未用土地转成 {@link MarketIntent}。
@@ -40,8 +41,7 @@ final class SettlementDayExpectedProductionPipeline {
   private SettlementDayExpectedProductionPipeline() {}
 
   static void planExpectedProduction(SettlementDayContext ctx) {
-    Map<ProductionUnitId, ProductionRoster> rosters =
-        ctx.session.sheet().productionRostersOrBase();
+    Map<ProductionUnitId, ProductionRoster> rosters = ctx.session.sheet().productionRostersOrBase();
     List<ProductionUnitId> unitIds = new ArrayList<>(ctx.units.keySet());
     unitIds.sort(Comparator.comparing(ProductionUnitId::value));
 
@@ -59,8 +59,7 @@ final class SettlementDayExpectedProductionPipeline {
       if (industry == null) {
         continue;
       }
-      ProductionRoster roster =
-          ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
+      ProductionRoster roster = ProductionPlanBridge.effectiveRoster(ctx, unit, industry, rosters);
       if (roster == null) {
         continue;
       }
@@ -181,7 +180,8 @@ final class SettlementDayExpectedProductionPipeline {
         chosenFacts.add(fact);
         chosenUnits.add(fact.position().unit());
       }
-      byHousehold.put(household, new HouseholdProductionPlan(household, chosen, expectedNet, budget));
+      byHousehold.put(
+          household, new HouseholdProductionPlan(household, chosen, expectedNet, budget));
     }
 
     // ── 雇佣锁：只保留 M3 真正入选的 unit（未选中的组织者不产生锁）────────────────────────

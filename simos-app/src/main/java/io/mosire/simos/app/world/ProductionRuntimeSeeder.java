@@ -85,9 +85,9 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
    * + 默认生产方式目录。
    *
    * <p>★ 载荷出口的 {@code modes} / {@code classStructures} / {@code classPositions} / {@code
-   * classStandings} / {@code assetRules} 由 {@link #jsonOf} 追加（mode
-   * 目录来自 {@code DefaultProductionModes}）；有政府引用（{@code seeding.governmentHousehold()}）时内置 GOV
-   * 家户与政府国库， 否则只落一条不持户的创世审计主体（P2-C §13.7）。
+   * classStandings} / {@code assetRules} 由 {@link #jsonOf} 追加（mode 目录来自 {@code
+   * DefaultProductionModes}）；有政府引用（{@code seeding.governmentHousehold()}）时内置 GOV 家户与政府国库，
+   * 否则只落一条不持户的创世审计主体（P2-C §13.7）。
    */
   static EconomySeeder.Seed planProductionRuntime(
       String mapId,
@@ -273,10 +273,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
           GrainFarmUnit unit = farmUnitByHousehold.get(household);
           if (unit == null) {
             throw new IllegalStateException(
-                "农业配额找不到家户 grain_farm unit（seed 内部不一致）: household="
-                    + household
-                    + " hex="
-                    + hex);
+                "农业配额找不到家户 grain_farm unit（seed 内部不一致）: household=" + household + " hex=" + hex);
           }
           retargetFarmAllocation(allocation, unit);
         }
@@ -459,9 +456,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
             plannedLaborOfHousehold(allocations, unit.unitId(), unit.household());
         productionRosters.add(
             grainFarmRosterNode(
-                unit,
-                operatorPlanned,
-                hiredByUnit.getOrDefault(unit.unitId(), List.of())));
+                unit, operatorPlanned, hiredByUnit.getOrDefault(unit.unitId(), List.of())));
       }
       // ★★★ D-032 C3：plan 级映射/回退（可映射 ⇒ roles + 清空旧 rules；不可表示 ⇒ 原样保留旧 rules + INFO BLOCKED）。
       //   ★ P5b1：farm 的 roles 是显式两角色、且 unit 已有显式名册 ⇒ 不进入旧规则映射（否则会被单 operator 覆盖）。

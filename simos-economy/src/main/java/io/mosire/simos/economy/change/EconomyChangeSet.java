@@ -71,8 +71,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（D-032 P4c3 起为 34 个；★ D-032 B4 / §13.14.2 裁定十五起
- * <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（D-032 P4c3 起为 34 个；★ D-032 B4 / §13.14.2
+ * 裁定十五起 <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
  * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
  * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
  * operatorConditions} / {@code units} / {@code demands} / {@code modes} / {@code classStructures} /

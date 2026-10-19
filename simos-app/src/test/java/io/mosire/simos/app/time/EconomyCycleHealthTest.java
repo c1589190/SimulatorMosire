@@ -43,16 +43,14 @@ import org.junit.jupiter.api.io.TempDir;
  * <ol>
  *   <li><b>账目闭合</b>：段末 tick 必须逐值等于 30、head revision 必须严格递增 —— {@code AdvanceTime} 被拒/被吞当场红；
  *   <li><b>货币守恒</b>：<b>逐币种</b>总量与创世基线逐值相同（three-powers 创世后没有任何发行在跑 ⇒ 三币种守恒在这里非平凡）；
- *   <li><b>关口市场开市</b>：day 30 必须读到<b>当日</b>市场报告、且市场确实有订单流（买方订单或卖方报价至少一侧 &gt; 0）；
- *       若**同 hex 同时存在**买单与卖单（{@code sameHexBuySellOverlaps > 0}），则必须成交 &gt; 0 —— 同 hex
- *       有货/有钱/同价却不成交才是"市场冻结"；
+ *   <li><b>关口市场开市</b>：day 30 必须读到<b>当日</b>市场报告、且市场确实有订单流（买方订单或卖方报价至少一侧 &gt; 0）； 若**同 hex
+ *       同时存在**买单与卖单（{@code sameHexBuySellOverlaps > 0}），则必须成交 &gt; 0 —— 同 hex 有货/有钱/同价却不成交才是"市场冻结"；
  * </ol>
  *
- * <p>★★ <b>2026-10-19 D-032 T1 语义收口（控制方工程裁定，依据目标运行设计 M4/tick contract；
- * 不是用户新裁定）</b>：目标运行设计 M4/tick contract 允许“无可成交供给/无重叠需求时零成交合法”，
- * 这是合法结果，不是市场冻结。旧断言把“所有 0 成交”一律判红，已不符合新语义。现在的精确防线 =
- * ① 当日报告存在（市场开了）+ ② 订单流非空（撮合有输入）+ ③ **仅当同 hex 买卖重叠 &gt; 0** 时才要求 fills 非空。
- * 跨格运力不足导致的未成交由 {@code CapacityTruncationPricingAcceptanceTest} / 市场日志覆盖，不在这里重复当冻结。
+ * <p>★★ <b>2026-10-19 D-032 T1 语义收口（控制方工程裁定，依据目标运行设计 M4/tick contract； 不是用户新裁定）</b>：目标运行设计 M4/tick
+ * contract 允许“无可成交供给/无重叠需求时零成交合法”， 这是合法结果，不是市场冻结。旧断言把“所有 0 成交”一律判红，已不符合新语义。现在的精确防线 = ①
+ * 当日报告存在（市场开了）+ ② 订单流非空（撮合有输入）+ ③ **仅当同 hex 买卖重叠 &gt; 0** 时才要求 fills 非空。 跨格运力不足导致的未成交由 {@code
+ * CapacityTruncationPricingAcceptanceTest} / 市场日志覆盖，不在这里重复当冻结。
  *
  * <p>★ 另有非负 / 人口带两条随段末一起断（与 sim 版同源，读数层共用 {@code EconomyCycleReading}）。 ★ <b>96 轮分布指纹、8
  * 段推进、逐轮到场扫描不在门禁里</b> —— 见 {@link EconomyCycleHealthSim} 的类注与 {@code docs/agents/08-七-门禁与关账命令.md}

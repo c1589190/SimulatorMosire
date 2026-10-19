@@ -45,14 +45,14 @@ final class EconomyMarketPayloads {
    * ]
    * </pre>
    *
-   * <p>★ 空数组 / 缺键 = 空表。重复三元组、未知 zone/industry/role、非 MONEY_WAGE、
-   * 负工资、负 streak/观测值、{@code lastAdjustedTick < -1} 都 fail-closed；currency 省略时取该区法定币，
-   * 给了就必须一致。历史字段缺省 = 0（{@code lastAdjustedTick} 缺省 = -1 = 从未改价）。
+   * <p>★ 空数组 / 缺键 = 空表。重复三元组、未知 zone/industry/role、非 MONEY_WAGE、 负工资、负 streak/观测值、{@code
+   * lastAdjustedTick < -1} 都 fail-closed；currency 省略时取该区法定币， 给了就必须一致。历史字段缺省 = 0（{@code
+   * lastAdjustedTick} 缺省 = -1 = 从未改价）。
    *
-   * <p>★★ <b>P5b2：派生市场世界的 zone/法定币来源</b>：若 {@code marketZone} 不在持久区表
-   * {@code knownMarketZones}，但命中同一份 seed 载荷已解析的派生市场表 {@code seededMarkets}（{@code
-   * MarketTable.id == marketZone}），则取该表的 {@code numeraire} 作为法定币。两条来源都不命中 ⇒
-   * 仍然 {@code wage-anchor-market-zone-missing}（不猜 single-region、不兜底任意默认）。
+   * <p>★★ <b>P5b2：派生市场世界的 zone/法定币来源</b>：若 {@code marketZone} 不在持久区表 {@code
+   * knownMarketZones}，但命中同一份 seed 载荷已解析的派生市场表 {@code seededMarkets}（{@code MarketTable.id ==
+   * marketZone}），则取该表的 {@code numeraire} 作为法定币。两条来源都不命中 ⇒ 仍然 {@code
+   * wage-anchor-market-zone-missing}（不猜 single-region、不兜底任意默认）。
    */
   static Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors(
       JsonNode payload,
@@ -205,8 +205,9 @@ final class EconomyMarketPayloads {
    * <p>★ <b>键的口径</b>：{@code numeraire} 必填（每区恰一种计价货币）；{@code hexes} 可缺（持久的市场区由区记录给成员格）； {@code
    * prices} 可缺（⇒ 空表）；单价**逐值 ≥ 0** 由 {@link MarketTable} 的构造期守卫判死（本层不重复实现那条规则，只做形状）。
    *
-   * <p>★★ <b>P5b2：{@code landPrice} 三态</b>：缺键 / {@code null} ⇒ {@link OptionalLong#empty()}（<b>未定价</b>）；
-   * 给 {@code 0} ⇒ 明确免费；给正数 ⇒ 明确有价（毫计价货币 / 整亩）。负值由 {@link MarketTable} 构造期 fail-closed 拒。
+   * <p>★★ <b>P5b2：{@code landPrice} 三态</b>：缺键 / {@code null} ⇒ {@link
+   * OptionalLong#empty()}（<b>未定价</b>）； 给 {@code 0} ⇒ 明确免费；给正数 ⇒ 明确有价（毫计价货币 / 整亩）。负值由 {@link
+   * MarketTable} 构造期 fail-closed 拒。
    */
   static MarketTable market(JsonNode node, Set<HexCoord> entryHexes, String marketId) {
     CurrencyId numeraire = CurrencyId.parse(requireText(node, "numeraire"));

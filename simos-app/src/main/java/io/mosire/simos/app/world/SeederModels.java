@@ -151,8 +151,8 @@ record HouseholdUnit(
 /**
  * ★★ <b>P5b1：一个农村家户在所在 hex 的 {@code grain_farm} unit 创世形态</b>。
  *
- * <p>{@code owner = operator = 家户 actor}；{@code unitNode} 带显式 {@code relation}（空 {@code rules} + {@code
- * SELF}）；{@code shareNode} 是该户自己的 {@code LAND / OWNED} 份额（无地户数量 0，仍要登记）。
+ * <p>{@code owner = operator = 家户 actor}；{@code unitNode} 带显式 {@code relation}（空 {@code rules} +
+ * {@code SELF}）；{@code shareNode} 是该户自己的 {@code LAND / OWNED} 份额（无地户数量 0，仍要登记）。
  */
 record GrainFarmUnit(
     HouseholdId household,
@@ -164,9 +164,8 @@ record GrainFarmUnit(
 /**
  * ★★ <b>P5b2：一条真实初始雇工关系</b>（非 organizer 的 {@code hired_laborer} 参与项）。
  *
- * <p>{@code plannedLaborMilliPerDay} = 该户真实人口批次按参与率折算后的可用劳动（≤ 该户
- * {@code HouseholdEconomy.laborMilli} 预算）；运行期劳动队列据此物化成实际配额。它不得为 0：0 的参与项不应被造出来
- * （调用方跳过并记具名原因）。
+ * <p>{@code plannedLaborMilliPerDay} = 该户真实人口批次按参与率折算后的可用劳动（≤ 该户 {@code
+ * HouseholdEconomy.laborMilli} 预算）；运行期劳动队列据此物化成实际配额。它不得为 0：0 的参与项不应被造出来 （调用方跳过并记具名原因）。
  */
 record HiredLaborerParticipant(HouseholdId household, long plannedLaborMilliPerDay) {
   HiredLaborerParticipant {

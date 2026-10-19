@@ -78,7 +78,8 @@ public final class AppProductionLookups {
       throw new IllegalArgumentException("AppProductionLookups.tick 不得为负: " + tick);
     }
     return new Lookups(
-        new AssetOccupancyLookupImpl(economy, revision, runtime), unavailableParticipantAttributes());
+        new AssetOccupancyLookupImpl(economy, revision, runtime),
+        unavailableParticipantAttributes());
   }
 
   /** 两个读口全部明确的 fail-closed 适配器（占用不可用时使用；不得回退账户余额）。 */

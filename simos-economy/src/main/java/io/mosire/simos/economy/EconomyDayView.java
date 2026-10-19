@@ -177,8 +177,8 @@ public interface EconomyDayView {
   /**
    * ★★★ <b>D-032 P4b1：U20 工资锚（键 = marketZone/industry/role）</b>。
    *
-   * <p>★ <b>缺省 = 空表</b>：没有锚不是坏数据，也不是 0；缺锚与 0 工资必须由读口（{@code WageAnchorBook}）区分。
-   * 锚是 M3/M6/M8 的唯一工资报价权威。
+   * <p>★ <b>缺省 = 空表</b>：没有锚不是坏数据，也不是 0；缺锚与 0 工资必须由读口（{@code WageAnchorBook}）区分。 锚是 M3/M6/M8
+   * 的唯一工资报价权威。
    */
   default Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors() {
     return Map.of();
