@@ -712,6 +712,21 @@ public record EconomyData(
     return EconomyDataTransforms.withMarketZonesAndTables(this, zones, tables);
   }
 
+  /**
+   * ★★★ D-032 P4fix2：区表 + 价表 + 工资锚表<b>同一次候选态构造</b>（原子写口）。
+   *
+   * <p>{@code economy.DefineMarketZone} 在摘走来源派生市场表的格/整表时，必须把该来源表下的工资锚从 {@code sourceId} 重键到新持久区
+   * {@code zoneId}；三张表分开落会造出"锚指向已删表 / 尚未进区表的区"的中间态， 被 {@link EconomyData} 构造期跨表守卫（{@code
+   * wage-anchor-market-zone-missing}）拒掉。
+   */
+  public EconomyData withMarketZonesTablesAndWageAnchors(
+      Map<MarketZoneId, MarketZone> zones,
+      Map<MarketZoneId, MarketTable> tables,
+      Map<WageAnchorKey, ProductionWageAnchor> wageAnchors) {
+    return EconomyDataTransforms.withMarketZonesTablesAndWageAnchors(
+        this, zones, tables, wageAnchors);
+  }
+
   /** 一个组件一个 with（委托 EconomyDataTransforms；行为不变）。 */
   public EconomyData withCommodityFreightBaseMilli(Map<CommodityId, Long> value) {
     return EconomyDataTransforms.withCommodityFreightBaseMilli(this, value);

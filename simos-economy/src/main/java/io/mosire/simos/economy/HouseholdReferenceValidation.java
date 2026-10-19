@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
@@ -331,14 +332,15 @@ final class HouseholdReferenceValidation {
   /**
    * ★★★ <b>D-032 P4c3：U20 工资锚 / 工资进位的跨切片校验</b>。
    *
-   * <p>★ 只读：在候选态上判锚是否与 production 当刻定义以及 economy 当刻市场区自洽；失败以 {@link
-   * IllegalArgumentException} 具名出面（命令层折 {@code Rejected}，不留 revision）。
+   * <p>★ 只读：在候选态上判锚是否与 production 当刻定义以及 economy 当刻市场区自洽；失败以 {@link IllegalArgumentException}
+   * 具名出面（命令层折 {@code Rejected}，不留 revision）。
    *
    * <p>判据：
    *
    * <ul>
    *   <li>anchor：键 == 值内 {@code (marketZone, industry, role)}；industry/role 存在且 payment = {@code
-   *       MONEY_WAGE}；marketZone 存在时 currency == legalTender；quote ≥ 0；
+   *       MONEY_WAGE}；marketZone 命中持久区表时 currency == legalTender、仅命中派生市场价表时 currency ==
+   *       numeraire，两者都不命中 ⇒ {@code wage-anchor-market-zone-missing}；quote ≥ 0；
    *   <li>carry：unit 存在；role 存在且为 {@code MONEY_WAGE}；worker 家户存在；值域由构造期判。
    * </ul>
    */
@@ -357,8 +359,12 @@ final class HouseholdReferenceValidation {
 
     // ── ★★★ D-032 P4b1 §6.1/§6.4：U20 工资锚的跨切片身份校验 ─────────────────────────────────
     //   键 = (marketZone, industry, role)；industry/role 必须在 production 当刻定义里存在且 role 为 MONEY_WAGE。
-    //   ★ 候选态区表非空时还要求 zone 存在；区表为空（首次 seed 尚未携带区表）时留给命令/seed 边界
-    //     对 base.marketZones 的具名校验（见 EconomySetProductionWageAnchorHandler / EconomyMarketPayloads）。
+    //   ★★★ D-032 P4fix BUG-1：锚的 marketZone 合法来源 = 持久市场区表 **或** 市场价表：
+    //     ① candidate.marketZones() 命中 ⇒ currency == zone.legalTender；
+    //     ② 仅 candidate.marketTables() 命中（派生市场形态：single-region / currency:<币>，它们本来就是
+    //        economy 的市场表键）⇒ currency == table.numeraire；
+    //     ③ 两者都不命中 ⇒ 原 wage-anchor-market-zone-missing:<id> fail-closed。
+    //   ★ 不按 0 兜底、不改锚键形状、不在运行期重键。
     for (Map.Entry<WageAnchorKey, ProductionWageAnchor> entry :
         candidate.productionWageAnchors().entrySet()) {
       WageAnchorKey key = entry.getKey();
@@ -382,14 +388,21 @@ final class HouseholdReferenceValidation {
       }
       io.mosire.simos.economy.api.market.MarketZone zone =
           candidate.marketZones().get(key.marketZone());
-      if (zone == null) {
-        if (!candidate.marketZones().isEmpty()) {
+      if (zone != null) {
+        if (!value.currency().equals(zone.legalTender())) {
+          throw new IllegalArgumentException(
+              "wage-anchor-currency-mismatch:" + key.marketZone().value());
+        }
+      } else {
+        MarketTable table = candidate.marketTables().get(key.marketZone());
+        if (table == null) {
           throw new IllegalArgumentException(
               "wage-anchor-market-zone-missing:" + key.marketZone().value());
         }
-      } else if (!value.currency().equals(zone.legalTender())) {
-        throw new IllegalArgumentException(
-            "wage-anchor-currency-mismatch:" + key.marketZone().value());
+        if (!value.currency().equals(table.numeraire())) {
+          throw new IllegalArgumentException(
+              "wage-anchor-currency-mismatch:" + key.marketZone().value());
+        }
       }
     }
 

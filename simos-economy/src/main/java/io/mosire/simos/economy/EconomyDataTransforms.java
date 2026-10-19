@@ -493,6 +493,36 @@ final class EconomyDataTransforms {
     return builder.build();
   }
 
+  /**
+   * ★★★ D-032 P4fix2：<b>区表 + 价表 + 工资锚表三组件同一次候选态构造</b>。
+   *
+   * <p>{@code economy.DefineMarketZone} 把来源派生市场表的格摘走、摘空即删表，同时把该来源表下属于这些格 （或来源表被整张摘空时该表下全部）的工资锚从
+   * {@code sourceId} 重键到新持久区 {@code zoneId}。三件事必须原子成立：
+   *
+   * <ul>
+   *   <li>先落区表/价表再落锚表 ⇒ 中间态里锚键仍指向已删掉的派生表（跨片校验 {@code wage-anchor-market-zone-missing}）；
+   *   <li>先落锚表再落区表 ⇒ 锚指向尚未进区表的 {@code zoneId}（同上）；
+   *   <li>单组件 wither 链会在中间态撞上 {@code EconomyData} 构造期跨表守卫。
+   * </ul>
+   *
+   * <p>本写口只把三张表一次性交给同一个 {@link Builder}，不改组件形状 / 不碰 Codec。
+   */
+  static EconomyData withMarketZonesTablesAndWageAnchors(
+      EconomyData data,
+      Map<MarketZoneId, MarketZone> zones,
+      Map<MarketZoneId, MarketTable> tables,
+      Map<WageAnchorKey, ProductionWageAnchor> wageAnchors) {
+    Builder builder = new Builder(data);
+
+    builder.marketZones = zones;
+
+    builder.marketTables = tables;
+
+    builder.productionWageAnchors = wageAnchors;
+
+    return builder.build();
+  }
+
   static EconomyData withCommodityFreightBaseMilli(EconomyData data, Map<CommodityId, Long> value) {
     Builder builder = new Builder(data);
 

@@ -6,11 +6,14 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketZoneBook;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -19,6 +22,7 @@ import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -217,16 +221,70 @@ public final class EconomyDefineMarketZoneHandler implements CommandHandler, Com
       //   ★★ W1d：价目可能是**空表**（要覆盖的格在改动前就不在任何价表里）⇒ 那个区**不交易任何商品**
       //      （设计书 §4.2 N-4 的口径），这是合法目标态，不是"缺表"。表仍要建：本命令的契约是"区 + 它的表"
       //      一次落地（表在、价目空 = 明确不交易；两件事在读数与结算上等价，但形状上"表在"让 V 形态可分辨）。
+      // ★★ P4fix2：来源派生市场表的格被摘走/整表删掉时，挂在该 sourceId 下的工资锚必须同步重键到新持久区
+      //   zoneId —— 否则锚键指向的派生表已不存在，跨片校验报 `wage-anchor-market-zone-missing`。
+      //   逐锚判据：
+      //     ① key.marketZone() ∈ sourceIds；
+      //     ② 该来源表被整张摘空 ⇒ 该表下全部锚重键（含 IndustryHexKeys.hexKeyOf 为空的"不绑地点"方案）；
+      //        否则仅当 key.industry() 的 hexKey 落在 definition.hexes() 内才重键（未迁走的格仍留在原表，
+      //        锚继续随原表合法存在）。
+      //   新键 = (zoneId, industry, role)，值逐字段不变；目标键已有同值 ⇒ 合并去重，已有异值 ⇒ fail-closed。
       Map<MarketZoneId, MarketTable> marketTables = new LinkedHashMap<>(base.marketTables());
+      Set<MarketZoneId> emptiedSourceIds = new LinkedHashSet<>();
       for (MarketZoneId sourceId : sourceIds) {
         MarketTable source = marketTables.get(sourceId);
         Set<HexCoord> remaining = new LinkedHashSet<>(source.hexes());
         remaining.removeAll(definition.hexes());
         if (remaining.isEmpty()) {
+          emptiedSourceIds.add(sourceId);
           marketTables.remove(sourceId);
         } else {
           marketTables.put(sourceId, source.withHexes(remaining));
         }
+      }
+      Set<String> definitionHexKeys = new LinkedHashSet<>();
+      for (HexCoord hex : definition.hexes()) {
+        definitionHexKeys.add(hex.toString());
+      }
+      Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors =
+          new LinkedHashMap<>(base.productionWageAnchors());
+      int rekeyedAnchors = 0;
+      for (Map.Entry<WageAnchorKey, ProductionWageAnchor> entry :
+          new ArrayList<>(productionWageAnchors.entrySet())) {
+        WageAnchorKey key = entry.getKey();
+        MarketZoneId sourceId = key.marketZone();
+        if (!sourceIds.contains(sourceId)) {
+          continue;
+        }
+        boolean wholeTableEmptied = emptiedSourceIds.contains(sourceId);
+        boolean industryHexMigrated =
+            IndustryHexKeys.hexKeyOf(key.industry())
+                .filter(definitionHexKeys::contains)
+                .isPresent();
+        if (!wholeTableEmptied && !industryHexMigrated) {
+          continue;
+        }
+        WageAnchorKey rekeyedKey = new WageAnchorKey(zoneId, key.industry(), key.role());
+        ProductionWageAnchor existing = productionWageAnchors.get(rekeyedKey);
+        if (existing != null && !existing.equals(entry.getValue())) {
+          return rejected(
+              "wage-anchor-rekey-conflict",
+              definition,
+              definition.anchor(),
+              "工资锚重键冲突：来源市场 "
+                  + sourceId.value()
+                  + " 的锚 "
+                  + key
+                  + " 要重键到 "
+                  + rekeyedKey
+                  + "，但目标键已有不同值的锚（不得静默覆盖）",
+              base);
+        }
+        productionWageAnchors.remove(key);
+        if (existing == null) {
+          productionWageAnchors.put(rekeyedKey, entry.getValue());
+        }
+        rekeyedAnchors++;
       }
       marketTables.put(
           zoneId,
@@ -246,8 +304,13 @@ public final class EconomyDefineMarketZoneHandler implements CommandHandler, Com
       //   被读成"派生市场必须有成员格"）。W1 正是踩在这条上：`economy.DefineMarketZone` 恒被自己的守卫拒成
       //   `contract-violation`（W1c 账本 §四-2 的调用序证据），三国世界的市场区播种因此整条走不通。
       //   ★ 目标态不变：新区 + 它的表（计价币 = 该区法定币、成员格 = 空）与来源派生表的摘格在同一次构造里成立。
-      EconomyData projected = base.withMarketZonesAndTables(zones, marketTables);
+      //   ★★ P4fix2：**工资锚表必须与区表/价表同一次构造** —— 拆开写会让中间态的锚指向已删的派生表
+      //   （`wage-anchor-market-zone-missing`）；三组件一次交给同一个 Builder，中间态不经过构造守卫。
+      EconomyData projected =
+          base.withMarketZonesTablesAndWageAnchors(zones, marketTables, productionWageAnchors);
       logDefined(zone, base.marketZones().size(), projected.marketZones().size());
+      logWageAnchorsRekeyed(
+          zoneId, sourceIds, definition.hexes(), rekeyedAnchors, definition.reason());
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return rejected(
@@ -287,6 +350,33 @@ public final class EconomyDefineMarketZoneHandler implements CommandHandler, Com
             zone.zoneId().value(),
             "hexes",
             describeHexes(zone.hexes())));
+  }
+
+  /**
+   * ★★★ D-032 P4fix2：工资锚重键 INFO（唯一 logger 门面）：新持久区 / 来源派生表 / 迁入格 / 实际重键锚数 / 审计原因。
+   *
+   * <p>{@code rekeyedAnchors} 是真正换了键的锚条数（含"目标键已有同值 ⇒ 合并去重"的条目）；0 也照记，便于 验证"本命令确实扫描过来源表、只是没有锚需要搬"。
+   */
+  private static void logWageAnchorsRekeyed(
+      MarketZoneId zoneId,
+      Set<MarketZoneId> sourceIds,
+      List<HexCoord> hexes,
+      int rekeyedAnchors,
+      String reason) {
+    LOG.info(
+        LogEvent.of(
+            "ECONOMY_DEFINE_MARKET_ZONE_WAGE_ANCHORS_REKEYED",
+            EconomyLogSource.ECONOMY_MARKET_ZONE,
+            "zoneId",
+            zoneId.value(),
+            "sourceIds",
+            describeZoneIds(sourceIds),
+            "hexes",
+            describeHexes(new LinkedHashSet<>(hexes)),
+            "rekeyedAnchors",
+            rekeyedAnchors,
+            "reason",
+            reason == null ? "define-market-zone" : reason));
   }
 
   /** 具名拒（业务拒绝 = INFO 一条 + DEBUG 一条"为什么"；AGENTS §一.9 与 2026-10-23 裁定）。 */
@@ -333,6 +423,18 @@ public final class EconomyDefineMarketZoneHandler implements CommandHandler, Com
         text.append(',');
       }
       text.append(hex);
+    }
+    return text.toString();
+  }
+
+  /** 来源市场 id 集的稳定可读串（保序；只输出 id，不输出任何载荷）。 */
+  private static String describeZoneIds(Set<MarketZoneId> zoneIds) {
+    StringBuilder text = new StringBuilder();
+    for (MarketZoneId zoneId : zoneIds) {
+      if (text.length() > 0) {
+        text.append(',');
+      }
+      text.append(zoneId.value());
     }
     return text.toString();
   }

@@ -34,6 +34,8 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -184,6 +186,23 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         inRegionIndustries(productionDefinitions.industries().keySet(), region.hexes());
     try {
       EconomyData next = cleared(base, region.hexes(), productionInstances, inRegionIndustries);
+      // ★★★ D-032 P4fix BUG-2：具名 INFO 计数 —— 本批按 removedIndustries 摘掉了多少工资锚。
+      //   事件经唯一 logger 门面（EconomyLog.command()）出面；reason 是固定语义标签（本命令没有 reason 载荷）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_CLEAR_REGION_WAGE_ANCHORS_FILTERED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "region",
+                  regionId,
+                  "day",
+                  state.meta().timestamp().tick(),
+                  "removedIndustries",
+                  idValues(inRegionIndustries),
+                  "removedWageAnchors",
+                  wageAnchorsForIndustries(base.productionWageAnchors(), inRegionIndustries),
+                  "reason",
+                  "removed-industries"));
       EventLog.channel(LOG)
           .info(
               LogEvent.of(
@@ -273,6 +292,14 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
     //   （决定 economy 侧摘哪些行），定义的删除归同批的 `production.ClearRegionDefinitions`。
     Set<IndustryId> removedIndustries = inRegionIndustries;
     Set<String> removedIndustryValues = idValues(removedIndustries);
+    // ★★★ D-032 P4fix BUG-2：被清产业名下的工资锚必须在同批摘除 —— 同批
+    //   `production.ClearRegionDefinitions` 会删除这些定义，锚键 (marketZone, industry, role) 里的
+    //   industry 随即悬空（下一条命令/整批跨片校验报 `wage-anchor-industry-unknown:<id>`）。
+    //   ★ 只按 key.industry() ∈ removedIndustries 过滤，不改锚键形状、不改市场区表（世界级）、
+    //     不改 carry/roster/债务/份额。
+    Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors =
+        new LinkedHashMap<>(base.productionWageAnchors());
+    productionWageAnchors.keySet().removeIf(key -> removedIndustries.contains(key.industry()));
 
     // ② 被清产业名下的实例：从 production 的当刻投影里按 `unit.industry ∈ removedIndustries` 定位
     //   （★ B2b：economy 不再持有实例表；判据与 production 侧的清区同一格键 + 同一"定义在区里"口径）。
@@ -490,8 +517,9 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         wageCarryRemainders,
         assetOccupancies,
         inventoryReservations,
-        // ★★★ D-032 P4b1：清区域不拥有世界级锚的写面 —— 原样带过 staged 的表（P4c 才接锚消费者）。
-        staged.productionWageAnchors());
+        // ★★★ D-032 P4fix BUG-2：被清产业名下的锚已在上面按 removedIndustries 过滤（防定义删后悬空）；
+        //   其余世界的锚原样带过。
+        productionWageAnchors);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */
@@ -524,6 +552,18 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
       values.add(id.value());
     }
     return values;
+  }
+
+  /** 锚键 {@code key.industry() ∈ removedIndustries} 的锚条数（P4fix BUG-2 的 INFO 计数）。 */
+  private static int wageAnchorsForIndustries(
+      Map<WageAnchorKey, ProductionWageAnchor> anchors, Set<IndustryId> removedIndustries) {
+    int count = 0;
+    for (WageAnchorKey key : anchors.keySet()) {
+      if (removedIndustries.contains(key.industry())) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
