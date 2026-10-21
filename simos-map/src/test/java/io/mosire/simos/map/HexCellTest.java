@@ -40,20 +40,19 @@ class HexCellTest {
   }
 
   /**
-   * ★ **L2 的钉子**：组件清单恰为 {@code [height, areas]} —— 既无连通性字段，也**不含 terrain**（P1 把它搬进了权威块）。
+   * ★ **L2 的钉子**：组件清单恰为 {@code [height, land]} —— 既无连通性字段，也**不含 terrain**（P1 把它搬进了权威块）。
    *
    * <p>老仓的 {@code HexCell} 是 8 组件，其中 {@code edgeTags}（方向 → 组名表）与 {@code riverMask} 是连通性的**第二份存储**
    * ——Java 侧只读不写、只有前端写，两份之间又没有转换代码，于是前端一存就把所有边的 props 抹平。主存储只有 {@code GameMap.edges}。
    *
-   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：{@code areas} 是批次 2（hex 属性表：城市面积 / 乡村面积 + 可扩展自定义字段，用户原话
-   * 「已有默认字段分别是城市面积和乡村面积」）新增的第 2 个组件 ⇒ 清单由 {@code [height]} 变 {@code [height, areas]}。★ 判别力
-   * <b>未削弱</b>：仍是"逐字相等"的冻结清单，且下一条 {@code doesNotContain("terrain","edgeTags","riverMask")} 一字未改 ——
-   * 那条才是本条真正要守的事（"无连通性字段、无 terrain"）。
+   * <p>★★ <b>D-032 L1/L4</b>：第 2 个组件已由旧 flat {@code areas} 换成三档土地组件树 {@code land} （{@code HexLand →
+   * LandTypeArea → LandComponent}）。★ 判别力 <b>未削弱</b>：仍是"逐字相等"的冻结清单，且下一条 {@code
+   * doesNotContain("terrain","edgeTags","riverMask")} 一字未改 —— 那条才是本条真正要守的事（"无连通性字段、无 terrain"）。
    */
   @Test
   void hasNoConnectivityFieldAndNoTerrain() {
     assertThat(HexCell.class.getRecordComponents()).hasSize(2);
-    assertThat(componentNames()).containsExactly("height", "areas");
+    assertThat(componentNames()).containsExactly("height", "land");
     assertThat(componentNames()).doesNotContain("terrain", "edgeTags", "riverMask");
   }
 

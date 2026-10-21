@@ -107,6 +107,18 @@ public record DebtTerms(
         OptionalLong.empty());
   }
 
+  /** ★★★ <b>D-032 C7b2：运输运费未付部分的普通货币债条款</b>（0‰；其他维沿用 legacy 默认）—— 债权人是实际承运家户，不得套用工资债来源，也不得计息。 */
+  public static DebtTerms ordinaryZeroInterestDefault() {
+    return new DebtTerms(
+        0,
+        InterestTiming.AFTER_REPAYMENT_ON_CLOSE,
+        RepaymentRule.AVAILABLE_SURPLUS_SHARE,
+        MonetaryConversion.NOT_ALLOWED,
+        DefaultRemedy.MARK_DEFAULTED,
+        OptionalLong.empty(),
+        OptionalLong.empty());
+  }
+
   /**
    * ★★ <b>可读规范串</b>：只含数字与枚举名，各段以 {@code "|"} 分隔且段内无 {@code "|"} ⇒ 同一 terms 恒同串、 不同 terms
    * 必不同串。它用于读口/审计，不直接进 id（{@link #identityToken()} 负责把字符集收窄成无点形式）。

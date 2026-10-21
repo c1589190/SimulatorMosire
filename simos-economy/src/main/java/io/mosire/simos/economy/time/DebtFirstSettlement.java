@@ -8,21 +8,22 @@ import static io.mosire.simos.economy.time.SettlementMath.spendableGoods;
 import static io.mosire.simos.economy.time.SettlementMath.spendableMoney;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
+import io.mosire.simos.economy.api.land.LandTransfer;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
+import io.mosire.simos.economy.land.LandLedgerState;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -30,7 +31,6 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,25 +39,30 @@ import java.util.Set;
 import org.slf4j.Logger;
 
 /**
- * ★★ <b>P2e：市场日债务最先清算（M2）的唯一执行器</b>。
+ * ★★ <b>P2e：市场日债务清算（S7-M2）的唯一执行器</b>。
  *
  * <pre>
- * 触发   = 只在市场轮（day % 5 == 0 且市场非空）；由 {@link EconomyDayPipeline} 在消费/生产/市场之前调用。
+ * 触发   = 只在市场轮（day % 5 == 0 且市场非空）；由 {@link EconomyDayPipeline} 在 S6 工资之后、S7-A 市场之前调用（S7-M2）。
  * 范围   = principal > 0 且非 {@link DebtContractBook#isSelfHeld} 的合同。
  * 债务人 = HouseholdId.value 升序。
  * 债权人 = 同一债务人：纯库存财富降序 → HouseholdId.value 升序 → DebtContractId.value 升序；
- *          财富快照在 M2 开始时冻结（{@link PureInventoryWealthBook#snapshot}）。
+ *          财富快照在 S7-M2 开始时冻结（{@link PureInventoryWealthBook#snapshot}）。
  * 介质   = ① 货币（债务币种优先；其它币种经本区 CurrencyValuation，缺价具名跳过，不 1:1）
  *          ② 商品库存（低估值优先 + CommodityId 稳定破平；只作还款介质）
- *          ③ 土地（整块；价值升序 → AssetShareId；landPrice empty 不转，0 转地不减债）
- * 土地   = 只走 {@link OwnershipStakeBook#transferLandBlock}；id/location/quantity/industry/kind 不变；
- *          不写 HouseholdGoods、不生成市场订单；取得方记入 {@code ctx.landAcquiredThisRound}。
+ *          ③ 土地（标量 LandHolding；按 LandHoldingKey 自然序；landPrice empty/0 都不转，0 不冲本金）
+ * 土地   = 只走 {@link LandLedgerState#transfer(LandTransfer)}（内部唯一校验写口 = LandBook）；
+ *          同 hex 任意数量、不跨 hex；不写 HouseholdGoods、不生成市场订单；
+ *          取得方按 {@code (hex, creditor)} 数量累加进 {@code ctx.landAcquiredQuantityThisRound}；
+ *          ★ D-032 C1：删除“PROLETARIAN/无产债权人跳过 LAND 腿”的旧例外；任何债权人都可按通用顺序受让 LAND，
+ *          取得后由资产派生就地变为 OWNER（不在此处持久 class、不触发市场买入目标户吸收）。
  * 边界   = 债权人不在活家户表/人口 ≤ 0 ⇒ 全额 FORGIVEN、本金归零、土地留债务人。
  *          资产不足 ⇒ 余债继续；不强制卖地、不伪造买家、不新增 Pledge。
+ * 同日工资债 = {@code ctx.sameDayWageDebtIds} 中的合同（本 tick S6 新建的 WAGE_ARREARS）一律跳过，
+ *          最早下一市场日同池处理；只按合同 id 排除，旧工资债照常受偿。
  * </pre>
  *
- * <p>★ 与旧“市场之后按任意介质偿还”的差别：大类次序从“预估价值最低优先”改为冻结形状的 <b>货币 → 库存 → 土地</b>，且时点从关账日市场之后提前到市场日最前面。旧入口
- * {@link DebtRepaymentSettlement#repayDebts} 保留给非 M2 的经营者/退出路径，不在这里复用其排序。
+ * <p>★ 与旧“市场之后按任意介质偿还”的差别：大类次序从“预估价值最低优先”改为冻结形状的 <b>货币 → 库存 → 土地</b>，且时点从关账日市场之后移到 S6 工资之后、S7-A
+ * 市场之前（S7-M2）。旧入口 {@link DebtRepaymentSettlement#repayDebts} 保留给非 M2 的经营者/退出路径，不在这里复用其排序。
  */
 final class DebtFirstSettlement {
 
@@ -69,10 +74,10 @@ final class DebtFirstSettlement {
   private DebtFirstSettlement() {}
 
   /**
-   * 执行 M2 债务最先清算。
+   * 执行 S7-M2 债务清算（S6 工资之后、S7-A 市场之前）。
    *
    * @param ctx 当日瞬态上下文（工作副本就地更新）
-   * @param wealthSnapshot M2 开始时冻结的纯库存财富
+   * @param wealthSnapshot S7-M2 开始时冻结的纯库存财富
    * @param currencyValuation 市场区行情（钱/土地跨币折价的唯一来源）
    */
   static void settleAtMarketOpen(
@@ -85,6 +90,8 @@ final class DebtFirstSettlement {
     Objects.requireNonNull(
         currencyValuation, "DebtFirstSettlement.settleAtMarketOpen 的 currencyValuation 不得为 null");
 
+    Set<DebtContractId> sameDayWageDebtIds =
+        ctx.sameDayWageDebtIds == null ? Set.of() : ctx.sameDayWageDebtIds;
     Map<HouseholdId, MarketTable> marketsByHousehold =
         DebtSettlement.marketIndexByHousehold(ctx.householdEconomies, ctx.markets, ctx.topology);
     ctx.marketByHousehold = marketsByHousehold;
@@ -102,21 +109,23 @@ final class DebtFirstSettlement {
                 marketsByHousehold),
             HouseholdValuationBook.NO_TRADE_HISTORY,
             currencyValuation);
-    Map<HouseholdId, List<OwnershipStake>> landByHousehold = landByHousehold(ctx);
+    // ★ D-032 RA1b2c1：土地腿的工作态来自会话 landHoldings 工作副本；唯一转移/校验口仍是 LandBook。
+    LandLedgerState landState =
+        LandLedgerState.from(
+            ctx.session.sheet().landArableSupply(), ctx.session.sheet().landHoldingsOrBase());
 
     Map<HouseholdId, List<DebtContractId>> byDebtor = DebtIndex.byDebtor(ctx.debts);
     List<HouseholdId> debtors = new ArrayList<>(byDebtor.keySet());
     debtors.sort(Comparator.comparing(HouseholdId::value));
 
     long selfHeldExcluded = 0L;
+    long sameDayWageDebtExcluded = 0L;
     long contractsConsidered = 0L;
     long debtorsWithOutstanding = 0L;
     long paidContracts = 0L;
     long forgivenContracts = 0L;
-    long landBlocksTransferred = 0L;
-    long detachedEnterpriseRefs = 0L;
-    long detachedOccupancyGrants = 0L;
-    long detachedRosterRights = 0L;
+    long landTransfers = 0L;
+    long landTransferredMilliMu = 0L;
 
     for (HouseholdId debtor : debtors) {
       HouseholdEconomy debtorRow = ctx.householdEconomies.get(debtor);
@@ -131,6 +140,31 @@ final class DebtFirstSettlement {
         }
         if (DebtContractBook.isSelfHeld(debt)) {
           selfHeldExcluded++;
+          continue;
+        }
+        if (sameDayWageDebtIds.contains(debt.id())) {
+          // ★★★ RC0a：本 tick S6 新建的工资债不进入本 tick S7-M2，最早下一市场日同池处理。
+          //   只按合同 id 排除（集合由 SettlementDayWagePipeline 收集），旧工资债照常受偿。
+          sameDayWageDebtExcluded++;
+          if (DEBT.isDebugEnabled()) {
+            EventLog.channel(DEBT)
+                .debug(
+                    LogEvent.of(
+                        "DEBT_FIRST_M2_SAME_DAY_WAGE_DEBT_EXCLUDED",
+                        EconomyLogSource.ECONOMY_DEBT,
+                        "day",
+                        ctx.day,
+                        "debtor",
+                        debtor.value(),
+                        "creditor",
+                        debt.creditor().value(),
+                        "debtContract",
+                        debt.id().value(),
+                        "principal",
+                        debt.principal(),
+                        "reason",
+                        "same-day-wage-debt-cutoff"));
+          }
           continue;
         }
         owed.add(debt);
@@ -182,17 +216,19 @@ final class DebtFirstSettlement {
                 wealthSnapshot.regionOf(debtor),
                 currencyValuation,
                 householdPrices,
-                landByHousehold.getOrDefault(debtor, List.of()));
-        landBlocksTransferred += outcome.landBlocksTransferred();
-        detachedEnterpriseRefs += outcome.detachedEnterpriseRefs();
-        detachedOccupancyGrants += outcome.detachedOccupancyGrants();
-        detachedRosterRights += outcome.detachedRosterRights();
+                landState);
+        landState = outcome.landState();
+        landTransfers += outcome.landTransfers();
+        landTransferredMilliMu += outcome.landTransferredMilliMu();
         if (outcome.paidContractUnits() > 0L) {
           paidContracts++;
         }
       }
     }
 
+    if (landTransfers > 0L) {
+      writeBackLandHoldings(ctx, landState);
+    }
     EventLog.channel(DEBT)
         .info(
             LogEvent.of(
@@ -210,37 +246,22 @@ final class DebtFirstSettlement {
                 forgivenContracts,
                 "selfHeldExcluded",
                 selfHeldExcluded,
-                "landBlocksTransferred",
-                landBlocksTransferred,
-                "landAcquiredThisRound",
-                ctx.landAcquiredThisRound().size(),
+                "excludedSameDayWageDebts",
+                sameDayWageDebtExcluded,
+                "sameDayWageDebtCutoff",
+                "id-only;earliest-next-market-day",
+                "landTransfers",
+                landTransfers,
+                "landTransferredQuantityMilliMu",
+                landTransferredMilliMu,
+                "landAcquiredQuantityThisRound",
+                ctx.landAcquiredQuantityThisRound().size(),
                 "repaidGrainMilli",
                 traceTotalLongs(ctx.repaidToday),
                 "repaidMoneyByCurrency",
                 traceMoneyByCurrency(ctx.repaidMoneyToday),
                 "why",
                 "P2e-M2: market-open debt-first, pure-inventory-wealth creditor order"));
-    if (landBlocksTransferred > 0L) {
-      // ★★★ D-032 P2fix：土地整块抵债会改份额 operator（→ 债权人），债务人侧三类旧引用（组织 assetSources /
-      //   占用 grant / 名册 rightsStakes）都不能再指名这些份额；本事件把“转了多少块 / 摘掉多少条”留成 INFO 证据。
-      EventLog.channel(DEBT)
-          .info(
-              LogEvent.of(
-                  "DEBT_FIRST_M2_LAND_ORG_DETACH",
-                  EconomyLogSource.ECONOMY_DEBT,
-                  "day",
-                  ctx.day,
-                  "transferredLandBlocks",
-                  landBlocksTransferred,
-                  "detachedEnterpriseRefs",
-                  detachedEnterpriseRefs,
-                  "detachedOccupancyGrants",
-                  detachedOccupancyGrants,
-                  "detachedRosterRights",
-                  detachedRosterRights,
-                  "reason",
-                  "transferred-land-share-operator-no-longer-debtor-organizer"));
-    }
     if (TRACE.isDebugEnabled()) {
       EventLog.channel(DEBT)
           .debug(
@@ -257,12 +278,12 @@ final class DebtFirstSettlement {
                   "money → commodities → land",
                   "moneyForeignCurrency",
                   "CurrencyValuation in debtor market zone; missing rate skipped (never 1:1)",
-                  "landBlockOrder",
-                  "contract value asc → AssetShareId asc",
+                  "landOrder",
+                  "LandHoldingKey asc (hex then owner)",
                   "landWholeBlock",
-                  true,
-                  "landNoChange",
-                  "no change for land value over remaining debt",
+                  false,
+                  "landZeroPrice",
+                  "debt settlement never auto-transfers 0-price land to reduce principal",
                   "wealthSnapshot",
                   wealthSnapshot.wealthByHousehold()));
     }
@@ -277,7 +298,7 @@ final class DebtFirstSettlement {
       String regionId,
       CurrencyValuation currencyValuation,
       HouseholdValuationBook householdPrices,
-      List<OwnershipStake> landBlocks) {
+      LandLedgerState landState) {
     long original = debt.principal();
     long remaining = original;
     LinkedHashMap<CurrencyId, Long> moneyLegs = new LinkedHashMap<>();
@@ -386,29 +407,86 @@ final class DebtFirstSettlement {
       recordRepaymentReadouts(ctx, debtor, goodsLegs, moneyLegs);
     }
 
-    // ③ 土地：整块、不找零、不拆分；价值升序 → AssetShareId 升序。
+    // ③ 土地：任何债权人都可受让；标量 LandHolding、任意数量；按 LandHoldingKey 自然序。empty/0 价都跳过，不自动转地。
     long landContractUnits = 0L;
-    int landBlocksTransferred = 0;
-    Set<AssetShareId> transferredLandShareIds = new LinkedHashSet<>();
-    if (remaining > 0L && !landBlocks.isEmpty()) {
-      List<LandBlock> priced = pricedLandBlocks(landBlocks, debt, ctx, currencyValuation);
-      for (LandBlock block : priced) {
+    int landTransfers = 0;
+    long landTransferredMilliMu = 0L;
+    if (remaining > 0L) {
+      List<LandHolding> landHoldings = landHoldingsOf(debtor, landState);
+      for (LandHolding holding : landHoldings) {
         if (remaining <= 0L) {
           break;
         }
-        if (block.contractValue() > remaining) {
-          landContractUnits += remaining;
-          remaining = 0L;
-        } else if (block.contractValue() > 0L) {
-          landContractUnits += block.contractValue();
-          remaining -= block.contractValue();
+        MarketTable landMarket =
+            DebtSettlement.marketForHex(holding.hex(), ctx.markets, ctx.topology);
+        if (landMarket == null || !landMarket.hasLandPrice()) {
+          logLandSkipped(ctx, debt, holding, "land-market-unpriced", remaining);
+          continue;
         }
-        ActorRef creditorActor = HouseholdActors.of(debt.creditor());
-        OwnershipStakeBook.transferLandBlock(
-            ctx.assetShares, block.share().id(), creditorActor, creditorActor);
-        ctx.markLandAcquired(block.share().id());
-        transferredLandShareIds.add(block.share().id());
-        landBlocksTransferred++;
+        OptionalLong landPrice = landMarket.landPrice();
+        if (landPrice.isEmpty()) {
+          logLandSkipped(ctx, debt, holding, "land-price-empty", remaining);
+          continue;
+        }
+        long marketLandPrice = landPrice.getAsLong();
+        if (marketLandPrice == 0L) {
+          // ★ 0 价土地不自动用于债务清偿；市场 0 价成交仍合法（RA1b2c2）。
+          logLandSkipped(ctx, debt, holding, "land-price-zero-not-auto-collateral", remaining);
+          continue;
+        }
+        long contractPricePerMu =
+            landValueInDebtCurrency(
+                marketLandPrice,
+                landMarket.numeraire(),
+                debt.unit().currency(),
+                holding.hex(),
+                ctx,
+                currencyValuation);
+        if (contractPricePerMu < 0L) {
+          logLandSkipped(ctx, debt, holding, "land-currency-unpriced", remaining);
+          continue;
+        }
+        if (contractPricePerMu == 0L) {
+          logLandSkipped(ctx, debt, holding, "land-contract-price-rounds-to-zero", remaining);
+          continue;
+        }
+        long fullValue =
+            DebtValuation.convertedContractUnits(
+                holding.quantityMilliMu(), contractPricePerMu, MILLI_PER_LAND_UNIT);
+        final long transferQuantity;
+        final long actualValue;
+        if (fullValue > 0L && fullValue <= remaining) {
+          transferQuantity = holding.quantityMilliMu();
+          actualValue = fullValue;
+        } else if (fullValue > remaining) {
+          long neededQuantity =
+              DebtValuation.convertedContractUnits(
+                  remaining, MILLI_PER_LAND_UNIT, contractPricePerMu);
+          if (neededQuantity <= 0L) {
+            logLandSkipped(ctx, debt, holding, "needed-quantity-rounds-to-zero", remaining);
+            continue;
+          }
+          transferQuantity = Math.min(holding.quantityMilliMu(), neededQuantity);
+          actualValue =
+              DebtValuation.convertedContractUnits(
+                  transferQuantity, contractPricePerMu, MILLI_PER_LAND_UNIT);
+          if (transferQuantity <= 0L || actualValue <= 0L) {
+            logLandSkipped(ctx, debt, holding, "land-value-rounds-to-zero", remaining);
+            continue;
+          }
+        } else {
+          // fullValue <= 0：正价但数量过小取整为 0 ⇒ 跳过，不得转 0 对价数量。
+          logLandSkipped(ctx, debt, holding, "land-value-rounds-to-zero", remaining);
+          continue;
+        }
+        LandTransfer transfer =
+            new LandTransfer(holding.hex(), debtor, debt.creditor(), transferQuantity);
+        landState = landState.transfer(transfer);
+        landContractUnits += actualValue;
+        remaining -= actualValue;
+        landTransfers++;
+        landTransferredMilliMu += transferQuantity;
+        ctx.markLandAcquired(new LandHoldingKey(holding.hex(), debt.creditor()), transferQuantity);
         EventLog.channel(TRACE)
             .trace(
                 LogEvent.of(
@@ -420,37 +498,17 @@ final class DebtFirstSettlement {
                     debtor.value(),
                     "creditor",
                     debt.creditor().value(),
-                    "land",
-                    block.share().id().value(),
+                    "hex",
+                    holding.hex().toString(),
                     "quantityMilliMu",
-                    block.share().quantity(),
-                    "landPrice",
-                    block.landPrice(),
+                    transferQuantity,
+                    "price",
+                    contractPricePerMu,
                     "contractValue",
-                    block.contractValue(),
-                    "remainingDebtAfter",
+                    actualValue,
+                    "remainingAfter",
                     remaining));
       }
-    }
-    // ★★★ D-032 P2fix：抵地成功后份额 operator 已改成债权人；债务人侧所有还指名这些 share 的旧引用都必须摘除，
-    //   否则 revision 边界的 EconomyData / production-reference 校验会 fail-closed：
-    //   ① 生产组织 assetSources；② 资产占用 grant（scope 校验先于 STATUS，不能只置 RELEASED）；③ 名册 rightsStakes。
-    //   不改份额、不改组织身份/unit/laborSources/inputSources/status，也不把新 share 塞给债权人组织。
-    int detachedEnterpriseRefs = 0;
-    int detachedOccupancyGrants = 0;
-    int detachedRosterRights = 0;
-    if (!transferredLandShareIds.isEmpty()) {
-      detachedEnterpriseRefs =
-          ProductionOrganizationSettlement.detachReturnedSharesFromEnterprises(
-              ctx.session.sheet().productionOrganizations(),
-              HouseholdActors.of(debtor),
-              transferredLandShareIds);
-      detachedOccupancyGrants =
-          AssetOccupancyBook.detachGrantsForShares(
-              ctx.session.sheet().assetOccupancies(), transferredLandShareIds);
-      detachedRosterRights =
-          ProductionOrganizationSettlement.detachRightsStakesFromRosters(
-              ctx.session.sheet().productionRosters(), debtor, transferredLandShareIds);
     }
     if (landContractUnits > 0L) {
       DebtContractBook.reduce(ctx.debts, debt.id(), landContractUnits);
@@ -488,21 +546,12 @@ final class DebtFirstSettlement {
                   moneyLegs,
                   "goodsLegs",
                   goodsLegs,
-                  "landBlocks",
-                  landBlocksTransferred,
-                  "detachedEnterpriseRefs",
-                  detachedEnterpriseRefs,
-                  "detachedOccupancyGrants",
-                  detachedOccupancyGrants,
-                  "detachedRosterRights",
-                  detachedRosterRights));
+                  "landTransfers",
+                  landTransfers,
+                  "landTransferredQuantityMilliMu",
+                  landTransferredMilliMu));
     }
-    return new PaymentOutcome(
-        paid,
-        landBlocksTransferred,
-        detachedEnterpriseRefs,
-        detachedOccupancyGrants,
-        detachedRosterRights);
+    return new PaymentOutcome(paid, landTransfers, landTransferredMilliMu, landState);
   }
 
   /** 货币付款选择：本币 identity 1:1；异币必须经本区 CurrencyValuation，缺价返回 null（调用方具名 skip）。 */
@@ -571,59 +620,6 @@ final class DebtFirstSettlement {
         remaining, debt.unit(), debtor, order, available, market, householdPrices);
   }
 
-  /** 本户 LAND 块按「合同价值升序 → AssetShareId 升序」排列；未定价/缺价块不入列（余债保留）。 */
-  private static List<LandBlock> pricedLandBlocks(
-      List<OwnershipStake> landBlocks,
-      DebtContract debt,
-      SettlementDayContext ctx,
-      CurrencyValuation currencyValuation) {
-    List<LandBlock> priced = new ArrayList<>();
-    List<OwnershipStake> ordered = new ArrayList<>(landBlocks);
-    ordered.sort(Comparator.comparing(share -> share.id().value()));
-    ActorRef debtorActor = HouseholdActors.of(debt.debtor());
-    for (OwnershipStake snapshotShare : ordered) {
-      // 同一债务人的多笔债会依次走土地腿：每笔都必须读**当刻**产权，已抵给前一个债权人的块不得二次转移。
-      OwnershipStake share = ctx.assetShares.get(snapshotShare.id());
-      if (share == null
-          || share.asset() != AssetKind.LAND
-          || share.quantity() <= 0L
-          || !debtorActor.equals(share.owner())) {
-        continue;
-      }
-      HexCoord hex = HexCoord.parse(share.location().value());
-      MarketTable landMarket = DebtSettlement.marketForHex(hex, ctx.markets, ctx.topology);
-      if (landMarket == null || !landMarket.hasLandPrice()) {
-        logLandUnpriced(ctx, debt, share, "land-market-unpriced");
-        continue;
-      }
-      OptionalLong landPrice = landMarket.landPrice();
-      if (landPrice.isEmpty()) {
-        logLandUnpriced(ctx, debt, share, "land-price-empty");
-        continue;
-      }
-      long nativeValue =
-          DebtValuation.convertedContractUnits(
-              share.quantity(), landPrice.getAsLong(), MILLI_PER_LAND_UNIT);
-      long contractValue =
-          landValueInDebtCurrency(
-              nativeValue,
-              landMarket.numeraire(),
-              debt.unit().currency(),
-              hex,
-              ctx,
-              currencyValuation);
-      if (contractValue < 0L) {
-        logLandUnpriced(ctx, debt, share, "land-currency-unpriced");
-        continue;
-      }
-      priced.add(new LandBlock(share, contractValue, landPrice.getAsLong()));
-    }
-    priced.sort(
-        Comparator.comparingLong(LandBlock::contractValue)
-            .thenComparing(block -> block.share().id().value()));
-    return priced;
-  }
-
   /** 土地价值从“土地所属市场区 numeraire”折到“债务币种”：同币原值；异币缺行情 ⇒ -1（不转地、余债保留）。 价值单位 = 合同计价单位（毫）。 */
   private static long landValueInDebtCurrency(
       long nativeValueMilli,
@@ -647,8 +643,12 @@ final class DebtFirstSettlement {
         nativeValueMilli, CurrencyValuation.faceValueMicro(), debtMicro);
   }
 
-  private static void logLandUnpriced(
-      SettlementDayContext ctx, DebtContract debt, OwnershipStake share, String why) {
+  private static void logLandSkipped(
+      SettlementDayContext ctx,
+      DebtContract debt,
+      LandHolding holding,
+      String why,
+      long remaining) {
     EventLog.channel(DEBT)
         .debug(
             LogEvent.of(
@@ -660,36 +660,33 @@ final class DebtFirstSettlement {
                 debt.debtor().value(),
                 "debtContract",
                 debt.id().value(),
-                "land",
-                share.id().value(),
+                "hex",
+                holding.hex().toString(),
+                "quantityMilliMu",
+                holding.quantityMilliMu(),
                 "why",
                 why,
                 "remainingDebtKept",
-                true));
+                remaining));
   }
 
-  /** 本户拥有的 LAND 块（按 AssetShareId.value 升序；每一块整块参与）。 */
-  private static Map<HouseholdId, List<OwnershipStake>> landByHousehold(SettlementDayContext ctx) {
-    LinkedHashMap<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
-    List<HouseholdId> orderedHouseholds = new ArrayList<>(ctx.householdEconomies.keySet());
-    orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
-    for (HouseholdId household : orderedHouseholds) {
-      householdByActor.put(HouseholdActors.of(household), household);
-    }
-    List<OwnershipStake> shares = new ArrayList<>(ctx.assetShares.values());
-    shares.sort(Comparator.comparing(share -> share.id().value()));
-    LinkedHashMap<HouseholdId, List<OwnershipStake>> byHousehold = new LinkedHashMap<>();
-    for (OwnershipStake share : shares) {
-      if (share.asset() != AssetKind.LAND || share.quantity() <= 0L) {
-        continue;
+  /** 本户当前（工作副本）的 LAND 持有，按 {@link LandHoldingKey} 自然序；只含正数量行。 */
+  private static List<LandHolding> landHoldingsOf(HouseholdId debtor, LandLedgerState landState) {
+    List<LandHolding> holdings = new ArrayList<>();
+    for (LandHolding holding : landState.holdingsByKey().values()) {
+      if (holding.owner().equals(debtor) && holding.quantityMilliMu() > 0L) {
+        holdings.add(holding);
       }
-      HouseholdId owner = householdByActor.get(share.owner());
-      if (owner == null) {
-        continue;
-      }
-      byHousehold.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(share);
     }
-    return byHousehold;
+    holdings.sort(Comparator.comparing(LandHolding::key));
+    return holdings;
+  }
+
+  /** 把 M2 标量土地转移结果写回会话 landHoldings 工作副本（同一次 build 才看得见）。 */
+  private static void writeBackLandHoldings(SettlementDayContext ctx, LandLedgerState landState) {
+    LinkedHashMap<LandHoldingKey, LandHolding> working = ctx.session.sheet().landHoldings();
+    working.clear();
+    working.putAll(landState.holdingsByKey());
   }
 
   /** 货币顺序：债务币种优先，其余按 CurrencyId.value 升序（稳定、内容纯函数）。 */
@@ -741,12 +738,9 @@ final class DebtFirstSettlement {
     }
   }
 
-  private record LandBlock(OwnershipStake share, long contractValue, long landPrice) {}
-
   private record PaymentOutcome(
       long paidContractUnits,
-      int landBlocksTransferred,
-      int detachedEnterpriseRefs,
-      int detachedOccupancyGrants,
-      int detachedRosterRights) {}
+      int landTransfers,
+      long landTransferredMilliMu,
+      LandLedgerState landState) {}
 }

@@ -74,6 +74,12 @@ class MerchantFreightQuoteBook {
   /** 是否成市（报价口径）。{@code false} ⇒ 缺省口径（M-A1 逐值不变）。★ A3 起由调用方显式给（不再由报价表推出）。 */
   final boolean priced;
 
+  /**
+   * ★★★ <b>D-032 C7b2：活动运输计划池</b> —— {@code true} 时只允许 {@code from == 条目 homeHex} 的本地批次参与， 不读旧“总行程
+   * ≤ 半径”的全池共享规则，也不回退旧生产性运力。{@code false} = 旧夹具/旧编译分支。
+   */
+  final boolean transportPlanLocalOnly;
+
   /** 本轮所有提供者的最高限价（‰；报价口径下 "计划单位运费" 的上界）。 */
   final long maxAskPerMille;
 
@@ -106,13 +112,15 @@ class MerchantFreightQuoteBook {
       long maxAskPerMille,
       Set<HexCoord> haulServiceHexes,
       Map<String, Long> serviceAbsentTally,
-      long day) {
+      long day,
+      boolean transportPlanLocalOnly) {
     this.byHex = byHex;
     this.totalCapacityByHex = totalCapacityByHex;
     this.byHousehold = byHousehold;
     this.globalOrder = globalOrder;
     this.householdCount = householdCount;
     this.priced = priced;
+    this.transportPlanLocalOnly = transportPlanLocalOnly;
     this.maxAskPerMille = maxAskPerMille;
     this.day = day;
     // ★★ F-2（2026-10-10）：缺货计数的**构造期防御性拷贝**（保序 + 不可变；I7 禁 Map.copyOf）。
@@ -375,7 +383,12 @@ class MerchantFreightQuoteBook {
       if (demandLeft <= 0L) {
         break;
       }
-      if (!item.capacity.servesTrip(from, to)) {
+      // ★★★ D-032 C7b2：活动运输计划池只认 from == 条目 homeHex 的本地批次，禁止跨 hex 调拨/汇总。
+      if (transportPlanLocalOnly) {
+        if (!item.capacity.hex().equals(from)) {
+          continue;
+        }
+      } else if (!item.capacity.servesTrip(from, to)) {
         unreachableWork = Math.addExact(unreachableWork, item.remainingWorkMilli);
         continue;
       }

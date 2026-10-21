@@ -175,6 +175,7 @@ import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.ReassignHexesHandler;
 import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
 import io.mosire.simos.map.spi.RenameRegionHandler;
+import io.mosire.simos.map.spi.SeedArableOwnershipHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetHexAreaHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
@@ -667,6 +668,9 @@ public final class Shell implements AutoCloseable {
                 //   GM（用户裁定「map 层级的命令…肯定不该给 DM 用」）：它进 catalog 与 GM 提交面/窄工具，
                 //   但进不了令白名单 / RegisterEffect / 决策人 catalog。──
                 new SetHexAreaHandler(),
+                // ★★★ D-032 L4：GM 世界构造时把标量土地账本写进 Map 的 arable component owner 属性。
+                //   不打 DmUsableCommand ⇒ 仅 GM（命令面可见；决策令/RegisterEffect/决策人 catalog 不可嵌入）。──
+                new SeedArableOwnershipHandler(),
                 // ★★ 2026-10-13 批次 4（③ 跨域的世界编辑）：map 七条（SetTerrain / CreateRegion / UpdateRegion /
                 //   DeleteRegion / SetEdge / RegisterPathwayGroup / RandomizeRegion）**摘掉** {@code
                 // DmUsableCommand}

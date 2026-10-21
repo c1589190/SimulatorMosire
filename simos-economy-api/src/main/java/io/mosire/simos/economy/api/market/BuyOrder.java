@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
+import java.util.OptionalLong;
 
 /**
  * ★★ <b>买订单</b>（M2.1）：某个主体想在某一格、在某个时限之前、按一个限价买一种商品。
@@ -13,7 +14,9 @@ import io.mosire.simos.map.hex.HexCoord;
  * deliverTo        提到哪一格（账户 = (actor, location) ⇒ 交割地点必须显式）
  * commodity        买什么
  * quantity         要买多少（毫商品；> 0）
- * maxLandedPrice   愿意接受的最高价格（毫计价货币 / 商品单位；≥ 0，0 = 明确免费交易）
+ * maxLandedPrice   愿意接受的最高价格（毫计价货币 / 商品单位；OptionalLong）
+ *                  ★ empty = 价格接受者需求（家户 BUY）：不设任何价格上限，撮合给什么非负价都接受；
+ *                    present（≥ 0，0 = 明确免费交易）= 有价格上限的买盘（经营者/政府授权单）
  * latestArrivalTick 最迟到货的世界日（本层无运输 ⇒ 与下单同一天）
  * budget           独立预算（见 {@link Budget}）；不得为 null
  * payWith          用哪种**币种**支付；必须与 {@code budget.currency()} 逐值相同
@@ -25,6 +28,11 @@ import io.mosire.simos.map.hex.HexCoord;
  *
  * <p>★ <b>预算与数量分开</b>：见 {@link Budget} 的类注 —— 本类型的构造期只校验两者各自合法、以及支付币一致，<b>不</b>把数量折成金额
  * （那是撮合的实现口径，不是订单形状）。
+ *
+ * <p>★★ <b>价格接受者需求（D-032 RF1）</b>：家户提出的商品需求是<b>数量型价格接受者</b> —— {@link #maxLandedPrice()} 为 {@link
+ * OptionalLong#empty()} 时，撮合与读数均不得用价格上限过滤；成交价完全由市场给出（非负整数）。 此时 {@code budget} 只作为
+ * “本单可预留的现金/承诺”读数（冻结与支付腿读实际可花额），<b>不得</b>用它削减 {@link #quantity()}。 有价格上限的买盘（经营者/政府授权）仍用 present
+ * 值表达其真实限价。
  *
  * <p>★★ <b>3c（2026-10-10 订单可选币）：支付币由订单决定，缺省 = 本格计价币</b> ——
  *
@@ -42,7 +50,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * @param deliverTo 交割格；不得为 null
  * @param commodity 商品；不得为 null
  * @param quantity 数量（毫商品）；必须 &gt; 0（0 不是一条订单）
- * @param maxLandedPrice 最高价（毫计价货币 / 商品单位）；必须 ≥ 0（0 = 明确免费交易，货款腿为 0、运费另计）
+ * @param maxLandedPrice 最高价（毫计价货币 / 商品单位）；empty = 价格接受者（无上限），present 时必须 ≥ 0
  * @param latestArrivalTick 最迟到货世界日；不得为负
  * @param budget 独立预算；不得为 null，且其币种必须与 {@code payWith} 逐值相同
  * @param payWith 支付币种；不得为 null，且必须与 {@code budget.currency()} 逐值相同
@@ -52,7 +60,7 @@ public record BuyOrder(
     HexCoord deliverTo,
     CommodityId commodity,
     long quantity,
-    long maxLandedPrice,
+    OptionalLong maxLandedPrice,
     long latestArrivalTick,
     Budget budget,
     CurrencyId payWith) {
@@ -70,9 +78,13 @@ public record BuyOrder(
     if (quantity <= 0L) {
       throw new IllegalArgumentException("BuyOrder.quantity 必须 > 0（0 不是一条订单）: " + quantity);
     }
-    if (maxLandedPrice < 0L) {
+    if (maxLandedPrice == null) {
       throw new IllegalArgumentException(
-          "BuyOrder.maxLandedPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: " + maxLandedPrice);
+          "BuyOrder.maxLandedPrice 不得为 null（价格接受者需求请用 OptionalLong.empty()）");
+    }
+    if (maxLandedPrice.isPresent() && maxLandedPrice.getAsLong() < 0L) {
+      throw new IllegalArgumentException(
+          "BuyOrder.maxLandedPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: " + maxLandedPrice.getAsLong());
     }
     if (latestArrivalTick < 0L) {
       throw new IllegalArgumentException(

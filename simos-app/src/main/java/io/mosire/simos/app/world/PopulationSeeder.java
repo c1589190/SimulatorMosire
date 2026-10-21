@@ -223,7 +223,13 @@ public final class PopulationSeeder {
     URBAN
   }
 
-  /** 一个池（格 × 居住类型）：按阶层切成 4 个常规户（+ 可选流民户），每户落"性别 × 年龄档"批次。 */
+  /**
+   * 一个池（格 × 居住类型）：按**居住类型分流的阶层表**切户，每户落"性别 × 年龄档"批次。
+   *
+   * <p>★ <b>RC2b 分流</b>：{@link ResidenceKind#RURAL} ⇒ {@link
+   * WorldBalanceSeeder#RURAL_CLASS_IDS}（有地/无地两户）； {@link ResidenceKind#URBAN} ⇒ 旧四档。★ <b>所有池都不再生成
+   * displaced 户</b>（{@code DISPLACED_SEED_PER_MILLE = 0}）。
+   */
   private static void appendPool(
       HexCoord hex,
       ResidenceKind residence,
@@ -236,20 +242,13 @@ public final class PopulationSeeder {
       Map<PeopleLotId, HouseholdId> householdOfLot,
       Map<CohortKey, HouseholdId> householdByCohort,
       Map<HouseholdId, Long> populationByHousehold) {
-    long[] people =
-        EconomySeeder.splitByShares(poolPopulation, EconomySeeder.CLASS_SHARE_PER_MILLE);
-    long displaced = EconomySeeder.displacedSeedPopulation(poolPopulation);
-    if (displaced > 0L) {
-      if (displaced > people[0]) {
-        throw new IllegalStateException(
-            "流民人口超过最贫一档人口（流民比例与阶层比例漂开）：displaced=" + displaced + "，poorest=" + people[0]);
-      }
-      people[0] -= displaced;
-    }
+    String[] classIds = WorldBalanceSeeder.classIdsOf(residence);
+    int[] classShares = WorldBalanceSeeder.classSharesOf(residence);
+    long[] people = EconomySeeder.splitByShares(poolPopulation, classShares);
     PopulationKind kind =
         residence == ResidenceKind.RURAL ? PopulationKind.RURAL : PopulationKind.URBAN;
-    for (int slot = 0; slot < EconomySeeder.CLASS_IDS.length; slot++) {
-      SocialClassId stratum = new SocialClassId(EconomySeeder.CLASS_IDS[slot]);
+    for (int slot = 0; slot < classIds.length; slot++) {
+      SocialClassId stratum = new SocialClassId(classIds[slot]);
       HouseholdId id = HouseholdIds.ofSeed(hex, residence, stratum);
       List<PopulationGroup> lots = lotsAt(hex, kind, city, people[slot], anchorTick, "s" + slot);
       groups.addAll(lots);
@@ -257,17 +256,6 @@ public final class PopulationSeeder {
           household(id, new HouseholdLocation.Hex(hex), lots, locations, householdOfLot));
       putCohort(householdByCohort, new CohortKey(hex, residence, stratum), id);
       populationByHousehold.put(id, people[slot]);
-    }
-    if (displaced > 0L) {
-      HouseholdId id =
-          HouseholdIds.ofSeedRole(hex, residence, SocialClassId.LANDLESS_LABORER, "displaced");
-      List<PopulationGroup> lots = lotsAt(hex, kind, city, displaced, anchorTick, DISPLACED_TAG);
-      groups.addAll(lots);
-      households.add(
-          household(id, new HouseholdLocation.Hex(hex), lots, locations, householdOfLot));
-      putCohort(
-          householdByCohort, new CohortKey(hex, residence, SocialClassId.LANDLESS_LABORER), id);
-      populationByHousehold.put(id, displaced);
     }
   }
 

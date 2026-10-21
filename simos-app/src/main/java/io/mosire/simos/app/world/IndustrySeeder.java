@@ -14,10 +14,14 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.CaravanTransportTemplate;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.production.contract.AllocationRule;
+import io.mosire.simos.production.contract.ClassSlot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.RolePayment;
@@ -71,6 +75,8 @@ class IndustrySeeder extends WorldBalanceSeeder {
             Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
     // ★★★ P5b1：农业必须显式给两条角色（operator + hired_laborer），不再走单 operator 缺省。
     plan.payload().put("roles", grainFarmRoleNodes());
+    // ★★★ RC2b：农业的 slots 改为**两个农村 class slot**（有地农民 / 无地农民）；旧四档 slots 只留给城市产业。
+    plan.payload().put("slots", ruralClassSlotNodes());
     return plan;
   }
 
@@ -264,6 +270,152 @@ class IndustrySeeder extends WorldBalanceSeeder {
   }
 
   /**
+   * ★★★ <b>D-032 C9：由 {@link CaravanTransportTemplate} 唯一驱动的商队运输 plan</b>。
+   *
+   * <p>本方法只读模板的 {@link CaravanTransportTemplate#industry(HexCoord)} 与 {@link
+   * CaravanTransportTemplate#ROLES} 并转成既有 wire 节点；<b>不复制</b>配方、角色、H/L/C 或服务键，也不生成第二套资产份额。马匹是普通商品库存
+   * （{@code durableCommodityCapacityPerUnit} 只作规模锚），因此 {@code capacity}/{@code assetShares} 都为空。
+   *
+   * <p>operator 必须是本 hex 既有 OWNER；本方法只接收调用方已解析好的家户 actor。缺 operator 由调用方 fail-closed； 缺模板字段（例如
+   * roles / durable / mode）同样在构造/序列化处具名失败。
+   */
+  static IndustryPlan caravanTransport(HexCoord hex, ActorRef operator) {
+    if (hex == null) {
+      throw new IllegalArgumentException("caravanTransport 的 hex 不得为 null");
+    }
+    if (operator == null) {
+      throw new IllegalArgumentException("caravanTransport 的 operator 不得为 null（既有 OWNER 户）");
+    }
+    IndustryDefinitionView view = CaravanTransportTemplate.industry(hex);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", view.id().value());
+    payload.put("name", view.name());
+    payload.put("regime", view.regime().value());
+    payload.put("skill", view.skill().map(skill -> skill.value()).orElse(null));
+    payload.put("cycleDays", view.cycleDays());
+    payload.put("buildDays", view.buildDays());
+    payload.put("capacityPerUnit", assetAmountWire(view.capacityPerUnit()));
+    payload.put("laborPerUnit", view.laborPerUnit());
+    payload.put("dailyInputPerUnit", nestedAssetCommodityWire(view.dailyInputPerUnit()));
+    payload.put("dailyLaborPerUnit", view.dailyLaborPerUnit());
+    payload.put("outputPerUnit", commodityAmountWire(view.outputPerUnit()));
+    payload.put("moneyOutputPerUnit", currencyAmountWire(view.moneyOutputPerUnit().perUnit()));
+    payload.put("cycleInputPerUnit", nestedAssetCommodityWire(view.cycleInputPerUnit()));
+    payload.put("slots", classSlotWire(view.slots()));
+    if (!(view.allocation() instanceof AllocationRule.Split split)) {
+      throw new IllegalStateException(
+          "transport-plan-allocation-not-split: "
+              + view.id().value()
+              + " allocation="
+              + view.allocation());
+    }
+    Map<String, Object> allocation = new LinkedHashMap<>();
+    allocation.put("@class", "split");
+    allocation.put("meansWeightPerMille", split.meansWeightPerMille());
+    allocation.put("laborWeightPerMille", split.laborWeightPerMille());
+    payload.put("allocation", allocation);
+    payload.put("roles", roleWireNodes(CaravanTransportTemplate.ROLES));
+    payload.put("roleShareRemainderRule", view.roleShareRemainderRule().key());
+    List<String> rights = new ArrayList<>();
+    for (var right : view.acceptedRightKinds()) {
+      rights.add(right.name());
+    }
+    payload.put("acceptedRightKinds", List.copyOf(rights));
+    List<String> upgrades = new ArrayList<>();
+    for (var upgrade : view.upgradesTo()) {
+      upgrades.add(upgrade.value());
+    }
+    payload.put("upgradesTo", List.copyOf(upgrades));
+    view.mode().ifPresent(mode -> payload.put("mode", mode.value()));
+    payload.put(
+        "durableCommodityCapacityPerUnit",
+        commodityAmountWire(view.durableCommodityCapacityPerUnit()));
+    return new IndustryPlan(
+        CaravanTransportTemplate.KIND,
+        view.id().value(),
+        view.regime().value(),
+        operator,
+        Map.of(),
+        assetAmountWireLongs(view.capacityPerUnit()),
+        Collections.unmodifiableMap(payload));
+  }
+
+  /** 角色定义 → production wire 节点（只读 {@link ProductionRoleDefinition}，不复制值）。 */
+  private static List<Map<String, Object>> roleWireNodes(List<ProductionRoleDefinition> roles) {
+    List<Map<String, Object>> nodes = new ArrayList<>(roles.size());
+    for (ProductionRoleDefinition role : roles) {
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("id", role.id().value());
+      node.put("name", role.name());
+      role.socialClass().ifPresent(value -> node.put("socialClass", value.value()));
+      node.put("sharePerMille", role.sharePerMille());
+      node.put("intraRoleSplit", role.intraRoleSplit().key());
+      node.put("standardLaborMilliPerCycle", role.standardLaborMilliPerCycle());
+      if (role.payment() instanceof RolePayment.ProductShare) {
+        node.put("payment", "product_share");
+      } else if (role.payment() instanceof RolePayment.MoneyWage) {
+        node.put("payment", Map.of("kind", "money_wage"));
+      } else {
+        throw new IllegalStateException(
+            "运输角色支付形态未知: " + role.id().value() + " payment=" + role.payment());
+      }
+      nodes.add(Collections.unmodifiableMap(node));
+    }
+    return Collections.unmodifiableList(nodes);
+  }
+
+  private static List<Map<String, Object>> classSlotWire(List<ClassSlot> slots) {
+    List<Map<String, Object>> nodes = new ArrayList<>(slots.size());
+    for (ClassSlot slot : slots) {
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("id", slot.id().value());
+      node.put("name", slot.name());
+      node.put("laborParticipationPerMille", slot.laborParticipationPerMille());
+      nodes.add(Collections.unmodifiableMap(node));
+    }
+    return Collections.unmodifiableList(nodes);
+  }
+
+  private static Map<String, Long> assetAmountWireLongs(Map<AssetKind, Long> amounts) {
+    Map<String, Long> wire = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> entry : amounts.entrySet()) {
+      wire.put(entry.getKey().name(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(wire);
+  }
+
+  private static Map<String, Long> assetAmountWire(Map<AssetKind, Long> amounts) {
+    return assetAmountWireLongs(amounts);
+  }
+
+  private static Map<String, Long> commodityAmountWire(
+      Map<io.mosire.simos.economy.api.id.CommodityId, Long> amounts) {
+    Map<String, Long> wire = new LinkedHashMap<>();
+    for (var entry : amounts.entrySet()) {
+      wire.put(entry.getKey().value(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(wire);
+  }
+
+  private static Map<String, Long> currencyAmountWire(
+      Map<io.mosire.simos.economy.api.id.CurrencyId, Long> amounts) {
+    Map<String, Long> wire = new LinkedHashMap<>();
+    for (var entry : amounts.entrySet()) {
+      wire.put(entry.getKey().value(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(wire);
+  }
+
+  private static Map<String, Map<String, Long>> nestedAssetCommodityWire(
+      Map<AssetKind, Map<io.mosire.simos.economy.api.id.CommodityId, Long>> amounts) {
+    Map<String, Map<String, Long>> wire = new LinkedHashMap<>();
+    for (var entry : amounts.entrySet()) {
+      wire.put(entry.getKey().name(), commodityAmountWire(entry.getValue()));
+    }
+    return Collections.unmodifiableMap(wire);
+  }
+
+  /**
    * ★★ <b>trade 的最小自留生产关系</b>：{@code merchant} 不在 {@code RegimeRelations} 的四档默认表里，载荷若无显式 {@code
    * relation} 会在解析期 fail-closed（{@code EconomyPayloads} 的 defaultRelation 分支）⇒ seeder 必须显式给一条。
    *
@@ -449,6 +601,24 @@ class IndustrySeeder extends WorldBalanceSeeder {
    * #HIRED_LABORER_STANDARD_LABOR_MILLI_PER_CYCLE} 是 {@code WageDemand} fallback 的唯一来源；实际雇工目标优先取
    * M3/M6 的 roster 实际计划劳动，只有确实没有计划雇工时才回退这个工程默认。
    */
+  /**
+   * ★★ <b>RC2b：农业方案的两个农村 class slot</b>（{@link #RURAL_CLASS_IDS} 序）—— 旧四档 {@code slots} 只留给城市产业。
+   *
+   * <p>与 {@code industry(...)} 里那段四档 slot 同形（{@code id/name/laborParticipationPerMille}）；这里显式覆盖
+   * agriculture 的 slots，不改其他产业。
+   */
+  static List<Map<String, Object>> ruralClassSlotNodes() {
+    List<Map<String, Object>> slots = new ArrayList<>(RURAL_CLASS_IDS.length);
+    for (int i = 0; i < RURAL_CLASS_IDS.length; i++) {
+      Map<String, Object> slot = new LinkedHashMap<>();
+      slot.put("id", RURAL_CLASS_IDS[i]);
+      slot.put("name", RURAL_CLASS_NAMES[i]);
+      slot.put("laborParticipationPerMille", RURAL_CLASS_LABOR_PER_MILLE[i]);
+      slots.add(slot);
+    }
+    return List.copyOf(slots);
+  }
+
   public static List<Map<String, Object>> grainFarmRoleNodes() {
     long operatorStandardLabor =
         ProductionRoleDefinition.defaultOperator().standardLaborMilliPerCycle();

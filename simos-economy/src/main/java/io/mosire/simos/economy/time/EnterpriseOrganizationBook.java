@@ -718,10 +718,17 @@ final class EnterpriseOrganizationBook {
 
   // ── 位置/产业/批次选择 ─────────────────────────────────────────────────────────────────
 
-  /** 应当生产的位置：有劳动角色且不是纯被供养者；地主（NONE）与官署（NONE）不组织。 */
+  /**
+   * 应当生产的位置：有劳动角色且不是纯被供养者；地主（NONE）与官署（NONE）不组织。
+   *
+   * <p>★★ D-032 C1：位置访问由角色支付形态 + 家户 ownershipClass 判定（见 {@code ProductionPlanBridge}）；
+   * 组织阶段只负责“经营者/自营位置”。工资位置（{@code WAGE_EARNER}）永不由组织阶段自动建 unit / relation / labor commitment ——
+   * 无产者/有产者都通过名册成为被雇 participant，由 S3/M6 按工资角色处理；未雇即 idle。
+   */
   static boolean shouldProduce(ProductionRole position) {
     return position.laborRole() != LaborRole.NONE
-        && position.surplusRole() != SurplusRole.DEPENDENT;
+        && position.surplusRole() != SurplusRole.DEPENDENT
+        && position.surplusRole() != SurplusRole.WAGE_EARNER;
   }
 
   /**

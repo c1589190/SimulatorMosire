@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
@@ -28,6 +29,9 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.asset.AssetRightKind;
+import io.mosire.simos.economy.api.classes.HouseholdOwnershipFacts;
+import io.mosire.simos.economy.api.classes.OwnershipCapitalVocabulary;
+import io.mosire.simos.economy.api.classes.OwnershipClass;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
@@ -41,9 +45,11 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -53,6 +59,7 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
+import io.mosire.simos.economy.model.CaravanTransportTemplate;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
@@ -64,12 +71,17 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
+import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportHexObservation;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.time.AssetOccupancyBudget;
 import io.mosire.simos.economy.time.AssetOccupancyScope;
 import io.mosire.simos.economy.time.AssetOccupancyView;
@@ -83,6 +95,7 @@ import io.mosire.simos.economy.time.HouseholdCondition;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionProcessBook;
+import io.mosire.simos.economy.time.TransportCapacityBatchBook;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.VerdictId;
@@ -102,6 +115,10 @@ import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexAreas;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.LandAttributeKey;
+import io.mosire.simos.map.LandAttributeValue;
+import io.mosire.simos.map.LandTypeArea;
+import io.mosire.simos.map.LandTypeId;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlock;
@@ -157,6 +174,9 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -207,6 +227,9 @@ import java.util.function.Predicate;
  * 只从状态求和，不另存一份。
  */
 public final class ApiViews {
+
+  /** C9 运输读口缺失锚点（DEBUG；正常读取不写状态、不改变返回）。 */
+  private static final LogChannel LOG = EventLog.channel(AppLog.shell());
 
   /**
    * ★★★ D-032 C3：名册只读读数的宿主（无状态、每次调用现取 state）。只用于 {@code economyHex} 的 {@code productionRosters}
@@ -1195,7 +1218,9 @@ public final class ApiViews {
             actors,
             Optional.empty(),
             tick,
-            "R3a 起旧市场读数组件已删除（production-runtime 生产路径不产生进程内市场报告）⇒ 没有区级市场读数");
+            "R3a 起旧市场读数组件已删除（production-runtime 生产路径不产生进程内市场报告）⇒ 没有区级市场读数",
+            mapLandHoldings(state, coord),
+            mapLandQuantityByHousehold(state));
     // ★★★ D-032 C3：本格名册 + 逐户预计所得（唯一只读消费点 = AppProductionConsumerPort.rosterReadouts →
     //   ExpectedProfitBook.rosterIncomes）。只读；无 D4-C/W2a 真实实现时逐行带具名 unavailable 拒绝，不按 0。
     String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
@@ -1217,6 +1242,9 @@ public final class ApiViews {
     // ★★★ D-032 P4c2：U20 锚级只读列表（不是逐义务值）。锚按 (marketZone,industry,role) 持久；
     //   这里只转发 AppProductionConsumerPort 的确定性视图，不重算工资/streak/调价。
     view.put("productionWageAnchors", PRODUCTION_CONSUMER.productionWageAnchors(state));
+    // ★★★ D-032 L2/B2：Map 组件树是本轮新增的 arable/urban 只读来源；旧 economy 的 landMilliMu/landHoldings
+    //   原样保留，两者并排可见，缺失时具名 null，不用 0 冒充。
+    putMapLandReadout(view, coord, state);
     return view;
   }
 
@@ -1231,7 +1259,9 @@ public final class ApiViews {
       ActorData actors,
       Optional<MarketReport> report,
       long tick,
-      String readoutUnavailable) {
+      String readoutUnavailable,
+      java.util.List<LandHolding> mapLandHoldings,
+      Map<HouseholdId, Long> landQuantityByHousehold) {
     Map<String, Object> view = hexCoord(coord);
     // ★★ D4：本格的资产预算只派生一次；逐 unit 资产、unallocated 与 rejection 都读这一份。
     AssetOccupancyBudget assetBudget =
@@ -1253,6 +1283,9 @@ public final class ApiViews {
     //   —— 与 {@code laborMilli}（毛量）并排发，四档人均劳动因此可逐值核对（见 householdEconomyView）。
     long participationAdjustedLaborMilli = 0L;
     long landMilliMu = 0L;
+    for (LandHolding holding : mapLandHoldings) {
+      landMilliMu = Math.addExact(landMilliMu, holding.quantityMilliMu());
+    }
     long debtPrincipal = 0L;
     long debtCount = 0L;
     // ★★ G3-leftovers（2026-10-10）：上面那个标量是**跨 unit 混算**（粮的"毫粮"与银的"毫银"直接相加）⇒ 不可比、不可跨
@@ -1308,7 +1341,9 @@ public final class ApiViews {
           cycleInputUsed.merge(used.getKey().value(), used.getValue(), Long::sum);
         }
       }
-      landMilliMu += unitAssets.getOrDefault(AssetKind.LAND, 0L);
+      // ★★★ D-032 RA4a：unit.assets/capacity 保持 D4 allocation 语义（来源仍是 assetShares/
+      //   assetOccupancies 的派生 budget），但标量 LAND 的权威是 EconomyData.landHoldings()，不在该 budget
+      //   里伪造。landMilliMu 在循环外按持有表逐条求和，见下方 landHoldingViews。
       // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code 旧结算引擎（R3a 已删除）.laborOfCohort}），
       //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
       Map<HouseholdId, Long> cycleLabor =
@@ -1360,6 +1395,8 @@ public final class ApiViews {
         DebtIndex.byCreditor(data.debtContracts());
     List<Map<String, Object>> classes = new ArrayList<>();
     List<HouseholdId> classKeys = new ArrayList<>();
+    Map<HouseholdId, OwnershipClass> ownershipClasses =
+        ownershipClasses(data, actors, cohortKeysAt(data, coord), landQuantityByHousehold);
     for (HouseholdId key : cohortKeysAt(data, coord)) {
       HouseholdEconomy householdEconomy = data.classes().get(key);
       population += householdEconomy.population();
@@ -1398,7 +1435,8 @@ public final class ApiViews {
               credits,
               data.debtContracts(),
               // ★ 2026-10-09 选项 A：债务人侧引用来自独立表（唯一读口 debtsOf；逐值等于改前的行内列表）。
-              data.debtsOf(key));
+              data.debtsOf(key),
+              ownershipClasses.get(key));
       // ★★ E5a：该户的阶层归属读数（含 consecutiveDebtStressCycles）。没有 HouseholdClassMembership ⇒ null + 具名原因，
       //   不伪造一个默认归属、也不填 0 冒充（旧路径以 HouseholdEconomy.view 为准；E5a 不产生任何阶层变动）。
       HouseholdClassMembership classMembership = data.classStandings().get(key);
@@ -1413,7 +1451,10 @@ public final class ApiViews {
     view.put("laborMilli", laborMilli);
     // ★★ M1.8：毛量旁边发**折扣后**的可用劳动（同一批行的两个口径并排 ⇒ 参与率是否真的进了计算可逐值核对）。
     view.put("participationAdjustedLaborMilli", participationAdjustedLaborMilli);
+    // ★★★ D-032 L4：LAND 的唯一持久权威是 Map component.owner；本栏只是它的只读聚合视图
+    //   （数据源 = 当前 Map 的 arable component owner，稳定序 = LandHoldingKey 自然序）。
     view.put("landMilliMu", landMilliMu);
+    view.put("landHoldings", landHoldingViews(mapLandHoldings));
     view.put("goods", goods);
     // ★ R3a：该格粮库存合计与日耗合计（"看变化"的两个直接读数；单位 = 毫粮）。
     //   ★★ **日耗读的是结算写下的 {@code HouseholdEconomy.naturalNeeds}**（V5；spec §八.8 的"读数与结算同源"）：
@@ -1447,7 +1488,7 @@ public final class ApiViews {
     view.put("moneyByHouseholdClass", moneyByClass);
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
-    view.put("market", marketView(MarketTables.atOrNull(data, coord)));
+    view.put("market", marketView(data, coord, tick, MarketTables.atOrNull(data, coord)));
     // ★★ R4-E2：**需求账本**只读视图（本格相关：HEX 范围命中本格 + HOUSEHOLD 范围住在该格的家户）。
     //   ★ 与订单路径同一份状态（{@code EconomyData.demands()}），视图不重算摊分；{@code effective} 由当前 tick 现判。
     view.put("demands", demandViews(data, coord, tick));
@@ -2143,7 +2184,8 @@ public final class ApiViews {
   private static final String DASHBOARD_STOCK_DEBT_WINDOW =
       "时点：当前 revision 的 ClassRow.debts + debtContracts；逐 DebtUnit.key()（commodity:<id>/money:<id>）分栏，粮与钱不合并、不硬折";
   private static final String DASHBOARD_STOCK_ASSET_WINDOW =
-      "时点：当前 revision 的 assetShares（industry 的格键 = 本格）；数量单位随 AssetKind（LAND 千分亩、其余件）";
+      "时点：当前 revision 的 assetShares（仅非 LAND；industry 的格键 = 本格）；数量单位随 AssetKind；"
+          + "LAND 不在份额表，见 economyHex.landHoldings（千分亩）";
   private static final String DASHBOARD_STOCK_MONEY_WINDOW =
       "时点：当前 revision 的 actor HouseholdInventory.money；世界级（复用 moneyByActorKind / moneyByHouseholdClass 的唯一算法），逐币种不跨币种求和";
   private static final String DASHBOARD_STOCK_POPULATION_WINDOW =
@@ -2401,6 +2443,10 @@ public final class ApiViews {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     Map<AssetKind, AssetKindAggregate> byKind = new TreeMap<>();
     for (OwnershipStake share : data.assetShares().values()) {
+      // ★★★ D-032 RA4a：本栏只展示非 LAND 份额；LAND 的标量权威由 landHoldings 承担。
+      if (share.asset() == AssetKind.LAND) {
+        continue;
+      }
       if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isEmpty()) {
         continue;
       }
@@ -3726,6 +3772,11 @@ public final class ApiViews {
         AssetOccupancyView.listOf(data.assetOccupancies(), data.assetShares(), productionUnits);
     List<Map<String, Object>> out = new ArrayList<>();
     for (AssetOccupancyView occupancy : views) {
+      // ★★★ D-032 RA4a：LAND 的 grant 是瞬态投影，绝不落 assetOccupancies；读口再显式过滤一层
+      //   （构造期已由 EconomyDataInvariants 无条件拒绝 LAND 份额/授予，这里是防御性 fail-safe）。
+      if (occupancy.assetKind() == AssetKind.LAND) {
+        continue;
+      }
       if (!hexKey.equals(occupancy.location().value())) {
         continue;
       }
@@ -4065,7 +4116,8 @@ public final class ApiViews {
       ActorData actors,
       List<DebtContractId> credits,
       Map<DebtContractId, DebtContract> debtBook,
-      List<DebtContractId> debtRefs) {
+      List<DebtContractId> debtRefs,
+      OwnershipClass ownershipClass) {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
@@ -4088,6 +4140,19 @@ public final class ApiViews {
     //   {@link #accountKeyOf(HouseholdId, HexCoord)}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
     HouseholdInventory inventory = actors.accounts().get(accountKeyOf(key));
     view.put("goods", sortedCommodities(inventory == null ? Map.of() : inventory.balances()));
+    // ★★★ D-032 C9：ownershipClass 只由 C1 的 HouseholdOwnershipFacts 派生，不持久、不读 productionMode/位置。
+    if (ownershipClass == null) {
+      throw new IllegalStateException(
+          "household-ownership-class-missing: household=" + key.value());
+    }
+    view.put("ownershipClass", ownershipClass.name());
+    // 马匹是普通商品库存；有账但无该键 = 真实 0；整本账缺失 = null + 具名原因（不伪造库存来源）。
+    view.put(
+        "transportHorseMilli",
+        inventory == null
+            ? null
+            : inventory.balances().getOrDefault(CaravanTransportTemplate.TRANSPORT_HORSE, 0L));
+    view.put("transportHorseUnavailable", inventory == null ? "household-inventory-missing" : null);
     // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code HouseholdInventory}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
     view.put("actorMoney", sortedCurrencies(inventory == null ? Map.of() : inventory.money()));
@@ -4703,14 +4768,172 @@ public final class ApiViews {
    * MarketTable}（它们是 economy 侧从创世载荷读进来的**数据**，GM 可调，信条十二）。 ★ 键序走 {@link #sortedCommodities}（字典序）⇒
    * 响应字节是内容的纯函数。 ★ <b>该格没有市场 ⇒ {@code null}</b>：那是**合法状态**（缺格的格没有市场），不是缺数据。
    */
-  private static Map<String, Object> marketView(MarketTable market) {
+  private static Map<String, Object> marketView(
+      EconomyData data, HexCoord coord, long tick, MarketTable market) {
     if (market == null) {
       return null;
     }
+    MarketZoneId zone = MarketTables.marketIdAt(data, coord).orElse(null);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("numeraire", market.numeraire().value());
     view.put("prices", sortedCommodities(market.prices()));
+    view.put("zone", zone == null ? null : zone.value());
+
+    // ★★★ D-032 C9：运输价格锚。缺锚 = null + 具名原因；不把“从未有锚”写成 0 价来源。
+    TransportPriceAnchor anchor = zone == null ? null : data.transportPriceAnchors().get(zone);
+    view.put("transportPriceAnchor", anchor == null ? null : transportPriceAnchorView(anchor));
+    String anchorUnavailable =
+        zone == null
+            ? "market-zone-missing"
+            : (anchor == null ? "transport-price-anchor-missing" : null);
+    view.put("transportPriceAnchorUnavailable", anchorUnavailable);
+    if (anchorUnavailable != null) {
+      LOG.debug(
+          LogEvent.of(
+              "TRANSPORT_READOUT_MISSING",
+              io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+              "hex",
+              coord,
+              "marketZone",
+              zone == null ? null : zone.value(),
+              "field",
+              "transportPriceAnchor",
+              "reason",
+              anchorUnavailable));
+    }
+
+    // ★★★ D-032 C9：本市场区当前持久运力批次（按 household/homeHex/marketRoundId/marketZone/capacity 全字段）。
+    List<Map<String, Object>> batches = new ArrayList<>();
+    if (zone != null) {
+      List<TransportCapacityBatchKey> keys = new ArrayList<>();
+      for (TransportCapacityBatchKey key : data.transportCapacityBatches().keySet()) {
+        TransportCapacityBatch batch = data.transportCapacityBatches().get(key);
+        if (batch != null && zone.equals(batch.marketZone())) {
+          keys.add(key);
+        }
+      }
+      keys.sort(
+          Comparator.comparing((TransportCapacityBatchKey key) -> key.homeHex().toString())
+              .thenComparing(key -> key.household().value())
+              .thenComparingLong(TransportCapacityBatchKey::marketRoundId));
+      for (TransportCapacityBatchKey key : keys) {
+        TransportCapacityBatch batch = data.transportCapacityBatches().get(key);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("household", key.household().value());
+        item.put("homeHex", hexCoord(key.homeHex()));
+        item.put("marketRoundId", key.marketRoundId());
+        item.put("marketZone", batch.marketZone().value());
+        item.put("capacityWorkMilli", batch.capacityWorkMilli());
+        batches.add(Collections.unmodifiableMap(item));
+      }
+    }
+    view.put("transportCapacityBatches", List.copyOf(batches));
+    view.put("transportCapacityBatchesUnavailable", zone == null ? "market-zone-missing" : null);
+    view.put(
+        "transportCapacityBatchesMarketRoundId",
+        tick < 0L ? null : TransportCapacityBatchBook.marketRoundIdOf(tick));
+    view.put(
+        "transportCapacityBatchesSource",
+        "EconomyData.transportCapacityBatches（按本 market zone 过滤；空列表 = 当前没有批次，不是缺 plan）");
+
+    // ★★★ D-032 C9：上一市场轮逐 hex 观察与由此汇总的区总 D/S。缺 stats/observation = null + 具名原因，
+    //   绝不拿 0 冒充“没有来源”。
+    MarketRoundStats stats = zone == null ? null : data.marketRoundStats().get(zone);
+    if (stats == null) {
+      view.put("lastTransportByHex", null);
+      view.put("lastTransportByHexUnavailable", "market-round-stats-missing");
+      view.put("transportDso", null);
+      view.put("transportDsoUnavailable", "market-round-stats-missing");
+      LOG.debug(
+          LogEvent.of(
+              "TRANSPORT_READOUT_MISSING",
+              io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+              "hex",
+              coord,
+              "marketZone",
+              zone == null ? null : zone.value(),
+              "field",
+              "lastTransportByHex",
+              "reason",
+              "market-round-stats-missing"));
+      return view;
+    }
+    List<TransportHexObservation> observations =
+        new ArrayList<>(stats.lastTransportByHex().values());
+    observations.sort(Comparator.comparing(TransportHexObservation::shippingHex));
+    List<Map<String, Object>> observationViews = new ArrayList<>(observations.size());
+    long demand = 0L;
+    long offered = 0L;
+    long committed = 0L;
+    long unserved = 0L;
+    long unsold = 0L;
+    for (TransportHexObservation observation : observations) {
+      demand = Math.addExact(demand, observation.demandWorkMilli());
+      offered = Math.addExact(offered, observation.offeredWorkMilli());
+      committed = Math.addExact(committed, observation.committedWorkMilli());
+      unserved = Math.addExact(unserved, observation.unservedWorkMilli());
+      unsold = Math.addExact(unsold, observation.unsoldWorkMilli());
+      observationViews.add(transportHexObservationView(observation));
+    }
+    view.put("lastTransportByHex", List.copyOf(observationViews));
+    view.put("lastTransportByHexUnavailable", null);
+    if (observations.isEmpty()) {
+      view.put("transportDso", null);
+      view.put("transportDsoUnavailable", "transport-observations-missing");
+      LOG.debug(
+          LogEvent.of(
+              "TRANSPORT_READOUT_MISSING",
+              io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+              "hex",
+              coord,
+              "marketZone",
+              zone.value(),
+              "field",
+              "transportDso",
+              "reason",
+              "transport-observations-missing"));
+    } else {
+      Map<String, Object> dso = new LinkedHashMap<>();
+      dso.put("marketZone", zone.value());
+      dso.put("marketRoundId", observations.get(0).marketRoundId());
+      dso.put("demandWorkMilli", demand);
+      dso.put("supplyWorkMilli", offered);
+      dso.put("committedWorkMilli", committed);
+      dso.put("unservedWorkMilli", unserved);
+      dso.put("unsoldWorkMilli", unsold);
+      dso.put(
+          "source",
+          "由同一份 MarketRoundStats.lastTransportByHex 逐 hex 观察求和（D=demand, S=offered）；不重建 plan");
+      view.put("transportDso", Collections.unmodifiableMap(dso));
+      view.put("transportDsoUnavailable", null);
+    }
     return view;
+  }
+
+  private static Map<String, Object> transportPriceAnchorView(TransportPriceAnchor anchor) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("marketZone", anchor.marketZone().value());
+    view.put("currency", anchor.currency().value());
+    view.put("pricePerWorkMilli", anchor.pricePerWorkMilli());
+    view.put("shortageStreak", anchor.shortageStreak());
+    view.put("satisfiedStreak", anchor.satisfiedStreak());
+    view.put("lastAdjustedMarketRound", anchor.lastAdjustedMarketRound());
+    return Collections.unmodifiableMap(view);
+  }
+
+  private static Map<String, Object> transportHexObservationView(
+      TransportHexObservation observation) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("marketZone", observation.marketZone().value());
+    view.put("shippingHex", hexCoord(observation.shippingHex()));
+    view.put("marketRoundId", observation.marketRoundId());
+    view.put("demandWorkMilli", observation.demandWorkMilli());
+    view.put("offeredWorkMilli", observation.offeredWorkMilli());
+    view.put("committedWorkMilli", observation.committedWorkMilli());
+    view.put("unservedWorkMilli", observation.unservedWorkMilli());
+    view.put("unsoldWorkMilli", observation.unsoldWorkMilli());
+    view.put("anchorPricePerWorkMilli", observation.anchorPricePerWorkMilli());
+    return Collections.unmodifiableMap(view);
   }
 
   /**
@@ -4816,6 +5039,122 @@ public final class ApiViews {
   }
 
   /**
+   * ★★★ <b>D-032 C9：一格家户的 ownershipClass</b> — 只调用 C1 的 {@link
+   * HouseholdOwnershipFacts#ownershipClass(Set)} 唯一派生口；输入 = Map LAND 聚合 + actor HouseholdInventory
+   * 商品余额 + economy 非 LAND 资产份额。
+   *
+   * <p>本方法只读、不写状态、不构造第二份阶级字段。家户 id 必须提供；LAND 数量由 {@link #mapLandQuantityByHousehold} 从 Map
+   * component owner 属性聚合（所有 hex，不只当前格）。
+   */
+  private static Map<HouseholdId, OwnershipClass> ownershipClasses(
+      EconomyData data,
+      ActorData actors,
+      List<HouseholdId> households,
+      Map<HouseholdId, Long> landQuantityByHousehold) {
+    Map<ActorRef, Long> nonLandDurableByOwner = new LinkedHashMap<>();
+    for (OwnershipStake share : data.assetShares().values()) {
+      if (share == null || share.asset() == AssetKind.LAND || share.quantity() <= 0L) {
+        continue;
+      }
+      nonLandDurableByOwner.merge(share.owner(), share.quantity(), Math::addExact);
+    }
+    Map<HouseholdId, OwnershipClass> result = new LinkedHashMap<>();
+    for (HouseholdId household : households) {
+      HouseholdInventory inventory = actors.accounts().get(accountKeyOf(household));
+      HouseholdOwnershipFacts facts =
+          new HouseholdOwnershipFacts(
+              household,
+              landQuantityByHousehold.getOrDefault(household, 0L),
+              inventory == null ? Map.of() : inventory.balances(),
+              nonLandDurableByOwner.getOrDefault(HouseholdActors.of(household), 0L));
+      result.put(
+          household, facts.ownershipClass(OwnershipCapitalVocabulary.durableCommodityCapitalIds()));
+    }
+    return Collections.unmodifiableMap(result);
+  }
+
+  /** 全部 hex 的 Map LAND owner 聚合（千分亩；只读 Map component.owner 唯一权威）。 */
+  private static Map<HouseholdId, Long> mapLandQuantityByHousehold(SimulationState state) {
+    Optional<Snapshot> maybeSnapshot = state.module("map");
+    if (maybeSnapshot.isEmpty() || !(maybeSnapshot.get() instanceof MapSnapshot mapSnapshot)) {
+      return Map.of();
+    }
+    Map<String, Long> byOwner = new LinkedHashMap<>();
+    for (HexCell cell : mapSnapshot.map().hexes().values()) {
+      LandTypeArea area = cell.land().byType().get(LandTypeId.ARABLE);
+      if (area == null || area.components().isEmpty()) {
+        continue;
+      }
+      for (var component : area.components()) {
+        LandAttributeValue owner = component.attributes().get(LandAttributeKey.OWNER);
+        if (owner == null || owner.stringValue().isBlank()) {
+          continue;
+        }
+        byOwner.merge(owner.stringValue(), component.quantityMilliMu(), Math::addExact);
+      }
+    }
+    List<Map.Entry<String, Long>> ordered = new ArrayList<>(byOwner.entrySet());
+    ordered.sort(Map.Entry.comparingByKey());
+    Map<HouseholdId, Long> result = new LinkedHashMap<>();
+    for (Map.Entry<String, Long> entry : ordered) {
+      result.put(HouseholdId.parse(entry.getKey()), entry.getValue());
+    }
+    return Collections.unmodifiableMap(result);
+  }
+
+  /**
+   * ★★★ <b>D-032 L4：本格标量 LAND 持有只读视图</b>（从 Map arable component 的 owner 属性派生）。
+   *
+   * <p>★ 数据源唯一 = Map component；不读 assetShares、不从 arable supply 反推。排序按 {@link
+   * io.mosire.simos.economy.api.land.LandHoldingKey} 自然序（hex → owner）。
+   */
+  private static java.util.List<LandHolding> mapLandHoldings(
+      SimulationState state, HexCoord coord) {
+    Optional<Snapshot> maybeSnapshot = state.module("map");
+    if (maybeSnapshot.isEmpty() || !(maybeSnapshot.get() instanceof MapSnapshot mapSnapshot)) {
+      return java.util.List.of();
+    }
+    HexCell cell = mapSnapshot.map().hexes().get(coord);
+    if (cell == null) {
+      return java.util.List.of();
+    }
+    LandTypeArea area = cell.land().byType().get(LandTypeId.ARABLE);
+    if (area == null || area.components().isEmpty()) {
+      return java.util.List.of();
+    }
+    Map<String, Long> byOwner = new LinkedHashMap<>();
+    for (var component : area.components()) {
+      LandAttributeValue owner = component.attributes().get(LandAttributeKey.OWNER);
+      if (owner == null || owner.stringValue().isBlank()) {
+        continue;
+      }
+      byOwner.merge(owner.stringValue(), component.quantityMilliMu(), Math::addExact);
+    }
+    java.util.List<LandHolding> holdings = new ArrayList<>();
+    for (Map.Entry<String, Long> entry : byOwner.entrySet()) {
+      holdings.add(new LandHolding(HouseholdId.parse(entry.getKey()), coord, entry.getValue()));
+    }
+    holdings.sort(Comparator.comparing(LandHolding::key));
+    return java.util.List.copyOf(holdings);
+  }
+
+  /** 把聚合持有列表发成稳定的只读视图。 */
+  private static java.util.List<Map<String, Object>> landHoldingViews(
+      java.util.List<LandHolding> holdings) {
+    java.util.List<LandHolding> ordered = new ArrayList<>(holdings);
+    ordered.sort(Comparator.comparing(LandHolding::key));
+    java.util.List<Map<String, Object>> out = new ArrayList<>(ordered.size());
+    for (LandHolding holding : ordered) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("owner", holding.owner().value());
+      row.put("hex", hexCoord(holding.hex()));
+      row.put("quantity", holding.quantityMilliMu());
+      out.add(Collections.unmodifiableMap(row));
+    }
+    return Collections.unmodifiableList(out);
+  }
+
+  /**
    * ★★ <b>R4-E2b：本格的实物资产份额只读视图</b>（{@code id/industry/asset/owner/operator/quantity/kind}）—— 进入动作只拆
    * {@code assetSource} 名下的份额：owner 不变、operator 改本户、kind 按 acceptedRightKinds，总量不变。
    * 这一栏是那条守恒的逐条证据（{@code EconomyData.assetShares()} 的唯一真源，视图不重算）。
@@ -4824,6 +5163,10 @@ public final class ApiViews {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     List<OwnershipStake> shares = new ArrayList<>();
     for (OwnershipStake share : data.assetShares().values()) {
+      // ★★★ D-032 RA4a：assetShares 只展示非 LAND；LAND 见 landHoldings（标量权威，不伪造回份额）。
+      if (share.asset() == AssetKind.LAND) {
+        continue;
+      }
       if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
         shares.add(share);
       }
@@ -6180,6 +6523,80 @@ public final class ApiViews {
       views.add(item);
     }
     return List.copyOf(views);
+  }
+
+  /**
+   * ★★★ <b>D-032 L2/B2：Map 组件树来源的只读土地读数</b>。
+   *
+   * <p>写入 {@code arableMilliMu}/{@code urbanMilliMu}/{@code landComponents}。Map 切片缺席、切片类型不对、hex 缺失或
+   * terrain 缺失时，三者都保持 {@code null}，同时 {@code landSource} 为 {@code null} 且 {@code
+   * landSourceUnavailableReason} 给出具名原因；绝不填 0 冒充一个不存在的 Map 读数。
+   *
+   * <p>{@code landComponents[]} 的每行 = {@code id/landType/quantity/attributes}。属性值保留三档 {@code kind +
+   * canonicalValue}，不在读口解释为经济/生产语义。
+   */
+  private static void putMapLandReadout(
+      Map<String, Object> view, HexCoord coord, SimulationState state) {
+    Optional<Snapshot> maybeSnapshot = state.module("map");
+    if (maybeSnapshot.isEmpty()) {
+      putUnavailableMapLand(view, "map-slice-missing");
+      return;
+    }
+    Snapshot snapshot = maybeSnapshot.orElseThrow();
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      putUnavailableMapLand(view, "map-slice-not-map-snapshot");
+      return;
+    }
+    GameMap map = mapSnapshot.map();
+    HexCell cell = map.hexes().get(coord);
+    if (cell == null) {
+      putUnavailableMapLand(view, "map-hex-missing");
+      return;
+    }
+    String terrain = map.terrainIndex().get(coord);
+    if (terrain == null) {
+      putUnavailableMapLand(view, "map-terrain-missing");
+      return;
+    }
+    Map<LandTypeId, Long> totals = HexAreas.landTotals(cell, terrain);
+    view.put("arableMilliMu", totals.get(LandTypeId.ARABLE));
+    view.put("urbanMilliMu", totals.get(LandTypeId.URBAN));
+    view.put("landComponents", mapLandComponentViews(cell));
+    view.put("landSource", "map");
+    view.put("landSourceUnavailableReason", null);
+  }
+
+  /** Map 土地读数不可得时的统一形状：数值/列表/null 来源 + 具名原因。 */
+  private static void putUnavailableMapLand(Map<String, Object> view, String reason) {
+    view.put("arableMilliMu", null);
+    view.put("urbanMilliMu", null);
+    view.put("landComponents", null);
+    view.put("landSource", null);
+    view.put("landSourceUnavailableReason", reason);
+  }
+
+  /** Map 组件只读视图：{@code id/landType/quantity/attributes}，顺序沿用 HexLand 的规范序。 */
+  private static List<Map<String, Object>> mapLandComponentViews(HexCell cell) {
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (LandTypeArea area : cell.land().byType().values()) {
+      for (var component : area.components()) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", component.id().value());
+        row.put("landType", area.type().wireValue());
+        row.put("quantity", component.quantityMilliMu());
+        Map<String, Object> attributes = new LinkedHashMap<>();
+        for (Map.Entry<LandAttributeKey, LandAttributeValue> attribute :
+            component.attributes().entrySet()) {
+          Map<String, Object> value = new LinkedHashMap<>();
+          value.put("kind", attribute.getValue().kind().name());
+          value.put("canonicalValue", attribute.getValue().canonicalValue());
+          attributes.put(attribute.getKey().wireValue(), Collections.unmodifiableMap(value));
+        }
+        row.put("attributes", Collections.unmodifiableMap(attributes));
+        out.add(Collections.unmodifiableMap(row));
+      }
+    }
+    return Collections.unmodifiableList(out);
   }
 
   /** map 切片（缺席或类型不对是装配故障，不是"没有候选"）。 */

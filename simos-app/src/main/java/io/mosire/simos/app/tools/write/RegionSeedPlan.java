@@ -74,6 +74,10 @@ final class RegionSeedPlan {
   /** ★★ D-031 P1：{@code production.Seed} 的定义播种命令类型（与 {@code economy.Seed} 同批）。 */
   static final String SEED_PRODUCTION_TYPE = WorldgenInitializeTool.SEED_PRODUCTION_TYPE;
 
+  /** ★★★ D-032 L4：{@code map.SeedArableOwnership} 的命令类型（与 {@code economy.Seed} 同批）。 */
+  static final String SEED_MAP_LAND_OWNERSHIP_TYPE =
+      WorldgenInitializeTool.SEED_MAP_LAND_OWNERSHIP_TYPE;
+
   /** {@code actor.Seed} 的命令类型（{@code includeActors=false} 时缺席）。 */
   static final String SEED_ACTOR_TYPE = WorldgenInitializeTool.SEED_ACTOR_TYPE;
 
@@ -258,6 +262,7 @@ final class RegionSeedPlan {
       types.add(SEED_GROUPS_TYPE);
       if (params.includeEconomy()) {
         types.add(SEED_ECONOMY_TYPE);
+        types.add(SEED_MAP_LAND_OWNERSHIP_TYPE);
       }
       if (params.includeActors()) {
         types.add(SEED_ACTOR_TYPE);

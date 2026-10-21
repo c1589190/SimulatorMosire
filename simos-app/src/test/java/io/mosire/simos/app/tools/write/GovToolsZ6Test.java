@@ -153,9 +153,9 @@ class GovToolsZ6Test {
   private static final HouseholdId CENTRAL_OFFICIAL = HouseholdId.parse("hh-unit:gov-central");
   private static final HouseholdId CENTRAL_GOV_HOUSEHOLD = GovernmentHouseholds.of(CENTRAL.value());
 
-  /** 外部家户（真实 Social/economy 行；hex (-2,0) 农村贫农，tick0 人口 80 = 200×45% − 5% 流民）。 */
+  /** 外部家户（真实 Social/economy 行；hex (-2,0) 农村有地农民（RC2b 农村二档）。 */
   private static final HouseholdId EXTERNAL_PEASANT =
-      HouseholdId.parse("hh--2_0-rural-poor_peasant");
+      HouseholdId.parse("hh--2_0-rural-landed_peasant");
 
   private static final String TIERS_3 =
       "[{\"tierId\":\"tier-1\",\"securityWeightPerMille\":1000,\"paperworkWeightPerMille\":0},"
@@ -578,7 +578,7 @@ class GovToolsZ6Test {
           .contains(inSocialNotEconomy.value());
 
       ToolResult unknownTier =
-          gmExecute(tool, openPostsArgs("hh--2_0-rural-middle_peasant", "tier-9", null, true));
+          gmExecute(tool, openPostsArgs("hh--2_0-rural-landless_laborer", "tier-9", null, true));
       assertThat(unknownTier.code()).isEqualTo("BAD_REQUEST");
       assertThat(unknownTier.message()).contains("tierId 不在 GOV").contains("tier-9");
 

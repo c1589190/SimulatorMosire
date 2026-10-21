@@ -5,10 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.app.time.SocialSurvivalFacts;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.time.SurvivalSocialFacts;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.contract.ProductionProcess;
@@ -45,10 +49,10 @@ class EconomyOwnershipFixtureProductionSliceTest {
   @Test
   void productionChangeSetIsAppliedAcrossAnAdvanceInsteadOfBeingSilentlyDropped() {
     SimulationState genesis = SmallWorld.state(SmallWorld.MAP_ID);
-    EconomyData economy = economyOf(genesis);
+    SocialData social = socialOf(genesis);
+    EconomyData economy = withCurrentSocialRows(economyOf(genesis), social);
     ActorData actor = actorOf(genesis);
     ProductionData production = productionOf(genesis);
-    SocialData social = socialOf(genesis);
 
     // ── 起点读数（判别力前提：世界必须真的有实例，否则"进度变了"可能恒真/恒假）──
     assertThat(production.instances()).as("小世界创世必须已有生产实例").isNotEmpty();
@@ -69,9 +73,8 @@ class EconomyOwnershipFixtureProductionSliceTest {
         new java.util.LinkedHashSet<>(progressAfter.keySet());
     createdToday.removeAll(progressBefore.keySet());
     assertThat(createdToday)
-        .as("当日的按需建档只可能是贸易 unit（本世界没有别的按需组织路径）")
-        .hasSize(2)
-        .allMatch(unit -> unit.value().startsWith("unit-trade@"));
+        .as("C9 已退出旧按需 trade 建档；当日不得凭空新增旧 trade unit")
+        .noneMatch(unit -> unit.value().startsWith("unit-trade@"));
     long totalAfter = totalProgress(result.production());
     assertThat(totalAfter)
         .as("★★ production ChangeSet 必须被夹具应用：一天推进后进度合计 > 0（修前恒 0 = 静默丢弃）")
@@ -95,6 +98,8 @@ class EconomyOwnershipFixtureProductionSliceTest {
     EconomyData economy = economyOf(genesis);
     ActorData actor = actorOf(genesis);
     ProductionData production = productionOf(genesis);
+    io.mosire.simos.map.GameMap map =
+        ((io.mosire.simos.map.MapSnapshot) genesis.module("map").orElseThrow()).map();
 
     // 未覆盖的 namespace：本夹具只装配 EconomyOwnershipTimeParticipant（它不会产 ga）——
     //   "将来扩面忘了补分支"必须当场红，而不是把这一片悄悄丢掉。
@@ -104,13 +109,46 @@ class EconomyOwnershipFixtureProductionSliceTest {
     assertThatThrownBy(
             () ->
                 EconomyOwnershipFixture.applyModuleChanges(
-                    unknownNamespace, economy, actor, production))
+                    unknownNamespace, economy, actor, production, map))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("EconomyOwnershipFixture.applyModuleChanges 未覆盖的模块 namespace")
         .hasMessageContaining("ga");
   }
 
   // ── 切片读取（装配故障当场炸，与生产侧同一条口径）────────────────────────────────────
+
+  /**
+   * ★ RC8d/RC8b 夹具修正：本测试直连 {@code EconomyOwnershipTimeParticipant}（备用产权路径），不会执行真实 app 日循环里的
+   * Social→economy 人口/劳动/需求投影。这里先把 SmallWorld 的 genesis 经济行按同一份 Social 当刻事实水合，避免让“0 人口但
+   * labor>0”的官吏户进入 LANDLESS 买地盘路径。
+   */
+  private static EconomyData withCurrentSocialRows(EconomyData economy, SocialData social) {
+    SurvivalSocialFacts facts = SocialSurvivalFacts.forNextTick(social, 1L);
+    Map<io.mosire.simos.social.api.id.HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
+    for (HouseholdEconomy row : economy.classes().values()) {
+      if (!social.households().containsKey(row.id())) {
+        rows.put(row.id(), row);
+        continue;
+      }
+      Map<CommodityId, Long> needs = new LinkedHashMap<>();
+      for (var line : facts.requireNeed(row.id()).lines()) {
+        needs.put(line.commodity(), line.requiredQuantityMilli());
+      }
+      rows.put(
+          row.id(),
+          new HouseholdEconomy(
+              row.id(),
+              row.view(),
+              social.householdPopulation(row.id()),
+              facts.requireLaborBudgetMilli(row.id()),
+              row.participationPerMille(),
+              row.money(),
+              needs,
+              row.effectiveDemand(),
+              row.cycleNaturalNeedMilli()));
+    }
+    return economy.withHouseholdEconomies(rows);
+  }
 
   private static EconomyData economyOf(SimulationState state) {
     Snapshot snapshot = state.module("economy").orElseThrow();

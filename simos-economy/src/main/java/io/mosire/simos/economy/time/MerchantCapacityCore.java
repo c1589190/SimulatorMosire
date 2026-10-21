@@ -9,6 +9,9 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportRoundPlan;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -33,7 +36,8 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
       long maxAskPerMille,
       Set<HexCoord> haulServiceHexes,
       Map<String, Long> serviceAbsentTally,
-      long day) {
+      long day,
+      boolean transportPlanLocalOnly) {
     super(
         byHex,
         totalCapacityByHex,
@@ -44,7 +48,8 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
         maxAskPerMille,
         haulServiceHexes,
         serviceAbsentTally,
-        day);
+        day,
+        transportPlanLocalOnly);
   }
 
   static final long NO_WORLD_DAY = -1L;
@@ -60,7 +65,8 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
         0L,
         Set.of(),
         new LinkedHashMap<>(),
-        NO_WORLD_DAY);
+        NO_WORLD_DAY,
+        false);
   }
 
   /** <b>装配体（唯一拼写点）</b>。 */
@@ -102,10 +108,15 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
       long toolFrozenMilli =
           frozenGoods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
       long toolMilli = Math.max(0L, toolStockMilli - toolFrozenMilli);
-      // ★★ A2：服务成市的格 ⇒ 本轮运力预算 = 该户手上的**运输服务货**（max(0, 现货 − 冻结)）——
-      //   卖出多少服务就得有多少货（I-H2），"服务不能凭空造"由此结构性成立；其余格逐值退回劳动+工具算式。
+      // ★★ A2：服务成市的格读取该户手上的**运输服务货**（max(0, 现货 − 冻结)）作为可交付量。
+      // ★★★ RC8a（2026-10-20）：服务成市格的可分配服务容量**只能**来自可交付的 haul 服务货 ——
+      //   禁止再用 labor/tool productive fallback 冒充可交付服务。否则运力池会造出"账上没有货"的服务容量，
+      //   交付腿 {@code deliverHaulService} 当场取不到货 ⇒ HAUL_SERVICE_DELIVERY_FAULT / 该笔成交作废。
+      //   没有可交付服务货的 hex 由 {@link ShipmentSettlement#haulServiceHexes(SettlementDayContext)}
+      //   判为**不成市**，走简单生产性运力（labor + tool）+ 既有 CARRIER_FEE 腿。
       //   ★ 单位锚（A1）：1 商品单位 haul = 1,000 毫服务 = 1,000 毫商品·程 ⇒ 这里不需要第二次换算。
       boolean servicePriced = haulServiceHexes != null && haulServiceHexes.contains(hex0);
+      long laborMilli = row.participationAdjustedLaborMilli();
       long serviceAvailableMilli =
           Math.max(
               0L,
@@ -113,33 +124,19 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
                   - frozenGoods
                       .getOrDefault(household, Map.of())
                       .getOrDefault(HaulService.HAUL_COMMODITY, 0L));
-      // ★★★ F-1（2026-10-10，A3 残留修复）：**进池/提供者判据改成与"有服务货"一致**。
-      //
-      //   服务成市的格：**进池不再要求"劳动 + 工具 > 0"**（那是已退役的门槛家族残留）——该户只要"选了跑商"
-      //     就进池，它的运力预算 = **手上可交付的服务货**（{@code max(0, 现货 − 冻结)}，I-H2）。
-      //     ⇒ 一个劳动/工具为 0 但持有服务货的户**结构上不再卖不出服务**（设计书 §3.2「运力 = 该产业本周期
-      //       可产出的服务量」）。★ 预算为 0 的条目留在池里但**分不到任何量**（{@code select} 只看预算），
-      //       这样"本格**有**跑商家户、但没有服务货"这条事实在读数面仍然看得见（{@code householdCountAt} /
-      //       {@code MERCHANT_CAPACITY_HOUSEHOLD}）—— 它是 F-2 "没有服务卖" 与 "没有承运人" 分辨的依据。
-      //   其余格（无牌价）：判据**一字不变**（{@code capacityMilli > 0}）⇒ 逐值退回改前（I-H3 缺省中性）。
-      //   ★ 分格分流的开关仍是 HaulService.pricedAt（唯一拼写点）——不是"算出来恰好相等"。
+      // 服务成市格的容量、tier、半径都由**服务货可用量**派生（{@link MerchantCapacity#ofService}）；
+      // labor/tool 两栏只作读数，不进服务容量。其余格仍走 {@link MerchantCapacity#of}（劳动+工具，逐值不变）。
       MerchantCapacity capacity =
           servicePriced
-              // ★★ F-3：服务成市格的 tier / 半径由**服务货可用量**派生（{@link MerchantCapacity#ofService}），
-              //   不再由劳动 + 工具派生；labor/tool 两栏降为读数（见该方法注）。
               ? MerchantCapacity.ofService(
-                  household,
-                  hex0,
-                  serviceAvailableMilli,
-                  row.participationAdjustedLaborMilli(),
-                  toolMilli)
-              : MerchantCapacity.of(
-                  household, hex0, row.participationAdjustedLaborMilli(), toolMilli);
+                  household, hex0, serviceAvailableMilli, laborMilli, toolMilli)
+              : MerchantCapacity.of(household, hex0, laborMilli, toolMilli);
       if (capacity.capacityMilli() <= 0L && !servicePriced) {
         continue; // 0 运力 = 不进池（无牌价格：逐字等于改前；"有这家户"与"它提供运力"是两件事）
       }
       if (servicePriced && serviceAvailableMilli <= 0L) {
         // F-2 具名归因：**有提供商、但没有货**（与"没有提供商"分开计数；只进读数，不改判据）。
+        // ★ RC8a：本条计数保留，但服务容量恒为 0（不得用劳动+工具回退）。
         serviceAbsent.merge(NO_SERVICE_GOODS_REASON, 1L, Math::addExact);
       }
       long askPerMille = askPerMilleOf(capacity, priced);
@@ -148,6 +145,7 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
       // ★★ M-C：纯商号（H-2：**主业** ∈ merchant.*）/ 顺便跑商（merchant 只在副业）—— 免运费与利润算式的分流依据；
       //   判据的唯一拼写点在 {@link MerchantIdentity}。
       boolean pureMerchant = MerchantIdentity.isPureMerchant(standing, classPositions);
+      // ★★★ RC8a：服务成市格的运力预算与容量同源（都是可交付服务货）；无牌价分支保持原式逐值不变。
       long workBudgetMilli = servicePriced ? serviceAvailableMilli : capacity.capacityMilli();
       // ★★ A3：`posted`（有没有逐户挂运力单）随自报价簿退役 —— 现在**不存在**逐户覆写，"限价"是条目的纯派生量
       //   （{@link #askPerMilleOf}）⇒ 该读数栏恒为假、已从条目与日志里删除。
@@ -211,7 +209,8 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
             maxAsk,
             haulServiceHexes,
             serviceAbsent,
-            day);
+            day,
+            false);
     // ★★ G3-leftovers：本池的逐户**装配**读数（事件 {@code MERCHANT_CAPACITY_HOUSEHOLD}）**不在这里发射** ——
     //   发射点仍是 tick 面的装配调用方（{@code EconomySettlement} 紧随本装配之后，与 {@code
     //   CAPACITY_QUOTE_BOOK} 同款先例）：{@link #logHouseholdAssembly(long)}。★ W7-fix3 起本方法**拿到了**世界日
@@ -219,5 +218,108 @@ class MerchantCapacityCore extends MerchantFreightQuoteBook {
     //   日在本类只有两个落点 —— 装配点注入的 {@link #day}（供 {@link #select} 的 lane 读数）与
     //   {@link #logRoundSummary} / {@link #logHouseholdAssembly} 的入参。
     return built;
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：从当前 C6 批次构造活动运输池</b>（唯一活动入口；不再读 merchant 角色/haul 服务货/劳动工具）。
+   *
+   * <pre>
+   * 只取 key.marketRoundId == plan.marketRoundId 的批次；
+   * 按 (household, homeHex) 汇总 capacityWorkMilli（同户同 hex 多批次相加）；
+   * 排序 = 本 hex 份额 desc → HouseholdId asc；
+   * 池标记 transportPlanLocalOnly=true ⇒ select 只允许 from == homeHex。
+   * </pre>
+   *
+   * <p>不同 homeHex 永不合并；plan 中的 observation/marketZone 与批次不一致 ⇒ 具名 fail-closed。
+   */
+  static MerchantCapacityCore assembleTransportPlan(
+      TransportRoundPlan plan, Map<TransportCapacityBatchKey, TransportCapacityBatch> batches) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(batches, "batches");
+    Map<String, AggregatedTransportEntry> aggregated = new LinkedHashMap<>();
+    for (Map.Entry<TransportCapacityBatchKey, TransportCapacityBatch> entry : batches.entrySet()) {
+      TransportCapacityBatchKey key = entry.getKey();
+      TransportCapacityBatch batch = entry.getValue();
+      if (key.marketRoundId() != plan.marketRoundId()) {
+        continue;
+      }
+      if (batch.capacityWorkMilli() <= 0L) {
+        continue;
+      }
+      String aggregateKey =
+          key.household().value() + "|" + key.homeHex().q() + "," + key.homeHex().r();
+      AggregatedTransportEntry prior = aggregated.get(aggregateKey);
+      if (prior == null) {
+        aggregated.put(
+            aggregateKey,
+            new AggregatedTransportEntry(
+                key.household(), key.homeHex(), batch.capacityWorkMilli()));
+      } else {
+        prior.capacityWorkMilli = Math.addExact(prior.capacityWorkMilli, batch.capacityWorkMilli());
+      }
+    }
+    List<AggregatedTransportEntry> rows = new ArrayList<>(aggregated.values());
+    rows.sort(
+        Comparator.comparing((AggregatedTransportEntry row) -> row.homeHex.q())
+            .thenComparingInt(row -> row.homeHex.r())
+            .thenComparing(row -> row.household.value()));
+    Map<HexCoord, Long> totals = new LinkedHashMap<>();
+    for (AggregatedTransportEntry row : rows) {
+      totals.merge(row.homeHex, row.capacityWorkMilli, Math::addExact);
+    }
+    Map<HexCoord, List<Entry>> byHex = new LinkedHashMap<>();
+    for (AggregatedTransportEntry row : rows) {
+      MerchantCapacity capacity =
+          MerchantCapacity.ofTransportCapacity(row.household, row.homeHex, row.capacityWorkMilli);
+      Entry item = new Entry(capacity, 0L, false, row.capacityWorkMilli);
+      item.sharePerMille =
+          MerchantCapacity.sharePerMilleOf(
+              row.capacityWorkMilli, totals.getOrDefault(row.homeHex, 0L));
+      byHex.computeIfAbsent(row.homeHex, ignored -> new ArrayList<>()).add(item);
+    }
+    Comparator<Entry> localOrder =
+        Comparator.comparingLong((Entry item) -> -item.sharePerMille)
+            .thenComparing(item -> item.capacity.household().value());
+    List<Entry> global = new ArrayList<>();
+    for (Map.Entry<HexCoord, List<Entry>> entry : byHex.entrySet()) {
+      entry.getValue().sort(localOrder);
+      global.addAll(entry.getValue());
+    }
+    global.sort(
+        Comparator.comparingInt((Entry item) -> item.capacity.hex().q())
+            .thenComparingInt(item -> item.capacity.hex().r())
+            .thenComparing(localOrder));
+    Map<HouseholdId, Entry> byHousehold = new LinkedHashMap<>();
+    for (Entry item : global) {
+      byHousehold.put(item.capacity.household(), item);
+    }
+    long total = 0L;
+    for (long value : totals.values()) {
+      total = Math.addExact(total, value);
+    }
+    return new MerchantCapacityCore(
+        Collections.unmodifiableMap(byHex),
+        Collections.unmodifiableMap(totals),
+        Collections.unmodifiableMap(byHousehold),
+        Collections.unmodifiableList(global),
+        global.size(),
+        true,
+        0L,
+        Collections.unmodifiableSet(new java.util.LinkedHashSet<>(totals.keySet())),
+        new LinkedHashMap<>(),
+        plan.marketRoundId(),
+        true);
+  }
+
+  private static final class AggregatedTransportEntry {
+    final HouseholdId household;
+    final HexCoord homeHex;
+    long capacityWorkMilli;
+
+    AggregatedTransportEntry(HouseholdId household, HexCoord homeHex, long capacityWorkMilli) {
+      this.household = household;
+      this.homeHex = homeHex;
+      this.capacityWorkMilli = capacityWorkMilli;
+    }
   }
 }

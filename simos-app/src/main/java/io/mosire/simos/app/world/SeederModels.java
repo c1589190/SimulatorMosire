@@ -149,17 +149,37 @@ record HouseholdUnit(
     ProductionRules relation) {}
 
 /**
- * ★★ <b>P5b1：一个农村家户在所在 hex 的 {@code grain_farm} unit 创世形态</b>。
+ * ★★ <b>P5b1/RA1b2b：一个农村家户在所在 hex 的 {@code grain_farm} unit 创世形态</b>。
  *
  * <p>{@code owner = operator = 家户 actor}；{@code unitNode} 带显式 {@code relation}（空 {@code rules} +
- * {@code SELF}）；{@code shareNode} 是该户自己的 {@code LAND / OWNED} 份额（无地户数量 0，仍要登记）。
+ * {@code SELF}）。★★ RA1b2b 起该户的 LAND 不再生成 {@code assetShares} 份额节点，而是由 {@link #landMilliMu()} 以
+ * entry 级 {@code landHoldings[]} 落标量持有（0 数量仍然保留 unit，但不写 0 持有行）。
  */
 record GrainFarmUnit(
     HouseholdId household,
     ActorRef operator,
     ProductionUnitId unitId,
     Map<String, Object> unitNode,
-    Map<String, Object> shareNode) {}
+    long landMilliMu) {
+
+  GrainFarmUnit {
+    if (household == null) {
+      throw new IllegalArgumentException("GrainFarmUnit.household 不得为 null");
+    }
+    if (operator == null) {
+      throw new IllegalArgumentException("GrainFarmUnit.operator 不得为 null");
+    }
+    if (unitId == null) {
+      throw new IllegalArgumentException("GrainFarmUnit.unitId 不得为 null");
+    }
+    if (unitNode == null) {
+      throw new IllegalArgumentException("GrainFarmUnit.unitNode 不得为 null");
+    }
+    if (landMilliMu < 0L) {
+      throw new IllegalArgumentException("GrainFarmUnit.landMilliMu 不得为负: " + landMilliMu);
+    }
+  }
+}
 
 /**
  * ★★ <b>P5b2：一条真实初始雇工关系</b>（非 organizer 的 {@code hired_laborer} 参与项）。

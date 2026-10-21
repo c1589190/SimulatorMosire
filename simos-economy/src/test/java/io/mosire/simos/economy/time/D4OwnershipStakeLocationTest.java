@@ -160,7 +160,19 @@ class D4OwnershipStakeLocationTest {
 
   @Test
   void transferCommandRejectsRelocationByName() {
-    OwnershipStake source = stake(L0, AssetKind.LAND, 100L, 0L);
+    // ★ D-032 RA1b2b：LAND 不再允许出现在 EconomyData.assetShares（唯一权威是
+    //   landArableSupply/landHoldings）。本用例只验证“命令改地点 ⇒ 具名拒绝”，与资产种类无关 ⇒
+    //   改用普通非 LAND 资产（CATTLE）构造持久份额，判据强度不变。
+    OwnershipStake source =
+        new OwnershipStake(
+            OwnershipStake.idOf(FARM, AssetKind.CATTLE, OWNER, OWNER, AssetRightKind.OWNED, L0, 0L),
+            FARM,
+            AssetKind.CATTLE,
+            OWNER,
+            OWNER,
+            100L,
+            AssetRightKind.OWNED,
+            L0);
     EconomyData data =
         EconomyData.empty()
             .withMeta(

@@ -104,7 +104,9 @@ class D031P1NegativeSurfaceTest {
         //   ★★★ D-032 P4b1：35 → 36（末尾追加 productionWageAnchors）。
         //   ★★★ D-032 P4c3：36 → **34**（旧 productionWageDefaults/productionWagePostings 两张工资表已删；
         //   工资报价唯一权威 = U20 锚）。计数是"组件集没被悄悄塞回东西"的绊线；EconomyData 与 ChangeSet 必须同步。
-        .hasSize(34);
+        //   ★★★ D-032 L4：37 → **35**（landArableSupply + landHoldings 两个持久 LAND 组件已删除；
+        //   Map component.owner 是唯一权威，economy 只持有瞬态 LandComponentLedger）。
+        .hasSize(37);
 
     List<String> methods = new ArrayList<>();
     for (Method method : EconomyData.class.getMethods()) {

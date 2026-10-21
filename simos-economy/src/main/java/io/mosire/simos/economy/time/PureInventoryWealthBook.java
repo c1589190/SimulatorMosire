@@ -1,18 +1,15 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -36,12 +33,11 @@ import org.slf4j.Logger;
  *        valuationMicro <= 0 ⇒ 该币种不计入并 DEBUG 具名（不得 1:1 冒充）
  * 商品 = 逐商品 max(0, 余额 − 冻结) × 本区 MarketTable.priceOf ÷ 1000
  *        只算 MarketTable.hasPrice；未定价不计入并 DEBUG 具名
- * LAND = 逐块 quantityMilliMu × 土地所属市场区 MarketTable.landPrice ÷ 1000
+ * LAND = 逐条 LandHolding（owner=本户）quantityMilliMu × holding.hex 所属市场区 MarketTable.landPrice ÷ 1000
  *        landPrice empty ⇒ 不计入并 DEBUG；0 ⇒ 计入且价值 0
  * </pre>
  *
- * <p>★ <b>不扣债务</b>；只算 {@link io.mosire.simos.actor.api.asset.AssetKind#LAND} 这一档资产，工具/作坊/机器/船全部不计入
- * （它们不是本类读取的 {@code assetShares} 口径）。★ 输入只读：本类不改账户、不改产权、不写状态。
+ * <p>★ <b>不扣债务</b>；LAND 只读 {@code landHoldings}，工具/作坊/机器/船全部不计入。★ 输入只读：本类不改账户、不改产权、不写状态。
  *
  * <p>★ <b>快照固定</b>：M2 开始时算一次，逐户结果按 {@link HouseholdId#value()} 升序冻结；收款过程中不重排、不重算。 这是 P2e
  * 债权人序的唯一财富尺（纯库存财富降序 → 债权人 id → 债务 id）。
@@ -89,7 +85,7 @@ final class PureInventoryWealthBook {
    * @param households 活家户表（只读）
    * @param householdGoods 家户商品库存工作副本（只读）
    * @param householdMoney 家户货币工作副本（只读）
-   * @param assetShares 资产份额工作副本（只读；只取 LAND）
+   * @param landHoldings 标量 LAND 持有工作副本（只读；LAND 的唯一所有权来源）
    * @param markets 市场区价目表（只读）
    * @param topology 市场拓扑（可为 null = 没有市场区；土地/货币的区价随之为缺）
    * @param currencyValuation 本轮行情（不得为 null；没有行情给 {@link CurrencyValuation#none()}）
@@ -99,14 +95,14 @@ final class PureInventoryWealthBook {
       Map<HouseholdId, HouseholdEconomy> households,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<LandHoldingKey, LandHolding> landHoldings,
       Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       CurrencyValuation currencyValuation) {
     Objects.requireNonNull(households, "PureInventoryWealthBook.households 不得为 null");
     Objects.requireNonNull(householdGoods, "PureInventoryWealthBook.householdGoods 不得为 null");
     Objects.requireNonNull(householdMoney, "PureInventoryWealthBook.householdMoney 不得为 null");
-    Objects.requireNonNull(assetShares, "PureInventoryWealthBook.assetShares 不得为 null");
+    Objects.requireNonNull(landHoldings, "PureInventoryWealthBook.landHoldings 不得为 null");
     Objects.requireNonNull(markets, "PureInventoryWealthBook.markets 不得为 null");
     Objects.requireNonNull(
         currencyValuation, "PureInventoryWealthBook.currencyValuation 不得为 null（给 none()）");
@@ -114,7 +110,7 @@ final class PureInventoryWealthBook {
       throw new IllegalArgumentException("PureInventoryWealthBook.snapshot 的 day 不得为负: " + day);
     }
 
-    Map<ActorRef, List<OwnershipStake>> landByOwner = landByOwner(assetShares);
+    Map<HouseholdId, List<LandHolding>> landByOwner = landByOwner(landHoldings);
     List<HouseholdId> ordered = new ArrayList<>(households.keySet());
     ordered.sort(Comparator.comparing(HouseholdId::value));
 
@@ -205,25 +201,23 @@ final class PureInventoryWealthBook {
                 commodity.value());
       }
 
-      // ③ LAND：只算土地所属市场区当前地价；empty 不计，0 计入且价值 0。
-      List<OwnershipStake> lands =
-          landByOwner.getOrDefault(HouseholdActors.of(household), List.of());
-      for (OwnershipStake land : lands) {
-        MarketTable landMarket =
-            DebtSettlement.marketForHex(hexOf(land.location()), markets, topology);
+      // ③ LAND：逐条 landHoldings 按 holding.hex 所属市场区当前地价；empty 不计，0 计入且价值 0。
+      List<LandHolding> lands = landByOwner.getOrDefault(household, List.of());
+      for (LandHolding land : lands) {
+        MarketTable landMarket = DebtSettlement.marketForHex(land.hex(), markets, topology);
         if (landMarket == null || !landMarket.hasLandPrice()) {
-          unpricedLand.add("land:" + land.id().value());
+          unpricedLand.add("land:" + land.key());
           continue;
         }
         OptionalLong landPrice = landMarket.landPrice();
         if (landPrice.isEmpty()) {
-          unpricedLand.add("land:" + land.id().value());
+          unpricedLand.add("land:" + land.key());
           continue;
         }
         total =
             SaturatedArithmetic.add(
                 total,
-                milliValue(land.quantity(), landPrice.getAsLong()),
+                milliValue(land.quantityMilliMu(), landPrice.getAsLong()),
                 DEBT,
                 EconomyLogSource.ECONOMY_DEBT,
                 "pure-inventory-wealth-land",
@@ -232,7 +226,7 @@ final class PureInventoryWealthBook {
                 "household",
                 household.value(),
                 "land",
-                land.id().value());
+                land.key().toString());
       }
 
       wealth.put(household, total);
@@ -265,7 +259,7 @@ final class PureInventoryWealthBook {
       Map<HouseholdId, HouseholdEconomy> households,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<LandHoldingKey, LandHolding> landHoldings,
       Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       CurrencyValuation currencyValuation) {
@@ -275,25 +269,24 @@ final class PureInventoryWealthBook {
             households,
             householdGoods,
             householdMoney,
-            assetShares,
+            landHoldings,
             markets,
             topology,
             currencyValuation)
         .wealthOf(household);
   }
 
-  /** 家户 actor → 它拥有的 LAND 份额（按 AssetShareId.value 升序；只含 quantity > 0 的块）。 */
-  private static Map<ActorRef, List<OwnershipStake>> landByOwner(
-      Map<AssetShareId, OwnershipStake> assetShares) {
-    List<OwnershipStake> ordered = new ArrayList<>(assetShares.values());
-    ordered.sort(Comparator.comparing(share -> share.id().value()));
-    LinkedHashMap<ActorRef, List<OwnershipStake>> byOwner = new LinkedHashMap<>();
-    for (OwnershipStake share : ordered) {
-      if (share.asset() != io.mosire.simos.actor.api.asset.AssetKind.LAND
-          || share.quantity() <= 0L) {
+  /** 家户 → 它持有的标量 LAND 条（按 LandHoldingKey 自然序；只含 quantity > 0 的行）。 */
+  private static Map<HouseholdId, List<LandHolding>> landByOwner(
+      Map<LandHoldingKey, LandHolding> landHoldings) {
+    List<LandHolding> ordered = new ArrayList<>(landHoldings.values());
+    ordered.sort(Comparator.comparing(LandHolding::key));
+    LinkedHashMap<HouseholdId, List<LandHolding>> byOwner = new LinkedHashMap<>();
+    for (LandHolding holding : ordered) {
+      if (holding.quantityMilliMu() <= 0L) {
         continue;
       }
-      byOwner.computeIfAbsent(share.owner(), ignored -> new ArrayList<>()).add(share);
+      byOwner.computeIfAbsent(holding.owner(), ignored -> new ArrayList<>()).add(holding);
     }
     return byOwner;
   }
@@ -318,10 +311,5 @@ final class PureInventoryWealthBook {
       return null;
     }
     return topology.regionOf(hex).node().nodeId();
-  }
-
-  /** 资产份额的规范格键 → HexCoord（{@code OwnershipStake.location} 已是规范 {@code <q>_<r>}）。 */
-  private static HexCoord hexOf(ProductionLocation location) {
-    return HexCoord.parse(location.value());
   }
 }

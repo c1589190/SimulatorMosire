@@ -18,10 +18,13 @@ import io.mosire.simos.app.household.HouseholdSatietyBridge;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.household.MigrationSocialBridge;
 import io.mosire.simos.app.production.AppProductionLookups;
+import io.mosire.simos.app.world.ArableSupplySnapshots;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.culture.CultureSnapshot;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -36,6 +39,7 @@ import io.mosire.simos.economy.time.EconomyHouseholdGap;
 import io.mosire.simos.economy.time.EconomyParallelism;
 import io.mosire.simos.economy.time.EconomyPopulationTransfer;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.HouseholdMergeSettlement;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
@@ -143,6 +147,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   private static final String ECONOMY = "economy";
   private static final String SOCIAL = "social";
+
+  /** ★ RC4-A：家户文化 key 的唯一只读来源切片（缺失 ⇒ unavailable）。 */
+  private static final String CULTURE = "culture";
 
   /** ★★ D-031 P1：production 切片（按需产业定义的投影落点）。 */
   private static final String PRODUCTION = "production";
@@ -613,6 +620,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
       //   ★ Z7d-2：同一份拓扑也喂逃亡去向排序（ExpectedProfitBook 的入参）。
       MarketTopology flightTopology = MarketTopologyBook.from(state);
+      // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威 —— 从同一 Map 构造瞬态组件账本并显式注入。
+      var landLedger =
+          ArableSupplySnapshots.landLedgerFrom(state, "PopulationEconomyTimeParticipant");
       EconomyDayStepper stepper =
           new EconomyDayStepper(
               economy,
@@ -625,7 +635,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               // ★★★ D-032 D4-Ib2b：跨切片只读依赖由组合根唯一装配点显式注入；P4c3 起工资报价直接读锚表。
               productionLookups.assetOccupancy(),
               productionLookups.participantAttributes(),
-              AppProductionLookups.expectedRevision(state));
+              AppProductionLookups.expectedRevision(state),
+              cultureLookupOf(state),
+              landLedger);
       WorldTimeProposal proposal;
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
@@ -755,6 +767,50 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     currentRationGapHouseholds,
                     "householdsWithProductionCostGap",
                     currentProductionCostGapHouseholds));
+          }
+          // ── ★★★ RC4-D：S2 前置同 key 合户（必须在 S3/step 之前）────────────────────────────────
+          //   ① 经济腿已按 Social 人口投影完成结构/资产/LAND/债/钱货经验重键；
+          //   ② 本方法只返回人口 outbox，不直接写 Social；这里立即用同一个 MigrationSocialBridge 落 Social，
+          //      再按新 Social 回写经济行人口并刷新 composition/labor/naturalNeeds/生存投影；
+          //   ③ 因而随后 step 的 S3 只看到合并后的活户，source 仅保留 0 人口壳。
+          HouseholdMergeSettlement.MergeResult householdMerge = stepper.mergeSameKeyHouseholds(day);
+          if (!householdMerge.populationTransfers().isEmpty()) {
+            long socialPopulationBefore = totalSocialPopulation(currentSocial);
+            long mergedPopulation =
+                totalTransferredPopulation(householdMerge.populationTransfers());
+            currentSocial =
+                MigrationSocialBridge.apply(
+                    currentSocial, householdMerge.populationTransfers(), day);
+            stepper.applyHouseholdPopulationDeltas(
+                netPopulationDeltas(householdMerge.populationTransfers()));
+            stepper.updateComposition(compositionOf(currentSocial));
+            stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
+            dayNaturalNeeds = naturalNeedsOf(currentSocial, day);
+            stepper.updateNaturalNeeds(dayNaturalNeeds);
+            stepper.updateSurvivalSocialFacts(
+                SocialSurvivalFacts.forNextTick(currentSocial, day + 1L));
+            TIME.info(
+                LogEvent.of(
+                    "HOUSEHOLD_MERGE_BRIDGED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "mapId",
+                    mapId,
+                    "plans",
+                    householdMerge.plans(),
+                    "mergedHouseholds",
+                    householdMerge.mergedHouseholds(),
+                    "transfers",
+                    householdMerge.populationTransfers().size(),
+                    "mergedPopulation",
+                    mergedPopulation,
+                    "socialPopulationBefore",
+                    socialPopulationBefore,
+                    "socialPopulationAfter",
+                    totalSocialPopulation(currentSocial),
+                    "economyPopulationAfter",
+                    totalEconomyPopulation(stepper.householdEconomies())));
           }
           // ── ★★★ B1（D-032 §13.2 第 1 条① / §13.8 末段）：每 tick 恰开一次生产推进 ─────────────
           productionRuntime.beginTick(day);
@@ -1231,6 +1287,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   随月结块一并删除，P9 重新接线前必须先定周期边界（见报告）。
         }
         EconomyData currentEconomy = stepper.finish();
+        // ★★★ D-032 L4：轮末把最终瞬态聚合账本写回工作 Map，并在同一 revision 提交 MapChangeSet。
+        GameMap mapAfter =
+            map == null
+                ? null
+                : ArableSupplySnapshots.applyLedgerToMap(
+                    map, stepper.landLedger(), "PopulationEconomyTimeParticipant");
         long finalPopulation = 0L;
         for (HouseholdEconomy householdEconomy : currentEconomy.classes().values()) {
           finalPopulation += householdEconomy.population();
@@ -1278,6 +1340,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         moduleChanges.put(ECONOMY, EconomyChangeSet.between(economyBase, currentEconomy));
         moduleChanges.put(SOCIAL, SocialChangeSet.between(socialBase, currentSocial));
         moduleChanges.put(ACTOR, ActorChangeSet.between(actor, currentBooks));
+        if (mapAfter != null) {
+          writes.add(mapAddressRoot());
+          moduleChanges.put(MAP, io.mosire.simos.map.change.MapChangeSet.between(map, mapAfter));
+        }
         // ★★ D-031 P1 §9.1：本段按需创建（跑商/进入生产）的产业定义必须投影成 production 的 ChangeSet，
         //   与经济实例变更集在**同一次 Advance/同一条 revision**原子落账 —— 不能只活在 sheet overlay（否则
         //   finish/replay 丢定义）。定义寄存器归 production；本参与者只把候选态交给 production 的 ChangeSet。
@@ -1372,6 +1438,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       }
     }
     return Collections.unmodifiableSet(excluded);
+  }
+
+  /**
+   * ★★★ <b>D-032 RC4-A：从当刻 culture 切片取只读 key lookup</b>。
+   *
+   * <p>缺失切片 ⇒ {@link HouseholdCultureKeyLookup#unavailable()}（merge 计划仍可用显式 missing key）；切片在场但类型不对
+   * ⇒ 装配故障，直接抛 {@link IllegalStateException}，不得静默当空。本方法只读，不修改 culture 状态。
+   */
+  private static HouseholdCultureKeyLookup cultureLookupOf(SimulationState state) {
+    Optional<Snapshot> snapshot = state.module(CULTURE);
+    if (snapshot.isEmpty()) {
+      return HouseholdCultureKeyLookup.unavailable();
+    }
+    if (!(snapshot.get() instanceof CultureSnapshot cultureSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 culture 切片不是 CultureSnapshot: " + snapshot.get().getClass().getName());
+    }
+    return cultureSnapshot.state();
   }
 
   private static EconomyData economyOf(SimulationState state) {

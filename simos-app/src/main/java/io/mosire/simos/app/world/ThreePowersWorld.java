@@ -365,6 +365,15 @@ public final class ThreePowersWorld {
             new EconomySeedHandler(),
             new EconomyCodec(),
             economy.economyPayload());
+    // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威 —— 用同一份 Seed 的 landHoldings
+    //   在放入 SimulationState 前播种 arable owner 属性（与其它 seed 同一条创世 revision）。
+    state =
+        applyCommand(
+            state,
+            io.mosire.simos.map.spi.SeedArableOwnershipHandler.TYPE,
+            new io.mosire.simos.map.spi.SeedArableOwnershipHandler(),
+            new io.mosire.simos.map.codec.MapCodec(),
+            economy.landOwnershipSeedPayload());
     state =
         applyCommand(
             state,
@@ -587,7 +596,7 @@ public final class ThreePowersWorld {
     for (HexCoord hex : HEXES) {
       // ★ 创世初始化（2026-10-12 批次 2）：按地形给"乡村面积"固定初值（该地形的默认可用面积）；
       //   城市面积不给初值，留给 map.SetHexArea 编辑。默认值为 0 的地形不写显式项（读出来同为 0）。
-      hexes.put(hex, HexAreas.initialCell(HEX_HEIGHT, terrainByHex.get(hex)));
+      hexes.put(hex, HexAreas.initialCell(hex, HEX_HEIGHT, terrainByHex.get(hex)));
     }
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     TerrainType plains = TerrainCatalog.of(PLAINS);

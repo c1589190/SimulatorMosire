@@ -75,16 +75,31 @@ class Z7RemittanceE2ETest {
                       && line.contains("payee=gov-central")
                       && paidGrainOf(line) > 0L);
 
-      assertThat(log.messages())
-          .as("中央国库被清空时 day1..29 工资付不出（负向前提）")
-          .anyMatch(
+      // C9 后单区市场/工资链每日都推进，原「day1..29 工资必然欠付」前提不再成立；
+      // 保留本用例真正要钉的因果：day30 的 remittance 事件必须排在同 tick 中央工资事件之前。
+      int day30Remittance =
+          firstIndex(
+              log.messages(),
+              line ->
+                  line.contains("event=GOV_REMITTANCE_DAY")
+                      && line.contains("day=30")
+                      && line.contains("payer=gov-province")
+                      && line.contains("payee=gov-central"));
+      int day30CentralSalary =
+          firstIndex(
+              log.messages(),
               line ->
                   line.contains("event=GOV_ADMIN_SALARY_DAY")
-                      && line.contains("unit=gov-central")
-                      && shortfallGrainOf(line) > 0L);
+                      && line.contains("day=30")
+                      && line.contains("unit=gov-central"));
+      assertThat(day30Remittance).as("day30 必须真有省→中央上缴事件").isNotNegative();
+      assertThat(day30CentralSalary).as("day30 必须有中央工资事件").isNotNegative();
+      assertThat(day30Remittance)
+          .as("remittance 必须先于同 tick 的中央工资（预算规划读的是到账后余额）")
+          .isLessThan(day30CentralSalary);
 
       assertThat(log.messages())
-          .as("day30 上缴到账后同一 tick 中央工资足额（remittance 在预算规划之前）")
+          .as("day30 上缴到账后同一 tick 中央工资足额")
           .anyMatch(
               line ->
                   line.contains("event=GOV_ADMIN_SALARY_DAY")
@@ -208,6 +223,16 @@ class Z7RemittanceE2ETest {
         "actor",
         new ActorSnapshot(
             state.meta().ref(), state.meta().timestamp(), actor.withInventories(inventories)));
+  }
+
+  private static int firstIndex(
+      java.util.List<String> lines, java.util.function.Predicate<String> predicate) {
+    for (int i = 0; i < lines.size(); i++) {
+      if (predicate.test(lines.get(i))) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   private static long paidGrainOf(String line) {

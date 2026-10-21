@@ -7,7 +7,6 @@ import static io.mosire.simos.economy.time.ModeMigrationAssetPolicy.reserveIdleA
 import static io.mosire.simos.economy.time.ModeMigrationAssetPolicy.supportedTierIndex;
 import static io.mosire.simos.economy.time.ModeMigrationAssetPolicy.tierPosition;
 import static io.mosire.simos.economy.time.ModeMigrationPolicy.A_RULE_TRANSFER_SPEED_PER_MILLE;
-import static io.mosire.simos.economy.time.ModeMigrationPolicy.MAX_HOUSEHOLD_POPULATION;
 import static io.mosire.simos.economy.time.ModeMigrationRules.canonicalKey;
 import static io.mosire.simos.economy.time.ModeMigrationRules.hasIndustryTemplate;
 import static io.mosire.simos.economy.time.ModeMigrationRules.hasMerchantCapacityAt;
@@ -308,11 +307,9 @@ final class ModeMigrationCandidateBook {
             continue;
           }
         }
-        long room =
-            existing == null
-                ? 0L
-                : Math.max(
-                    0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(existing).population());
+        // ★ R4：已有同 key 目标户不再受旧单户人口上限约束 —— 视为可接纳任意人口；
+        //   新建目标仍由 perMoveNewRoom 的真实资产/劳动可行性决定。
+        long room = existing == null ? 0L : Long.MAX_VALUE;
         targets.add(
             new Target(
                 hex,
@@ -389,11 +386,8 @@ final class ModeMigrationCandidateBook {
       HouseholdId existing =
           bestExistingTarget(
               source, hex, displaced, modeByHousehold, positions, householdEconomies, true);
-      long room =
-          existing == null
-              ? 0L
-              : Math.max(
-                  0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(existing).population());
+      // ★ R4：已有 DISPLACED 目标户无人口上限；新建目标容量只是占位（真实承载力仍由 allocate 决定）。
+      long room = existing == null ? 0L : Long.MAX_VALUE;
       if (existing == null) {
         targets.add(
             new Target(
@@ -403,7 +397,7 @@ final class ModeMigrationCandidateBook {
                 0L,
                 distance,
                 true,
-                MAX_HOUSEHOLD_POPULATION,
+                Long.MAX_VALUE,
                 canonicalKey(hex, displaced.id()),
                 null,
                 0L,
@@ -436,7 +430,7 @@ final class ModeMigrationCandidateBook {
   }
 
   /**
-   * 分配可迁人口：按目标排序贪心填充（已有户剩余容量 → 同目标可新建容量 → 下一个目标）。
+   * 分配可迁人口：按目标排序贪心填充（已有户无人口上限 → 同目标可新建容量 → 下一个目标）。
    *
    * <p>★ 新建目标的资产可行性在这里用"本次实际要建的人口"复核（不足 ⇒ 该目标的新建容量记 0）。溢出部分留在源户， 不丢人、也不凭空造承载。★★ P10.6：预留账本由调用方（同一
    * plan 顶层）传入，两遍循环共用、不重置。
@@ -512,7 +506,7 @@ final class ModeMigrationCandidateBook {
   }
 
   /**
-   * 往一个目标里放人口（已有户剩余容量 → 该 (hex, mode) 至多新建一户）；返回实际放入人口。
+   * 往一个目标里放人口（已有户无人口上限 → 该 (hex, mode) 至多新建一户）；返回实际放入人口。
    *
    * <p>★★ P10.6：新建部分的"资产可行性"是<b>检查并预留</b>（{@code reserveIdleAssetsFor}）；预留成功才产出 MoveDraft， 账本由同一
    * {@code plan()} 的所有源户/所有目标共享。
@@ -558,7 +552,8 @@ final class ModeMigrationCandidateBook {
     if (placed >= allow || !target.newFeasible()) {
       return placed;
     }
-    long want = Math.min(allow - placed, MAX_HOUSEHOLD_POPULATION);
+    // ★ R4：新建目标不再按旧单户上限夹紧；want = 本轮剩余可迁人口，承载由 perMoveNewRoom 复核。
+    long want = allow - placed;
     long room =
         perMoveNewRoom(
             target.hex(),
@@ -671,7 +666,11 @@ final class ModeMigrationCandidateBook {
     return 0L;
   }
 
-  /** 同 (hex, mode) 的已有目标家户：剩余容量最大者，tie 用 id 升序（确定性）。 */
+  /**
+   * 同 (hex, mode) 的已有目标家户：★ R4 起**不再按剩余容量选**（不存在单户人口上限），改为稳定排序 （HouseholdId 升序）取第一个同 key 目标。
+   *
+   * <p>★ 返回非 null 只表示"存在可并入的同 key 户"；"能装多少人"由调用方按本轮可迁人口直接放入，不再夹紧。
+   */
   static HouseholdId bestExistingTarget(
       HouseholdId source,
       HexCoord hex,
@@ -689,8 +688,7 @@ final class ModeMigrationCandidateBook {
     for (ProductionRole position : producingPositions) {
       positionIds.add(position.id());
     }
-    HouseholdId best = null;
-    long bestRoom = 0L;
+    // sortedHouseholds = HouseholdId.value 升序；第一个命中的同 key 户就是稳定选择。
     for (HouseholdId household : sortedHouseholds(householdEconomies)) {
       if (household.equals(source)) {
         continue;
@@ -702,23 +700,15 @@ final class ModeMigrationCandidateBook {
           || !positionIds.contains(candidate.positionId())) {
         continue;
       }
-      long room =
-          Math.max(0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(household).population());
-      if (room > bestRoom
-          || (room == bestRoom
-              && room > 0L
-              && (best == null || household.value().compareTo(best.value()) < 0))) {
-        best = household;
-        bestRoom = room;
-      }
+      return household;
     }
-    return best;
+    return null;
   }
 
   // ── 预期收益（A 规则，D-024：与候选评估共用同一个计算器）──────────────────────────────────
 
   /**
-   * 目标候选（existingRoom 为已有户剩余容量；newFeasible 为同 (hex, mode) 是否能新建）。
+   * 目标候选（★ R4 起 existingRoom 对已有户恒为 Long.MAX_VALUE = 无人口上限；newFeasible 为同 (hex, mode) 是否能新建）。
    *
    * <p>★★ <b>M-D 追加 {@code positionId} / {@code yieldPerLaborScaled}</b>：目标那一项的**位置 id**（= 该 (hex,
    * mode) 的 {@code ExpectedProfitBook.Prospect.positionId()}，排序表第 1

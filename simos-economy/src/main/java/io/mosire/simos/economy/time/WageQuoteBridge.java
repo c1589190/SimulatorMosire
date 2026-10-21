@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MarketZoneBook;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.WageAnchorKey;
@@ -32,7 +33,7 @@ import org.slf4j.Logger;
  * ★★★ <b>D-032 P3e：工资报价/招工目标的唯一职责类</b>（自 {@link ProductionPlanBridge} 机械抽取）。
  *
  * <p>本类只回答三类只读问题：① 某格属于哪个市场区、工资锚键是什么；② 本 tick 的工资报价（锚唯一权威，缺锚不按 0）； ③ 某 {@code (unit, role)}
- * 的招工目标（WageDemand → 实际计划 → 工程默认）。它不写任何锚、不支付工资、不读旧工资表。
+ * 的招工目标（WageDemand 快照 → 本 unit 当前实际劳动需求）。它不写任何锚、不支付工资、不读旧工资表。
  */
 final class WageQuoteBridge {
 
@@ -238,8 +239,13 @@ final class WageQuoteBridge {
   }
 
   /**
-   * ★★ <b>本 unit 的 MONEY_WAGE 逐角色招工目标</b>：优先本 tick 的 {@link WageDemand}（按 role 聚合），其次同一 target
-   * 公式的工程默认。不得回读旧工资表。
+   * ★★★ <b>RC8b：本 unit 的 MONEY_WAGE 逐角色招工目标</b>。
+   *
+   * <ul>
+   *   <li>M6 传本 tick 的 {@link WageDemand} 快照 ⇒ 按 role 聚合（同一 tick 只读）；
+   *   <li>M3 第一遍/无快照 ⇒ 由 {@link ProductionPlanBridge#hiredLaborDemandByRole} 从本 unit 实际劳动需求派生 （farm
+   *       产能/投入通道 − organizer 当前自耕劳动），<b>不</b>回退标准角色固定值；
+   * </ul>
    *
    * <p>只返回正目标（0 = 无招工需求，不进 probe 的边界表）。
    */
@@ -247,17 +253,26 @@ final class WageQuoteBridge {
       SettlementDayContext ctx,
       ProductionProcess unit,
       IndustryDefinitionView industry,
+      ProductionRoster roster,
       List<WageDemand> demands) {
     Objects.requireNonNull(ctx, "ctx");
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(industry, "industry");
     List<WageDemand> safeDemands = demands == null ? List.of() : demands;
+    if (safeDemands.isEmpty()) {
+      return ProductionPlanBridge.hiredLaborDemandByRole(ctx, unit, industry, roster);
+    }
     Map<ProductionRoleId, Long> targets = new LinkedHashMap<>();
     for (ProductionRoleDefinition role : industry.roles()) {
       if (!(role.payment() instanceof RolePayment.MoneyWage)) {
         continue;
       }
-      long target = wageTargetOf(ctx, unit, industry, role.id(), safeDemands);
+      long target = 0L;
+      for (WageDemand demand : safeDemands) {
+        if (demand.unit().equals(unit.id()) && demand.role().equals(role.id())) {
+          target = Math.addExact(target, demand.targetLaborMilliPerDay());
+        }
+      }
       if (target > 0L) {
         targets.put(role.id(), target);
       }
@@ -298,8 +313,8 @@ final class WageQuoteBridge {
    *
    * <ul>
    *   <li>只对入选（{@code chosenFacts}）且角色为 {@code MONEY_WAGE} 的位置生成；
-   *   <li>target 走 {@link #wageTargetLaborMilliPerDay}（hired &gt; 0 优先，否则标准劳动/周期天数的工程默认）， <b>target
-   *       = 0 不生成</b>；
+   *   <li>target 唯一来源 = 本 unit 当前实际劳动需求 − organizer 当前自耕劳动（{@link
+   *       ProductionPlanBridge#hiredLaborDemandByRole}），<b>target = 0 不生成</b>；
    *   <li>同 {@code (unit, role)} 至多一条（不重复累加；跨 unit 的锚级聚合是 P4c2 的事）；
    *   <li>marketZone 定不出 / 币种定不出 ⇒ 具名 {@code D032_P4_ANCHOR_MISSING} 并跳过该需求（不伪造区/币）。
    * </ul>
@@ -326,22 +341,6 @@ final class WageQuoteBridge {
         continue;
       }
       ProductionProcess unit = ctx.units.get(position.unit());
-      // ★ P3e：target 优先 roster 实际计划雇工（与 organizer 位置 hiredLaborMilliPerDay 同一事实源）；
-      //   只有确实没有计划雇工时，wageTargetLaborMilliPerDay 才回退标准劳动/周期天数。
-      Map<ProductionRoleId, Long> actualHiredByRole =
-          unit == null ? Map.of() : ProductionPlanBridge.hiredWageLaborByRole(ctx, unit, industry);
-      long target =
-          wageTargetLaborMilliPerDay(
-              actualHiredByRole.getOrDefault(role.id(), position.hiredLaborMilliPerDay()),
-              role,
-              industry.cycleDays());
-      if (target <= 0L) {
-        continue; // 没有招工需求 ⇒ 不生成 WageDemand（不记 0 需求）
-      }
-      String slot = position.unit().value() + "\u0000" + position.role().value();
-      if (bySlot.containsKey(slot)) {
-        continue; // 同 unit/role 不重复累加
-      }
       if (unit == null) {
         logAnchorEvent(
             ANCHOR_MISSING,
@@ -354,6 +353,23 @@ final class WageQuoteBridge {
             null,
             "wage-demand-unit-missing");
         continue;
+      }
+      // ★★★ RC8b：target 的唯一来源 = 本 unit 当前招工需求（farm 实际劳动需求 − organizer 当前自耕劳动）。
+      //   不再用 roster plannedLabor 的历史快照，也不再回退 standardLaborMilliPerCycle 的固定角色值。
+      Map<ProductionRoleId, Long> actualHiredByRole =
+          ProductionPlanBridge.hiredLaborDemandByRole(
+              ctx,
+              unit,
+              industry,
+              ProductionPlanBridge.effectiveRoster(
+                  ctx, unit, industry, ctx.session.sheet().productionRostersOrBase()));
+      long target = actualHiredByRole.getOrDefault(role.id(), 0L);
+      if (target <= 0L) {
+        continue; // 没有招工需求 ⇒ 不生成 WageDemand（不记 0 需求）
+      }
+      String slot = position.unit().value() + "\u0000" + position.role().value();
+      if (bySlot.containsKey(slot)) {
+        continue; // 同 unit/role 不重复累加
       }
       Optional<MarketZoneId> zone = marketZoneOf(ctx.dayView, unit.location());
       if (zone.isEmpty()) {

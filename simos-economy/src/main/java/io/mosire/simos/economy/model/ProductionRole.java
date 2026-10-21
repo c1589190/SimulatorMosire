@@ -109,7 +109,7 @@ public record ProductionRole(
     ruleExtensions = Collections.unmodifiableMap(copy); // ★ 冻在赋值处（SpotBugs 只认它看得见的包装）
   }
 
-  /** 六参便利构造：没有额外规则时用空扩展表（本批所有调用点都走这里）。 */
+  /** 六参便利构造：额外规则缺省（旧构造点的编译兼容面）。 */
   public ProductionRole(
       ClassPositionId id,
       ProductionModeId modeId,

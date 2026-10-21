@@ -112,7 +112,7 @@ final class SettlementDayExpectedProductionPipeline {
             ctx.householdEconomies,
             ctx.householdGoods,
             ctx.householdMoney,
-            ctx.assetShares,
+            ctx.session.sheet().landHoldingsOrBase(),
             ctx.markets,
             ctx.topology,
             SettlementDayDebtPipeline.currencyValuationAtOpen(ctx));

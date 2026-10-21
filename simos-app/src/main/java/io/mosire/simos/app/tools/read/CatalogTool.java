@@ -191,6 +191,11 @@ public final class CatalogTool implements SimosTool {
                   + " value(整数毫亩：set ⇒ ≥0 的绝对面积；add ⇒ ±增量，基数是当前读出值、结果不得为负)。"
                   + "一次改一格一个字段；★ 没赋过值的字段读回时是该地形的默认可用面积（以 rural 呈现，"
                   + "读面 areaSources 标 explicit / terrain-default）；★ GM-only：决策人不能嵌入令）"),
+          Map.entry(
+              "map.SeedArableOwnership",
+              "entries[{hex{q,r}, owners[{owner, quantityMilliMu}]}...]（GM-only 世界构造命令："
+                  + "逐 hex 把 owner→数量写进 Map 的 arable component owner 属性；未知/重复 hex、空白 owner、"
+                  + "非正数量、同 hex 重复 owner、ΣownerQuantity != Map 该 hex arable 总量 ⇒ 具名拒绝）"),
           Map.entry("map.CreateRegion", "regionId, name, hexes[{q,r}...], meta?"),
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),
           Map.entry(

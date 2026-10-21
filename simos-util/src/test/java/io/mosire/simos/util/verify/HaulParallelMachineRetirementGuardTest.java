@@ -64,6 +64,13 @@ class HaulParallelMachineRetirementGuardTest {
   private static final String MARKET_SETTLEMENT =
       "simos-economy/src/main/java/io/mosire/simos/economy/time/MarketSettlement.java";
 
+  /**
+   * D-032 C7b2 后，活动运输计划路径若出现旧 CARRIER_FEE route 会在 MarketTradeExecutor 具名 fail-closed；该文件因此允许出现
+   * CARRIER_FEE 字符串（诊断/旧死路径），但不得再铸该理由码。
+   */
+  private static final String MARKET_TRADE_EXECUTOR =
+      "simos-economy/src/main/java/io/mosire/simos/economy/time/MarketTradeExecutor.java";
+
   private static final String ENTERPRISE_PROFIT_BOOK =
       "simos-economy/src/main/java/io/mosire/simos/economy/time/EnterpriseProfitBook.java";
 
@@ -104,8 +111,17 @@ class HaulParallelMachineRetirementGuardTest {
   void freightIsMintedThroughOneMutuallyExclusiveLeg() {
     Map<String, List<String>> hits = codeLinesWith(CARRIER_FEE);
     assertThat(hits.keySet())
-        .as("★ 只许这三处提到 CARRIER_FEE：理由码声明 + 标准利润只读归集 + 市场结算")
-        .containsExactlyInAnyOrder(TRANSFER_REASON, ENTERPRISE_PROFIT_BOOK, MARKET_SETTLEMENT);
+        .as("★ CARRIER_FEE 只许出现在理由码声明、标准利润只读归集、市场结算与 C7b2 fail-closed 诊断面")
+        .containsExactlyInAnyOrder(
+            TRANSFER_REASON, ENTERPRISE_PROFIT_BOOK, MARKET_SETTLEMENT, MARKET_TRADE_EXECUTOR);
+
+    assertThat(hits.get(MARKET_TRADE_EXECUTOR))
+        .as("★ C7b2 活动运输计划路径不得再铸 CARRIER_FEE（只允许字符串诊断/旧死路径）")
+        .allSatisfy(
+            line ->
+                assertThat(line)
+                    .as("MarketTradeExecutor 出现新的 CARRIER_FEE 理由码铸腿：%s", line)
+                    .doesNotContain("TransferReason." + CARRIER_FEE));
 
     List<String> settlementLines = hits.get(MARKET_SETTLEMENT);
     List<String> minting =

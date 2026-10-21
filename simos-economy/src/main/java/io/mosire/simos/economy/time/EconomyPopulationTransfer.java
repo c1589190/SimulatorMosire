@@ -4,6 +4,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ <b>P0（2026-10-10）：经济腿的一笔迁移人口事实（瞬态 outbox 条目）</b>——{@link ModeMigrationSettlement} 在每笔 {@code
@@ -16,7 +17,7 @@ import java.util.Objects;
  *     target,       // 目标经济行（已有或本批新建）；非 null、不得 == source
  *     population,   // 本次搬的人数；必须 > 0
  *     targetHex,    // 目标经济视图所在格；非 null（Social 侧 CREATE_HOUSEHOLD 的位置）
- *     targetMode,   // 目标 mode；非 null
+ *     targetMode,   // 目标 mode；Optional.empty() = 目标壳当前无 mode/position
  *     newTarget,    // true = 本批新建的经济行（Social 侧需要 CREATE_HOUSEHOLD）
  *     reason)       // 迁移原因；非 null（进 Social 工单审计）
  * </pre>
@@ -32,7 +33,7 @@ import java.util.Objects;
  * @param target 目标家户稳定 id；非 null 且不得等于 {@code source}
  * @param population 本次迁移人数；必须 &gt; 0
  * @param targetHex 目标经济视图所在格；非 null
- * @param targetMode 目标 mode；非 null
+ * @param targetMode 目标 mode；空表示目标壳当前无 mode/position（合法状态，不用占位 mode）
  * @param newTarget 本批是否新建了目标经济行（Social 侧据此决定是否 CREATE_HOUSEHOLD）
  * @param reason 迁移原因；非 null
  */
@@ -41,7 +42,7 @@ public record EconomyPopulationTransfer(
     HouseholdId target,
     long population,
     HexCoord targetHex,
-    ProductionModeId targetMode,
+    Optional<ProductionModeId> targetMode,
     boolean newTarget,
     String reason) {
 
@@ -49,7 +50,7 @@ public record EconomyPopulationTransfer(
     Objects.requireNonNull(source, "source");
     Objects.requireNonNull(target, "target");
     Objects.requireNonNull(targetHex, "targetHex");
-    Objects.requireNonNull(targetMode, "targetMode");
+    Objects.requireNonNull(targetMode, "targetMode（无 mode 用 Optional.empty()，不得传 null）");
     Objects.requireNonNull(reason, "reason");
     if (source.equals(target)) {
       throw new IllegalArgumentException("迁移 outbox 的 source 不得 == target: " + source);

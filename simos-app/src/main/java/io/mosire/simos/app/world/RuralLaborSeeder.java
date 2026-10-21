@@ -52,27 +52,50 @@ class RuralLaborSeeder extends WorldBalanceSeeder {
    * 而"人有多少劳动"这件事只能从人口推；创世一次算好、落成配额，正是 R1 那条"app 一次算出、同一份喂两条命令"的接缝的延续。
    */
   static long industryDailyLabor(List<PopulationGroup> pool) {
+    if (pool.isEmpty()) {
+      return 0L;
+    }
+    ResidenceKind residence = ResidenceKind.ofLot(pool.get(0).id());
     return industryDailyLabor(
-        splitByShares(populationOf(pool), CLASS_SHARE_PER_MILLE),
+        splitByShares(populationOf(pool), classSharesOf(residence)),
         laborMilli(pool),
-        populationOf(pool));
+        populationOf(pool),
+        classLaborOf(residence));
   }
 
   /**
    * 同上，但**按"已切好的阶层人数 + 池毛劳动 + 池人数"**给（不读批次）—— 服务**手搭的夹具** （{@code EconomyTestWorld} 那类没有 {@link
    * PopulationGroup} 的世界：它用 {@link #laborMilli(long)} 的窄口径造行）。
    *
-   * <p>★ 与 {@link #industryDailyLabor(List)} **是同一个算式**（后者只是先切人、再转调本方法）⇒
+   * <p>★ 旧三参重载保留给**城市/手搭夹具**（阶层表 = 旧 {@link #CLASS_LABOR_PER_MILLE}）。
+   *
+   * <p>★ 与 {@link #industryDailyLabor(List)} **是同一个算式**（后者只是先按居住类型切人、再转调本方法）⇒
    * "真档的配额之和"与"手搭世界的配额之和"不可能漂开。
    */
   static long industryDailyLabor(long[] people, long poolLabor, long poolCount) {
+    return industryDailyLabor(people, poolLabor, poolCount, CLASS_LABOR_PER_MILLE);
+  }
+
+  /** 同上的**显式阶层劳动率表**重载（农村二档 / 城市四档由调用方给）。 */
+  static long industryDailyLabor(
+      long[] people, long poolLabor, long poolCount, int[] laborPerMille) {
     long total = 0L;
-    for (int i = 0; i < CLASS_IDS.length; i++) {
+    int slots = Math.min(people.length, laborPerMille.length);
+    for (int i = 0; i < slots; i++) {
       // ★ M1.8：按参与率折算的唯一算法在 HouseholdEconomy（本处与结算/读口调的是同一个函数）—— 这里不再自己写
       //   `rowLabor * CLASS_LABOR_PER_MILLE / 1000`（公式同值，但两处写法就是两份会漂开的真相）。
       total +=
           HouseholdEconomy.participationAdjustedLaborMilli(
-              rowLaborMilli(people[i], poolLabor, poolCount), CLASS_LABOR_PER_MILLE[i]);
+              rowLaborMilli(people[i], poolLabor, poolCount), laborPerMille[i]);
+    }
+    return total;
+  }
+
+  /** 一个池里各批次**按居住类型阶层参与率折扣后的可用劳动**之和（千分劳动/日）。 */
+  static long availableLaborMilli(List<PopulationGroup> pool) {
+    long total = 0L;
+    for (PopulationGroup group : pool) {
+      total = Math.addExact(total, participationAdjustedLaborMilli(group));
     }
     return total;
   }
@@ -95,8 +118,9 @@ class RuralLaborSeeder extends WorldBalanceSeeder {
    * 状态里仍是毛额，折扣发生在"预算/权重"这一使用点上。{@code EconomyData} 的构造期守卫因此仍以毛额为更宽的一道网（见 {@link #laborBudget}）。
    */
   static long participationAdjustedLaborMilli(PopulationGroup group) {
+    ResidenceKind residence = ResidenceKind.ofLot(group.id());
     return HouseholdEconomy.participationAdjustedLaborMilli(
-        grossLaborMilli(group), CLASS_WEIGHTED_LABOR_PER_MILLE);
+        grossLaborMilli(group), classWeightedLaborOf(residence));
   }
 
   /**
@@ -410,6 +434,8 @@ class RuralLaborSeeder extends WorldBalanceSeeder {
     }
     long[] shares = splitProportional(total, weightArray); // Σ shares == total（最大余数法，一个人不丢）
     ResidenceKind residence = ResidenceKind.ofLot(pool.get(0).id());
+    String[] classIds = classIdsOf(residence);
+    int[] classShares = classSharesOf(residence);
     for (int i = 0; i < workers.size(); i++) {
       PopulationGroup group = workers.get(i);
       // ★★ 预算约束（见方法注释）：份额超过该批次**剩下的**可支配劳动 ⇒ 压到上限，多出来的留在预算里。
@@ -422,33 +448,34 @@ class RuralLaborSeeder extends WorldBalanceSeeder {
       if (slot >= 0) {
         // ★★ P2-A：批次按 (居住 × 阶层) 分组 ⇒ 这份劳动整份归它自己的家户（不再按阶层比例拆给四个户）。
         HouseholdId household =
-            HouseholdIds.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[slot]));
+            HouseholdIds.ofSeed(hex, residence, new SocialClassId(classIds[slot]));
         allocations.add(allocationNode(unitId, operator, group, household, share));
         continue;
       }
-      // ★ 旧形状夹具（批次 cohort 段不是 s<slot>-<n>）：退回"按阶层比例拆到四个家户"的旧口径。
-      long[] byHousehold = splitByShares(share, CLASS_SHARE_PER_MILLE);
-      for (int stratum = 0; stratum < CLASS_IDS.length; stratum++) {
+      // ★ 旧形状夹具（批次 cohort 段不是 s<slot>-<n>）：退回"按**该居住类型的**阶层比例拆家户"的旧口径。
+      long[] byHousehold = splitByShares(share, classShares);
+      for (int stratum = 0; stratum < classIds.length; stratum++) {
         if (byHousehold[stratum] <= 0L) {
           continue;
         }
         HouseholdId household =
-            HouseholdIds.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[stratum]));
+            HouseholdIds.ofSeed(hex, residence, new SocialClassId(classIds[stratum]));
         allocations.add(allocationNode(unitId, operator, group, household, byHousehold[stratum]));
       }
     }
   }
 
-  /** 批次的阶层槽位（`s<slot>-<age>` 形状）；旧形状/流民批次 ⇒ -1。 */
+  /** 批次的阶层槽位（`s<slot>-<age>` 形状，上界按**居住类型**的阶层表）；旧形状/流民批次 ⇒ -1。 */
   static int stratumSlotOfLot(PopulationGroup group) {
     String tag = PopulationLots.cohortOf(group.id());
     int dash = tag.indexOf('-');
     if (dash <= 1 || tag.charAt(0) != 's') {
       return -1;
     }
+    int slotCount = classIdsOf(ResidenceKind.ofLot(group.id())).length;
     try {
       int slot = Integer.parseInt(tag.substring(1, dash));
-      return slot >= 0 && slot < CLASS_IDS.length ? slot : -1;
+      return slot >= 0 && slot < slotCount ? slot : -1;
     } catch (NumberFormatException e) {
       return -1;
     }

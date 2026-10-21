@@ -484,6 +484,23 @@ class R2SharedAssetScopeTest {
         ProductionLocation.parse(HEX_KEY));
   }
 
+  /**
+   * ★ D-032 RA1b2b：持久状态只保留非 LAND 份额；LAND 由 landArableSupply/landHoldings 唯一权威持有。
+   *
+   * <p>本文件的 {@code shares}（含 LAND）继续作为 D4 瞬态投影的显式入参传给 {@code SettlementIndex}/{@code
+   * assetOccupancyBudget}，断言强度不变。
+   */
+  private static Map<AssetShareId, OwnershipStake> persistentShares(
+      Map<AssetShareId, OwnershipStake> shares) {
+    Map<AssetShareId, OwnershipStake> kept = new LinkedHashMap<>();
+    for (Map.Entry<AssetShareId, OwnershipStake> entry : shares.entrySet()) {
+      if (entry.getValue().asset() != AssetKind.LAND) {
+        kept.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return kept;
+  }
+
   private static Map<ProductionUnitId, ProductionProcess> orderedUnits(ProductionProcess... units) {
     Map<ProductionUnitId, ProductionProcess> ordered = new LinkedHashMap<>();
     for (ProductionProcess unit : units) {
@@ -691,7 +708,9 @@ class R2SharedAssetScopeTest {
                         0L,
                         0L,
                         "r2-shared")))
-            .withOwnershipStakes(shares)
+            // ★ D-032 RA1b2b：持久状态不得含 LAND 份额；本夹具的 `shares`（含 LAND）只作为
+            //   SettlementIndex/assetOccupancyBudget 的瞬态 D4 投影入参显式传递，不进 EconomyData。
+            .withOwnershipStakes(persistentShares(shares))
             .withMarketTables(marketTables);
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(
@@ -754,20 +773,28 @@ class R2SharedAssetScopeTest {
             Optional.empty(),
             2L,
             0L,
-            Map.of(AssetKind.LAND, 1_000L),
+            // ★ D-032 RA1b2b/RA5a：LAND 已改为标量唯一权威，且其 D4 授权是**瞬态投影**（写回时被过滤）。
+            //   本用例要观察"共享资产 scope 的 grant 逐值落盘 + 不重复授予"，故改用非 LAND 的持久资产
+            //   WORKSHOP —— 同一套 D4 共享逻辑，但授权会真实进 assetOccupancies；LAND 版本由
+            //   LandProductionProjection 的专项测试覆盖。
+            Map.of(AssetKind.WORKSHOP, 1_000L),
             Map.of(),
             0L,
             1_000L,
             Map.of(GRAIN, 5L),
-            Map.of(AssetKind.LAND, Map.of(GRAIN, 1_000L)),
+            Map.of(),
             List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 1_000)),
             new AllocationRule.Split(1_000, 0),
             MoneyOutput.NONE,
+            // ★ 测试夹具修正（D-032 RA5a）：`growthFormula` 是 ExperienceTrack.masteryFormula
+            //   （输入名 = experience），不能同时当效率公式用 —— ProductionExperienceUse 的效率公式输入
+            //   是 primary_mastery/shared_mastery/primary_experience。本用例只测 D4 分配，日 1 无产出/无
+            //   经验增长 ⇒ 效率用中性 1000‰（NEUTRAL_PER_MILLE）；断言强度不受影响。
             new io.mosire.simos.production.contract.ProductionExperienceUse(
                 Optional.of(track),
                 Optional.empty(),
                 io.mosire.simos.production.contract.ProductionEffectScope.TOTAL,
-                growthFormula,
+                io.mosire.simos.production.contract.ExpressionDefinition.NEUTRAL_PER_MILLE,
                 0L),
             List.of(),
             Set.of(AssetRightKind.OWNED));
@@ -793,7 +820,23 @@ class R2SharedAssetScopeTest {
             0L,
             Map.of(),
             Map.of());
-    OwnershipStake land = share(FARM, OPERATOR_A, 1_000L);
+    OwnershipStake workshop =
+        new OwnershipStake(
+            OwnershipStake.idOf(
+                FARM,
+                AssetKind.WORKSHOP,
+                OPERATOR_A,
+                OPERATOR_A,
+                AssetRightKind.OWNED,
+                ProductionLocation.parse(HEX_KEY),
+                0L),
+            FARM,
+            AssetKind.WORKSHOP,
+            OPERATOR_A,
+            OPERATOR_A,
+            1_000L,
+            AssetRightKind.OWNED,
+            ProductionLocation.parse(HEX_KEY));
     HouseholdEconomy row =
         new HouseholdEconomy(
             HOUSEHOLD,
@@ -845,7 +888,7 @@ class R2SharedAssetScopeTest {
                         io.mosire.simos.economy.model.EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
                         Optional.empty())))
             .withHouseholdEconomies(Map.of(HOUSEHOLD, row))
-            .withOwnershipStakes(Map.of(land.id(), land))
+            .withOwnershipStakes(Map.of(workshop.id(), workshop))
             .withLaborCommitments(
                 Map.of(
                     firstCommitment.id(), firstCommitment,

@@ -174,15 +174,33 @@ class DebtBasedClearingAcceptanceTest {
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
 
     assertThat(round.round().debts()).as("旧口径回退面：本轮没有债务工作副本").isNull();
-    assertThat(outcome.report().fills())
-        .as("★ 负向对照：没有赊购能力时，同一个现金 0 的买家一笔都拿不到（数量被'付得起'封顶到 0）")
-        .isEmpty();
-    // ★ 旧口径的可分辨形态（实测）：需求在**订单生成**处就被"按现金买得起量"折回 0 ⇒ 买方连一张买单都不生成，
-    //   于是撮合里根本没有它的槽位（未成交表里只有卖方的滞销项），而不是"下了单被拒"。
+    long demand = MarketSettlementFixtures.lifeReserveGrain(1L);
+    MarketReport.BuyerOutcome buyerOutcome =
+        outcome.report().buyerOutcomes().stream()
+            .filter(o -> o.household().isPresent() && o.household().get().equals(BUYER))
+            .filter(o -> o.commodity().equals(GRAIN))
+            .findFirst()
+            .orElseThrow();
+    assertThat(buyerOutcome.orderedQty())
+        .as("★ RF1：没有赊购能力时需求仍全额进撮合（不再在订单生成处按现金折回 0）")
+        .isEqualTo(demand);
+    assertThat(buyerOutcome.filledQty()).as("★ 负向对照：没有赊购能力 + 现金 0 ⇒ 成交 0（不能凭空赊账）").isZero();
+    assertThat(outcome.report().fills()).as("★ 负向对照：一笔都拿不到").isEmpty();
+    // ★ RF1 后的可分辨形态：买单**全额挂出**，只是没有债务通道时成交侧付不起 ⇒ 以完整缺口留在未成交表
+    //   （旧口径是"需求在订单生成处折回 0 ⇒ 买方连一张买单都没有"）。
     assertThat(outcome.report().unfilled())
-        .as("★ 旧口径下买方**没有进撮合**（需求被折回 0 ⇒ 不生成买单）：未成交表里不得有买方侧条目")
-        .noneMatch(MarketReport.Unfilled::buyerSide);
+        .as("★ 新口径：买单进了撮合并以完整缺口留在未成交表（不再是有没有买单的差别）")
+        .anyMatch(
+            unfilled ->
+                unfilled.buyerSide()
+                    && unfilled.commodity().equals(GRAIN)
+                    && unfilled.quantity() == demand
+                    && unfilled.actor().equals(HouseholdActors.of(BUYER)));
+    assertThat(outcome.report().unfilled())
+        .as("★ 无债务通道不产生 NO_BUDGET 假原因（W2 起 NO_BUDGET 只表示运费/税付不出）")
+        .noneMatch(unfilled -> unfilled.reason() == MarketUnfilledReason.NO_BUDGET);
     assertThat(world.grainOf(BUYER)).as("买家一粒粮都没拿到").isZero();
+    assertThat(round.ledger().toLedger().transfers()).as("★ 没有成交 ⇒ 账本不得有货腿/钱腿（也不能凭空记债）").isEmpty();
   }
 
   /** 现金 0 的买家 + 有货的卖家（同格、无税、无运费 ⇒ 现金腿恒 0 ⇒ 一切差别都来自"能不能赊"）。 */

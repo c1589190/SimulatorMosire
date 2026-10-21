@@ -214,7 +214,10 @@ final class SettlementDayClosePipeline {
                 ctx.session.sheet().assetOccupanciesOrBase(),
                 ctx.session.sheet().productionRostersOrBase(),
                 ctx.day,
-                ctx.landAcquiredThisRound());
+                ctx.landAcquiredThisRound(),
+                ctx.session.sheet().landArableSupply(),
+                ctx.session.sheet().landHoldingsOrBase(),
+                ctx.landAcquiredQuantityThisRound());
       }
     }
 

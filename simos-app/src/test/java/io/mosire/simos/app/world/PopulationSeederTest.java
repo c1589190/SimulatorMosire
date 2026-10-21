@@ -115,14 +115,15 @@ class PopulationSeederTest {
     PopulationSeeder.Seeding seeding = PopulationSeeder.seed(plan(), 0L);
     List<PopulationGroup> groups = seeding.groups();
     // ★ P2-A 粒度：家户 = (格 × 居住类型 × 阶层)，批次 = 家户 × 性别 × 档。
-    //   3 个有人口池（0_0 农村、1_0 农村、1_0 城镇）× 5 阶层（4 常规 + 流民）× 6 = 90 条。
-    assertThat(groups).as("3 个有人口池 × 5 阶层 × 6（性别 × 档）").hasSize(90);
-    // 另有 0_0 的 4 个城镇阶层户（人口 0）⇒ 家户 = 15 有人口 + 4 空户。
-    assertThat(seeding.households()).as("3 池 × 5 户 + 0_0 的 4 个零人口城镇户").hasSize(19);
+    //   RC2b：农村 = landed_peasant + landless_laborer 二档；城镇仍四档 ⇒ 有人口家户 = 2 + 2 + 4 = 8，
+    //   批次 = 8 × 6 = 48 条。
+    assertThat(groups).as("8 个有人口家户 × 6（性别 × 档）").hasSize(48);
+    // 另有 0_0 的 4 个城镇阶层户（人口 0）⇒ 家户 = 8 有人口 + 4 空户。
+    assertThat(seeding.households()).as("8 个有人口家户 + 0_0 的 4 个零人口城镇户").hasSize(12);
     assertThat(seeding.households())
         .filteredOn(household -> !household.memberLots().isEmpty())
-        .as("有人口的 15 户每户成员 = 6 条批次")
-        .hasSize(15)
+        .as("有人口的 8 户每户成员 = 6 条批次")
+        .hasSize(8)
         .allSatisfy(
             household -> assertThat(household.memberLots()).as("家户成员 = 该位置的 6 条批次").hasSize(6));
     assertThat(seeding.households())
@@ -214,7 +215,7 @@ class PopulationSeederTest {
         .as("S2：每条批次都声明所属家户")
         .isEqualTo(seeding.householdOf(firstGroup.id()).value());
 
-    assertThat(payload.get("households")).as("S2 载荷新增 households[]").hasSize(19);
+    assertThat(payload.get("households")).as("S2 载荷新增 households[]").hasSize(12);
     for (JsonNode household : payload.get("households")) {
       String id = household.get("id").asText();
       io.mosire.simos.social.api.id.HouseholdId householdId =
@@ -271,9 +272,8 @@ class PopulationSeederTest {
             Map.of(
                 Sex.MALE, EconomySeeder.AGE_LABOR_COEF_PER_MILLE, Sex.FEMALE, new int[] {0, 0, 0}));
 
-    // ★ P2-A：批次按 (居住 × 阶层 × 性别 × 档) 细分后逐批取整 ⇒ 1600×580‰ 的整池口径
-    //   928,000 变成 924,000（差 4,000 = 逐户取整损失）；判别力仍由"性别是否参与折算"承担。
-    assertThat(withDefaultTable).as("1600 人 × 580‰、逐批取整后的实际值").isEqualTo(924_000L);
+    // ★ RC2b：农村二档 + 城镇四档 ⇒ 逐批取整后的实际值 = 928,000；判别力仍由"性别是否参与折算"承担。
+    assertThat(withDefaultTable).as("1600 人 × 580‰、RC2b 家户粒度逐批取整后的实际值").isEqualTo(928_000L);
     assertThat(maleOnly).as("女性系数归零 ⇒ 只剩男性那一半").isEqualTo(withDefaultTable / 2L);
     assertThat(maleOnly).isNotEqualTo(withDefaultTable);
   }
@@ -299,7 +299,7 @@ class PopulationSeederTest {
   }
 
   /**
-   * 默认率表下 1600 人（D4 preset）的劳动 = **逐家户/批次取整后**的 924,000。
+   * 默认率表下 1600 人（D4 preset）的劳动 = **逐家户/批次取整后**的 928,000（RC2b 二档农村口径）。
    *
    * <p>★ 旧口径（P2-A 前）是整池 `1600 × 580‰ = 928,000`；家户粒度收敛到 (格 × 居住类型 × 阶层) 后每户分别折算， 4,000 的差就是逐户取整损失
    * —— 本断言钉住**新口径的实际读数**，不是把旧数字改掉。
@@ -307,6 +307,6 @@ class PopulationSeederTest {
   @Test
   void defaultPresetLaborIsSummedAtHouseholdGranularity() {
     List<PopulationGroup> groups = PopulationSeeder.seed(plan(), 0L).groups();
-    assertThat(EconomySeeder.laborMilli(groups)).isEqualTo(924_000L);
+    assertThat(EconomySeeder.laborMilli(groups)).isEqualTo(928_000L);
   }
 }

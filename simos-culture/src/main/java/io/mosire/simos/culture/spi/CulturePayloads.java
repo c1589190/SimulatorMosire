@@ -79,6 +79,18 @@ public final class CulturePayloads {
     return Collections.unmodifiableList(texts);
   }
 
+  /** 可选字符串：缺键 / null ⇒ {@code fallback}；给了但非文本 ⇒ 拒；文本原样返回（不 trim）。 */
+  public static String optionalText(JsonNode payload, String field, String fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串: " + payload);
+    }
+    return value.asText();
+  }
+
   /**
    * ★ <b>日志安全的拒绝理由</b>：校验消息为方便调用方排查会回显字段值/整段载荷，而日志纪律禁止载荷明文与 JSON 原文。这里只保留可读前缀——截到第一个 JSON
    * 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号。截断只影响日志文本，不改 {@code Rejected} 的理由。语义与 {@code

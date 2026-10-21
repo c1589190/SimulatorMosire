@@ -258,7 +258,13 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.assetOccupancies(), seeded.assetOccupancies()),
             merge(base.inventoryReservations(), seeded.inventoryReservations()),
             // ★★★ D-032 P4b1：U20 工资锚按 append 口径合并；漏了它 = 已设锚会被后续补种静默抹掉。
-            merge(base.productionWageAnchors(), seeded.productionWageAnchors()));
+            merge(base.productionWageAnchors(), seeded.productionWageAnchors()),
+            // ★★★ D-032 RC7：seed 不声明流动表 ⇒ 原样带过已有表（漏了它 = 补种把债务观察基线静默抹掉）。
+            base.householdFlowTables(),
+            // ★★★ D-032 C6：seed 不声明运输能力批次 ⇒ 原样带过已有表（漏了它 = 补种把本市场轮已产运力抹掉）。
+            base.transportCapacityBatches(),
+            // ★★★ D-032 C7a：seed 不声明运输市场区锚价 ⇒ 原样带过已有表（漏了它 = 补种把已调好的锚抹回 0）。
+            base.transportPriceAnchors());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

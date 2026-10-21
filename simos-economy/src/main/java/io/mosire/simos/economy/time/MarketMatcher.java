@@ -27,7 +27,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.log.EventLog;
@@ -54,8 +54,8 @@ final class MarketMatcher {
    * ③ 土地私有分支（{@link #matchLand} 只在入口内部被调用，不是第二个 runner 级 matcher）
    * </pre>
    *
-   * <p>★ 商品先于土地：土地买单只能使用商品冻结后的剩余可花额（{@code spendableMoneyOf}），同一买方同一币种不会双付。 ★
-   * 土地分支的整块/区级价/纯库存财富买方序全部沿用既有实现，本入口只改“调用结构”不改数值。
+   * <p>★ 商品先于土地：土地买单只能使用商品冻结后的剩余可花额（{@code spendableMoneyOf}），同一买方同一币种不会双付。 ★ 土地分支的按 hex
+   * 标量/可部分成交/区级价/纯库存财富买方序全部在本入口内部实现，没有第二个 matcher。
    */
   static void matchAll(MatchContext ctx, EconomyParallelism parallelism, MarketIndexes indexes) {
     matchWithinRegions(ctx, parallelism, indexes);
@@ -77,19 +77,20 @@ final class MarketMatcher {
    * <p>★ 商品与土地仍是<b>同一本</b> {@code MarketRound} 订单簿里的订单变体：公共入口/生命周期只有一个；
    * 本方法是该入口内部按订单变体分派出来的土地私有分支，不是第二个市场阶段/第二个 matcher。
    *
-   * <p>★★ <b>成交形状</b>（P2f 最小口径）：
+   * <p>★★ <b>成交形状</b>（RA1b2c2 标量口径）：
    *
    * <pre>
-   * 逐市场区（ctx.orderedRegions 的同一序）→ 逐块（shareId 升序）→ 一张卖单 + 按买方序取第一张能成交的买单
+   * 逐市场区（ctx.orderedRegions 的同一序）→ 逐 hex（自然序）→ 卖方稳定序 → 买方稳定序
    * 成交价 = 该市场区 MarketTable.landPrice（区级一个价；empty 的市场根本不进工作集）
-   * 数量   = 整块（订单已校验 == 份额数量；不拆分、不找零）
+   * 数量   = min(买剩余, 卖剩余, 卖方当前持有, 现金/债务可承受量)；可部分成交、可跨多个对手方
    * 买方序 = 纯库存财富降序 → HouseholdId 升序 → 订单稳定键（不使用净值/债务调整）
+   * 卖方序 = HouseholdId 升序 → 订单稳定键
    * </pre>
    *
-   * <p>★ 土地卖单的冻结是 {@link MatchContext#landSellFrozen} 里的瞬态 {@code AssetShareId}
-   * 集合（同一块本轮只卖一次），<b>不写</b> actor 的 {@code frozenGoods}、不写第二本库存。成交写口在 {@link
+   * <p>★ 土地不写 actor 的 {@code frozenGoods}、不写第二本库存。成交写口在 {@link
    * MarketTradeExecutor#executeLandTrade}（现金腿走 {@code
-   * AccountTransferSettlement.applyTransfer}，产权腿只走 {@code OwnershipStakeBook.transferLandBlock}）。
+   * AccountTransferSettlement.applyTransfer}，产权腿只走 {@link
+   * io.mosire.simos.economy.land.LandLedgerState#transfer}）。
    *
    * <p>★ <b>地价</b>：只对 {@code hasLandPrice()} 的市场，按本轮<b>订单簿的 D/S</b>（D = 买单数量之和、S = 卖单数量之和）用现有
    * {@link MarketPricer#adaptiveNextPrice} 同口径算下一轮价；结果写入 {@code MarketRound.nextLandPrices}，轮末由
@@ -101,20 +102,24 @@ final class MarketMatcher {
     if (book.isEmpty()) {
       return;
     }
+    if (ctx.landLedger == null) {
+      throw new IllegalStateException(
+          "land match requires a scalar LandLedgerState in MatchContext (contract fault)");
+    }
     // ★ 盘前快照（MarketRoundRunner 在本轮任何商品成交之前构造；null = 没有买单 ⇒ 排序退化为 HouseholdId/稳定键）。
     PureInventoryWealthBook.Snapshot wealth = ctx.landBuyerWealth;
-    Map<MarketZoneId, Map<String, List<LandOrder>>> sellsByZoneShare = new LinkedHashMap<>();
-    Map<MarketZoneId, Map<String, List<LandOrder>>> buysByZoneShare = new LinkedHashMap<>();
+    Map<MarketZoneId, Map<HexCoord, List<LandOrder>>> sellsByZoneHex = new LinkedHashMap<>();
+    Map<MarketZoneId, Map<HexCoord, List<LandOrder>>> buysByZoneHex = new LinkedHashMap<>();
     for (LandOrder order : book) {
-      MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, order.location());
+      MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, order.hex());
       if (zoneId == null) {
         continue;
       }
-      Map<MarketZoneId, Map<String, List<LandOrder>>> target =
-          order.side() == LandOrder.Side.SELL ? sellsByZoneShare : buysByZoneShare;
+      Map<MarketZoneId, Map<HexCoord, List<LandOrder>>> target =
+          order.side() == LandOrder.Side.SELL ? sellsByZoneHex : buysByZoneHex;
       target
           .computeIfAbsent(zoneId, ignored -> new LinkedHashMap<>())
-          .computeIfAbsent(order.shareId().value(), ignored -> new ArrayList<>())
+          .computeIfAbsent(order.hex(), ignored -> new ArrayList<>())
           .add(order);
     }
     for (MarketRegion region : ctx.orderedRegions) {
@@ -124,104 +129,159 @@ final class MarketMatcher {
         continue; // empty 市场：不生成订单、不改价（工作集里本就不该有它的订单）
       }
       long landPrice = table.landPrice().getAsLong();
-      Map<String, List<LandOrder>> sells = sellsByZoneShare.getOrDefault(zoneId, Map.of());
-      Map<String, List<LandOrder>> buys = buysByZoneShare.getOrDefault(zoneId, Map.of());
-      // 没有卖单的买单一律具名 NO_SELLER（不静默留在簿里）。
-      for (Map.Entry<String, List<LandOrder>> entry : buys.entrySet()) {
-        if (!sells.containsKey(entry.getKey())) {
-          for (LandOrder buy : entry.getValue()) {
+      Map<HexCoord, List<LandOrder>> sellsByHex = sellsByZoneHex.getOrDefault(zoneId, Map.of());
+      Map<HexCoord, List<LandOrder>> buysByHex = buysByZoneHex.getOrDefault(zoneId, Map.of());
+      java.util.TreeSet<HexCoord> hexes = new java.util.TreeSet<>();
+      hexes.addAll(sellsByHex.keySet());
+      hexes.addAll(buysByHex.keySet());
+      for (HexCoord hex : hexes) {
+        List<LandOrder> sells = new ArrayList<>(sellsByHex.getOrDefault(hex, List.of()));
+        List<LandOrder> buys = new ArrayList<>(buysByHex.getOrDefault(hex, List.of()));
+        if (sells.isEmpty()) {
+          for (LandOrder buy : buys) {
             MarketLandBook.logRejected(
                 ctx,
                 buy,
                 MarketLandBook.LandRejectReason.NO_SELLER,
-                "zone=" + zoneId.value() + ";share-has-no-sell-order-this-round");
+                "zone=" + zoneId.value() + ";hex=" + hex + ";no-sell-order-this-round");
           }
-        }
-      }
-      List<String> shareIds = new ArrayList<>(sells.keySet());
-      shareIds.sort(String::compareTo);
-      for (String shareKey : shareIds) {
-        List<LandOrder> shareSells = sells.get(shareKey);
-        LandOrder sell = shareSells.get(0);
-        if (!ctx.landSellFrozen.add(sell.shareId())) {
-          MarketLandBook.logRejected(
-              ctx,
-              sell,
-              MarketLandBook.LandRejectReason.DUPLICATE_SELL,
-              "share-already-frozen-by-an-earlier-match-this-round");
           continue;
         }
-        if (landPrice < sell.limitPricePerMu()) {
-          MarketLandBook.logRejected(
-              ctx,
-              sell,
-              MarketLandBook.LandRejectReason.PRICE_LIMIT,
-              "landPrice=" + landPrice + ";sellerMinPricePerMu=" + sell.limitPricePerMu());
-          continue;
-        }
-        List<LandOrder> candidates = new ArrayList<>(buys.getOrDefault(shareKey, List.of()));
-        if (candidates.isEmpty()) {
-          MarketLandBook.logRejected(
-              ctx,
-              sell,
-              MarketLandBook.LandRejectReason.NO_BUYER,
-              "zone=" + zoneId.value() + ";share-has-no-buy-order-this-round");
-          continue;
-        }
-        candidates.sort(buyerOrder(ctx, wealth));
-        OwnershipStake share = ctx.round.assetShares.get(sell.shareId());
-        if (!MarketLandBook.tradableLand(share)) {
-          MarketLandBook.logRejected(
-              ctx,
-              sell,
-              MarketLandBook.LandRejectReason.SHARE_MISSING,
-              "share-disappeared-between-validation-and-match");
-          continue;
-        }
-        boolean filled = false;
-        for (LandOrder buy : candidates) {
-          if (buy.actor().equals(sell.actor())) {
-            MarketLandBook.logRejected(
-                ctx, buy, MarketLandBook.LandRejectReason.SELF_TRADE, "same-actor-on-both-sides");
-            continue;
-          }
-          if (landPrice > buy.limitPricePerMu()) {
+        if (buys.isEmpty()) {
+          for (LandOrder sell : sells) {
             MarketLandBook.logRejected(
                 ctx,
-                buy,
+                sell,
+                MarketLandBook.LandRejectReason.NO_BUYER,
+                "zone=" + zoneId.value() + ";hex=" + hex + ";no-buy-order-this-round");
+          }
+          continue;
+        }
+        sells.sort(sellerOrder(ctx));
+        buys.sort(buyerOrder(ctx, wealth));
+        long[] sellRemaining = new long[sells.size()];
+        long[] buyRemaining = new long[buys.size()];
+        for (int index = 0; index < sells.size(); index++) {
+          sellRemaining[index] = sells.get(index).quantityMilliMu();
+        }
+        for (int index = 0; index < buys.size(); index++) {
+          buyRemaining[index] = buys.get(index).quantityMilliMu();
+        }
+        // 逐卖单（卖方稳定序）→ 逐买单（纯库存财富降序）按最小剩余量成交；卖单可跨多个买方部分成交。
+        for (int sellIndex = 0; sellIndex < sells.size(); sellIndex++) {
+          LandOrder sell = sells.get(sellIndex);
+          if (sellRemaining[sellIndex] <= 0L) {
+            continue;
+          }
+          HouseholdId sellerHousehold = householdOf(ctx, sell.actor());
+          if (sellerHousehold == null) {
+            MarketLandBook.logRejected(
+                ctx,
+                sell,
+                MarketLandBook.LandRejectReason.ACTOR_NOT_HOUSEHOLD,
+                "seller=" + MarketLandBook.actorKey(sell.actor()));
+            sellRemaining[sellIndex] = 0L;
+            continue;
+          }
+          // ★ RF1：SELL 侧最低保护价不变；BUY 侧是价格接受者（没有限价字段）。
+          long sellerMinPricePerMu =
+              sell.limitPricePerMu()
+                  .orElseThrow(
+                      () ->
+                          new IllegalStateException(
+                              "LAND SELL 必须带最低价（LandOrder 构造期已校验）: actor="
+                                  + MarketLandBook.actorKey(sell.actor())
+                                  + ";hex="
+                                  + hex));
+          if (landPrice < sellerMinPricePerMu) {
+            MarketLandBook.logRejected(
+                ctx,
+                sell,
                 MarketLandBook.LandRejectReason.PRICE_LIMIT,
-                "landPrice=" + landPrice + ";buyerMaxPricePerMu=" + buy.limitPricePerMu());
+                "landPrice=" + landPrice + ";sellerMinPricePerMu=" + sellerMinPricePerMu);
+            sellRemaining[sellIndex] = 0L;
             continue;
           }
-          if (!buy.payWith().equals(sell.payWith())) {
+          long sellerHolding = ctx.landLedger.holdingOf(hex, sellerHousehold);
+          if (sellerHolding <= 0L) {
             MarketLandBook.logRejected(
                 ctx,
-                buy,
-                MarketLandBook.LandRejectReason.CURRENCY_MISMATCH,
-                "buyPayWith=" + buy.payWith().value() + ";sellPayWith=" + sell.payWith().value());
+                sell,
+                MarketLandBook.LandRejectReason.NO_LAND_HOLDING,
+                "seller=" + MarketLandBook.actorKey(sell.actor()) + ";hex=" + hex);
+            sellRemaining[sellIndex] = 0L;
             continue;
           }
-          long payment = MarketLandBook.landValueMilli(share.quantity(), landPrice);
-          if (payment > buy.maxBudget()) {
+          for (int buyIndex = 0;
+              buyIndex < buys.size() && sellRemaining[sellIndex] > 0L;
+              buyIndex++) {
+            LandOrder buy = buys.get(buyIndex);
+            if (buyRemaining[buyIndex] <= 0L) {
+              continue;
+            }
+            if (buy.actor().equals(sell.actor())) {
+              MarketLandBook.logRejected(
+                  ctx, buy, MarketLandBook.LandRejectReason.SELF_TRADE, "same-actor-on-both-sides");
+              continue;
+            }
+            // ★ RF1：家户土地 BUY 是价格接受者 —— landPrice 再高也接受（非负）；现金不足走 executeLandTrade 的普通债分支。
+            if (buy.limitPricePerMu().isPresent()) {
+              // 防御：当前唯一的 BUY 生产者（M3）不写限价；真有带限价的内部买盘时才按真实上限过滤。
+              if (landPrice > buy.limitPricePerMu().getAsLong()) {
+                MarketLandBook.logRejected(
+                    ctx,
+                    buy,
+                    MarketLandBook.LandRejectReason.PRICE_LIMIT,
+                    "landPrice="
+                        + landPrice
+                        + ";buyerMaxPricePerMu="
+                        + buy.limitPricePerMu().getAsLong());
+                continue;
+              }
+            }
+            if (!buy.payWith().equals(sell.payWith())) {
+              MarketLandBook.logRejected(
+                  ctx,
+                  buy,
+                  MarketLandBook.LandRejectReason.CURRENCY_MISMATCH,
+                  "buyPayWith=" + buy.payWith().value() + ";sellPayWith=" + sell.payWith().value());
+              continue;
+            }
+            long maxQuantity = Math.min(sellRemaining[sellIndex], buyRemaining[buyIndex]);
+            maxQuantity = Math.min(maxQuantity, sellerHolding);
+            if (maxQuantity <= 0L) {
+              break;
+            }
+            // 唯一土地成交写口：现金腿 + 可选的普通货币债 + 产权腿（见 executeLandTrade）。
+            long executed =
+                MarketTradeExecutor.executeLandTrade(ctx, buy, sell, hex, maxQuantity, landPrice);
+            if (executed <= 0L) {
+              continue;
+            }
+            sellRemaining[sellIndex] -= executed;
+            buyRemaining[buyIndex] -= executed;
+            sellerHolding -= executed;
+          }
+          if (sellRemaining[sellIndex] > 0L) {
             MarketLandBook.logRejected(
                 ctx,
-                buy,
-                MarketLandBook.LandRejectReason.NO_BUDGET,
-                "paymentMilli=" + payment + ";maxBudgetMilli=" + buy.maxBudget());
-            continue;
-          }
-          // 唯一土地成交写口：现金腿 + 可选的普通货币债 + 产权腿（见 executeLandTrade）。
-          if (MarketTradeExecutor.executeLandTrade(ctx, buy, sell, share, landPrice)) {
-            filled = true;
-            break;
+                sell,
+                MarketLandBook.LandRejectReason.NO_BUYER,
+                "remainingMilliMu="
+                    + sellRemaining[sellIndex]
+                    + ";no-buyer-could-take-this-residual-at-landPrice="
+                    + landPrice);
           }
         }
-        if (!filled) {
-          MarketLandBook.logRejected(
-              ctx,
-              sell,
-              MarketLandBook.LandRejectReason.NO_BUYER,
-              "no-buyer-could-pay-this-block-at-landPrice=" + landPrice);
+        for (int buyIndex = 0; buyIndex < buys.size(); buyIndex++) {
+          if (buyRemaining[buyIndex] > 0L
+              && buyRemaining[buyIndex] == buys.get(buyIndex).quantityMilliMu()) {
+            MarketLandBook.logRejected(
+                ctx,
+                buys.get(buyIndex),
+                MarketLandBook.LandRejectReason.NO_SELLER,
+                "unfilledBuyMilliMu=" + buyRemaining[buyIndex] + ";hex=" + hex);
+          }
         }
       }
     }
@@ -241,7 +301,7 @@ final class MarketMatcher {
     }
     Map<MarketZoneId, long[]> demandSupply = new LinkedHashMap<>();
     for (LandOrder order : book) {
-      MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, order.location());
+      MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, order.hex());
       if (zoneId == null) {
         continue;
       }
@@ -313,23 +373,39 @@ final class MarketMatcher {
     };
   }
 
+  /** 卖方的稳定全序：HouseholdId 升序 → 订单稳定键（内容纯函数）。 */
+  private static Comparator<LandOrder> sellerOrder(MatchContext ctx) {
+    return (left, right) -> {
+      int byHousehold = householdKeyOf(ctx, left).compareTo(householdKeyOf(ctx, right));
+      if (byHousehold != 0) {
+        return byHousehold;
+      }
+      return left.stableKey().compareTo(right.stableKey());
+    };
+  }
+
   private static long wealthOf(
       MatchContext ctx, PureInventoryWealthBook.Snapshot wealth, LandOrder order) {
     if (wealth == null) {
       return 0L;
     }
-    HouseholdId household = ctx.round.householdOfActor.get(order.actor());
+    HouseholdId household = householdOf(ctx, order.actor());
     return household == null ? 0L : wealth.wealthOf(household);
   }
 
   private static String householdKeyOf(MatchContext ctx, LandOrder order) {
-    HouseholdId household = ctx.round.householdOfActor.get(order.actor());
+    HouseholdId household = householdOf(ctx, order.actor());
     return household == null ? "" : household.value();
   }
 
+  /** ActorRef → 已登记家户；解析不到 ⇒ null（调用方具名拒绝，不静默成交）。 */
+  private static HouseholdId householdOf(MatchContext ctx, ActorRef actor) {
+    return ctx.round.householdOfActor.get(actor);
+  }
+
   /**
-   * ★★ <b>轮级土地读数（INFO，每轮一条）</b>：订单数 / 成交笔数 / 赊购 / 本轮冻结块数 / 下一轮地价。空轮（无订单、无成交、无改价）
-   * 一条都不发（缺省中性：没有土地订单的世界日志面逐字不变）。
+   * ★★ <b>轮级土地读数（INFO，每轮一条）</b>：订单数 / 成交笔数 / 成交数量与价款 / 赊购 / 下一轮地价。空轮（无订单、无成交、
+   * 无改价）一条都不发（缺省中性：没有土地订单的世界日志面逐字不变）。
    */
   static void logRoundSummary(MatchContext ctx) {
     if (!MARKET.isInfoEnabled()) {
@@ -365,8 +441,6 @@ final class MarketMatcher {
                 ctx.landDeferredFills,
                 "deferredMilli",
                 ctx.landDeferredMilli,
-                "frozenBlocks",
-                ctx.landSellFrozen.size(),
                 "nextLandPrices",
                 ctx.round.nextLandPrices(),
                 "reason",
@@ -689,7 +763,9 @@ final class MarketMatcher {
     for (BuySlot buy : source) {
       if (buy.remaining > 0
           && !buy.noMoney
-          && buy.order.maxLandedPrice() >= price
+          // ★ RF1：empty = 价格接受者需求 ⇒ 任意非负价都接受，不做价格过滤。
+          && (buy.order.maxLandedPrice().isEmpty()
+              || buy.order.maxLandedPrice().getAsLong() >= price)
           && buy.order.latestArrivalTick() >= day) {
         result.add(buy);
       }

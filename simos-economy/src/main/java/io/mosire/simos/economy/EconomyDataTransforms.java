@@ -44,6 +44,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
@@ -55,6 +56,9 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -135,6 +139,12 @@ final class EconomyDataTransforms {
 
     Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors;
 
+    Map<HouseholdId, HouseholdFlowTable> householdFlowTables;
+
+    Map<TransportCapacityBatchKey, TransportCapacityBatch> transportCapacityBatches;
+
+    Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors;
+
     Builder(EconomyData data) {
       this.meta = data.meta();
 
@@ -203,6 +213,12 @@ final class EconomyDataTransforms {
       this.inventoryReservations = data.inventoryReservations();
 
       this.productionWageAnchors = data.productionWageAnchors();
+
+      this.householdFlowTables = data.householdFlowTables();
+
+      this.transportCapacityBatches = data.transportCapacityBatches();
+
+      this.transportPriceAnchors = data.transportPriceAnchors();
     }
 
     EconomyData build() {
@@ -240,7 +256,10 @@ final class EconomyDataTransforms {
           wageCarryRemainders,
           assetOccupancies,
           inventoryReservations,
-          productionWageAnchors);
+          productionWageAnchors,
+          householdFlowTables,
+          transportCapacityBatches,
+          transportPriceAnchors);
     }
   }
 
@@ -594,9 +613,45 @@ final class EconomyDataTransforms {
     return builder.build();
   }
 
+  static EconomyData withHouseholdFlowTables(
+      EconomyData data, Map<HouseholdId, HouseholdFlowTable> value) {
+    Objects.requireNonNull(value, "value（清除全部流动表请用空表）");
+
+    Builder builder = new Builder(data);
+
+    builder.householdFlowTables = value;
+
+    return builder.build();
+  }
+
+  static EconomyData withTransportCapacityBatches(
+      EconomyData data, Map<TransportCapacityBatchKey, TransportCapacityBatch> value) {
+    Objects.requireNonNull(value, "value（清除全部运输能力批次请用空表）");
+
+    Builder builder = new Builder(data);
+
+    builder.transportCapacityBatches = value;
+
+    return builder.build();
+  }
+
+  static EconomyData withTransportPriceAnchors(
+      EconomyData data, Map<MarketZoneId, TransportPriceAnchor> value) {
+    Objects.requireNonNull(value, "value（清除全部运输锚价请用空表）");
+
+    Builder builder = new Builder(data);
+
+    builder.transportPriceAnchors = value;
+
+    return builder.build();
+  }
+
   static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),

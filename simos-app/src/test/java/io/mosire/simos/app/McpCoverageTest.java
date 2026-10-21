@@ -254,6 +254,7 @@ class McpCoverageTest {
           "map.ReassignHexes",
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
+          "map.SeedArableOwnership",
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
@@ -387,6 +388,7 @@ class McpCoverageTest {
           "economy.UpsertHouseholdPeriodicAdjustment",
           "map.MergeRegions",
           "map.ReassignHexes",
+          "map.SeedArableOwnership",
           "map.SplitRegion",
           "ga.DecideDecisionPacket",
           "gov.DeleteNation",
@@ -551,6 +553,10 @@ class McpCoverageTest {
               "economy.UpsertHouseholdPeriodicAdjustment",
               "{\"id\": \"\", \"payer\": \"hh-missing\", \"goodsPerCycle\": {\"grain\": 1}, \"reason\": \"military_salary\", \"periodDays\": 1, \"phaseDay\": 0, \"startsOnDay\": 0, \"policySource\": \"gm:coverage\"}"),
           Map.entry(
+              "map.SeedArableOwnership",
+              "{\"entries\":[{\"hex\":{\"q\":1,\"r\":1},"
+                  + "\"owners\":[{\"owner\":\"hh-coverage\",\"quantityMilliMu\":1}]}]}"),
+          Map.entry(
               "map.MergeRegions",
               "{\"targetRegionId\": \"r-missing\", \"sourceRegionIds\": [\"r-missing-2\"]}"),
           Map.entry(
@@ -637,11 +643,15 @@ class McpCoverageTest {
               "unit.AssignExternalGovPost",
               "{\"govUnitId\": \"u-1\", \"household\": \"hh-missing\", \"role\": \"POST\"}"));
 
-  /** 真实播种归一化出的农地份额身份（{@code (farm@1_1, LAND, ESTATE:farm@1_1, OWNED, 0)}）。 */
-  private static final AssetShareId SEEDED_LAND_SHARE =
+  /**
+   * ★ D-032 RA1b2b/RA5a：LAND 已改为标量唯一权威（不进 assetShares），而 {@code economy.TransferAssetShare} 只处理持久份额
+   * ⇒ 本夹具改用非 LAND 资产 CATTLE 作为「可转移份额」的载体，继续覆盖同一条命令； LAND 的标量落盘由同一载荷的 {@code
+   * landArableMilliMu/landHoldings} 覆盖。
+   */
+  private static final AssetShareId SEEDED_CATTLE_SHARE =
       OwnershipStake.idOf(
           new IndustryId("farm@1_1"),
-          AssetKind.LAND,
+          AssetKind.CATTLE,
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
@@ -866,15 +876,14 @@ class McpCoverageTest {
             + "\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
             + "\"laborParticipationPerMille\":950}]}],"
-            //   ★★★ D-032 T6（2026-10-17，B5 裁定十九）：`plans[].capacity` ⇒ 整额 OWNED 份额的**合成路径已删**
-            //   ⇒ 本格那份 LAND 作业资本改由 entry 级 `assetShares[]` **显式声明**（与
-            //   `EconomySeedHandlerTest.seedsEveryFieldValueForValue` 同一处置）。份额 id 由
-            //   `OwnershipStake.idOf(industry, asset, owner, operator, kind, 序号)` 确定性派生 ⇒
-            //   `SEEDED_LAND_SHARE` 指的就是这一行（下面的 `economy.TransferAssetShare` 要转移它）。
+            //   ★★★ D-032 L4：economy.Seed 不再携带持久 LAND 键（landArableMilliMu/landHoldings 已退役，
+            //   Map component.owner 是唯一权威；旧 wire 由 EconomyPayloads 具名拒绝）。
+            //   ★ 同一条命令的「可转移份额」判据改用非 LAND 资产 CATTLE（AssetShareId 仍是同一条
+            //   `economy.TransferAssetShare` 的被测对象；LAND 份额已按新架构从 assetShares 消失）。
             + "\"assetShares\":[{\"industry\":\"farm@1_1\","
             + "\"owner\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
             + "\"operator\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_1\"},"
-            + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\","
+            + "\"asset\":\"CATTLE\",\"quantity\":1,\"kind\":\"OWNED\","
             + "\"location\":\""
             + IndustryHexKeys.hexKey(H11.q(), H11.r())
             + "\"}],"
@@ -957,7 +966,7 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "economy.TransferAssetShare",
         "{\"share\":\""
-            + SEEDED_LAND_SHARE.value()
+            + SEEDED_CATTLE_SHARE.value()
             + "\",\"quantity\":1,\"toOwner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"},"
             + "\"toOperator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"}}");
 

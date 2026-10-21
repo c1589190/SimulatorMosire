@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyDayView;
+import io.mosire.simos.economy.api.classes.OwnershipClass;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -14,6 +15,7 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
@@ -26,6 +28,7 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.TransportRoundPlan;
 import io.mosire.simos.economy.time.EconomySettlement.ClosedUnit;
 import io.mosire.simos.economy.time.EconomySettlement.MoneyIssuanceJournal;
 import io.mosire.simos.economy.time.ProductionRunSettlement.HarvestWork;
@@ -128,16 +131,55 @@ final class SettlementDayContext {
   Set<DebtContractId> sameDayWageDebtIds;
   ProductionLedger capitalized;
   MarketSettlement.MarketRound marketRound;
+
+  /**
+   * ★★★ <b>D-032 C7b1：本市场轮运输需求/lane 承诺/本地观察计划（瞬态）。</b>
+   *
+   * <p>只活在本 {@link SettlementDayContext}：不落 {@code EconomyData}、不进 {@code ChangeSet}/Codec。 C7b2 商品
+   * matcher 只读本字段的 {@code demands/commitments/observationsByShippingHex/demandSupplyByZone}，
+   * 不得重新派生需求或复制 lane 分配算法。
+   */
+  TransportRoundPlan transportRoundPlan;
+
   Set<HexCoord> haulServiceMarketHexes;
   MerchantCapacityPool carrierPool;
   MarketTrigger marketTrigger;
   Map<MarketMandateId, Long> govMandateFills;
+
+  /** ★★★ D-032 C6：S5 服务产出交给 economy 批次的 sink（由 driveProduction 注入；瞬态，不落盘）。 */
+  TransportCapacitySink transportCapacitySink;
 
   /** ★★★ P3c3：M3 第一遍预期生产编排的瞬态结果（只活一个 tick；不落盘）。 */
   ExpectedProductionPlan expectedProductionPlan;
 
   /** ★★★ P3c3：M6 第二遍实际生产编排的瞬态结果（只活一个 tick；不落盘）。 */
   ActualProductionPlan actualProductionPlan;
+
+  /**
+   * ★★★ <b>RC8c：M6 实际编排选中的位置事实（瞬态；不落盘、不进 ChangeSet/Codec）。</b>
+   *
+   * <p>账单的 {@code PRODUCTION_INPUT} 行取 {@link
+   * ProductionPlanBridge.PositionFacts#inputRequired()}（probe 的当前 本周期投入需求），{@code
+   * PRODUCTION_DAILY_EXTRA} 行取同一 probe 的 {@code baseScale} × 产业 {@code dailyInputPerUnit}；S7 的 LAND
+   * 意向也读这份实际位置事实（{@link MarketLandIntentBook} 的标量语义不变）。
+   */
+  List<ProductionPlanBridge.PositionFacts> actualPositionFacts = List.of();
+
+  /**
+   * ★★★ <b>RC8c：每户每 tick 唯一 {@link DailyDemandBill}（瞬态；不落盘、不进 ChangeSet/Codec）。</b>
+   *
+   * <p>键 = 家户稳定身份；同一 tick 同一户只能有一张。S4 写 {@code providedFromStock}，S7 在同一对象上写 {@code
+   * marketPurchaseNeed}/{@code purchasedFromMarket}/{@code unmet}。
+   */
+  final LinkedHashMap<HouseholdId, DailyDemandBill> dailyDemandBills = new LinkedHashMap<>();
+
+  /** RC8c：取（必要时创建）本户本 tick 的唯一账单；重复调用返回同一对象。 */
+  DailyDemandBill dailyDemandBill(HouseholdId household) {
+    if (household == null) {
+      throw new IllegalArgumentException("dailyDemandBill 的家户不得为 null");
+    }
+    return dailyDemandBills.computeIfAbsent(household, key -> DailyDemandBill.create(day, key));
+  }
 
   /** ★★★ P3.0：prepare 阶段算好的纯商号集合；execute 只消费，不再现算。 */
   Set<HouseholdId> preparedPureMerchantHouseholds;
@@ -161,6 +203,22 @@ final class SettlementDayContext {
    * {@code createdDay} 替代。P3 的 M3/M6/M7 消费它来排除本轮新土地。
    */
   final LinkedHashSet<AssetShareId> landAcquiredThisRound = new LinkedHashSet<>();
+
+  /**
+   * ★★★ <b>D-032 C1：S7-M2 完成后、S7-A 市场交易开始前的 ownershipClass 快照</b>（瞬态；不落盘、不进 ChangeSet/Codec）。
+   *
+   * <p>它只服务 S7-B “本轮市场买入是否算 PROLETARIAN 买方”的判定：S7-M2 working copy 内的债偿取得资产必须在快照里 已经体现为 OWNER，不能回落到
+   * S7 前旧 class。S7-M2 内部自己的 lookup 必须读同一份活工作副本，不得读本快照。
+   */
+  Map<HouseholdId, OwnershipClass> ownershipClassAtMarketTradeStart = Map.of();
+
+  /**
+   * ★★ D-032 C8：与 {@link #ownershipClassAtMarketTradeStart} 同一时点拍下的买方 homeHex 快照（瞬态；不落盘、 不进
+   * ChangeSet/Codec）。
+   *
+   * <p>马匹向上跃迁的 target hex 只能读本表；不得取市场成交格、卖方格或 LAND 目标 hex。
+   */
+  Map<HouseholdId, HexCoord> homeHexAtMarketTradeStart = Map.of();
 
   SettlementDayContext(
       EconomySession session,
@@ -204,5 +262,42 @@ final class SettlementDayContext {
   /** ★ P2e/P2f：本轮新取得土地块的只读视图（P3 的 M3/M6/M7 消费；不落盘）。 */
   Set<AssetShareId> landAcquiredThisRound() {
     return Collections.unmodifiableSet(landAcquiredThisRound);
+  }
+
+  /**
+   * ★★★ <b>D-032 RA1b2a：本轮按 {@code (hex, owner)} 实际取得的土地数量</b>（瞬态；不落盘、不进 ChangeSet/Codec）。
+   *
+   * <p>★ 与旧的 {@link #landAcquiredThisRound()} 并存：旧集合按整块 {@link AssetShareId} 排除，新表保存<b>数量</b>，
+   * 让"原持有 100、本轮取得 30 ⇒ 可用 70"这类<b>部分取得</b>可被后续 S3 消费；本单暂不驱动任何业务。
+   */
+  final LinkedHashMap<LandHoldingKey, Long> landAcquiredQuantityThisRound = new LinkedHashMap<>();
+
+  /** ★★ 登记一笔本轮取得的标量土地数量；同 key 累加。数量必须严格为正（0/负数具名拒绝），溢出同样拒绝。 */
+  void markLandAcquired(LandHoldingKey key, long quantityMilliMu) {
+    if (key == null) {
+      throw new IllegalArgumentException("landAcquiredQuantityThisRound 不得登记 null key");
+    }
+    if (quantityMilliMu <= 0L) {
+      throw new IllegalArgumentException(
+          "landAcquiredQuantityThisRound 的数量必须 > 0: key=" + key + " -> " + quantityMilliMu);
+    }
+    long previous = landAcquiredQuantityThisRound.getOrDefault(key, 0L);
+    try {
+      landAcquiredQuantityThisRound.put(key, Math.addExact(previous, quantityMilliMu));
+    } catch (ArithmeticException overflow) {
+      throw new IllegalArgumentException(
+          "landAcquiredQuantityThisRound 累加溢出: key="
+              + key
+              + " "
+              + previous
+              + " + "
+              + quantityMilliMu,
+          overflow);
+    }
+  }
+
+  /** ★★ 本轮按 key 取得的土地数量只读视图（稳定插入序；本单不落盘、不驱动业务）。 */
+  Map<LandHoldingKey, Long> landAcquiredQuantityThisRound() {
+    return Collections.unmodifiableMap(landAcquiredQuantityThisRound);
   }
 }

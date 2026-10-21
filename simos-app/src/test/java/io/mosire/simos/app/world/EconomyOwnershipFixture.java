@@ -8,6 +8,9 @@ import io.mosire.simos.app.time.SocialSurvivalFacts;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.change.ProductionChangeSet;
@@ -46,7 +49,7 @@ final class EconomyOwnershipFixture {
   private EconomyOwnershipFixture() {}
 
   /** 推进的结果：三片各自的终态（原子地取自**同一份**提案）。 */
-  record Result(EconomyData economy, ActorData actor, ProductionData production) {}
+  record Result(EconomyData economy, ActorData actor, ProductionData production, GameMap map) {}
 
   /**
    * 用真协调器从 {@code fromTick + 1} 逐日推到 {@code toTick}（§十一：日循环在参与者内部）。
@@ -65,10 +68,14 @@ final class EconomyOwnershipFixture {
       String mapId,
       long fromTick,
       long toTick) {
+    // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威；参与者每次 advance 从 map 切片构造瞬态
+    //   LandComponentLedger，并在轮末把 MapChangeSet 与其它片一起交回。
+    GameMap map = mapOf(SmallWorld.state(mapId));
     SimulationState state =
         new SimulationState(
             new StateMeta(REF, SimosTimestamp.of(fromTick)),
             Map.of(
+                "map", new MapSnapshot(REF, SimosTimestamp.of(fromTick), map),
                 "economy", snap(economy, fromTick),
                 "actor", actorSnap(actor, fromTick),
                 "production", productionSnap(production, fromTick)),
@@ -79,7 +86,7 @@ final class EconomyOwnershipFixture {
             .simulateWorld(
                 state,
                 new TimeRange(SimosTimestamp.of(fromTick), Optional.of(SimosTimestamp.of(toTick))));
-    return applyModuleChanges(proposal.moduleChanges(), economy, actor, production);
+    return applyModuleChanges(proposal.moduleChanges(), economy, actor, production, map);
   }
 
   /**
@@ -93,7 +100,8 @@ final class EconomyOwnershipFixture {
    *   <tr><td>{@code economy}</td><td>{@code EconomyOwnershipTimeParticipant} 正常分支与早退分支</td><td>会（恒）</td><td>apply</td></tr>
    *   <tr><td>{@code actor}</td><td>同上</td><td>会（恒）</td><td>apply</td></tr>
    *   <tr><td>{@code production}</td><td>同上（正常分支；早退分支不 put = 一字未动）</td><td>会（正常分支）</td><td>apply（缺 Key ⇒ 保持基态）</td></tr>
-   *   <tr><td>{@code ga} / {@code army} / {@code map} / {@code calendar} / {@code culture} / {@code social} / {@code unit} / {@code gov}</td><td>本参与者不产出</td><td>不会</td><td><b>抛 {@link IllegalStateException}</b>：将来若参与者扩面，先补这一支再跑</td></tr>
+   *   <tr><td>{@code map}</td><td>{@code EconomyOwnershipTimeParticipant} 轮末写回 arable owner/quantity</td><td>会</td><td>apply</td></tr>
+   *   <tr><td>{@code ga} / {@code army} / {@code calendar} / {@code culture} / {@code social} / {@code unit} / {@code gov}</td><td>本参与者不产出</td><td>不会</td><td><b>抛 {@link IllegalStateException}</b>：将来若参与者扩面，先补这一支再跑</td></tr>
    * </table>
    *
    * <p>★ 缺 {@code production} 键是**合法**的（参与者早退分支：meta 空/无上界 ⇒ 一字未动），不是丢弃； 而**未知** namespace
@@ -103,10 +111,12 @@ final class EconomyOwnershipFixture {
       Map<String, ChangeSet> moduleChanges,
       EconomyData economy,
       ActorData actor,
-      ProductionData production) {
+      ProductionData production,
+      GameMap map) {
     EconomyData nextEconomy = null;
     ActorData nextActor = null;
     ProductionData nextProduction = null;
+    GameMap nextMap = null;
     for (Map.Entry<String, ChangeSet> entry : moduleChanges.entrySet()) {
       switch (entry.getKey()) {
         case "economy":
@@ -119,6 +129,9 @@ final class EconomyOwnershipFixture {
           nextProduction =
               ProductionChangeSet.apply((ProductionChangeSet) entry.getValue(), production);
           break;
+        case "map":
+          nextMap = MapChangeSet.apply((MapChangeSet) entry.getValue(), map);
+          break;
         default:
           throw new IllegalStateException(
               "EconomyOwnershipFixture.applyModuleChanges 未覆盖的模块 namespace: "
@@ -130,7 +143,11 @@ final class EconomyOwnershipFixture {
       throw new IllegalStateException(
           "EconomyOwnershipFixture：提案缺 economy/actor 片（参与者契约要求两片恒在）: " + moduleChanges.keySet());
     }
-    return new Result(nextEconomy, nextActor, nextProduction == null ? production : nextProduction);
+    return new Result(
+        nextEconomy,
+        nextActor,
+        nextProduction == null ? production : nextProduction,
+        nextMap == null ? map : nextMap);
   }
 
   /**
@@ -161,6 +178,14 @@ final class EconomyOwnershipFixture {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final StateRef REF = new StateRef(MAIN, new RevisionId(1));
+
+  private static GameMap mapOf(SimulationState state) {
+    Snapshot snapshot = state.module("map").orElseThrow();
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      throw new IllegalStateException("EconomyOwnershipFixture: map 切片类型不对");
+    }
+    return mapSnapshot.map();
+  }
 
   private static Snapshot snap(EconomyData data, long tick) {
     return new EconomySnapshot(REF, SimosTimestamp.of(tick), data);

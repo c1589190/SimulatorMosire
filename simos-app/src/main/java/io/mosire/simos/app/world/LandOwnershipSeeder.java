@@ -8,7 +8,6 @@ import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -38,14 +37,12 @@ import java.util.Set;
 class LandOwnershipSeeder extends WorldBalanceSeeder {
 
   /**
-   * ★★ <b>P5b1：农村四阶层家户的初始 LAND 分配权重（‰；按 {@link #CLASS_IDS} 序）。</b>
+   * ★★ <b>P5b1 / RC2b：农村二档家户的初始 LAND 分配权重（‰；按 {@link #RURAL_CLASS_IDS} 序）。</b>
    *
-   * <p>这是一个**确定性工程权重**（不是玩家裁定、也不是从人口反推）：贫农 100 / 中农 250 / 富农 300 / 地主 350，合计 1000‰。它让初始土地有差异、同一 hex
-   * 的 Σ 恰好等于可分配土地；无地/流民户不在本表（权重 0）。改变它 = 改变新世界初态。
-   *
-   * <p>★ <b>为什么不用人口份额</b>：人口份额（450/350/150/50）会把土地按人头摊平，失去"有地/少地"的初始差异；本表只服务创世 土地分布，阶级标签仍不进生产选择。
+   * <p>RC2b 冻结口径：{@code {1000, 0}} —— <b>本 hex 的可分配 LAND 全部归有地农民户</b>，无地农民户 LAND = 0。 改变它 =
+   * 改变新世界初态。
    */
-  static final int[] RURAL_FARM_LAND_WEIGHT_PER_MILLE = {100, 250, 300, 350};
+  static final int[] RURAL_FARM_LAND_WEIGHT_PER_MILLE = {1000, 0};
 
   /**
    * ★★ <b>把一个 hex 的可分配 LAND 按 {@link #RURAL_FARM_LAND_WEIGHT_PER_MILLE} 切成逐户份额</b>。
@@ -69,31 +66,34 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
   }
 
   /**
-   * ★★ <b>P5b1：一个农村 hex 的 grain_farm 逐户 unit 种子</b> —— 四个阶层家户各拿一份自有 LAND；流民/无地户额外保留 0 土地
-   * unit（下一轮买地后可组织）。owner = operator = 家户，LAND kind = OWNED。
+   * ★★ <b>P5b1 / RC2b：一个农村 hex 的 grain_farm 逐户 unit 种子</b>。
+   *
+   * <p>★ <b>只给 {@code share > 0} 的有地家户建 unit</b>：无地农民户不建零土地 unit（它只作为有地 farm 名册上的 {@code
+   * hired_laborer} 劳动来源）；{@code displacedHousehold} 参数已删除。owner = operator = 家户，LAND kind = OWNED。
    *
    * <p>★ 跨 hex 不伪造：本方法只处理传入的 {@code hex}，每个家户的土地份额都登记在该 hex。
    */
   static List<GrainFarmUnit> grainFarmUnits(
-      IndustryPlan plan,
-      HexCoord hex,
-      List<HouseholdId> classHouseholds,
-      HouseholdId displacedHousehold) {
+      IndustryPlan plan, HexCoord hex, List<HouseholdId> classHouseholds) {
     long landMilliMu = plan.capacity().getOrDefault(AssetKind.LAND.name(), 0L);
     long[] shares = ruralFarmLandShares(landMilliMu, classHouseholds.size());
-    List<GrainFarmUnit> units =
-        new ArrayList<>(classHouseholds.size() + (displacedHousehold == null ? 0 : 1));
+    List<GrainFarmUnit> units = new ArrayList<>(classHouseholds.size());
     for (int i = 0; i < classHouseholds.size(); i++) {
+      if (shares[i] <= 0L) {
+        // ★ RC2b：无地户（权重 0）不建 grain_farm unit（不伪造 0 土地 unit）。
+        continue;
+      }
       units.add(grainFarmUnit(plan, hex, classHouseholds.get(i), shares[i]));
-    }
-    if (displacedHousehold != null) {
-      // ★ 无地/流民户：保留零土地 unit，便于下一轮买地后组织；不伪造土地/劳动。
-      units.add(grainFarmUnit(plan, hex, displacedHousehold, 0L));
     }
     return List.copyOf(units);
   }
 
-  /** 一个家户的 grain_farm unit：显式空规则关系 + OWNED LAND 份额（可为 0）+ 稳定 unit id。 */
+  /**
+   * 一个家户的 grain_farm unit：显式空规则关系 + 该户的标量 LAND 数量（可为 0）+ 稳定 unit id。
+   *
+   * <p>★★ RA1b2b：LAND 不再生成 {@code OwnershipStake} 节点进 {@code assetShares}；数量由调用方落成 entry 级 {@code
+   * landHoldings[]}（0 数量只保留 unit，不写持有行）。
+   */
   private static GrainFarmUnit grainFarmUnit(
       IndustryPlan plan, HexCoord hex, HouseholdId household, long landMilliMu) {
     ActorRef operator = HouseholdActors.of(household);
@@ -107,16 +107,7 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
             operator,
             LaborSource.SELF);
     Map<String, Object> unitNode = SeederPayloadSupport.unitOf(plan, operator, relation);
-    Map<String, Object> shareNode =
-        ownershipStakeNode(
-            plan.id(),
-            AssetKind.LAND.name(),
-            operator,
-            operator,
-            AssetRightKind.OWNED,
-            landMilliMu,
-            IndustryHexKeys.hexKey(hex.q(), hex.r()));
-    return new GrainFarmUnit(household, operator, unitId, unitNode, shareNode);
+    return new GrainFarmUnit(household, operator, unitId, unitNode, landMilliMu);
   }
 
   /**
@@ -177,7 +168,7 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
     GrainFarmUnit chosen = null;
     long chosenLand = 0L;
     for (GrainFarmUnit unit : farmUnits) {
-      long land = ((Number) unit.shareNode().get("quantity")).longValue();
+      long land = unit.landMilliMu();
       if (land <= 0L) {
         continue;
       }
@@ -249,6 +240,9 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
    * location}} —— 新形状显式给 owner/operator（租佃时两者不等）与真实格键 location；id 由 {@code
    * EconomyPayloads.addOwnershipStake} 的确定性序号生成（同一 {@code (industry, asset, owner, operator, kind,
    * location)} 从 0 递增）。
+   *
+   * <p>★★ RA1b2b：LAND 不得再走 {@code assetShares}（标量土地走 entry 级 {@code landHoldings[]}）；这里对 任何 LAND
+   * 调用都具名拒绝，防止 farm 以外的路径重新造出 LAND 份额。
    */
   static Map<String, Object> ownershipStakeNode(
       String industry,
@@ -258,6 +252,13 @@ class LandOwnershipSeeder extends WorldBalanceSeeder {
       AssetRightKind kind,
       long quantity,
       String location) {
+    if (AssetKind.LAND.name().equals(asset)) {
+      throw new IllegalArgumentException(
+          "LAND 不得写入 assetShares（标量土地走 entry.landHoldings）: industry="
+              + industry
+              + " location="
+              + location);
+    }
     Map<String, Object> share = new LinkedHashMap<>();
     share.put("industry", industry);
     share.put("owner", actorNode(owner));

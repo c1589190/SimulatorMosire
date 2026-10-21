@@ -173,11 +173,16 @@ class EconomyCodecTest {
 
   /** ★ S1：成员份额（键 == 值内 id；Σcount 必须等于 Σ行人口）。 */
 
-  /** ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。 */
-  private static final AssetShareId FARM_LAND_SHARE =
+  /**
+   * ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。
+   *
+   * <p>★★ D-032 L4：LAND 不再进 {@code assetShares}（唯一权威是 Map component.owner）⇒ 本夹具改用非 LAND 资产
+   * CATTLE，继续覆盖 {@link AssetShareId} 自定义键的线格式；economy codec 不再持久保存 LAND 组件。
+   */
+  private static final AssetShareId FARM_CATTLE_SHARE =
       OwnershipStake.idOf(
           FARM,
-          AssetKind.LAND,
+          AssetKind.CATTLE,
           FARM_OPERATOR,
           FARM_OPERATOR,
           AssetRightKind.OWNED,
@@ -894,13 +899,14 @@ class EconomyCodecTest {
     Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     units.put(FARM_UNIT, farmUnit());
     // ★ R3B.1：实物资产份额非空 —— AssetShareId 是另一处自定义键反序列化注册项。
+    //   ★★ D-032 RA1b2b：LAND 不进 assetShares ⇒ 用 CATTLE 覆盖同一 key codec；LAND 走标量两组件。
     Map<AssetShareId, OwnershipStake> assetShares = new LinkedHashMap<>();
     assetShares.put(
-        FARM_LAND_SHARE,
+        FARM_CATTLE_SHARE,
         new OwnershipStake(
-            FARM_LAND_SHARE,
+            FARM_CATTLE_SHARE,
             FARM,
-            AssetKind.LAND,
+            AssetKind.CATTLE,
             FARM_OPERATOR,
             FARM_OPERATOR,
             1000L,
@@ -954,8 +960,8 @@ class EconomyCodecTest {
 
   private static AssetOccupancyGrant codecOccupancy() {
     return new AssetOccupancyGrant(
-        AssetOccupancyGrantId.idOf(FARM_UNIT, FARM_LAND_SHARE, 0L),
-        FARM_LAND_SHARE,
+        AssetOccupancyGrantId.idOf(FARM_UNIT, FARM_CATTLE_SHARE, 0L),
+        FARM_CATTLE_SHARE,
         FARM_UNIT,
         1L,
         0L,

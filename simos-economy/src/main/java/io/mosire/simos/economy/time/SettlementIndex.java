@@ -2,6 +2,8 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -11,8 +13,12 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.land.LandArableSupply;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.land.LandProductionProjection;
 import io.mosire.simos.economy.model.AssetOccupancyGrant;
 import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.DebtContract;
@@ -20,10 +26,13 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -34,6 +43,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>一次日结算（或一批人口回写）内只读的派生索引</b>（R4-B.3a-perf）。
@@ -57,9 +68,27 @@ import java.util.Set;
  */
 final class SettlementIndex {
 
+  private static final Logger PRODUCTION = EconomyLog.settlement();
+
+  /**
+   * ★ RF3b：{@code LAND_FALLBACK_OCCUPANCY_REQUEST} 的日志闸门（只影响日志）。
+   *
+   * <p>同一天内索引可能因进入/债务/关账而重建多次；这里按 {@code (当刻家户行表身份, unit id) → 最近记录日} 去重，保证同一个 unit 每 tick
+   * 最多一条。键里带行表身份只用于隔离不同世界/会话（行表每 tick 由会话持有，重建索引时复用同一对象）。 它不进任何状态、不改算式、不落 ChangeSet/Codec。
+   */
+  private static final Map<String, Long> LAND_FALLBACK_OCCUPANCY_REQUEST_LOGGED =
+      new ConcurrentHashMap<>();
+
   // ── 资产生成 ─────────────────────────────────────────────────────────────────────────
   /** ★★ 同一 revision/tick 的唯一 D4 占用预算；仅无资产的窄路径（人口回写）为空。 */
   private final java.util.Optional<AssetOccupancyBudget> assetOccupancyBudget;
+
+  /**
+   * ★★★ D-032 RA1b2b：本次预算里属于<b>瞬态 LAND 投影</b>的合成份额 id（只读识别集合）。
+   *
+   * <p>写回 {@code assetOccupancies} 前必须按它过滤；它绝不进入 EconomyData/ChangeSet/Codec。
+   */
+  private final Set<AssetShareId> transientLandShareIds;
 
   /** D4 budget 的逐 unit allocation 只读索引；无预算时为空表（调用方必须先读 rejection）。 */
   private final Map<ProductionUnitId, Map<AssetKind, Long>> allocationByUnit;
@@ -109,8 +138,12 @@ final class SettlementIndex {
       Map<String, List<IndustryId>> industriesByHex,
       Map<HouseholdId, List<DebtContract>> debtsByDebtor,
       Map<ActorRef, List<ProductionUnitId>> unitsByParty,
-      Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor) {
+      Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor,
+      Set<AssetShareId> transientLandShareIds) {
     this.assetOccupancyBudget = java.util.Optional.ofNullable(assetOccupancyBudget);
+    this.transientLandShareIds =
+        Collections.unmodifiableSet(
+            transientLandShareIds == null ? Set.of() : new LinkedHashSet<>(transientLandShareIds));
     this.allocationByUnit =
         Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(allocationByUnit)));
     this.capacityScaleByUnit =
@@ -187,6 +220,50 @@ final class SettlementIndex {
       Map<ProductionUnitId, ProductionRoster> productionRosters,
       long today,
       Set<AssetShareId> excludedShareIds) {
+    return build(
+        units,
+        industries,
+        assetShares,
+        laborCommitments,
+        householdEconomies,
+        debts,
+        relations,
+        enterprises,
+        assetOccupancies,
+        productionRosters,
+        today,
+        excludedShareIds,
+        new LandArableSupply(Map.of()),
+        Map.of(),
+        Map.of());
+  }
+
+  /**
+   * ★★★ <b>D-032 RA1b2b：带标量 LAND 瞬态投影的索引构建入口</b>。
+   *
+   * <p>★★ LAND 不再是 {@code assetShares} 的持久行；本入口把 app 从 Map 构造的瞬态 {@code landArableSupply} 与持久
+   * {@code landHoldings} 按 unit 的 {@code (industry, operator household, location)} 合成的瞬态份额只喂给 D4
+   * 预算（预计/排队/执行同源）， <b>不进入</b>任何持久写口。合成 id 通过 {@link #transientLandShareIds()} 交回写回阶段过滤。
+   *
+   * <p>★ 其余派生视图（{@code ownershipStakeIdsByProcess}/{@code economicHouseholds}/{@code
+   * unitsByParty}）仍只用 <b>持久化的非 LAND 份额</b> —— 不让合成 id 泄漏到状态相关逻辑。
+   */
+  static SettlementIndex build(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<DebtContractId, DebtContract> debts,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      long today,
+      Set<AssetShareId> excludedShareIds,
+      LandArableSupply landArableSupply,
+      Map<LandHoldingKey, LandHolding> landHoldings,
+      Map<LandHoldingKey, Long> landAcquiredQuantityThisRound) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
@@ -199,22 +276,47 @@ final class SettlementIndex {
     if (today < 0L) {
       throw new IllegalArgumentException("asset-occupancy-invalid-tick: today 不得为负: " + today);
     }
+    LandArableSupply effectiveArable =
+        landArableSupply == null ? new LandArableSupply(Map.of()) : landArableSupply;
+    Map<LandHoldingKey, LandHolding> effectiveHoldings =
+        landHoldings == null ? Map.of() : landHoldings;
+    Map<LandHoldingKey, Long> effectiveAcquired =
+        landAcquiredQuantityThisRound == null ? Map.of() : landAcquiredQuantityThisRound;
+    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
+    LandProductionProjection.Projection landProjection =
+        LandProductionProjection.project(
+            assetShares,
+            units,
+            industries,
+            householdOfActor,
+            effectiveArable,
+            effectiveHoldings,
+            effectiveAcquired);
+    Map<ProductionUnitId, Long> fallbackLandScaleByUnit =
+        fallbackLandScaleByUnit(
+            units,
+            industries,
+            householdEconomies,
+            householdOfActor,
+            effectiveHoldings,
+            productionRosters,
+            today);
 
     AssetOccupancyBudget d4Budget =
         ProductionProcessBook.assetOccupancyBudget(
             units,
-            assetShares,
+            landProjection.mergedAssetShares(),
             assetOccupancies,
             industries,
             productionRosters,
             laborCommitments,
             today,
-            excludedShareIds);
+            excludedShareIds,
+            fallbackLandScaleByUnit);
     Map<ProductionUnitId, Map<AssetKind, Long>> allocations = d4Budget.allocations();
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, allocations);
     Map<ProductionUnitId, List<AssetShareId>> shareIds =
         ownershipStakeIdsByProcess(units, assetShares);
-    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
         d4Budget,
         allocations,
@@ -234,7 +336,8 @@ final class SettlementIndex {
         industriesByHex(industries),
         debtsByDebtor(debts),
         unitsByParty(units, relations, assetShares, shareIds),
-        enterprisesByActor(enterprises, units));
+        enterprisesByActor(enterprises, units),
+        landProjection.transientShareIds());
   }
 
   /**
@@ -300,7 +403,8 @@ final class SettlementIndex {
         industriesByHex(industries),
         debtsByDebtor(debts),
         unitsByParty(units, relations, assetShares, shareIds),
-        enterprisesByActor(enterprises, units));
+        enterprisesByActor(enterprises, units),
+        Set.of());
   }
 
   /** ★ 劳动配额被改写之后的阶段边界视图：共享资产/格/产业/债务，只重建配额侧派生量。 */
@@ -330,7 +434,8 @@ final class SettlementIndex {
         industriesByHex,
         debtsByDebtor,
         unitsByParty,
-        enterprisesByActor);
+        enterprisesByActor,
+        transientLandShareIds);
   }
 
   /** ★ 债务被改写之后的阶段边界视图：共享资产/劳动/格/产业，只重建债务人索引。 */
@@ -355,7 +460,8 @@ final class SettlementIndex {
         industriesByHex,
         debtsByDebtor(debts),
         unitsByParty,
-        enterprisesByActor);
+        enterprisesByActor,
+        transientLandShareIds);
   }
 
   // ── 读口（一律 O(1) 查表；缺项返回空/0，与旧“无份额/无配额”口径同侧）────────────────────
@@ -385,6 +491,11 @@ final class SettlementIndex {
   /** ★★ D4-Ib2a：同一 revision/tick 的统一占用预算（生产路径必读；旧窄夹具可能为空）。 */
   Optional<AssetOccupancyBudget> d4AssetOccupancyBudget() {
     return assetOccupancyBudget;
+  }
+
+  /** ★★★ D-032 RA1b2b：本次预算里的瞬态 LAND 合成份额 id；写回前必须过滤（不落盘）。 */
+  Set<AssetShareId> transientLandShareIds() {
+    return transientLandShareIds;
   }
 
   Long capacityScaleOf(ProductionUnitId unit) {
@@ -471,6 +582,133 @@ final class SettlementIndex {
   }
 
   // ── 构建（静态 helper；顺序口径都写在注释里）──────────────────────────────────────────
+
+  /**
+   * ★★★ <b>RF3b：土地持有者零计划劳动的 D4 占用回退规模</b>。
+   *
+   * <p>规则（只读瞬态，不落状态）：
+   *
+   * <ol>
+   *   <li>{@code industry.capacityPerUnit()} 含 LAND 且 {@code capacityPerUnit[LAND] > 0}；
+   *   <li>roster 存在且 organizer 的 {@code plannedLaborMilliPerDay == 0}；
+   *   <li>unit operator 能解析到已登记家户，且该家户当刻 {@code laborMilli > 0}；
+   *   <li>该家户在 unit 所在 hex 有 {@code landHoldings}；
+   *   <li>{@code scale = ⌊landQuantity ÷ capacityPerUnit[LAND]⌋}，仅 {@code scale > 0} 入表。
+   * </ol>
+   *
+   * <p>★ 它只是 D4 请求阶段的派生读数，不是第二份土地权威：不写 roster、不进 ChangeSet/Codec；unit 按 id 稳定升序处理。
+   */
+  private static Map<ProductionUnitId, Long> fallbackLandScaleByUnit(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      Map<LandHoldingKey, LandHolding> landHoldings,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      long today) {
+    List<ProductionUnitId> orderedUnits = new ArrayList<>(units.keySet());
+    orderedUnits.sort(Comparator.comparing(ProductionUnitId::value));
+    Map<ProductionUnitId, Long> scales = new LinkedHashMap<>();
+    for (ProductionUnitId unitId : orderedUnits) {
+      ProductionProcess unit = units.get(unitId);
+      if (unit == null || !unit.id().equals(unitId)) {
+        continue;
+      }
+      IndustryDefinitionView industry = industries.get(unit.industry());
+      if (industry == null) {
+        continue;
+      }
+      Long capacityPerLand = industry.capacityPerUnit().get(AssetKind.LAND);
+      if (capacityPerLand == null || capacityPerLand <= 0L) {
+        continue;
+      }
+      ProductionRoster roster = productionRosters.get(unit.id());
+      if (roster == null || roster.organizer().plannedLaborMilliPerDay() != 0L) {
+        continue;
+      }
+      HouseholdId household = householdOfActor.get(unit.operator());
+      if (household == null) {
+        continue;
+      }
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy == null || householdEconomy.laborMilli() <= 0L) {
+        continue;
+      }
+      if (!unit.location().isSpecified()) {
+        continue;
+      }
+      final HexCoord hex;
+      try {
+        hex = HexCoord.parse(unit.location().value());
+      } catch (IllegalArgumentException malformedLocation) {
+        continue; // 坏地点由别处 fail-closed；这里不把坏地点当合法土地持有
+      }
+      LandHolding holding = landHoldings.get(new LandHoldingKey(hex, household));
+      if (holding == null) {
+        continue;
+      }
+      long landQuantity = holding.quantityMilliMu();
+      if (landQuantity <= 0L) {
+        continue;
+      }
+      long requestedScale = landQuantity / capacityPerLand;
+      if (requestedScale <= 0L) {
+        continue;
+      }
+      scales.put(unit.id(), requestedScale);
+      logLandFallbackOccupancyRequest(
+          today,
+          householdEconomies,
+          unit,
+          household,
+          landQuantity,
+          capacityPerLand,
+          requestedScale);
+    }
+    return Collections.unmodifiableMap(scales);
+  }
+
+  /** ★ RF3b：逐 unit 每 tick 一条 DEBUG 回退请求读数（日志失败不得影响结算）。 */
+  private static void logLandFallbackOccupancyRequest(
+      long day,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      ProductionProcess unit,
+      HouseholdId household,
+      long landQuantity,
+      long capacityPerLand,
+      long requestedScale) {
+    if (!PRODUCTION.isDebugEnabled()) {
+      return;
+    }
+    String gateKey = System.identityHashCode(householdEconomies) + "|" + unit.id().value();
+    Long previous = LAND_FALLBACK_OCCUPANCY_REQUEST_LOGGED.put(gateKey, day);
+    if (previous != null && previous == day) {
+      return;
+    }
+    try {
+      EventLog.channel(PRODUCTION)
+          .debug(
+              LogEvent.of(
+                  "LAND_FALLBACK_OCCUPANCY_REQUEST",
+                  EconomyLogSource.ECONOMY_ASSET_OCCUPANCY,
+                  "day",
+                  day,
+                  "unit",
+                  unit.id().value(),
+                  "household",
+                  household.value(),
+                  "landQuantity",
+                  landQuantity,
+                  "capacityPerLand",
+                  capacityPerLand,
+                  "requestedScale",
+                  requestedScale,
+                  "reason",
+                  "zero-planned-land-owner"));
+    } catch (RuntimeException ignored) {
+      // ★ 日志失败不影响结算。
+    }
+  }
 
   /**
    * 逐 unit 的份额 id（{@code (industry, operator)} 作用域，序 = 全局份额表序）。

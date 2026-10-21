@@ -122,8 +122,12 @@ final class MarketPortBook {
           //   车道根本不建（货走不动，具名 LOGISTICS_CAPACITY）；被截断量记进两个槽位（V-20）。
           //   ★★★ W7（2026-10-11）：判据加上"**全池**也没有可交付服务"这一半（用户裁定：运力提供全市场区共享）——
           //   发货格没有承运方但别格有货时，这条车道必须**建起来**（需求才有被接单的机会）。
-          if (!ctx.carrierPool.hasCapacityAt(sellerHex)
-              && ctx.carrierPool.totalCapacityMilli() <= 0L) {
+          boolean noLocalTransportCapacity =
+              ctx.transportRoundPlan != null
+                  ? !ctx.transportPlanHasLocalCapacity(sellerHex)
+                  : (!ctx.carrierPool.hasCapacityAt(sellerHex)
+                      && ctx.carrierPool.totalCapacityMilli() <= 0L);
+          if (noLocalTransportCapacity) {
             blockLaneWithoutCapacity(ctx, buys, sells, sellerHex, buyerHex, commodity);
             continue;
           }

@@ -96,15 +96,17 @@ class ProductionRoleSeeder extends WorldBalanceSeeder {
    * ★★ <b>PRODUCTION_RUNTIME：(residence, slot) → 默认位置 id（本类唯一裁决点）</b>。
    *
    * <pre>
-   * 农村（非流民槽位，无论有地/无地、小农/中农/富农/地主）：全部 → grain_farm.operator
+   * 农村：landed_peasant → grain_farm.operator；landless_laborer → grain_farm.hired_laborer
    * 城镇：poor_peasant → handicraft_workshop.artisan；middle_peasant → handicraft_workshop.workshop_owner；
-   *       rich_peasant → merchant.self_employed；landlord → merchant.principal
-   * 任意居住类型：{@code landless_laborer}（流民槽位，{@link #DISPLACED_SLOT}）→ displaced.laborer
+   *       rich_peasant / landlord → merchant.caravan_operator
+   *       （旧 self_employed / principal / porter 位置映射已退出；hired_driver 是运输名册里的工资位置，不是阶层行默认位置）
    * </pre>
    *
-   * <p>★★ <b>阶级只做投影，不决定生产方式</b>：农村槽位名是结算后的读数标签，不是 mode/role 选择键。这里只为初始 {@code classStandings}
-   * 提供默认位置；同一家户以后买地/失地/人口变化时，仍走同一个 {@code grain_farm} 模板。农村“雇工”不是单独的 初始槽位，而是在 {@code grain_farm}
-   * 实例内由 {@code hired_laborer} 角色表达。
+   * <p>★★ <b>RC2b 起农村二档</b>：有地农民占生产支配位置，无地农民占工资雇佣位置；不再把 {@code landless_laborer} 映射到 {@code
+   * displaced.laborer}（displaced mode 目录保留，但新世界不播种它）。
+   *
+   * <p>★★ <b>阶级只做投影，不决定生产方式</b>：这里只为初始 {@code classStandings} 提供默认位置；同一家户以后买地/失地/人口变化时，仍走同一个 {@code
+   * grain_farm} 模板。
    *
    * <p>位置 id 只能经 {@link DefaultProductionModes#positionId} 查得 ⇒ 本类不拼第二份位置串；目录与映射漂开时具名抛，
    * 不静默少一条。词表外槽位（本类没有裁决过的值）同样 fail-closed。
@@ -116,44 +118,64 @@ class ProductionRoleSeeder extends WorldBalanceSeeder {
     if (slot == null || slot.isBlank()) {
       throw new IllegalStateException("PRODUCTION_RUNTIME 的社会阶层槽位不得为空白");
     }
-    if (DISPLACED_SLOT.equals(slot)) {
-      // ★ 流民无工作：位置是 displaced.laborer（D-023），与居住类型无关（城乡各有一条流民行）。
-      return requiredDefaultPosition(
-          DefaultProductionModes.DISPLACED, DefaultProductionModes.ROLE_DISPLACED_LABORER);
+    if (residence == ResidenceKind.RURAL) {
+      if (RURAL_CLASS_IDS[0].equals(slot)) {
+        return grainFarmOperator();
+      }
+      if (RURAL_CLASS_IDS[1].equals(slot)) {
+        return grainFarmHiredLaborer();
+      }
+      throw new IllegalStateException("PRODUCTION_RUNTIME 未裁决的农村社会阶层槽位（拒绝臆造映射）: " + slot);
     }
-    boolean rural = residence == ResidenceKind.RURAL;
     if (CLASS_IDS[0].equals(slot)) {
-      return rural
-          ? grainFarmOperator()
-          : requiredDefaultPosition(
-              DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_ARTISAN);
+      return requiredDefaultPosition(
+          DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_ARTISAN);
     }
     if (CLASS_IDS[1].equals(slot)) {
-      return rural
-          ? grainFarmOperator()
-          : requiredDefaultPosition(
-              DefaultProductionModes.HANDICRAFT_WORKSHOP,
-              DefaultProductionModes.ROLE_WORKSHOP_OWNER);
+      return requiredDefaultPosition(
+          DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_WORKSHOP_OWNER);
     }
-    if (CLASS_IDS[2].equals(slot)) {
-      return rural
-          ? grainFarmOperator()
-          : requiredDefaultPosition(
-              DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_SELF_EMPLOYED);
-    }
-    if (CLASS_IDS[3].equals(slot)) {
-      return rural
-          ? grainFarmOperator()
-          : requiredDefaultPosition(
-              DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_MERCHANT_PRINCIPAL);
+    if (CLASS_IDS[2].equals(slot) || CLASS_IDS[3].equals(slot)) {
+      return caravanOperator();
     }
     throw new IllegalStateException("PRODUCTION_RUNTIME 未裁决的社会阶层槽位（拒绝臆造映射）: " + slot);
   }
 
-  /** ★ 农村非流民槽位的唯一默认位置：{@code grain_farm.operator}（阶级标签只是投影，不查 mode）。 */
+  /** ★ 农村有地农民的唯一默认位置：{@code grain_farm.operator}（LANDED）。 */
   private static ClassPositionId grainFarmOperator() {
     return requiredDefaultPosition(
         DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_OPERATOR);
+  }
+
+  /** ★ 农村无地农民的唯一默认位置：{@code grain_farm.hired_laborer}（LANDLESS）。 */
+  private static ClassPositionId grainFarmHiredLaborer() {
+    return requiredDefaultPosition(
+        DefaultProductionModes.GRAIN_FARM, DefaultProductionModes.ROLE_HIRED_LABORER);
+  }
+
+  /**
+   * ★★ D-032 C9：城镇 OWNER 槽位的默认运输位置 = {@code merchant.caravan_operator}。
+   *
+   * <p>旧 {@code self_employed} / {@code principal} / {@code porter} 映射已从本裁决点退出；目录缺 {@code
+   * caravan_operator}（或 {@code hired_driver}，由运输模板消费）时 {@link #requiredDefaultPosition} 具名
+   * fail-closed，不猜第二个位置。
+   */
+  private static ClassPositionId caravanOperator() {
+    return requiredDefaultPosition(
+        DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_CARAVAN_OPERATOR);
+  }
+
+  /**
+   * ★★ D-032 C9：运输生产方式的两个位置必须同时存在，且只从默认目录唯一拼写点取。
+   *
+   * <p>缺任一位置 ⇒ 具名 fail-closed（不静默退回旧 principal/porter/self_employed）。C9 seeder 在创建每个运输 unit/roster
+   * 前调用本守卫；角色定义本身仍由 {@code CaravanTransportTemplate.ROLES} 唯一拥有。
+   */
+  static void requireCaravanTransportPositions() {
+    requiredDefaultPosition(
+        DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_CARAVAN_OPERATOR);
+    requiredDefaultPosition(
+        DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_HIRED_DRIVER);
   }
 
   /**

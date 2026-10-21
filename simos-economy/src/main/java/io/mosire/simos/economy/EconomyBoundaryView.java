@@ -22,6 +22,7 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
@@ -31,6 +32,7 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
@@ -200,5 +202,15 @@ public final class EconomyBoundaryView implements EconomyDayView {
   @Override
   public Map<InventoryReservationId, InventoryReservation> inventoryReservations() {
     return data.inventoryReservations();
+  }
+
+  @Override
+  public Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors() {
+    return data.transportPriceAnchors();
+  }
+
+  /** ★★★ D-032 RC7：家户向下流动表的只读边界读口（本表不进 {@link EconomyDayView} 的既有阶段契约）。 */
+  public Map<HouseholdId, HouseholdFlowTable> householdFlowTables() {
+    return data.householdFlowTables();
   }
 }

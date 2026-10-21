@@ -42,11 +42,15 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.land.LandArableSupply;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.SellOrder;
+import io.mosire.simos.economy.land.LandLedgerState;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
@@ -62,6 +66,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 
 /** 市场轮机械拆分 helper（由 MarketSettlement 抽取；行为不变）。 */
 final class MarketRoundRunner {
@@ -197,6 +202,140 @@ final class MarketRoundRunner {
       Set<HouseholdId> pureMerchantHouseholds,
       Map<MarketZoneId, MarketZone> marketZones,
       SettlementOrderBook ordering) {
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        marketZones,
+        ordering,
+        // 旧入口没有标量土地输入；LAND assetShares 已无条件非法 ⇒ 空表 = 逐值退回旧世界。
+        Map.of());
+  }
+
+  /**
+   * ★★★ <b>D-032 RA1b2c1/RA1b2c2：带标量 LAND 纯库存财富 + 产权工作态的入口</b>。
+   *
+   * <p>★ 商品买槽与土地买单共用同一个 {@link PureInventoryWealthBook.Snapshot}；LAND 只从 {@code landHoldings} 按
+   * {@code holding.hex} 所属市场区地价估值，不再读 {@code assetShares}（LAND 持久份额已无条件非法）。 没有标量土地的世界传空表 ⇒ 与旧口径同值。
+   *
+   * <p>★ 旧重载不传 {@code LandArableSupply}，按当前持有逐 hex 合计派生同量供应表（市场转移只在本 hex 内搬数量，总量不增不减）。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones,
+      SettlementOrderBook ordering,
+      Map<LandHoldingKey, LandHolding> landHoldings) {
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        marketZones,
+        ordering,
+        landHoldings,
+        arableSupplyOf(landHoldings));
+  }
+
+  /**
+   * ★★★ <b>D-032 RA1b2c2：带标量 LAND 持有 + 可耕总量权威的入口（生产路径走这一条）。</b>
+   *
+   * <p>★ 土地成交的唯一写口 {@link MarketTradeExecutor#executeLandTrade} 在 {@link
+   * io.mosire.simos.economy.land.LandLedgerState} 上按 {@code LandTransfer} 转移；每 hex 总量守恒由 {@link
+   * io.mosire.simos.economy.land.LandBook#apply} 唯一校验。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones,
+      SettlementOrderBook ordering,
+      Map<LandHoldingKey, LandHolding> landHoldings,
+      LandArableSupply landArableSupply) {
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        marketZones,
+        ordering,
+        landHoldings,
+        landArableSupply,
+        () -> {});
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b1：订单构建完成、真正撮合之前的只读回调入口</b>。
+   *
+   * <p>{@code beforeMatch} 只在 {@code ctx.buys}/{@code ctx.sells} 已由既有唯一 planner 建好、显式意向已追加之后调用；
+   * 它可读取同一轮最终订单并准备瞬态运输计划。回调不改订单/预算/冻结，也不改变 matcher 判定；异常 ⇒ 整轮 fail-closed。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones,
+      SettlementOrderBook ordering,
+      Map<LandHoldingKey, LandHolding> landHoldings,
+      LandArableSupply landArableSupply,
+      Runnable beforeMatch) {
+    Objects.requireNonNull(beforeMatch, "beforeMatch");
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        marketZones,
+        ordering,
+        landHoldings,
+        landArableSupply,
+        (MatchContext ignored) -> beforeMatch.run());
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：带撮合前上下文回调的入口</b> —— 回调可把同一份 C7b1 计划与 C6 活动运输池装入 {@link
+   * MatchContext}；仍发生在订单构建完成之后、任何冻结/撮合之前。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones,
+      SettlementOrderBook ordering,
+      Map<LandHoldingKey, LandHolding> landHoldings,
+      LandArableSupply landArableSupply,
+      Consumer<MatchContext> beforeMatch) {
+    Objects.requireNonNull(beforeMatch, "beforeMatch");
     Objects.requireNonNull(marketTables, "marketTables");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
@@ -205,6 +344,8 @@ final class MarketRoundRunner {
     Objects.requireNonNull(carrierPool, "carrierPool");
     Objects.requireNonNull(marketZones, "marketZones（没有持久区请给空表）");
     Objects.requireNonNull(ordering, "ordering（W4 结算序快照；没有排序面给 SettlementOrderBook.empty(day)）");
+    Objects.requireNonNull(landHoldings, "landHoldings（没有标量土地请给空表）");
+    Objects.requireNonNull(landArableSupply, "landArableSupply（没有标量土地请给空表）");
     if (MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
           .debug(
@@ -251,6 +392,10 @@ final class MarketRoundRunner {
     ctx.pureMerchantHouseholds = pureMerchantHouseholds;
     // ★★ W2：本轮的持久市场区表（自适应定价逐区读 α）—— 同上，由入口参数带入，worker 副本照抄。
     ctx.marketZones = marketZones;
+    // ★★★ RA1b2c2：本轮标量 LAND 工作态 —— 从会话 landHoldings 构造不可变账本；土地成交逐笔 transfer。
+    //   ★ 关键：即使本轮不开市/无市场表，round.landHoldings 也要带出当刻持有，轮末写回才是恒等复制而不是清空。
+    ctx.landLedger = LandLedgerState.from(landArableSupply, landHoldings);
+    round.setLandHoldings(ctx.landLedger.holdingsByKey());
     if (MARKET.isDebugEnabled()) {
       // ★★ E（§一.9：DEBUG 写"为什么"）：本轮"钱的价"认得出哪些币 —— "某笔异币为什么没成交"的第一现场。
       EventLog.channel(MARKET)
@@ -293,7 +438,7 @@ final class MarketRoundRunner {
             round.householdEconomies,
             round.householdGoods,
             round.householdMoney,
-            round.assetShares,
+            landHoldings,
             marketTables,
             topology,
             currencyValuation);
@@ -449,6 +594,19 @@ final class MarketRoundRunner {
     // ★★★ P3.0：M3 显式商品意向（prepareMarketRound(ctx, intents) 转换出的 BuyOrder/SellOrder）
     //   仍进入同一份 ctx.buys/ctx.sells 并交给同一个 clearOncePerCycle。
     appendInjectedCommodityOrders(ctx, planningRound, payChoice);
+    // ★★★ D-032 C7b1：此时当轮最终商品订单（自动 + 显式注入）已全部在 ctx.buys/ctx.sells 中，
+    //   尚未做任何撮合/冻结/成交。把只读订单快照挂回同一轮，并调用执行方注入的 beforeMatch 回调；
+    //   失败上抛 ⇒ 整次 advance 丢弃，不产生半轮市场。
+    List<BuyOrder> planningBuys = new ArrayList<>(ctx.buys.size());
+    for (BuySlot buy : ctx.buys) {
+      planningBuys.add(buy.order);
+    }
+    List<SellOrder> planningSells = new ArrayList<>(ctx.sells.size());
+    for (SellSlot sell : ctx.sells) {
+      planningSells.add(sell.order);
+    }
+    round.capturePlanningOrders(planningBuys, planningSells);
+    beforeMatch.accept(ctx);
     // ★★ W4（S-4 / N-1）：**买槽按结算序重排** —— 家户序 = 资产 − 负债净值降序（同值按稳定 id 的 canonical 序）。
     //   ★ 位置必须在 orderIndex 赋值与 MarketIndexes.build **之前**：槽位的全局下标、各 (区,商品) 桶的相对序、
     //     冻结的写序、撮合的配给序全都读这份表 ⇒ 只在这里排一次，后面不许再排第二遍（两处排序必然漂开）。
@@ -524,6 +682,8 @@ final class MarketRoundRunner {
       // ── 4a0e. ★★ A2（§一.9 级别规则）：交付点取不到服务货 = 跨切片一致性故障 ⇒ **ERROR 不降级**。──────
       //   ★ 它必须为 0（池的运力预算就是该户当刻的 haul 可用量，交付紧跟分配之后）；非 0 说明账被别处改了
       //     或池的预算不是从货来的 ⇒ 当场可见，绝不静默少扣（逐条 ERROR 在 deliverHaulService 里发）。
+      //   ★★★ RC8a（2026-10-20）：不得只打 ERROR 后让 advance 以 status=OK 吞掉契约故障 ——
+      //     先保留轮级 ERROR，再抛具名 IllegalStateException 让 advance fail-closed（本市场轮整体拒绝）。
       if (ctx.haulServiceDeliveryFaults > 0) {
         EventLog.channel(MARKET)
             .error(
@@ -536,6 +696,12 @@ final class MarketRoundRunner {
                     ctx.haulServiceDeliveryFaults,
                     "reason",
                     "contract-fault-service-goods-not-on-hand-at-delivery"));
+        throw new IllegalStateException(
+            "HAUL_SERVICE_DELIVERY_FAULT_CONTRACT: day="
+                + round.day
+                + " faults="
+                + ctx.haulServiceDeliveryFaults
+                + " reason=contract-fault-service-goods-not-on-hand-at-delivery");
       }
       // ── 4a. ★★ P-T1a：口岸节流的轮级汇总（INFO：发生了什么 + 具名计数；逐区对在 DEBUG/TRACE）──────
       //   ★ 只报"被拦下多少"这一件事（计数口径 = 源区→目的区 的<b>区对</b>）：被拦下的量不进候选集、不落状态、不进账本（§11），所以它是日志事实，不是账。
@@ -576,6 +742,8 @@ final class MarketRoundRunner {
     }
     // ★★ P2f（§一.9 INFO = 本轮发生了什么）：土地订单/成交/赊购/下一轮地价的轮级汇总（空轮一条不发）。
     logRoundSummary(ctx);
+    // ★★★ RA1b2c2：把本轮 LAND 产权工作态写回 MarketRound 工作副本（轮末由 SettlementDayMarketPipeline 写会话）。
+    round.setLandHoldings(ctx.landLedger.holdingsByKey());
 
     // ── 4b. ★★★ W2-fix4（2026-10-11）：这里原有"市场信用撮合"（{@code creditRound}：借钱买货 → 借实物）──
     //   **整段退役**，理由见本文件"W2 债务式清算"那个段落头与 W2-fix4 账本：那两条腿绕过运费/运力池/税，
@@ -674,29 +842,78 @@ final class MarketRoundRunner {
   }
 
   /**
-   * ★★★ <b>D-032 P3c3：用 M3 的 {@link MarketIntent} 替换同一 actor 的 planner 自动商品订单。</b>
+   * ★★★ <b>D-032 P3c3 / RF1：用 M3 的 {@link MarketIntent} 按<b>同键</b>替换 planner 自动商品订单。</b>
    *
-   * <p>只移除 {@code round.injectedMarketIntents} 里出现过的 COMMODITY actor 的自动买/卖槽；随后 {@link
-   * #appendInjectedCommodityOrders} 再把 M3 订单加入同一轮。缺方向的订单就是没有订单：不恢复该 actor 的自动腿。 政府/商号/未接计划的户不在
-   * intent actor 集合里 ⇒ 自动订单逐值保留。
+   * <p>替换键 = {@code (actor, commodity, side)}（商品）—— M3 有 cloth BUY 时只移除该 actor 的 cloth BUY 自动槽， 同
+   * actor 的 grain BUY/SELL、cloth SELL 等自动腿逐值保留；随后 {@link #appendInjectedCommodityOrders} 再把 M3
+   * 订单加入同一轮。缺方向的订单就是没有订单：不恢复反向自动腿。
+   *
+   * <p>★ 土地的自动腿只来自 M3 本身（{@link MarketLandIntentBook} 已按 {@code (actor, LAND, hex, side)} 合并），
+   * 本入口不存在需要替换的自动土地腿；本方法只处理商品槽，绝不按 actor 级整删。
    */
   private static void replaceAutoCommodityOrdersForIntentActors(
       MatchContext ctx, MarketRound round) {
+    Set<String> buyKeys = new LinkedHashSet<>();
+    Set<String> sellKeys = new LinkedHashSet<>();
     Set<ActorRef> intentActors = new LinkedHashSet<>();
     for (MarketIntent intent : round.injectedMarketIntents) {
-      if (intent.kind() == MarketIntentKind.COMMODITY) {
-        intentActors.add(intent.actor());
+      if (intent.kind() != MarketIntentKind.COMMODITY) {
+        continue;
+      }
+      intentActors.add(intent.actor());
+      String key =
+          commodityAutoOrderKey(intent.actor(), intent.commodity().orElseThrow(), intent.side());
+      if (intent.side() == MarketIntentSide.BUY) {
+        buyKeys.add(key);
+      } else {
+        sellKeys.add(key);
       }
     }
-    if (intentActors.isEmpty()) {
+    if (buyKeys.isEmpty() && sellKeys.isEmpty()) {
       return;
     }
     int beforeBuys = ctx.buys.size();
     int beforeSells = ctx.sells.size();
-    ctx.buys.removeIf(slot -> intentActors.contains(slot.order.requester()));
-    ctx.sells.removeIf(slot -> intentActors.contains(slot.order.supplier()));
+    List<String> removedKeys = new ArrayList<>();
+    ctx.buys.removeIf(
+        slot -> {
+          String key =
+              commodityAutoOrderKey(
+                  slot.order.requester(), slot.order.commodity(), MarketIntentSide.BUY);
+          if (buyKeys.contains(key)) {
+            removedKeys.add(key);
+            return true;
+          }
+          return false;
+        });
+    ctx.sells.removeIf(
+        slot -> {
+          String key =
+              commodityAutoOrderKey(
+                  slot.order.supplier(), slot.order.commodity(), MarketIntentSide.SELL);
+          if (sellKeys.contains(key)) {
+            removedKeys.add(key);
+            return true;
+          }
+          return false;
+        });
     int removedBuys = beforeBuys - ctx.buys.size();
     int removedSells = beforeSells - ctx.sells.size();
+    Set<String> retainedKeys = new LinkedHashSet<>();
+    for (BuySlot buy : ctx.buys) {
+      if (intentActors.contains(buy.order.requester())) {
+        retainedKeys.add(
+            commodityAutoOrderKey(
+                buy.order.requester(), buy.order.commodity(), MarketIntentSide.BUY));
+      }
+    }
+    for (SellSlot sell : ctx.sells) {
+      if (intentActors.contains(sell.order.supplier())) {
+        retainedKeys.add(
+            commodityAutoOrderKey(
+                sell.order.supplier(), sell.order.commodity(), MarketIntentSide.SELL));
+      }
+    }
     if (MARKET.isInfoEnabled()) {
       EventLog.channel(MARKET)
           .info(
@@ -707,6 +924,10 @@ final class MarketRoundRunner {
                   round.day,
                   "intentActors",
                   intentActors.size(),
+                  "removedKeys",
+                  removedKeys,
+                  "retainedKeys",
+                  retainedKeys,
                   "removedAutoBuys",
                   removedBuys,
                   "removedAutoSells",
@@ -716,8 +937,14 @@ final class MarketRoundRunner {
                   "retainedAutoSells",
                   ctx.sells.size(),
                   "reason",
-                  "m3-intents-replace-same-actor-auto-commodity-orders"));
+                  "m3-intents-replace-only-same-actor-commodity-side-auto-legs"));
     }
+  }
+
+  /** 自动商品订单的同键 canonical 串：{@code (actor, commodity, side)}（只用于替换/日志，不是身份类型）。 */
+  private static String commodityAutoOrderKey(
+      ActorRef actor, CommodityId commodity, MarketIntentSide side) {
+    return actor.kind() + ":" + actor.id() + "|" + commodity.value() + "|" + side.name();
   }
 
   /**
@@ -800,5 +1027,19 @@ final class MarketRoundRunner {
         new LinkedHashMap<>(round.householdFrozenMoney),
         new LinkedHashMap<>(round.unmetToday),
         new ProductionLedger.Accumulator(round.day));
+  }
+
+  /**
+   * ★★ RA1b2c2：旧重载没有 {@link LandArableSupply} 输入时，按当前持有逐 hex 合计派生一份同量供应表。
+   *
+   * <p>★ 市场土地转移只在一个 hex 内把数量从卖方搬到买方，总量不变 ⇒ 派生供应表足以让 {@code LandBook.apply} 守住"不超卖、不跨 hex
+   * 拼数量"；真实生产路径由 app 从 Map 构造瞬态 {@code LandArableSupply} 并在会话入口显式注入。
+   */
+  private static LandArableSupply arableSupplyOf(Map<LandHoldingKey, LandHolding> landHoldings) {
+    Map<HexCoord, Long> totals = new LinkedHashMap<>();
+    for (LandHolding holding : landHoldings.values()) {
+      totals.merge(holding.hex(), holding.quantityMilliMu(), Math::addExact);
+    }
+    return new LandArableSupply(totals);
   }
 }

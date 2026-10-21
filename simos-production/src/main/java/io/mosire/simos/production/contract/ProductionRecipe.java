@@ -41,8 +41,8 @@ import java.util.Map;
  * Map.copyOf}**——迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
- * @param capacityPerUnit 每 1 单位规模需要多少生产资料（{@code LAND} 的量纲是**千分亩**、其余按**件**）；键值非空、逐值 {@code ≥
- *     0}、**且不得为空表**（它是"单位规模"的锚，见构造期守卫）
+ * @param capacityPerUnit 每 1 单位规模需要多少生产资料（{@code LAND} 的量纲是**千分亩**、其余按**件**）；键值非空、逐值 {@code > 0}。空表
+ *     = 没有 AssetKind 通道；它与 {@link #durableCommodityCapacityPerUnit()} 至少一边非空（"单位规模"的锚，见构造期守卫）
  * @param inputPerUnit 每 1 单位规模**每周期一次性**消耗的商品（{@code GRAIN} 作种子、{@code FIBER}/{@code IRON} 作原料）；
  *     键值非空、逐值 {@code ≥ 0}。空表 = 不消耗任何商品
  * @param laborPerUnit 每 1 单位规模需要的劳动（**千分劳动**）；不得为负。{@code 0} = 不施加劳动约束
@@ -50,13 +50,18 @@ import java.util.Map;
  * @param moneyOutputPerUnit ★★ <b>W5：每 1 单位规模的铸币产出（毫货币/规模·周期）</b>；{@link MoneyOutput#NONE}（空表）=
  *     这一路不存在。★ 与商品产出<b>刻意同形、但量纲不同</b>（货币最小单位就是毫 ⇒ 不再 ×1000）；键类型是 {@code CurrencyId}（另一个身份命名空间）——
  *     理由见 {@link MoneyOutput} 的类注
+ * @param durableCommodityCapacityPerUnit ★★ <b>D-032 C5a：每 1 单位规模需要的耐久商品资本（容量锚，不消耗）</b>； 键 = 商品
+ *     id（如 {@code transport_horse}）、值 = 每单位规模的数量。 ★ 它与 {@link #inputPerUnit()} 是<b>两条不同通道</b>：
+ *     durable 只参与规模计算、<b>不</b>在周期里扣减；消耗性投入仍只走 {@code inputPerUnit}。空表 = 没有这一路； 逐值必须 {@code > 0}。★
+ *     {@code capacityPerUnit} 与它<b>至少一边非空</b>（"单位规模"必须有锚）。
  */
 public record ProductionRecipe(
     Map<AssetKind, Long> capacityPerUnit,
     Map<CommodityId, Long> inputPerUnit,
     long laborPerUnit,
     Map<CommodityId, Long> outputPerUnit,
-    MoneyOutput moneyOutputPerUnit) {
+    MoneyOutput moneyOutputPerUnit,
+    Map<CommodityId, Long> durableCommodityCapacityPerUnit) {
 
   /**
    * ★ <b>W5 之前的 4 参形状</b>：{@code moneyOutputPerUnit} 取 {@link MoneyOutput#NONE}（不铸币）。
@@ -68,7 +73,20 @@ public record ProductionRecipe(
       Map<CommodityId, Long> inputPerUnit,
       long laborPerUnit,
       Map<CommodityId, Long> outputPerUnit) {
-    this(capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit, MoneyOutput.NONE);
+    this(capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit, MoneyOutput.NONE, Map.of());
+  }
+
+  /**
+   * ★ <b>C5a 之前的 5 参形状</b>（含铸币产出、无耐久商品资本通道）：等价于 {@code durableCommodityCapacityPerUnit =
+   * Map.of()}；旧调用点逐值不变。
+   */
+  public ProductionRecipe(
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<CommodityId, Long> inputPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      MoneyOutput moneyOutputPerUnit) {
+    this(capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit, moneyOutputPerUnit, Map.of());
   }
 
   public ProductionRecipe {
@@ -84,13 +102,9 @@ public record ProductionRecipe(
     if (laborPerUnit < 0) {
       throw new IllegalArgumentException("ProductionRecipe.laborPerUnit 不得为负: " + laborPerUnit);
     }
-    // ★★ **产能那一路不能空**：它是"单位规模"的**锚** —— 没有它，"每 1 单位规模"就没有定义（规模无上界 ⇒ 产出随"可用"无限涨，
-    //   即凭空造物）。★ 本轮所有配方都锚在一个生产资料上（农业锚土地、织机锚工具、作坊锚工坊）；"纯劳动 / 纯投入"的配方
-    //   要等出现真实需求再开口子（届时"单位规模"得先有定义）。
-    if (capacityPerUnit.isEmpty()) {
-      throw new IllegalArgumentException(
-          "ProductionRecipe.capacityPerUnit 不得为空（它是\"单位规模\"的锚，没有它规模无上界）");
-    }
+    // ★★ **产能锚不能两条都空**：它是"单位规模"的**锚** —— 没有它，"每 1 单位规模"就没有定义（规模无上界 ⇒ 产出随"可用"无限涨，
+    //   即凭空造物）。★ 本批起锚有两条合法通道：AssetKind capacity 与耐久商品资本 capacity（至少一边非空）；
+    //   "纯劳动 / 纯投入"的配方仍要等出现真实需求再开口子（届时"单位规模"得先有定义）。
     Map<AssetKind, Long> capacityCopy = new LinkedHashMap<>();
     for (Map.Entry<AssetKind, Long> entry : capacityPerUnit.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -108,6 +122,31 @@ public record ProductionRecipe(
       capacityCopy.put(entry.getKey(), entry.getValue());
     }
     capacityPerUnit = Collections.unmodifiableMap(capacityCopy); // ★ 冻在赋值处
+    if (durableCommodityCapacityPerUnit == null) {
+      throw new IllegalArgumentException(
+          "ProductionRecipe.durableCommodityCapacityPerUnit 不得为 null（无此通道用空 map）");
+    }
+    Map<CommodityId, Long> durableCapacityCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : durableCommodityCapacityPerUnit.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionRecipe.durableCommodityCapacityPerUnit 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() <= 0L) {
+        throw new IllegalArgumentException(
+            "ProductionRecipe.durableCommodityCapacityPerUnit 的数量必须为正："
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
+      }
+      durableCapacityCopy.put(entry.getKey(), entry.getValue());
+    }
+    durableCommodityCapacityPerUnit = Collections.unmodifiableMap(durableCapacityCopy); // ★ 冻在赋值处
+    if (capacityPerUnit.isEmpty() && durableCommodityCapacityPerUnit.isEmpty()) {
+      throw new IllegalArgumentException(
+          "ProductionRecipe 的 capacityPerUnit 与 durableCommodityCapacityPerUnit 至少一边非空"
+              + "（\"单位规模\"必须有锚）");
+    }
     // ★★ **两段逐字展开、不抽 helper 去冻**（照 {@code Industry} 的先例）：SpotBugs 的 EI_EXPOSE_REP
     //   **不做跨过程分析**，只认它看得见的包装 —— 实测把这两段的"复制 + unmodifiableMap"塞进 helper
     //   会让 verify 的 spotbugs-check 报 Medium 并把构建打红。

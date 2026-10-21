@@ -7,6 +7,7 @@ import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.production.AppProductionLookups;
+import io.mosire.simos.app.world.ArableSupplySnapshots;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -19,6 +20,8 @@ import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.economy.time.SurvivalOutlookException;
 import io.mosire.simos.economy.time.SurvivalSocialFacts;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
@@ -150,6 +153,7 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     Objects.requireNonNull(range, "range");
     EconomyData economy = economyOf(state);
     ActorData actor = actorOf(state);
+    GameMap map = mapOfOrNull(state);
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
@@ -235,6 +239,8 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     //   备用推进路径与主路径共用同一装配点，不出现"一条真、一条空"的分叉。
     AppProductionLookups.Lookups productionLookups =
         AppProductionLookups.forState(state, productionRuntime, session);
+    // ★★★ D-032 L4：备用推进路径同样从 state 的 Map 构造瞬态 LAND 组件账本并显式注入；不得走空表兜底。
+    var landLedger = ArableSupplySnapshots.landLedgerFrom(state, "EconomyOwnershipTimeParticipant");
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
@@ -248,7 +254,8 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
             // ★★★ D-032 D4-Ib2b：跨切片只读依赖由组合根唯一装配点显式注入；P4c3 起工资报价直接读锚表。
             productionLookups.assetOccupancy(),
             productionLookups.participantAttributes(),
-            AppProductionLookups.expectedRevision(state));
+            AppProductionLookups.expectedRevision(state),
+            landLedger);
     ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       // ── ★★ D-032（D2 直接删）：备用经济路径上的"文化加成中性接线点"（CultureAptitudeBridge）已随
@@ -312,6 +319,11 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       books = OwnershipBooks.landAccountSession(books, stepper.accounts());
     }
     EconomyData currentEconomy = stepper.finish();
+    GameMap mapAfter =
+        map == null
+            ? null
+            : ArableSupplySnapshots.applyLedgerToMap(
+                map, stepper.landLedger(), "EconomyOwnershipTimeParticipant");
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -333,6 +345,10 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
         new java.util.LinkedHashMap<>();
     moduleChanges.put(ECONOMY, EconomyChangeSet.between(economy, currentEconomy));
     moduleChanges.put(ACTOR, ActorChangeSet.between(actor, books));
+    if (mapAfter != null) {
+      writes.add(mapAddressRoot());
+      moduleChanges.put("map", io.mosire.simos.map.change.MapChangeSet.between(map, mapAfter));
+    }
     // ★★ D-031 P1 §9.1：本段按需创建的定义必须与经济实例在同一次 Advance 原子落账（备用路径同样接线）。
     java.util.Map<
             io.mosire.simos.economy.api.id.IndustryId,
@@ -393,6 +409,19 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           "state 的 actor 切片不是 ActorSnapshot: " + snapshot.getClass().getName());
     }
     return actorSnapshot.data();
+  }
+
+  /** map 切片（缺省 ⇒ null；备用入口保持无 map 的旧夹具可编译可运行）。 */
+  private static GameMap mapOfOrNull(SimulationState state) {
+    Snapshot snapshot = state.module("map").orElse(null);
+    if (snapshot == null) {
+      return null;
+    }
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 map 切片不是 MapSnapshot: " + snapshot.getClass().getName());
+    }
+    return mapSnapshot.map();
   }
 
   private String economyAddressRoot() {

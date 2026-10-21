@@ -286,6 +286,41 @@ final class MarketShipmentBook {
   static long deliverHaulService(
       MatchContext ctx, RouteContext route, MerchantCapacityPool.CarrierAllocation allocation) {
     MarketRound round = ctx.round;
+    // ★★★ D-032 C7b2：活动运输计划路径只消耗本轮瞬态 work capacity；不扣 householdGoods[haul]、
+    //   不建旧服务库存/loss，也不产生 HAUL_SERVICE_DELIVERY_FAULT。返回实际 delivered work 供读数。
+    if (ctx.transportRoundPlan != null) {
+      long deliveredWork = 0L;
+      for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
+        long work = choice.consumedWorkMilli();
+        if (work <= 0L) {
+          continue;
+        }
+        deliveredWork = Math.addExact(deliveredWork, work);
+        ctx.haulServiceSoldMilli = Math.addExact(ctx.haulServiceSoldMilli, work);
+        if (EconomyLog.trace().isTraceEnabled()) {
+          EventLog.channel(EconomyLog.trace())
+              .trace(
+                  LogEvent.of(
+                      "TRANSPORT_WORK_DELIVERED",
+                      EconomyLogSource.ECONOMY_ORGANIZATION,
+                      "day",
+                      round.day,
+                      "household",
+                      choice.household().value(),
+                      "commodity",
+                      route.commodity().value(),
+                      "fromHex",
+                      route.from(),
+                      "toHex",
+                      route.to(),
+                      "goodsQuantityMilli",
+                      choice.quantityMilli(),
+                      "workMilli",
+                      work));
+        }
+      }
+      return deliveredWork;
+    }
     long total = 0L;
     for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
       long service = choice.consumedWorkMilli();
@@ -692,6 +727,11 @@ final class MarketShipmentBook {
    * <p>★ 判据的唯一拼写点是 {@link HaulService#pricedAt}（本方法只负责"取哪一格的市场"）；没有市场的格 ⇒ 0（不成市）。
    */
   static long servicePriceAt(MatchContext ctx, HexCoord hex) {
+    // ★★★ D-032 C7b2：活动运输计划路径的价格权威 = C7a 每市场区锚价（plan observation 冻结同一份值）；
+    //   0 合法，不再读旧 MarketTable.prices[haul]。
+    if (ctx.transportRoundPlan != null) {
+      return ctx.transportAnchorPriceAt(hex);
+    }
     MarketTable market = ctx.tableAt(hex);
     if (!HaulService.pricedAt(market)) {
       return 0L;
@@ -700,21 +740,38 @@ final class MarketShipmentBook {
   }
 
   /**
-   * ★★ <b>A2：这条 lane 走不走"运输服务商品"口径</b> = 发货格有没有给 {@code haul} 定价（含**明确 0 价**）。
+   * ★★ <b>RC8a（2026-10-20）：这条 lane 走不走"运输服务商品"口径 = 发货格有 haul 牌价 ∧ 本格当前有可交付 haul 服务货</b>。
    *
    * <pre>
-   * false（未定价 / 没有市场）⇒ **逐值退回改前**：单位运费由既有 freightUnitMilli（商品基础费 × 路线费率 × 承运成本）
-   *                            给出、运费腿铸 {@code CARRIER_FEE}（I-H3 第一条腿）
-   * true                       ⇒ 单位运费由服务牌价给出（{@link HaulService#unitFreightMilli}）、运费腿改走服务商品成交（I-H5）
+   * false（未定价 / 没有市场 / 本格无任何可交付 haul 服务货）
+   *       ⇒ 简单生产性运力 + 既有 {@code freightUnitMilli}（商品基础费 × 路线费率 × 承运成本）与 {@code CARRIER_FEE} 腿
+   * true  ⇒ 单位运费由服务牌价给出（{@link HaulService#unitFreightMilli}）、运费腿改走服务商品成交（I-H5）
    * </pre>
    *
-   * <p>★★ <b>为什么开关是"有没有定价行"而不是"牌价 &gt; 0"</b>：本仓对"从未定价 ⇒ 不交易"与"明确 0 价 ⇒ 免费交易" 有明文区分（{@code
-   * MarketTable.hasPrice} / {@code isFree}）—— 用价格数值当开关会把"GM 明确设成免费服务"静默读成
-   * "这一格没有服务市场"，那正是本仓最反对的"两个状态混成一个"。★ 0 牌价下服务照卖（{@link HaulService#unitFreightMilli} 的 {@code
-   * max(1, …)} 沿用既有"0 基础费仍收 1 毫"口径）。
+   * <p>★★ <b>为什么必须与 {@link ShipmentSettlement#haulServiceHexes(SettlementDayContext)} 同源</b>：运力池已在
+   * {@code MerchantCapacityCore} 按同一个"服务成市格集"分流 —— 服务成市格只给可交付服务货容量，其余格给劳动+工具容量。
+   * 如果这里仍只按"有没有牌价"判，就会让一条**没有可交付服务货**的 lane 走服务交付腿，而池给的是生产性容量 ⇒ 交付点取不到 {@code haul} 货 ⇒ {@code
+   * HAUL_SERVICE_DELIVERY_FAULT} + 本笔成交作废。判据必须同源，才能让 "有牌价但无货"的 hex 走 CARRIER_FEE。
+   *
+   * <p>★ <b>为什么不按"牌价 &gt; 0"</b>：本仓对"从未定价 ⇒ 不交易"与"明确 0 价 ⇒ 免费交易"有明文区分（{@code MarketTable.hasPrice}
+   * / {@code isFree}）—— 用价格数值当开关会把"GM 明确设成免费服务"静默读成"这一格没有服务市场"。
    */
   static boolean haulServiceAt(MatchContext ctx, HexCoord hex) {
-    return HaulService.pricedAt(ctx.tableAt(hex));
+    // ★★★ D-032 C7b2：活动运输计划路径只看“该 shippingHex 在 plan 中是否有本地 C6 容量”。
+    //   不回改为读旧 haul 服务库存，也不把旧 MarketTable haul 牌价当开关。
+    if (ctx.transportRoundPlan != null) {
+      return ctx.transportPlanHasLocalCapacity(hex);
+    }
+    if (!HaulService.pricedAt(ctx.tableAt(hex))) {
+      return false;
+    }
+    // ★ RC8a 判据 ②：与 ShipmentSettlement.haulServiceHexes(SettlementDayContext) 同一拼写点 ——
+    //   本格至少一户有可交付 haul 服务货。市场轮的 goods/frozenGoods 就是账户活表（同一批 Map 实例）。
+    return ShipmentSettlement.hasDeliverableHaulStockAt(
+        ctx.round.householdEconomies,
+        ctx.round.householdGoods,
+        ctx.round.householdFrozenGoods,
+        hex);
   }
 
   /**

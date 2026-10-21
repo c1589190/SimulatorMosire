@@ -3,7 +3,9 @@ package io.mosire.simos.economy.time;
 import static io.mosire.simos.economy.time.AccountTransferSettlement.applyTransfer;
 import static io.mosire.simos.economy.time.ConsumptionSettlement.consumeFromHousehold;
 import static io.mosire.simos.economy.time.ProductionInputSettlement.drawCycleInputs;
+import static io.mosire.simos.economy.time.ProductionInputSettlement.drawableStockOf;
 import static io.mosire.simos.economy.time.ProductionInputSettlement.usableScaleOf;
+import static io.mosire.simos.economy.time.SettlementLogSupport.TRACE;
 import static io.mosire.simos.economy.time.SettlementMath.addGoods;
 import static io.mosire.simos.economy.time.SettlementMath.apportionToHouseholds;
 import static io.mosire.simos.economy.time.SettlementMath.byStockDescending;
@@ -13,6 +15,7 @@ import static io.mosire.simos.economy.time.SettlementMath.setStock;
 import static io.mosire.simos.economy.time.SettlementMath.stockOf;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -33,6 +36,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -46,13 +51,82 @@ import java.util.TreeMap;
 /** 由 EconomySettlement 按职责机械抽取；包内实现，不构成跨模块 API。 */
 final class ProductionInputDrawSettlement {
 
-  /** 周期投入阶段一个分区的产出（意向 + 本地产业写回 + 本地消费累加器 + 本地账本 + "扣产能"日志读数）。 */
+  /**
+   * 周期投入阶段一个分区的产出（意向 + <b>本 tick 逐 unit 实扣 delta</b> + 本地消费累加器 + 本地账本 + "扣产能"日志读数）。
+   *
+   * <p>★★ <b>M7fix：为什么是 delta 而不是 {@code cycleInputUsedMilli} 累计值</b>：{@code
+   * ProductionDayRequest.Step.finalInputsMilli} 的契约是"本 tick 最终实扣的原料增量"；production 的 {@code execute}
+   * 会把它 merge 进**已有的**周期累计 （{@code instance.cycleInputUsedMilli()}）。若分区交回周期累计值，无新扣的 tick 也会把旧累计再
+   * merge 一次 ⇒ 重复累计、 tick 42 起 long overflow。周期累计的唯一权威仍由 production 的 {@code executeDay} 维护。
+   */
   record InputDrawPartition(
       List<OrderedAccountIntent> intents,
-      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, Map<CommodityId, Long>> inputDeltas,
       Map<HouseholdId, Map<CommodityId, Long>> consumed,
       ProductionLedger.Accumulator ledger,
       CapacityDeductionSummary deductions) {}
+
+  /**
+   * ★★★ <b>M7fix：本 tick 实扣 delta = 现扣后的周期累计 − 现扣前的周期累计</b>。
+   *
+   * <p>现扣阶段只把本 tick 新扣的量加进分区副本的 {@code cycleInputUsedMilli}；与现扣前的同一实例副本逐商品相减即得 delta。没有新扣的 unit
+   * 逐商品差为 0 ⇒ 不出现在结果里（{@link EconomySession#recordDrawnProductionInput} 对空表删行）。
+   *
+   * @param before 现扣前的实例副本（键集与 {@code after} 相同；用于取现扣前的周期累计）
+   * @param after 现扣后的实例副本
+   */
+  static Map<ProductionUnitId, Map<CommodityId, Long>> inputDeltasOf(
+      Map<ProductionUnitId, ProductionProcess> before,
+      Map<ProductionUnitId, ProductionProcess> after) {
+    Map<ProductionUnitId, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : after.entrySet()) {
+      ProductionProcess prior = before.get(entry.getKey());
+      Map<CommodityId, Long> priorInputs = prior == null ? Map.of() : prior.cycleInputUsedMilli();
+      Map<CommodityId, Long> delta = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> input : entry.getValue().cycleInputUsedMilli().entrySet()) {
+        long increment =
+            Math.subtractExact(input.getValue(), priorInputs.getOrDefault(input.getKey(), 0L));
+        if (increment > 0L) {
+          delta.put(input.getKey(), increment);
+        }
+      }
+      if (!delta.isEmpty()) {
+        deltas.put(entry.getKey(), delta);
+      }
+    }
+    return deltas;
+  }
+
+  /**
+   * ★★★ <b>M7fix：把本 tick 的实扣 delta 记进会话</b>（协调器线程；空表由会话删行）。
+   *
+   * <p>DEBUG 事件 {@code PRODUCTION_INPUT_DELTA_RECORDED} 每条 = 一个 (unit × commodity) 的 {@code
+   * deltaMilli}； 只记数量，不记逐笔账/隐私。
+   */
+  static void recordInputDeltas(
+      EconomySession session, long day, Map<ProductionUnitId, Map<CommodityId, Long>> deltas) {
+    for (Map.Entry<ProductionUnitId, Map<CommodityId, Long>> unitEntry : deltas.entrySet()) {
+      session.recordDrawnProductionInput(unitEntry.getKey(), unitEntry.getValue());
+      if (!TRACE.isDebugEnabled()) {
+        continue;
+      }
+      for (Map.Entry<CommodityId, Long> input : unitEntry.getValue().entrySet()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "PRODUCTION_INPUT_DELTA_RECORDED",
+                    EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                    "day",
+                    day,
+                    "unit",
+                    unitEntry.getKey().value(),
+                    "commodity",
+                    input.getKey().value(),
+                    "deltaMilli",
+                    input.getValue()));
+      }
+    }
+  }
 
   /**
    * ★★ <b>现扣周期投入按 hex 并行</b>（{@link #drawCycleInputs} 的并行外壳）。
@@ -70,7 +144,36 @@ final class ProductionInputDrawSettlement {
       long day,
       EconomyParallelism parallelism,
       SettlementIndex index) {
-    Map<ProductionUnitId, ProductionProcess> units = session.sheet().units();
+    drawCycleInputsPartitioned(
+        session, accounts, consumedGoods, householdOfActor, ledger, day, parallelism, index, null);
+  }
+
+  /**
+   * ★★ <b>RF2：现扣只覆盖实际入选/实际有劳动的 unit</b>（{@code producingUnits == null} ⇒ 不限制，legacy 逐值不变）。
+   *
+   * <p>未入选/无劳动的 unit 不进入调查/配给/落账 ⇒ 不会预扣整周期种子。
+   */
+  static void drawCycleInputsPartitioned(
+      EconomySession session,
+      AccountSession accounts,
+      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      ProductionLedger.Accumulator ledger,
+      long day,
+      EconomyParallelism parallelism,
+      SettlementIndex index,
+      Set<ProductionUnitId> producingUnits) {
+    Map<ProductionUnitId, ProductionProcess> allUnits = session.sheet().units();
+    Map<ProductionUnitId, ProductionProcess> units = allUnits;
+    if (producingUnits != null) {
+      LinkedHashMap<ProductionUnitId, ProductionProcess> filtered = new LinkedHashMap<>();
+      for (Map.Entry<ProductionUnitId, ProductionProcess> entry : allUnits.entrySet()) {
+        if (producingUnits.contains(entry.getKey())) {
+          filtered.put(entry.getKey(), entry.getValue());
+        }
+      }
+      units = filtered;
+    }
     // ★★ R3B.2：产业表只读（模板；日结算不再改它）。
     Map<IndustryId, IndustryDefinitionView> industries = session.sheet().industries();
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
@@ -115,6 +218,9 @@ final class ProductionInputDrawSettlement {
                 for (String hex : partition.canonicalKeys()) {
                   localUnits.putAll(byHex.get(hex));
                 }
+                // ★★★ M7fix：现扣前的实例副本 —— 现扣后逐商品相减即得"本 tick 实扣 delta"。
+                Map<ProductionUnitId, ProductionProcess> beforeDraw =
+                    new LinkedHashMap<>(localUnits);
                 LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
                 ProductionLedger.Accumulator partitionLedger =
                     new ProductionLedger.Accumulator(day, partition.partitionIndex());
@@ -131,10 +237,11 @@ final class ProductionInputDrawSettlement {
                         consumed,
                         householdOfActor,
                         partitionLedger,
-                        day);
+                        day,
+                        producingUnits);
                 return new InputDrawPartition(
                     buffer.drainIntents(),
-                    localUnits,
+                    inputDeltasOf(beforeDraw, localUnits),
                     consumed,
                     partitionLedger,
                     partitionDeductions);
@@ -163,16 +270,15 @@ final class ProductionInputDrawSettlement {
         // ★★ W2-fix3：分区账按**分区计划序**合并（{@code SettlementExecutor.execute} 保证结果序 = 计划序）。
         deductions.merge(partition.deductions());
       }
-      // ★★★ B1（D-032 §4.3 数据流第 5 段）：现扣阶段的结果**经 production 的契约写回本域候选态** ——
-      //   这是 economy 侧"最终投入"的落点：`executeDay` 的 `finalInputsMilli` 就是这一份实扣量。
+      // ★★★ M7fix（D-032 §4.3 数据流第 5 段 / §1.2 M7）：现扣阶段交回的是**本 tick 逐 unit 实扣 delta**，
+      //   不是 {@code cycleInputUsedMilli} 周期累计值 —— `executeDay` 的 `finalInputsMilli` 契约就是"本 tick
+      // 增量"，
+      //   production 会把它 merge 进自己的周期累计（唯一权威），economy 不得把累计值再交一次（否则每 tick 重复累加）。
       //   ★ 为什么必须经过契约而不是就地写实例表：现扣发生在**并行分区**里（每分区一份实例副本），
       //     而 production 的候选态是**单线程独占**的（引擎不是线程安全的"每分区一个副本"形态）
       //     ⇒ 分区结果先在协调器线程汇总，再一次性推回；顺序由此确定（分区序 → 分区内生成序）。
       for (InputDrawPartition partition : partitions) {
-        for (Map.Entry<ProductionUnitId, ProductionProcess> entry : partition.units().entrySet()) {
-          session.recordDrawnProductionInput(
-              entry.getKey(), entry.getValue().cycleInputUsedMilli());
-        }
+        recordInputDeltas(session, day, partition.inputDeltas());
       }
     }
     if (!noHex.isEmpty()) {
@@ -181,6 +287,8 @@ final class ProductionInputDrawSettlement {
       for (ProductionUnitId id : noHex) {
         local.put(id, units.get(id));
       }
+      // ★★★ M7fix：与分区路径同一口径 —— 只把本 tick 实扣 delta 交给会话，绝不交周期累计值。
+      Map<ProductionUnitId, ProductionProcess> beforeDraw = new LinkedHashMap<>(local);
       deductions.merge(
           drawCycleInputs(
               local,
@@ -194,10 +302,9 @@ final class ProductionInputDrawSettlement {
               consumedGoods,
               householdOfActor,
               ledger,
-              day));
-      for (Map.Entry<ProductionUnitId, ProductionProcess> entry : local.entrySet()) {
-        session.recordDrawnProductionInput(entry.getKey(), entry.getValue().cycleInputUsedMilli());
-      }
+              day,
+              producingUnits));
+      recordInputDeltas(session, day, inputDeltasOf(beforeDraw, local));
     }
     // ★★ W2-fix3（§一.9）：轮末**一条 INFO 汇总**（协调器线程；与分区数无关 ⇒ 行数恒为 1）。
     //   逐 unit 明细已在各分区里按 DEBUG 发出（PRODUCTION_CAPACITY_DEDUCTED_DETAIL）。
@@ -223,7 +330,8 @@ final class ProductionInputDrawSettlement {
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.Accumulator ledger) {
+      ProductionLedger.Accumulator ledger,
+      long day) {
     long usableScale = usableScaleOf(plan);
     if (usableScale <= 0L) {
       return; // 一点料都筹不到（或本格没有产能）⇒ 不扣、规模自然 0 —— "地荒着"
@@ -244,10 +352,15 @@ final class ProductionInputDrawSettlement {
       // ③ 一：按人口占比 + **最大余数法**分派（Σ分派 == remaining，不再逐户丢余数），逐户上限 = 它的余额。
       for (Map.Entry<HouseholdId, Long> ask :
           apportionToHouseholds(plan.ownKeys, householdEconomies, remaining).entrySet()) {
-        long drawn = Math.min(stockOf(householdGoods, ask.getKey(), commodity), ask.getValue());
+        long onHand = stockOf(householdGoods, ask.getKey(), commodity);
+        long available =
+            drawableStockOf(householdEconomies, householdGoods, ask.getKey(), commodity);
+        long drawn = Math.min(available, ask.getValue());
         if (drawn <= 0L) {
-          continue; // 缸空/不够 ⇒ 这一户出不起它那一份（下面的补齐可能从**同层的别人**那里补上）
+          continue; // 缸空/不够（或只剩一 tick 口粮）⇒ 这一户出不起它那一份
         }
+        logProductionInputReserved(
+            day, unit, ask.getKey(), commodity, ask.getValue(), drawn, onHand, available);
         recordInputDraw(
             ask.getKey(),
             unit,
@@ -276,7 +389,8 @@ final class ProductionInputDrawSettlement {
                 householdMoney,
                 consumedGoods,
                 householdOfActor,
-                ledger);
+                ledger,
+                day);
       }
       // ③ 二：★ H6-lite —— **争用**的商品的池子里、**别人名下**的账（持仓降序）。
       List<HouseholdId> shared = plan.sharedKeys.get(commodity);
@@ -298,14 +412,16 @@ final class ProductionInputDrawSettlement {
             householdMoney,
             consumedGoods,
             householdOfActor,
-            ledger);
+            ledger,
+            day);
       }
     }
     if (!drawnTotal.isEmpty()) {
-      // ★★★ B1（D-032）：旧代码在这里 `units.put(plan.id, unit.withCycleState(..., accumulated))`
-      //   ——那是 economy **就地写实例状态**的最后一处。B1 起现扣结果只累进**本分区副本**
-      //   （{@code partition.units()} 带回去），由协调器经 {@code EconomySession} 汇总后交给
-      //   {@code ProductionRuntime#executeDay} 的 {@code finalInputsMilli} ⇒ 周期投入的权威落在 production。
+      // ★★★ B1/M7fix（D-032）：旧代码在这里 `units.put(plan.id, unit.withCycleState(..., accumulated))`
+      //   ——那是 economy **就地写实例状态**的最后一处。现扣结果只累进**本分区副本**
+      //   （{@code partition.inputDeltas()} 交回"现扣后 − 现扣前"的 delta），由协调器经 {@code EconomySession}
+      //   汇总后交给 {@code ProductionRuntime#executeDay} 的 {@code finalInputsMilli}（本 tick 增量）
+      //   ⇒ 周期投入的**累计权威**落在 production。
       Map<CommodityId, Long> accumulated = new LinkedHashMap<>(unit.cycleInputUsedMilli());
       for (Map.Entry<CommodityId, Long> entry : drawnTotal.entrySet()) {
         accumulated.merge(entry.getKey(), entry.getValue(), Long::sum);
@@ -330,16 +446,20 @@ final class ProductionInputDrawSettlement {
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.Accumulator ledger) {
+      ProductionLedger.Accumulator ledger,
+      long day) {
     long left = remaining;
     for (HouseholdId key : keys) {
       if (left <= 0L) {
         break;
       }
-      long drawn = Math.min(stockOf(householdGoods, key, commodity), left);
+      long onHand = stockOf(householdGoods, key, commodity);
+      long available = drawableStockOf(householdEconomies, householdGoods, key, commodity);
+      long drawn = Math.min(available, left);
       if (drawn <= 0L) {
         continue;
       }
+      logProductionInputReserved(day, plan.unit, key, commodity, left, drawn, onHand, available);
       recordInputDraw(
           key,
           plan.unit,
@@ -355,6 +475,51 @@ final class ProductionInputDrawSettlement {
       drawnTotal.merge(commodity, drawn, Long::sum);
     }
     return left;
+  }
+
+  /**
+   * ★★ <b>RF2：扣种时保留一 tick 基础口粮的可 grep 读数</b>（只读；不影响算式）。
+   *
+   * <p>只在粮作为生产投入且该户确有口粮保留额时发射 DEBUG：{@code unit/household/commodity/requested/drawn/
+   * onHand/reservedForFood}。真实扣减仍只走 {@link #recordInputDraw}。
+   */
+  private static void logProductionInputReserved(
+      long day,
+      ProductionProcess unit,
+      HouseholdId household,
+      CommodityId commodity,
+      long requested,
+      long drawn,
+      long onHand,
+      long available) {
+    if (!TRACE.isDebugEnabled() || !EconomySettlement.GRAIN.equals(commodity)) {
+      return;
+    }
+    long reservedForFood = Math.max(0L, onHand - Math.max(0L, available));
+    if (reservedForFood <= 0L) {
+      return;
+    }
+    EventLog.channel(TRACE)
+        .debug(
+            LogEvent.of(
+                "PRODUCTION_INPUT_RESERVED",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "day",
+                day,
+                "unit",
+                unit.id().value(),
+                "household",
+                household.value(),
+                "commodity",
+                commodity.value(),
+                "requested",
+                requested,
+                "drawn",
+                drawn,
+                "onHand",
+                onHand,
+                "reservedForFood",
+                reservedForFood));
   }
 
   /**

@@ -817,6 +817,10 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"hex\":{\"q\":1,\"r\":2},\"key\":\"rural\",\"op\":\"add\",\"value\":1000}",
             MAP_ID + "/hex/1_2"));
+    // ★★★ D-032 L4：Map arable owner 播种命令也实现 CommandTargets（逐 entry 的 hex 资源目标）。
+    samples.put(
+        "map.SeedArableOwnership",
+        List.of("{\"entries\":[{\"hex\":{\"q\":1,\"r\":1},\"owners\":[]}]}", MAP_ID + "/hex/1_1"));
     samples.put(
         "actor.RemitGovTreasury",
         List.of("{\"fromHousehold\":\"hh-1\",\"toHousehold\":\"hh-2\",\"grain\":1}"));
@@ -976,10 +980,11 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "101 条样本一条不漏（82 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）"
+            "102 条样本一条不漏（少一条 ⇒ 上面那条断言根本不会跑）"
                 + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97；"
-                + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101）")
-        .hasSize(101);
+                + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101；"
+                + "★★★ D-032 L4：map.SeedArableOwnership ⇒ 101 → 102）")
+        .hasSize(102);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

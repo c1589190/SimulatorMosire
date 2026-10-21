@@ -31,9 +31,8 @@ import java.util.Optional;
  *                                       hired_laborer  DIRECT_LABORER PROVIDER   WAGE_EARNER
  * handicraft_workshop  handicraft-workshop-structure  workshop_owner OWNER ORGANIZER SURPLUS_RECEIVER
  *                                                   artisan DIRECT_LABORER PROVIDER WAGE_EARNER
- * merchant      merchant-structure      principal      OWNER          ORGANIZER  SURPLUS_RECEIVER
- *                                       porter         DIRECT_LABORER PROVIDER   WAGE_EARNER
- *                                       self_employed  MIXED          BOTH       SELF_SUBSISTENCE
+ * merchant      merchant-structure      caravan_operator OWNER          ORGANIZER  SURPLUS_RECEIVER
+ *                                       hired_driver     DIRECT_LABORER PROVIDER   WAGE_EARNER
  * displaced     displaced-structure     laborer        DIRECT_LABORER PROVIDER   WAGE_EARNER
  *                                       destitute      DIRECT_LABORER NONE       DEPENDENT
  * </pre>
@@ -76,7 +75,12 @@ public final class DefaultProductionModes {
   public static final ProductionModeId HANDICRAFT_WORKSHOP =
       new ProductionModeId("handicraft_workshop");
 
-  /** ★ P6 商人：探针 {@code TransportTeam}/{@code MerchantTier} 的正式 mode（脚夫/个体户/老板三档）。 */
+  /**
+   * ★★ <b>D-032 C5b：运输生产方式复用既有 merchant 稳定 id。</b>
+   *
+   * <p>概念名是 {@code caravan_transport}，但<b>不新增第二个商人身份</b>；稳定 mode id 仍是 {@code "merchant"}。 正式位置只有
+   * {@link #ROLE_CARAVAN_OPERATOR} 与 {@link #ROLE_HIRED_DRIVER}。
+   */
   public static final ProductionModeId MERCHANT = new ProductionModeId("merchant");
 
   /** ★★ P10.1 流民：失产/失业家户的一等 mode（架构 §3.3；本批只落目录与位置，不接线迁移）。 */
@@ -96,16 +100,30 @@ public final class DefaultProductionModes {
   /** ★ 位置角色名：工匠（作坊里的直接劳动者）。 */
   public static final String ROLE_ARTISAN = "artisan";
 
-  /** ★ 位置角色名：商人本金主（P6；位置 id = {@code merchant-principal}）。 */
+  /**
+   * ★★ 位置角色名：商队经营者/组织运输生产的家户。
+   *
+   * <p>位置 id = {@code merchant-caravan-operator}；支付形态 = PRODUCT_SHARE（sharePerMille=1000）。
+   */
+  public static final String ROLE_CARAVAN_OPERATOR = "caravan_operator";
+
+  /**
+   * ★★ 位置角色名：受雇车夫。
+   *
+   * <p>位置 id = {@code merchant-hired-driver}；支付形态 = MONEY_WAGE（sharePerMille=0）。
+   */
+  public static final String ROLE_HIRED_DRIVER = "hired_driver";
+
+  /** ★ 旧 P6 商人本金主角色名；C7 退役。保留常量仅供旧模板/旧测试夹具编译，<b>不得</b>进入 {@link #MERCHANT} 的新运输模式目录。 */
   public static final String ROLE_MERCHANT_PRINCIPAL = "principal";
 
   /** ★ {@link #ROLE_MERCHANT_PRINCIPAL} 的角色词表别名（同一个值，便于按角色名引用；不是第二处拼写点）。 */
   public static final String ROLE_PRINCIPAL = ROLE_MERCHANT_PRINCIPAL;
 
-  /** ★ 位置角色名：脚夫（P6；位置 id = {@code merchant-porter}）。 */
+  /** ★ 旧 P6 脚夫角色名；C7 退役。保留常量仅供旧模板/旧测试夹具编译，<b>不得</b>进入 {@link #MERCHANT} 的新运输模式目录。 */
   public static final String ROLE_PORTER = "porter";
 
-  /** ★ 位置角色名：个体商户（P6；位置 id = {@code merchant-self-employed}）。 */
+  /** ★ 旧 P6 个体商户角色名；C7 退役。保留常量仅供旧模板/旧测试夹具编译，<b>不得</b>进入 {@link #MERCHANT} 的新运输模式目录。 */
   public static final String ROLE_SELF_EMPLOYED = "self_employed";
 
   /** ★★ 位置角色名：流民劳力（P10.1；位置 id = {@code displaced-laborer}）。 */
@@ -243,29 +261,24 @@ public final class DefaultProductionModes {
                 RelationToMeans.DIRECT_LABORER,
                 LaborRole.PROVIDER,
                 SurplusRole.WAGE_EARNER)));
-    // ★★ P6：merchant 追加在**末尾**，农业/手工业的声明序不被商人条目插队。
+    // ★★ D-032 C5b：merchant 复用为唯一运输生产方式；正式位置只有经营者 + 受雇车夫。
+    //   旧 principal/porter/self_employed 常量与旧 MerchantTradeTemplate 可暂时保留编译，但不再进入本目录。
     specs.add(
         modeSpec(
             MERCHANT,
-            "商人承运",
+            "商队运输",
             positionSpec(
-                ROLE_MERCHANT_PRINCIPAL,
-                "商人本金主",
+                ROLE_CARAVAN_OPERATOR,
+                "商队经营者",
                 RelationToMeans.OWNER,
                 LaborRole.ORGANIZER,
                 SurplusRole.SURPLUS_RECEIVER),
             positionSpec(
-                ROLE_PORTER,
-                "脚夫",
+                ROLE_HIRED_DRIVER,
+                "受雇车夫",
                 RelationToMeans.DIRECT_LABORER,
                 LaborRole.PROVIDER,
-                SurplusRole.WAGE_EARNER),
-            positionSpec(
-                ROLE_SELF_EMPLOYED,
-                "个体商户",
-                RelationToMeans.MIXED,
-                LaborRole.BOTH,
-                SurplusRole.SELF_SUBSISTENCE)));
+                SurplusRole.WAGE_EARNER)));
     // ★★ P10.1：displaced 追加在**末尾**，前面各 mode / 结构 / 位置声明序不被流民条目插队。
     //   角色照架构 §3.3：displaced_laborer DIRECT_LABORER / PROVIDER / WAGE_EARNER；
     //   displaced_destitute DIRECT_LABORER / NONE / DEPENDENT。位置 id 按本目录既有规则生成 =
@@ -289,7 +302,7 @@ public final class DefaultProductionModes {
     return Collections.unmodifiableList(specs);
   }
 
-  /** 一个位置的出厂规格（把五个参数收成具名 record，避免在 mode 声明里重复写 new）。 */
+  /** 一个位置的出厂规格（位置访问由生产方式角色支付形态推导，不在这里写家户阶级）。 */
   private static PositionSpec positionSpec(
       String role,
       String name,
@@ -313,7 +326,8 @@ public final class DefaultProductionModes {
               spec.name(),
               spec.relationToMeans(),
               spec.laborRole(),
-              spec.surplusRole());
+              spec.surplusRole(),
+              Map.of());
       if (positions.putIfAbsent(position.id(), position) != null) {
         throw new IllegalStateException("默认生产方式目录内位置 id 重复: " + position.id());
       }

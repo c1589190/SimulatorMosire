@@ -883,6 +883,7 @@ class SimosToolsTest {
           "map.ReassignHexes",
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
+          "map.SeedArableOwnership",
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
@@ -1271,7 +1272,7 @@ class SimosToolsTest {
                 + " 它会**静默漏掉**这条命令（这正是本批新增命令的形态，补上后扫描面才等于 catalog）。"
                 + "；★★★ D-032 P4b1（2026-10-18）：新增 `economy.SetProductionWageAnchor`（U20 工资锚写口）"
                 + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。")
-        .hasSize(151);
+        .hasSize(152);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

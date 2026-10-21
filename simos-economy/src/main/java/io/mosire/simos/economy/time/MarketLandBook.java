@@ -4,14 +4,13 @@ import static io.mosire.simos.economy.time.MarketConstants.MARKET;
 import static io.mosire.simos.economy.time.MarketModelBook.MatchContext;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
@@ -19,14 +18,15 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★★ <b>P2f：土地订单/成交的公共口径（唯一拼写点）</b>—— 订单与撮合都只经这里回答"这块地在哪个市场区、它值多少、这次 能不能成交"。
+ * ★★★ <b>D-032 RA1b2c2：标量土地订单/成交的公共口径（唯一拼写点）。</b>
  *
  * <p>★★ <b>为什么单独一个簿</b>：土地订单与商品订单一同进入 {@code MarketRound}，但土地有三条与商品不同的结构性事实：
  *
  * <ol>
- *   <li><b>整块、定向</b>：订单引用具体 {@link AssetShareId}，成交只改 {@code owner/operator}，不做部分成交/拆分/找零；
+ *   <li><b>按 hex 的标量、可部分成交</b>：订单只带 {@code (hex, quantityMilliMu)}，不引用 {@code AssetShareId}/块 id；
  *   <li><b>无运费、不进库存</b>：价值公式是 {@code floor(quantityMilliMu × landPricePerMu ÷ 1000)}，产权腿只走 {@link
- *       OwnershipStakeBook#transferLandBlock}；
+ *       io.mosire.simos.economy.land.LandLedgerState#transfer}（内部 {@link
+ *       io.mosire.simos.economy.land.LandBook#apply}）；
  *   <li><b>区级价格</b>：同一市场区一个 {@code landPrice}（empty = 未定价，0 = 合法免费），禁止 hex 级价格表。
  * </ol>
  *
@@ -53,10 +53,29 @@ final class MarketLandBook {
     return DebtValuation.convertedContractUnits(quantityMilliMu, pricePerMu, MILLI_PER_LAND_UNIT);
   }
 
-  /** 份额的规范格键 → {@link HexCoord}（{@code OwnershipStake.location} 已是规范 {@code <q>_<r>}）。 */
-  static HexCoord hexOf(OwnershipStake share) {
-    Objects.requireNonNull(share, "share");
-    return HexCoord.parse(share.location().value());
+  /**
+   * ★★ <b>现金不足时的最大可成交数量</b>：最大的 {@code q ≤ upper}，使 {@code floor(q × pricePerMu ÷ 1000) ≤
+   * cashMilli}。
+   *
+   * <p>★ 0 价 ⇒ 数量不受现金限制；无现金且正价 ⇒ 0。整数反解走 {@link DebtValuation#convertedContractUnits}，不引入浮点。
+   */
+  static long cashAffordableQuantity(long cashMilli, long pricePerMu, long upper) {
+    if (upper <= 0L) {
+      return 0L;
+    }
+    if (pricePerMu <= 0L) {
+      return upper;
+    }
+    if (cashMilli <= 0L) {
+      return 0L;
+    }
+    long byCash = DebtValuation.convertedContractUnits(cashMilli, MILLI_PER_LAND_UNIT, pricePerMu);
+    return Math.min(upper, byCash);
+  }
+
+  /** 标量土地取得的稳定键：{@code (hex, owner)}（本单唯一取得标记形状）。 */
+  static LandHoldingKey acquisitionKey(HexCoord hex, HouseholdId owner) {
+    return new LandHoldingKey(hex, owner);
   }
 
   /** 本格所属市场区的价目表；不在任何市场区 / 该区没有价表 ⇒ {@code null}（合法状态，不是故障）。 */
@@ -81,16 +100,16 @@ final class MarketLandBook {
   }
 
   /**
-   * ★★ <b>一条土地成交的只读读数</b>（P2f 的交账形状；不落盘、不进 ChangeSet）。
+   * ★★ <b>一条土地成交的只读读数</b>（本单的交账形状；不落盘、不进 ChangeSet）。
    *
    * <p>★ 与商品 {@code MarketReport.Fill} 分开：土地无运费/无税/不进库存，硬塞进商品成交会迫使读者区分"这条 fill 到底有没有货"。
-   * 本记录只活在轮内（{@code MatchContext.landFills}）并随 INFO/TRACE 日志逐笔可核。
+   * 本记录只活在轮内（{@code MatchContext.landFills}）并随 INFO/TRACE 日志逐笔可核。★ <b>不含 shareId</b>：成交只按 hex +
+   * 数量读。
    */
   record LandFill(
       long day,
       MarketZoneId zoneId,
-      AssetShareId shareId,
-      HexCoord location,
+      HexCoord hex,
       ActorRef buyer,
       ActorRef seller,
       long quantityMilliMu,
@@ -102,8 +121,7 @@ final class MarketLandBook {
 
     LandFill {
       Objects.requireNonNull(zoneId, "LandFill.zoneId 不得为 null");
-      Objects.requireNonNull(shareId, "LandFill.shareId 不得为 null");
-      Objects.requireNonNull(location, "LandFill.location 不得为 null");
+      Objects.requireNonNull(hex, "LandFill.hex 不得为 null");
       Objects.requireNonNull(buyer, "LandFill.buyer 不得为 null");
       Objects.requireNonNull(seller, "LandFill.seller 不得为 null");
       Objects.requireNonNull(currency, "LandFill.currency 不得为 null");
@@ -143,44 +161,34 @@ final class MarketLandBook {
    * MarketOrderPlanner} 里一个真实的跳过分支，不许"静默不成交"。
    */
   enum LandRejectReason {
-    /** 该块所在格没有市场区价表。 */
+    /** 该 hex 没有市场区价表。 */
     NO_MARKET,
     /** 该市场区没有土地价（empty）—— 不生成订单、不改价、不当免费。 */
     LAND_PRICE_EMPTY,
-    /** 份额不存在 / 不是 LAND / 已被前一笔转走。 */
-    SHARE_MISSING,
-    /** 份额不是 LAND（不得把工具/作坊当土地）。 */
-    SHARE_NOT_LAND,
-    /** 订单数量 ≠ 份额数量（P2f 只支持整块）。 */
-    SHARE_MISMATCH,
-    /** 订单位置 ≠ 份额位置（定向块的位置是身份的一部分）。 */
-    SHARE_LOCATION_MISMATCH,
-    /** 卖单主体不是该块的当前 owner。 */
-    SELLER_NOT_OWNER,
-    /** 买单主体已经是该块 owner（不与自己成交）。 */
-    BUYER_ALREADY_OWNER,
+    /** 卖方在该 hex 没有可转移的标量持有（或已被前一笔消耗完）。 */
+    NO_LAND_HOLDING,
+    /** 卖单数量超过卖方该 hex 的当前持有量（不得伪造土地）。 */
+    SELL_EXCEEDS_HOLDING,
     /** 买卖两端落在同一主体（不铸自转移）。 */
     SELF_TRADE,
     /** 支付/收款币不一致（钱腿只铸买方支付币，不做隐形折算）。 */
     CURRENCY_MISMATCH,
     /** 成交价越过买方限价 / 卖方限价。 */
     PRICE_LIMIT,
-    /** 买方硬预算不足以支付这笔整块价款。 */
-    NO_BUDGET,
-    /** 现金不足且没有可用的普通货币债通道（只支持现金全额）。 */
+    /** 买方现金不足且没有可用的普通货币债通道。 */
     CASH_ONLY_UNPAYABLE,
-    /** 挂单主体/对手方不是已登记家户（账户主体只有家户）。 */
+    /** 挂单主体/对手方不是已登记活家户（账户主体只有家户）。 */
     ACTOR_NOT_HOUSEHOLD,
-    /** 同一块地在本轮出现多张卖单（瞬态冻结只允许一次成交）。 */
+    /** 同一卖方同一 hex 出现了多张卖单且合计超出持有量（多余部分具名拒绝）。 */
     DUPLICATE_SELL,
-    /** 该块本轮没有可成交的买方。 */
+    /** 该卖单本轮没有可成交的买方。 */
     NO_BUYER,
-    /** 该块本轮没有可成交的卖方。 */
+    /** 该买单本轮没有可成交的卖方。 */
     NO_SELLER
   }
 
   /**
-   * ★ <b>具名业务拒绝（INFO）</b>—— 每条带 day / 块 / 方向 / 主体 / 原因 / 判据数值；逐笔明细的补充在 DEBUG/TRACE。
+   * ★ <b>具名业务拒绝（INFO）</b>—— 每条带 day / hex / 方向 / 主体 / 原因 / 判据数值；逐笔明细的补充在 DEBUG/TRACE。
    *
    * <p>★ 关闭日志不得影响撮合：先判 {@code MARKET.isInfoEnabled()}。
    */
@@ -196,8 +204,8 @@ final class MarketLandBook {
                 EconomyLogSource.ECONOMY_MARKET,
                 "day",
                 ctx.round.day,
-                "land",
-                order == null ? "" : order.shareId().value(),
+                "hex",
+                order == null ? "" : order.hex().q() + "," + order.hex().r(),
                 "side",
                 order == null ? "" : order.side().name(),
                 "actor",
@@ -215,10 +223,5 @@ final class MarketLandBook {
       ordered.put(entry.getKey().name(), entry.getValue());
     }
     return ordered;
-  }
-
-  /** ★ 份额是否是"可交易的土地块"（LAND、数量 > 0）；读口/日志共用这一个判据。 */
-  static boolean tradableLand(OwnershipStake share) {
-    return share != null && share.asset() == AssetKind.LAND && share.quantity() > 0L;
   }
 }

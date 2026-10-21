@@ -243,8 +243,8 @@ class MarketSeeder extends WorldBalanceSeeder {
    * {@code numeraire}。 历史字段按 P4b1 默认：streak=0、{@code lastAdjustedTick=-1}、观测=0、delta=0。★ 不生成 0
    * 兜底：工资值取具名工程常量 {@link #GENESIS_WAGE_PER_LABOR_MILLI}。
    *
-   * <p>★ <b>为什么从 plan 节点识别角色</b>：本方法只读 {@code entries[].plans[].roles} 的线格式，不复制 production 定义；
-   * 只有显式带 {@code hired_laborer} 角色的 plan（当前 = 每个 hex 的 {@code grain_farm}）会得到锚。
+   * <p>★ <b>为什么从 plan 节点识别角色</b>：本方法只读 {@code entries[].plans[].roles} 的线格式，不复制 production 定义； 角色只从
+   * {@code payment.kind == "money_wage"} 判定，因此新增运输 {@code hired_driver} 不需要第二份角色名单。
    */
   static List<Map<String, Object>> wageAnchorNodes(
       List<Map<String, Object>> entries, Map<MarketZoneId, MarketTable> markets) {
@@ -270,28 +270,39 @@ class MarketSeeder extends WorldBalanceSeeder {
         if (!(rawId instanceof String planId) || planId.isBlank()) {
           continue;
         }
-        if (!hasHiredLaborerRole(plan)) {
-          continue;
+        for (String roleId : moneyWageRoleIds(plan)) {
+          nodes.add(wageAnchorNode(zone, planId, roleId, table.numeraire()));
         }
-        nodes.add(wageAnchorNode(zone, planId, table.numeraire()));
       }
     }
     return nodes;
   }
 
-  /** plan 节点的 {@code roles[]} 里是否显式有 {@code hired_laborer}（只读线格式，不猜缺省角色）。 */
-  private static boolean hasHiredLaborerRole(Map<?, ?> plan) {
+  /** plan 节点的 {@code roles[]} 里的全部 {@code money_wage} 角色 id（只读线格式，不猜缺省角色）。 */
+  private static List<String> moneyWageRoleIds(Map<?, ?> plan) {
     Object rawRoles = plan.get("roles");
     if (!(rawRoles instanceof List<?> roles)) {
-      return false;
+      return List.of();
     }
+    List<String> ids = new ArrayList<>();
     for (Object rawRole : roles) {
-      if (rawRole instanceof Map<?, ?> role
-          && DefaultProductionModes.ROLE_HIRED_LABORER.equals(role.get("id"))) {
-        return true;
+      if (!(rawRole instanceof Map<?, ?> role)) {
+        continue;
+      }
+      Object id = role.get("id");
+      Object payment = role.get("payment");
+      String kind = null;
+      if (payment instanceof String text) {
+        kind = text;
+      } else if (payment instanceof Map<?, ?> paymentNode
+          && paymentNode.get("kind") instanceof String text) {
+        kind = text;
+      }
+      if (id instanceof String roleId && ("money_wage".equals(kind) || "MONEY_WAGE".equals(kind))) {
+        ids.add(roleId);
       }
     }
-    return false;
+    return List.copyOf(ids);
   }
 
   /** ★★ 一格所属的派生市场表 id（成员格唯一权威）；不属于任何创世市场表 ⇒ 装配故障 fail-closed（不猜 single-region）。 */
@@ -304,13 +315,19 @@ class MarketSeeder extends WorldBalanceSeeder {
     throw new IllegalStateException("格 " + hex + " 不属于任何创世派生市场表（seed 内部不一致）");
   }
 
-  /** 一条工资锚载荷节点（键序固定、历史字段取 P4b1 默认）。 */
+  /** 一条工资锚载荷节点（键序固定、历史字段取 P4b1 默认；旧调用点缺省角色 = {@code hired_laborer}）。 */
   static Map<String, Object> wageAnchorNode(
       MarketZoneId zone, String industry, CurrencyId currency) {
+    return wageAnchorNode(zone, industry, DefaultProductionModes.ROLE_HIRED_LABORER, currency);
+  }
+
+  /** 一条工资锚载荷节点（role 显式；运输 {@code hired_driver} 与农业 {@code hired_laborer} 共用同一形状）。 */
+  static Map<String, Object> wageAnchorNode(
+      MarketZoneId zone, String industry, String role, CurrencyId currency) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("marketZone", zone.value());
     node.put("industry", industry);
-    node.put("role", DefaultProductionModes.ROLE_HIRED_LABORER);
+    node.put("role", role);
     node.put("currency", currency.value());
     node.put("wagePerLaborMilli", GENESIS_WAGE_PER_LABOR_MILLI);
     node.put("shortageStreak", 0L);

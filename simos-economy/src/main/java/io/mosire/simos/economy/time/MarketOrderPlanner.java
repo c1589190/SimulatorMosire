@@ -25,24 +25,25 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.Budget;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.OptionalLong;
 
 /** 市场轮机械拆分 helper（由 MarketSettlement 抽取；行为不变）。 */
 final class MarketOrderPlanner {
@@ -215,6 +216,13 @@ final class MarketOrderPlanner {
             payChoice);
         continue;
       }
+      // ★★★ RC8c：该户该商品由 S4 DailyDemandBill 权威覆盖 ⇒ planner 不再生成自动商品订单（买/卖两条腿都不生成）。
+      //   数量由账单派生意向（按 (actor, commodity, side) 合并）在同一本订单簿里注入；没被覆盖的键仍走既有自动路径。
+      //   这里只按 key 让位，不做 actor 级整删。
+      if (participant.household != null
+          && round.billCoversCommodity(participant.household, commodity)) {
+        continue;
+      }
       // ★★ R2：单位户 = 卖侧维持 Z7b 原口径（下面 `sells.add` 那一处唯一消费本判据）。
       boolean buyOnly = role == HouseholdMarketRole.BUY_ONLY;
       long necessary =
@@ -313,8 +321,12 @@ final class MarketOrderPlanner {
       //   ★ 经营者不参与债务式清算（{@code DebtContract} 的两端只能是家户）⇒ 仍按现金买得起量封顶。
       boolean deferredPaymentDemand =
           participant.household != null && round.deferredPaymentsEnabled();
+      // ★★★ D-032 RF1：家户的挂单数量 = 完整真实缺口，**不**按现金可买量折回（无论本轮有没有债务工作副本）。
+      //   没有债务通道时，撮合侧仍按既有 exactTotalCostAffordableUpTo 只成交付得起的那部分（不凭空赊账），
+      //   但订单数量本身必须保留真实需求；现金只影响支付腿。
+      //   经营者（非家户）没有家户债务通道 ⇒ 仍沿用旧口径在订单层封顶。
       long quantity =
-          deferredPaymentDemand
+          participant.household != null
               ? desiredQuantity(baseTarget, demandParts, available, incoming)
               : allocateQuantity(baseTarget, demandParts, available, incoming, cashAffordable);
       // ── ★★ 2026-10-08（阶段 1，§4.3.1 第 ④ 步）：家户套利买盘 ────────────────────────────────
@@ -374,16 +386,21 @@ final class MarketOrderPlanner {
         continue; // 没缺口 / 没钱的缺口不是有效需求（经营者仍按现金封顶；家户的缺口由信用补）
       }
       // ★ 买得起多少按**参考价**折算：区内成交价就是它；跨区若卖方到货价更高，{@link #matchRoute} 会按实际
-      //   "单价 + 运费"复核预算并缩小成交。★ ask 只做**限价过滤**（买方最多愿付），不在这里折数量 —— 否则
-      //   价格表很小时（真档粮价 = 1 毫）整数网格会把 +1 毫的价差放大成"买得起的量减半"。
+      //   "单价 + 运费"复核现金腿。★ 家户价格接受者没有 ask 限价；经营者/非家户才保留 ask 作为**限价过滤**
+      //   （买方最多愿付），且都不在这里折数量 —— 否则价格表很小时整数网格会把 +1 毫的价差放大成"买得起的量减半"。
       // ★ 限价 = **货款**上限；跨区运费另计（M2.5：买方付货款与运费）。到货时限 = 生活保留天数（见常量注释）。
+      // ★★★ D-032 RF1：家户提出的需求是**数量型价格接受者** —— 不挂价格上限（OptionalLong.empty），
+      //   市场给什么非负价都接受；数量已由真实缺口决定，现金只影响支付腿（不足走既有普通货币债）。
+      //   经营者/非家户买盘仍保留真实限价（它们没有家户的债务通道）。
+      OptionalLong buyPriceLimit =
+          participant.household != null ? OptionalLong.empty() : OptionalLong.of(ask);
       buys.add(
           new BuyOrder(
               participant.actor,
               hex,
               commodity,
               quantity,
-              ask,
+              buyPriceLimit,
               deadline,
               new Budget(budget, orderCurrency),
               orderCurrency));
@@ -420,6 +437,8 @@ final class MarketOrderPlanner {
                     reference,
                     "deferralEnabled",
                     deferredPaymentDemand,
+                    "priceTaker",
+                    buyPriceLimit.isEmpty(),
                     "role",
                     role.name(),
                     "reason",
@@ -612,13 +631,13 @@ final class MarketOrderPlanner {
     return sum;
   }
 
-  // ── P2f：土地订单的最小入口（注入 + 校验/排序；**不伪造生产需求**）────────────────────────────────
+  // ── RA1b2c2：标量土地订单的最小入口（注入 + 校验/排序；**不伪造生产需求**）──────────────────────────
 
   /**
-   * ★★★ <b>P2f：向本轮订单簿注入一张土地订单</b>（唯一入口；{@link MarketRoundCore#addLandOrder} 委托到这里）。
+   * ★★★ <b>RA1b2c2：向本轮订单簿注入一张标量土地订单</b>（唯一入口；{@link MarketRoundCore#addLandOrder} 委托到这里）。
    *
-   * <p>★ <b>它不生成需求</b>：土地卖/买意向的规模与生成属 P3（生产侧两遍编排）；P2f 只提供"写进同一本订单簿"的入口与撮合。 校验/排序在 {@link
-   * #planLandOrders}（撮合入口的第一段）完成 —— 因此本方法只做 null 守卫，不静默丢弃任何订单。
+   * <p>★ <b>它不生成需求</b>：土地卖/买意向的规模与生成属 M3（{@link MarketLandIntentBook}）；本方法只提供"写进同一本订单簿"的入口与
+   * 撮合。校验/排序在 {@link #planLandOrders}（撮合入口的第一段）完成 —— 因此本方法只做 null 守卫，不静默丢弃任何订单。
    */
   static void putLandOrder(MarketRoundCore round, LandOrder order) {
     Objects.requireNonNull(round, "putLandOrder 的 round 不得为 null");
@@ -627,15 +646,14 @@ final class MarketOrderPlanner {
   }
 
   /**
-   * ★★★ <b>P2f：把本轮土地订单簿校验成"可撮合的工作集"</b>（只读；不改任何状态）。
+   * ★★★ <b>RA1b2c2：把本轮标量土地订单簿校验成"可撮合的工作集"</b>（只读；不改任何状态）。
    *
    * <pre>
-   * ① 份额必须存在、是 LAND、quantity > 0、订单数量 == 份额数量（P2f 只支持整块）
-   * ② 订单位置必须 == 份额位置；该格必须落在有市场表的区，且该区 hasLandPrice()（empty 不生成、不当免费）
-   * ③ SELL 的主体必须是当前 owner；BUY 的主体不得已是 owner
-   * ④ 两端主体都必须能解析到已登记家户（现金腿的唯一写口只接受家户账户）
-   * ⑤ 同一块地的多张卖单只保留稳定序第一张（其余具名 DUPLICATE_SELL）
-   * ⑥ 稳定排序：区 id → shareId → side → 主体 canonical → 订单稳定键（内容的纯函数，禁哈希序）
+   * ① 两端主体都必须能解析到已登记活家户（现金腿/产权腿只接受家户账户）
+   * ② 该 hex 必须落在有市场表的区，且该区 hasLandPrice()（empty 不生成、不当免费；0 合法）
+   * ③ SELL 的数量不得超过当前 (hex, seller) 标量持有量；多张卖单按稳定序消费剩余持有，超过部分具名拒绝
+   * ④ BUY 可任意正数量（无供给只是 unmet，不是拒挂）
+   * ⑤ 稳定排序：区 id → hex 自然序 → side → 主体 canonical → 订单稳定键（内容的纯函数，禁哈希序）
    * </pre>
    *
    * <p>★ 每条被跳过的订单都发 {@code LAND_ORDER_REJECTED}（INFO，具名原因）；返回值按上述全序冻结。★ 不写账户、不改产权、 不生成任何订单。
@@ -645,94 +663,34 @@ final class MarketOrderPlanner {
     if (candidates == null || candidates.isEmpty()) {
       return List.of();
     }
-    List<LandOrder> accepted = new ArrayList<>();
-    Set<String> sellSharesSeen = new LinkedHashSet<>();
+    if (ctx.landLedger == null) {
+      throw new IllegalStateException(
+          "land market requires a scalar LandLedgerState in MatchContext (contract fault)");
+    }
+    List<LandOrder> ordered = new ArrayList<>(candidates.size());
     for (LandOrder order : candidates) {
-      if (order == null) {
-        continue; // null 无法具名（没有块/主体）；入口 putLandOrder 已拒绝 null
+      if (order != null) {
+        ordered.add(order);
       }
-      OwnershipStake share = ctx.round.assetShares.get(order.shareId());
-      if (share == null) {
-        MarketLandBook.logRejected(
-            ctx, order, MarketLandBook.LandRejectReason.SHARE_MISSING, "share-not-in-asset-shares");
-        continue;
-      }
-      if (!MarketLandBook.tradableLand(share)) {
-        MarketLandBook.logRejected(
-            ctx,
-            order,
-            MarketLandBook.LandRejectReason.SHARE_NOT_LAND,
-            "asset=" + share.asset() + ";quantity=" + share.quantity());
-        continue;
-      }
-      if (order.quantityMilliMu() != share.quantity()) {
-        MarketLandBook.logRejected(
-            ctx,
-            order,
-            MarketLandBook.LandRejectReason.SHARE_MISMATCH,
-            "orderQuantityMilliMu="
-                + order.quantityMilliMu()
-                + ";shareQuantityMilliMu="
-                + share.quantity()
-                + ";whole-block-only");
-        continue;
-      }
-      HexCoord shareHex = MarketLandBook.hexOf(share);
-      if (!shareHex.equals(order.location())) {
-        MarketLandBook.logRejected(
-            ctx,
-            order,
-            MarketLandBook.LandRejectReason.SHARE_LOCATION_MISMATCH,
-            "orderLocation="
-                + order.location().q()
-                + ","
-                + order.location().r()
-                + ";shareLocation="
-                + shareHex.q()
-                + ","
-                + shareHex.r());
-        continue;
-      }
-      MarketTable table = MarketLandBook.tableFor(ctx, shareHex);
-      if (table == null) {
-        MarketLandBook.logRejected(
-            ctx, order, MarketLandBook.LandRejectReason.NO_MARKET, "location-has-no-market-table");
-        continue;
-      }
-      if (!table.hasLandPrice()) {
-        MarketLandBook.logRejected(
-            ctx,
-            order,
-            MarketLandBook.LandRejectReason.LAND_PRICE_EMPTY,
-            "market=" + MarketLandBook.zoneIdOf(ctx, shareHex).value() + ";landPrice=empty");
-        continue;
-      }
-      if (order.side() == LandOrder.Side.SELL) {
-        if (!share.owner().equals(order.actor())) {
-          MarketLandBook.logRejected(
-              ctx,
-              order,
-              MarketLandBook.LandRejectReason.SELLER_NOT_OWNER,
-              "seller=" + MarketLandBook.actorKey(order.actor()) + ";owner=" + share.owner());
-          continue;
-        }
-        if (!sellSharesSeen.add(order.shareId().value())) {
-          MarketLandBook.logRejected(
-              ctx,
-              order,
-              MarketLandBook.LandRejectReason.DUPLICATE_SELL,
-              "share-already-has-a-sell-order-this-round");
-          continue;
-        }
-      } else if (share.owner().equals(order.actor())) {
-        MarketLandBook.logRejected(
-            ctx,
-            order,
-            MarketLandBook.LandRejectReason.BUYER_ALREADY_OWNER,
-            "buyer-is-the-current-owner");
-        continue;
-      }
-      if (!ctx.round.householdOfActor.containsKey(order.actor())) {
+    }
+    ordered.sort(
+        Comparator.comparing(
+                (LandOrder order) -> {
+                  MarketZoneId zone = MarketLandBook.zoneIdOf(ctx, order.hex());
+                  return zone == null ? "" : zone.value();
+                })
+            .thenComparing(LandOrder::hex)
+            .thenComparing(order -> order.side().ordinal())
+            .thenComparing(order -> MarketLandBook.actorKey(order.actor()))
+            .thenComparing(LandOrder::stableKey));
+    List<LandOrder> accepted = new ArrayList<>();
+    Map<LandHoldingKey, Long> remainingHolding = new LinkedHashMap<>();
+    for (LandHolding holding : ctx.landLedger.holdingsByKey().values()) {
+      remainingHolding.put(holding.key(), holding.quantityMilliMu());
+    }
+    for (LandOrder order : ordered) {
+      HouseholdId household = ctx.round.householdOfActor.get(order.actor());
+      if (household == null || !ctx.round.householdEconomies.containsKey(household)) {
         MarketLandBook.logRejected(
             ctx,
             order,
@@ -740,18 +698,50 @@ final class MarketOrderPlanner {
             "actor=" + MarketLandBook.actorKey(order.actor()));
         continue;
       }
+      MarketTable table = MarketLandBook.tableFor(ctx, order.hex());
+      if (table == null) {
+        MarketLandBook.logRejected(
+            ctx, order, MarketLandBook.LandRejectReason.NO_MARKET, "hex-has-no-market-table");
+        continue;
+      }
+      if (!table.hasLandPrice()) {
+        MarketLandBook.logRejected(
+            ctx,
+            order,
+            MarketLandBook.LandRejectReason.LAND_PRICE_EMPTY,
+            "market=" + MarketLandBook.zoneIdOf(ctx, order.hex()).value() + ";landPrice=empty");
+        continue;
+      }
+      if (order.side() == LandOrder.Side.SELL) {
+        LandHoldingKey key = MarketLandBook.acquisitionKey(order.hex(), household);
+        long remaining = remainingHolding.getOrDefault(key, 0L);
+        if (remaining <= 0L) {
+          MarketLandBook.logRejected(
+              ctx,
+              order,
+              MarketLandBook.LandRejectReason.NO_LAND_HOLDING,
+              "seller=" + MarketLandBook.actorKey(order.actor()) + ";hex=" + order.hex());
+          continue;
+        }
+        if (order.quantityMilliMu() > remaining) {
+          MarketLandBook.logRejected(
+              ctx,
+              order,
+              MarketLandBook.LandRejectReason.SELL_EXCEEDS_HOLDING,
+              "orderQuantityMilliMu="
+                  + order.quantityMilliMu()
+                  + ";remainingHoldingMilliMu="
+                  + remaining
+                  + ";hex="
+                  + order.hex()
+                  + ";seller="
+                  + MarketLandBook.actorKey(order.actor()));
+          continue;
+        }
+        remainingHolding.put(key, remaining - order.quantityMilliMu());
+      }
       accepted.add(order);
     }
-    accepted.sort(
-        Comparator.comparing(
-                (LandOrder order) -> {
-                  MarketZoneId zone = MarketLandBook.zoneIdOf(ctx, order.location());
-                  return zone == null ? "" : zone.value();
-                })
-            .thenComparing(order -> order.shareId().value())
-            .thenComparing(order -> order.side().ordinal())
-            .thenComparing(order -> MarketLandBook.actorKey(order.actor()))
-            .thenComparing(LandOrder::stableKey));
     return List.copyOf(accepted);
   }
 }

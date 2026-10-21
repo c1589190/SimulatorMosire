@@ -192,9 +192,11 @@ final class LaborCandidateBook {
    * ★★★ <b>D-032 D2 §4.3 / §5.4：按名册角色分流候选</b>。
    *
    * <ul>
-   *   <li>有 {@link ProductionRoster}：{@code PRODUCT_SHARE} 角色只取该角色 {@code plannedLaborMilliPerDay >
-   *       0} 的 participant（纯收租/零计划劳动户不进自动劳动匹配）；{@code MONEY_WAGE} 角色不读 roster 的 planned labor， 但 C2
-   *       只读 U20 工资锚；缺锚 ⇒ 为每个工资角色发一条零额候选，具名 {@code wage-quote-missing:<role>}（不伪造 worker、不按 0 报价）。
+   *   <li>有 {@link ProductionRoster}：{@code PRODUCT_SHARE} 角色只取<b>有效计划劳动</b> {@code > 0} 的
+   *       participant（见 {@link ProductionPlanBridge#effectivePlannedLaborMilliPerDay}）；纯收租/零计划劳动户
+   *       仍不进自动劳动匹配，但 RF3 下“organizer + 土地型 + 该 unit 有 LAND 占用 + 本户当刻 laborMilli > 0”会动态回退到本户劳动，
+   *       不写回 roster；{@code MONEY_WAGE} 角色不读 roster 的 planned labor， 但 C2 只读 U20 工资锚；缺锚 ⇒
+   *       为每个工资角色发一条零额候选，具名 {@code wage-quote-missing:<role>}（不伪造 worker、不按 0 报价）。
    *   <li>无名册：单角色 plan ⇒ 用既有候选户 + 该唯一角色；多角色 plan 无名册 ⇒ 不产生任何候选（调用方记 {@code
    *       roster-required}），绝不按角色各建一份。
    * </ul>
@@ -229,8 +231,10 @@ final class LaborCandidateBook {
             instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage) {
           continue; // MONEY_WAGE 不读 roster worker；下面按同市场区自动展开本地家户候选。
         }
-        if (participant.plannedLaborMilliPerDay() > 0L
-            && householdEconomies.containsKey(participant.household())) {
+        long effectivePlannedLabor =
+            ProductionPlanBridge.effectivePlannedLaborMilliPerDay(
+                unit, definition, participant, householdEconomies, index);
+        if (effectivePlannedLabor > 0L && householdEconomies.containsKey(participant.household())) {
           slots.add(new LaborSlot(participant.household(), unit, participant.role(), false));
         }
       }
@@ -255,8 +259,8 @@ final class LaborCandidateBook {
   }
 
   /**
-   * ★★★ W2b：MONEY_WAGE 角色的候选面 = 本地家户全体，资格/同区/账户/自雇/payer 单位置在 offer 构造处逐条 skip。 roster 的工资
-   * participant 不构成第二份 worker 权威。
+   * ★★★ W2b/RC8b：MONEY_WAGE 角色的候选面 = <b>同 hex</b> 的本地家户（v2 §4.3 "本地劳动约束不得放宽到同市场区"）。资格/同区/
+   * 账户/自雇/payer 单位置在 offer 构造处逐条 skip。roster 的工资 participant 不构成第二份 worker 权威。
    */
   static void addMoneyWageSlots(
       ProductionProcess unit,
@@ -265,6 +269,7 @@ final class LaborCandidateBook {
       List<LaborSlot> slots) {
     List<HouseholdId> households = new ArrayList<>(householdEconomies.keySet());
     households.sort(Comparator.comparing(HouseholdId::value));
+    HexCoord unitHex = unitHexOf(unit);
     for (io.mosire.simos.production.contract.ProductionRoleDefinition roleDefinition :
         plan.roles()) {
       if (!(roleDefinition.payment()
@@ -272,9 +277,22 @@ final class LaborCandidateBook {
         continue;
       }
       for (HouseholdId household : households) {
+        HouseholdEconomy row = householdEconomies.get(household);
+        if (unitHex != null && (row == null || !unitHex.equals(row.view().hex()))) {
+          continue; // ★ 跨 hex 劳动不得响应这个 unit 的工资位置。
+        }
         slots.add(new LaborSlot(household, unit, roleDefinition.id(), true));
       }
     }
+  }
+
+  /** unit 的显式地点优先；旧档回退方案 id 的 {@code @q_r} 后缀。解析不出 ⇒ null（不猜、不放宽到同区）。 */
+  private static HexCoord unitHexOf(ProductionProcess unit) {
+    HexCoord fromLocation = ProductionPlanBridge.hexOf(unit.location());
+    if (fromLocation != null) {
+      return fromLocation;
+    }
+    return hexOf(unit).orElse(null);
   }
 
   /** 该 unit 的组织 mode；没有组织 ⇒ 空（旧 unit 的并列键退回 {@code modeKey}）。 */

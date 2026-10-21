@@ -48,6 +48,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
@@ -59,6 +60,9 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -71,7 +75,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（D-032 P4c3 起为 34 个；★ D-032 B4 / §13.14.2
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（D-032 C7a 起为 37 个；★ D-032 B4 / §13.14.2
  * 裁定十五起 <b>没有</b> {@code industries} 这一维 —— 产业定义的权威唯一归 production）：{@code meta} / {@code classes} /
  * {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code
  * relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
@@ -189,7 +193,15 @@ public record EconomyChangeSet(
     FieldDelta<InventoryReservation> inventoryReservations,
     // ── ★★★ D-032 P4c3：U20 工资锚（唯一工资报价权威；与 EconomyData 一一对应，铁律 5）──────────
     //   键解析器 = WageAnchorKey::parse（toString/parse 互逆）；缺键 ⇒ Unchanged（旧变更集没动该组件）。
-    FieldDelta<ProductionWageAnchor> productionWageAnchors)
+    FieldDelta<ProductionWageAnchor> productionWageAnchors,
+    // ── ★★★ D-032 RC7 / S7-C：第 37 个组件 —— 家户向下流动表（键 = HouseholdId）──────────────
+    //   lastObserved / lastFlowDay / target 都是持久事实；漏带它 = 每个市场轮都重新把“首次观察”当成
+    //   无债基线，向下流动永远不会触发。
+    FieldDelta<HouseholdFlowTable> householdFlowTables,
+    // ── ★★★ D-032 C6：临时运输能力批次（键 = household/homeHex/marketRoundId）────────────────────
+    FieldDelta<TransportCapacityBatch> transportCapacityBatches,
+    // ── ★★★ D-032 C7a：第 37 个领域组件 —— 运输市场区锚价（键 = MarketZoneId）──────────────────
+    FieldDelta<TransportPriceAnchor> transportPriceAnchors)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -304,6 +316,18 @@ public record EconomyChangeSet(
     if (productionWageAnchors == null) {
       productionWageAnchors = new FieldDelta.Unchanged<>();
     }
+    // ★★★ D-032 RC7：家户流动表维（旧档/旧变更集没提该组件，就是没动它）。
+    if (householdFlowTables == null) {
+      householdFlowTables = new FieldDelta.Unchanged<>();
+    }
+    // ★★★ D-032 C6：运输能力批次维（旧档/旧变更集没提该组件，就是没动它）。
+    if (transportCapacityBatches == null) {
+      transportCapacityBatches = new FieldDelta.Unchanged<>();
+    }
+    // ★★★ D-032 C7a：运输市场区锚价维（旧档/旧变更集没提该组件，就是没动它）。
+    if (transportPriceAnchors == null) {
+      transportPriceAnchors = new FieldDelta.Unchanged<>();
+    }
     // ★★ B2b：Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）的变更集维已删除
     //   （两维的唯一权威在 production 的 {@code ProductionChangeSet}）。
     // ★★ A1 的第 34/35 个组件（货币词表两张表）：旧变更集没提该组件，就是没动它
@@ -371,7 +395,10 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.wageCarryRemainders(), target.wageCarryRemainders()),
         FieldDelta.diff(base.assetOccupancies(), target.assetOccupancies()),
         FieldDelta.diff(base.inventoryReservations(), target.inventoryReservations()),
-        FieldDelta.diff(base.productionWageAnchors(), target.productionWageAnchors()));
+        FieldDelta.diff(base.productionWageAnchors(), target.productionWageAnchors()),
+        FieldDelta.diff(base.householdFlowTables(), target.householdFlowTables()),
+        FieldDelta.diff(base.transportCapacityBatches(), target.transportCapacityBatches()),
+        FieldDelta.diff(base.transportPriceAnchors(), target.transportPriceAnchors()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -442,7 +469,17 @@ public record EconomyChangeSet(
             InventoryReservationId::parse),
         // ★★★ D-032 P4b1：U20 工资锚维（键解析器 = WageAnchorKey::parse）。
         FieldDelta.rebuild(
-            base.productionWageAnchors(), cs.productionWageAnchors(), WageAnchorKey::parse));
+            base.productionWageAnchors(), cs.productionWageAnchors(), WageAnchorKey::parse),
+        FieldDelta.rebuild(
+            base.householdFlowTables(), cs.householdFlowTables(), EconomyChangeSet::householdId),
+        // ★★★ D-032 C6：运输能力批次维（键解析器 = TransportCapacityBatchKey::parse）。
+        FieldDelta.rebuild(
+            base.transportCapacityBatches(),
+            cs.transportCapacityBatches(),
+            TransportCapacityBatchKey::parse),
+        // ★★★ D-032 C7a：运输市场区锚价维（键解析器 = MarketZoneId::parse）。
+        FieldDelta.rebuild(
+            base.transportPriceAnchors(), cs.transportPriceAnchors(), MarketZoneId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -480,7 +517,10 @@ public record EconomyChangeSet(
         || wageCarryRemainders.changed()
         || assetOccupancies.changed()
         || inventoryReservations.changed()
-        || productionWageAnchors.changed());
+        || productionWageAnchors.changed()
+        || householdFlowTables.changed()
+        || transportCapacityBatches.changed()
+        || transportPriceAnchors.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

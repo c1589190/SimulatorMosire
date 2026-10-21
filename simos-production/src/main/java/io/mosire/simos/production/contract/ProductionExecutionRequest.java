@@ -39,6 +39,8 @@ import java.util.Set;
  *     &gt;0，毫小时/日）；不得为 null；空表 = 本次没有任何家户出工
  * @param assetOccupancy ★ <b>资产占用</b>（按种类的实际占用；§4.2 原文"最终投入（劳动分配、原料、<b>资产占用</b>）"）； 不得为
  *     null、值必须为正（0 不进表）。它是"这一格、这个经营者为此实例实占的生产资料"， 周期关账时的产能那一路规模由它算
+ * @param durableCommodityOccupancy ★★ <b>D-032 C5a</b>：本次实占的<b>耐久商品资本</b>（商品 id → 数量，如 {@code
+ *     transport_horse}）；不得为 null（无此通道用空表）、逐值必须为正（0 不进表）。★ 只作规模锚、<b>不</b>被扣减； 不得从参与户 conditions 聚合。
  * @param finalInputsMilli 本次最终投入的原料（毫单位）；不得为 null、逐值必须为正（0 不进表）
  * @param attributes 方案级/非家户主体的外部属性事实（probe 原样使用；execute 在主体是家户时优先用 {@link #participantAttributes()}
  *     中该户的事实，非家户主体才用它）；不得为 null
@@ -55,11 +57,40 @@ public record ProductionExecutionRequest(
     long grantedScale,
     List<ParticipantContribution> laborContributionsMilli,
     Map<AssetKind, Long> assetOccupancy,
+    Map<CommodityId, Long> durableCommodityOccupancy,
     Map<CommodityId, Long> finalInputsMilli,
     ExternalAttributeFacts attributes,
     Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
     Map<HouseholdId, Long> householdLaborBudgetMilli,
     Map<HouseholdId, Long> managementLaborMilli) {
+
+  /**
+   * ★ <b>C5a 之前的 10 参形状</b>（无耐久商品占用）：等价于 {@code durableCommodityOccupancy = Map.of()}； 旧调用点逐值不变。
+   */
+  public ProductionExecutionRequest(
+      Optional<ProductionUnitId> instance,
+      Optional<ProductionCreationRequest> creation,
+      long grantedScale,
+      List<ParticipantContribution> laborContributionsMilli,
+      Map<AssetKind, Long> assetOccupancy,
+      Map<CommodityId, Long> finalInputsMilli,
+      ExternalAttributeFacts attributes,
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+      Map<HouseholdId, Long> householdLaborBudgetMilli,
+      Map<HouseholdId, Long> managementLaborMilli) {
+    this(
+        instance,
+        creation,
+        grantedScale,
+        laborContributionsMilli,
+        assetOccupancy,
+        Map.of(),
+        finalInputsMilli,
+        attributes,
+        participantAttributes,
+        householdLaborBudgetMilli,
+        managementLaborMilli);
+  }
 
   public ProductionExecutionRequest {
     if (instance == null) {
@@ -122,6 +153,27 @@ public record ProductionExecutionRequest(
       assetCopy.put(entry.getKey(), entry.getValue());
     }
     assetOccupancy = Collections.unmodifiableMap(assetCopy); // ★ 冻在赋值处
+
+    if (durableCommodityOccupancy == null) {
+      throw new IllegalArgumentException(
+          "ProductionExecutionRequest.durableCommodityOccupancy 不得为 null（无占用用空表）");
+    }
+    Map<CommodityId, Long> durableCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : durableCommodityOccupancy.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionExecutionRequest.durableCommodityOccupancy 的键与值都不得为 null");
+      }
+      if (entry.getValue() <= 0L) {
+        throw new IllegalArgumentException(
+            "ProductionExecutionRequest.durableCommodityOccupancy 必须为正（0 不进表）: "
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
+      }
+      durableCopy.put(entry.getKey(), entry.getValue());
+    }
+    durableCommodityOccupancy = Collections.unmodifiableMap(durableCopy); // ★ 冻在赋值处
 
     if (finalInputsMilli == null) {
       throw new IllegalArgumentException(

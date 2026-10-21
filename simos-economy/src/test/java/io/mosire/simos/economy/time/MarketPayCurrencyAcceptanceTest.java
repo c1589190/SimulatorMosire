@@ -190,7 +190,7 @@ class MarketPayCurrencyAcceptanceTest {
     assertThat(expectedQuantity).as("★ 本用例的判别力前提：铜预算只够一半（否则与银预算不可区分）").isEqualTo(1_452L);
     assertThat(expectedQuantity).isLessThan(DEMAND);
     assertThat(fill.quantity())
-        .as("★ 预算按**买方支付币**（铜）折算 ⇒ 挂单/成交恰好是铜预算买得起的量")
+        .as("★ RF1 价格接受者：需求全额挂出，成交侧仍受**当刻现金腿**约束 ⇒ 成交 = 铜预算买得起的量")
         .isEqualTo(expectedQuantity);
     assertThat(fill.goodsPaymentMilli())
         .as("★ 货款腿的币与额：⌈量 × 单价 ÷ 1000⌉ 毫铜")
@@ -226,8 +226,12 @@ class MarketPayCurrencyAcceptanceTest {
         .isEqualTo(copperBudget - fill.goodsPaymentMilli())
         .isEqualTo(moneyOf(world, BUYER, COPPER));
     assertThat(buyerOutcome.spendableMoneyMilli()).isNotEqualTo(BUYER_SILVER);
-    assertThat(buyerOutcome.orderedQty()).as("★ 挂单量按铜预算封顶").isEqualTo(expectedQuantity);
-    assertThat(buyerOutcome.filledQty()).as("挂出来的都成交了").isEqualTo(expectedQuantity);
+    assertThat(buyerOutcome.orderedQty())
+        .as("★ RF1 价格接受者：挂单量 = 完整缺口 DEMAND，不再按铜预算折回")
+        .isEqualTo(DEMAND);
+    assertThat(buyerOutcome.filledQty())
+        .as("★ 成交侧只成交铜预算付得起的量（现金腿读当刻可花额，不是下单时预算快照）")
+        .isEqualTo(expectedQuantity);
 
     // ★ 对照组：同一世界、把铜给足 ⇒ 整笔需求都能买（证明上面那个 1,452 是"铜不够"，不是别的原因）。
     MarketSettlementFixtures.World funded =

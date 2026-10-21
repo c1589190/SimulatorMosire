@@ -19,8 +19,10 @@ import static io.mosire.simos.economy.time.MarketMoneyBook.LEG_CASH;
 import static io.mosire.simos.economy.time.MarketMoneyBook.logForeignCurrencyFill;
 import static io.mosire.simos.economy.time.MarketMoneyBook.settlementUnitPrice;
 import static io.mosire.simos.economy.time.MarketRosterBook.ceilDiv;
+import static io.mosire.simos.economy.time.MarketRosterBook.frozenGoodsOf;
 import static io.mosire.simos.economy.time.MarketRosterBook.reduceUnmet;
 import static io.mosire.simos.economy.time.MarketRosterBook.spendableMoneyOf;
+import static io.mosire.simos.economy.time.MarketRosterBook.stockOf;
 import static io.mosire.simos.economy.time.MarketSettlement.MarketRound;
 import static io.mosire.simos.economy.time.MarketShipmentBook.FreightCharge;
 import static io.mosire.simos.economy.time.MarketShipmentBook.carrierChargeSplit;
@@ -44,17 +46,19 @@ import static io.mosire.simos.economy.time.MarketTradeMath.payableMoneyOf;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtSource;
+import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ShipmentId;
+import io.mosire.simos.economy.api.land.LandTransfer;
 import io.mosire.simos.economy.api.market.LossBearer;
+import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -90,6 +94,39 @@ final class MarketTradeExecutor {
       RouteContext route) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
+    // ★★★ DEF-2（2026-10-20）：S3 生成的 sell intent 到 S7-A 执行时可能已 stale —— S4 消费/生产、S6 工资等
+    //   已经改过库存/冻结，旧卖单的剩余可能超过当刻可卖量。这里必须在**任何账户/冻结/账本写入之前**按当刻
+    //   卖方可卖量封顶本笔成交（也早于 settlementUnitPrice / route / 运费 / 税 / 货腿 / 钱腿）：
+    //   ★ DEF-2b 起 commitFreezes 已先按 (seller, commodity) 轴把冻结与 remaining 封顶；本段保留为**第二道防线**
+    //     （撮合中途库存还可能被同轮其他成交改变）。
+    //   available = max(0, stock − frozen + 本卖单自己的冻结剩余)
+    //   ★ frozen 里包含本卖单还冻结着的那一份；它正是本笔可释放的货，故加回 ownSellReservation。
+    //     其他冻结（别的卖单/必要投入等）绝不能被当成可卖量。
+    long stock = stockOf(round, sell.seller, commodity);
+    long frozen = frozenGoodsOf(round, sell.seller, commodity);
+    long ownSellReservation = sell.frozenRemaining;
+    long available = Math.max(0L, stock - frozen + ownSellReservation);
+    long capped = Math.min(quantity, available);
+    if (capped <= 0L) {
+      sell.blocked = MarketUnfilledReason.ALL_RESERVED;
+      logSellStockExhausted(
+          ctx, buy, sell, commodity, quantity, stock, frozen, ownSellReservation, available);
+      return 0L;
+    }
+    if (capped < quantity) {
+      logSellStockShrunk(
+          ctx,
+          buy,
+          sell,
+          commodity,
+          quantity,
+          capped,
+          stock,
+          frozen,
+          ownSellReservation,
+          available);
+      quantity = capped;
+    }
     // ★★ E（§3.1）：**本笔收什么钱、按什么价** —— 唯一拼写点 {@link #settlementUnitPrice}（三条腿共用）。
     //   同币 ⇒ 返回原单价（判据恒成立 ⇒ 逐值退回改前）；异币 ⇒ 按"钱的价"折算买方币单价并复核判据
     //   （买方付出金额 × 我对该币的估值 ≥ 我的保留价 × 数量）；不划算 ⇒ 返回 0、账户一字未动，
@@ -113,6 +150,19 @@ final class MarketTradeExecutor {
     // ★★ P-T5b：本笔的**单位运费（毫买方支付币 / 商品单位）**—— 全方法（以及 Fill 的读数）共用这一个折算值。
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit());
     if (route != null) {
+      // ★★★ D-032 C7b2：活动运输计划路径不得回退旧 CARRIER_FEE/旧生产性运力；跨 hex route 必须已由
+      //   plan 的本地容量判为 service 路径。否则具名契约故障（fail-closed，不成交、不动账）。
+      if (ctx.transportRoundPlan != null && !route.haulService()) {
+        throw new IllegalStateException(
+            "活动运输计划路径出现旧 CARRIER_FEE route（契约故障）: day="
+                + round.day
+                + " from="
+                + route.from()
+                + " to="
+                + route.to()
+                + " commodity="
+                + route.commodity().value());
+      }
       // ★★ P-T5b：单位运费从**本格计价币**折成**买方支付币**（运费腿铸在 buy.currency 上，见 P-T4 的
       //   Fill.freightCurrency ≡ paymentCurrency）—— 与 chargesAtMost 走同一个 payAmountOf（唯一拼写点）
       //   ⇒ "判得起"与"真的扣"不可能漂开。
@@ -128,6 +178,68 @@ final class MarketTradeExecutor {
           ctx.carrierPool.workPerGoodPerMilleOf(
               commodityFreightBaseMilli(ctx.topology, route.commodity()),
               route.freightRatePerMille());
+      // ★★★ D-032 C7b2：活动运输计划路径先按本地 lane 的**承诺 work** 封顶成交数量；
+      //   没有该 lane/承诺为 0/不足一个整商品 ⇒ 不成交、不建任何债、不计价。plan 没有该 lane 同样 fail-closed。
+      io.mosire.simos.economy.model.TransportDemandKey transportLaneKey = null;
+      if (ctx.transportRoundPlan != null) {
+        transportLaneKey = ctx.transportDemandKeyFor(route.from(), route.to(), route.commodity());
+        Long laneRemainingWork = ctx.transportLaneRemainingWork(transportLaneKey);
+        long maxGoodsByLane =
+            laneRemainingWork == null || laneRemainingWork <= 0L
+                ? 0L
+                : CapacityDemand.maxGoodsFor(laneRemainingWork, workPerGoodPerMille);
+        if (maxGoodsByLane <= 0L) {
+          ctx.capacityDemands.record(
+              buy.buyer.household(),
+              buy.hex,
+              buy.regionId,
+              route.commodity(),
+              route.from(),
+              quantity,
+              0L,
+              workPerGoodPerMille);
+          markCapacityBlocked(
+              ctx,
+              buy,
+              sell,
+              route.from(),
+              route.to(),
+              route.commodity(),
+              quantity,
+              MerchantCapacityPool.LogisticsBlock.CAPACITY_EXHAUSTED.detail());
+          EventLog.channel(MARKET)
+              .info(
+                  LogEvent.of(
+                      "TRANSPORT_LANE_REJECTED",
+                      EconomyLogSource.ECONOMY_ORGANIZATION,
+                      "day",
+                      ctx.round.day,
+                      "commodity",
+                      route.commodity().value(),
+                      "fromHex",
+                      route.from(),
+                      "toHex",
+                      route.to(),
+                      "buyer",
+                      buy.buyer.actor().id(),
+                      "requestedMilli",
+                      quantity,
+                      "laneRemainingWorkMilli",
+                      laneRemainingWork == null ? Long.valueOf(0L) : laneRemainingWork,
+                      "workPerGoodPerMille",
+                      workPerGoodPerMille,
+                      "reason",
+                      MarketUnfilledReason.LOGISTICS_CAPACITY.name()));
+          return 0L;
+        }
+        if (maxGoodsByLane < quantity) {
+          quantity = maxGoodsByLane;
+          buyerUnitPrice = settlementUnitPrice(ctx, buy, sell, quantity, unitPrice, LEG_CASH, true);
+          if (buyerUnitPrice < 0L) {
+            return 0L;
+          }
+        }
+      }
       // ★★ M-A1/M-A2/M-C：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池分配（报价口径 = 从最低限价起买；
       //   缺省口径 = 提供方市场议价权序）；分配多少才走多少，一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。
       //   ★ M-C：**缺工具 ⇒ 该次跑商不成立**（H-5）也落在 select 里（具名 tool-short），因此"分不到"同样收缩成交。
@@ -164,6 +276,13 @@ final class MarketTradeExecutor {
         return 0L;
       }
       executed = Math.min(quantity, allocated);
+      if (transportLaneKey != null) {
+        long allocatedWork = 0L;
+        for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
+          allocatedWork = Math.addExact(allocatedWork, choice.consumedWorkMilli());
+        }
+        ctx.consumeTransportLaneWork(transportLaneKey, allocatedWork);
+      }
       ctx.capacityDemands.record(
           buy.buyer.household(),
           buy.hex,
@@ -295,8 +414,61 @@ final class MarketTradeExecutor {
     //   deferred   = 货款 − paidCash                          ← ★ 记为对该**卖方**的债务（同一本 debtContracts）
     //   ★ pairUp 已按 {@link #exactChargeAffordableUpTo} 保证 charges ≤ cash ⇒ 下面不会把账扣成负。
     long cashAvailable = payableMoneyOf(ctx, buy);
-    long charges = Math.addExact(freight, taxTotal);
-    long paidCash = Math.min(payment, Math.max(0L, cashAvailable - charges));
+    if (taxTotal > cashAvailable) {
+      throw new IllegalStateException(
+          "税费现金腿超过可付额（pairUp 与 executeTrade 的现金判据漂开）: day="
+              + round.day
+              + " commodity="
+              + commodity.value()
+              + " taxMilli="
+              + taxTotal
+              + " cashAvailableMilli="
+              + cashAvailable);
+    }
+    // ★★★ D-032 C7b2：活动运输计划路径允许**运费现金不足部分成为普通货币债**（债权人 = 实际承运户）。
+    //   货款的现金优先级不变：先税、再运费、最后货款；未付货款仍记卖方债。旧路径没有 plan ⇒ 若出现未付运费
+    //   即契约故障（pairUp 结构上应已封顶），绝不把旧 CARRIER_FEE 路径静默改成赊账。
+    long freightCashBudget = Math.max(0L, cashAvailable - taxTotal);
+    long paidFreight = 0L;
+    long transportFreightDeferred = 0L;
+    List<FreightCharge> settledFreightCharges = new ArrayList<>();
+    for (FreightCharge charge : freightCharges) {
+      long paid = Math.min(charge.amountMilli(), freightCashBudget);
+      freightCashBudget -= paid;
+      paidFreight = Math.addExact(paidFreight, paid);
+      if (paid > 0L) {
+        settledFreightCharges.add(
+            new FreightCharge(
+                charge.carrierActor(),
+                paid,
+                charge.serviceMilli(),
+                charge.household(),
+                charge.hex(),
+                charge.pureMerchant()));
+      }
+      long unpaid = charge.amountMilli() - paid;
+      if (unpaid > 0L) {
+        if (ctx.transportRoundPlan == null) {
+          throw new IllegalStateException(
+              "旧 CARRIER_FEE 路径出现未付运费（契约故障）: day="
+                  + round.day
+                  + " commodity="
+                  + commodity.value()
+                  + " carrier="
+                  + charge.household()
+                  + " unpaidMilli="
+                  + unpaid);
+        }
+        transportFreightDeferred = Math.addExact(transportFreightDeferred, unpaid);
+        if (!ctx.recordFillIntents) {
+          recordDeferredFreightDebt(
+              ctx, buy, charge.household(), unpaid, charge.serviceMilli(), commodity.value());
+        }
+      }
+    }
+    freight = paidFreight;
+    freightCharges = List.copyOf(settledFreightCharges);
+    long paidCash = Math.min(payment, freightCashBudget);
     long deferred = payment - paidCash;
     if (deferred > 0L && !deferralPossible(ctx, buy, sell)) {
       // ★ fail-closed 契约断言：本笔没有赊购能力（没有债务账 / 任一端不是家户 / 国库户授权买盘）时，
@@ -319,6 +491,11 @@ final class MarketTradeExecutor {
               + deferred);
     }
     long total = Math.addExact(Math.addExact(paidCash, freight), taxTotal);
+    if (transportFreightDeferred > 0L && ctx.recordFillIntents) {
+      // worker 只产意向；真实运费债由协调器回放时落（serial plan 路径通常不会到 worker）。
+      ctx.transportFreightDeferredMilli =
+          Math.addExact(ctx.transportFreightDeferredMilli, transportFreightDeferred);
+    }
     // ★★★ A3：本钱占用腿（微毫）已随 {@code MerchantProfitBook} 退役（并行利润读数，T-H3）。
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
@@ -582,29 +759,145 @@ final class MarketTradeExecutor {
   }
 
   /**
-   * ★★★ <b>P2f：一笔土地成交的唯一执行写口</b>（整块、定向；与商品成交同住一个 {@code clearOncePerCycle}）。
+   * ★★★ <b>DEF-2：执行时按当刻库存封顶的具名 INFO（本卖单自己的冻结不误当不可卖）。</b>
+   *
+   * <p>只在 stale 卖单真的被顶到 0 时发：业务拒绝 = INFO（§一.9）。
+   */
+  private static void logSellStockExhausted(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long requestedQuantity,
+      long stock,
+      long frozen,
+      long ownSellReservation,
+      long available) {
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_SELL_STOCK_EXHAUSTED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "commodity",
+                commodity.value(),
+                "seller",
+                sell.seller.actor().id(),
+                "buyer",
+                buy.buyer.actor().id(),
+                "hex",
+                sell.hex.toString(),
+                "requestedMilli",
+                requestedQuantity,
+                "stockMilli",
+                stock,
+                "frozenMilli",
+                frozen,
+                "ownSellReservationMilli",
+                ownSellReservation,
+                "availableMilli",
+                available,
+                "reason",
+                "stale-sell-intent-has-no-available-stock-at-execution"));
+  }
+
+  /**
+   * ★★★ <b>DEF-2：执行时按当刻库存把本笔成交收缩后的具名 INFO。</b>
+   *
+   * <p>未成交部分自然留在槽位剩余里；本方法之后所有价格/运费/税/成交/退还都用 capped quantity。
+   */
+  private static void logSellStockShrunk(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long requestedQuantity,
+      long cappedQuantity,
+      long stock,
+      long frozen,
+      long ownSellReservation,
+      long available) {
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_SELL_STOCK_SHRUNK",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "commodity",
+                commodity.value(),
+                "seller",
+                sell.seller.actor().id(),
+                "buyer",
+                buy.buyer.actor().id(),
+                "hex",
+                sell.hex.toString(),
+                "requestedMilli",
+                requestedQuantity,
+                "cappedMilli",
+                cappedQuantity,
+                "stockMilli",
+                stock,
+                "frozenMilli",
+                frozen,
+                "ownSellReservationMilli",
+                ownSellReservation,
+                "availableMilli",
+                available,
+                "reason",
+                "stale-sell-intent-capped-at-execution-time"));
+  }
+
+  /**
+   * ★★★ <b>RA1b2c2：一笔标量土地成交的唯一执行写口</b>（与商品成交同住一个 {@code clearOncePerCycle}）。
    *
    * <pre>
-   * ① 前置复核：份额仍是 LAND、数量 > 0、卖方仍是当前 owner（撮合到执行之间产权不得漂开）
-   * ② 价款 = floor(quantityMilliMu × unitPricePerMu ÷ 1000)（与 P2e 抵债估值同一个算式）
-   * ③ 现金腿：min(价款, spendableMoneyOf(买方, 支付币)) —— 后者已扣掉本轮**商品**冻结/成交 ⇒ 商品 + 土地共用同一份预算，不双付；
+   * ① 前置复核：买卖双方解析到已登记活家户且非同一户；卖方在该 hex 有可转移标量持有
+   * ② 成交量 = min(请求上限, 卖方当前持有)；现金不足且不能赊购时再收缩到现金可支付的最大数量
+   * ③ 价款 = floor(quantityMilliMu × unitPricePerMu ÷ 1000)（与 P2e 抵债估值同一个算式；0 价 ⇒ 0）
+   * ④ 现金腿：min(价款, spendableMoneyOf(买方, 支付币)) —— 后者已扣掉本轮**商品**冻结/成交 ⇒ 商品 + 土地共用同一份预算，不双付；
    *    现金腿走既有唯一写口 {@code AccountTransferSettlement.applyTransfer}
-   * ④ 赊购腿（仅当现金不足）：买卖双方都是家户且有普通货币债通道 ⇒ 复用既有 {@code DebtContractBook.upsert} +
-   *    {@link MarketFreezeBook#DEFERRED_PAYMENT_TERMS}（与商品未付价款记债同一本债账、同一条条款）；否则**不成交**（只支持现金全额，
-   *    绝不静默免单/伪造成交）
-   * ⑤ 产权腿：只走 {@link OwnershipStakeBook#transferLandBlock} —— 只改 owner/operator，id/location/quantity/industry/kind 不变；
-   *    不进入 HouseholdGoods、不生成 Pledge、无运费、P2 不征土地税
-   * ⑥ 标记：{@code round.landAcquiredThisRound.add(shareId)}（P3 的 M3/M6/M7 消费）
+   * ⑤ 赊购腿（仅当现金不足）：买卖双方都是家户且有普通货币债通道 ⇒ 复用既有 {@code DebtContractBook.upsert} +
+   *    {@link MarketFreezeBook#DEFERRED_PAYMENT_TERMS}（与商品未付价款记债同一本债账、同一条条款）；否则成交量已收缩到现金可付，
+   *    绝不静默免单/伪造成交
+   * ⑥ 产权腿：只走 {@link io.mosire.simos.economy.land.LandLedgerState#transfer}（内部 {@code LandBook.apply} 唯一守恒校验）——
+   *    不进入 HouseholdGoods、不生成 Pledge、无运费、不征土地税
+   * ⑦ 标记：{@code round.markLandAcquired((hex, buyer), quantity)}（M3/M6/M7 按数量排除本轮新取得）
    * </pre>
    *
-   * @return {@code true} = 本笔成交（已落账/已转产权）；{@code false} = 未成交（账户与产权一字未动，具名原因已发 INFO）
+   * @return 实际成交数量（&gt; 0）；{@code 0} = 未成交（账户与产权一字未动，具名原因已发 INFO）
    */
-  static boolean executeLandTrade(
-      MatchContext ctx, LandOrder buy, LandOrder sell, OwnershipStake share, long unitPricePerMu) {
+  static long executeLandTrade(
+      MatchContext ctx,
+      LandOrder buy,
+      LandOrder sell,
+      HexCoord hex,
+      long requestedQuantity,
+      long unitPricePerMu) {
     MarketRound round = ctx.round;
+    if (requestedQuantity <= 0L) {
+      return 0L;
+    }
+    if (ctx.landLedger == null) {
+      throw new IllegalStateException(
+          "land trade requires a scalar LandLedgerState in MatchContext (contract fault)");
+    }
+    if (!buy.hex().equals(hex) || !sell.hex().equals(hex)) {
+      throw new IllegalStateException(
+          "land trade hex mismatch (contract fault): tradeHex="
+              + hex
+              + " buyHex="
+              + buy.hex()
+              + " sellHex="
+              + sell.hex());
+    }
     HouseholdId buyer = round.householdOfActor.get(buy.actor());
     HouseholdId seller = round.householdOfActor.get(sell.actor());
-    if (buyer == null || seller == null) {
+    if (buyer == null
+        || seller == null
+        || !round.householdEconomies.containsKey(buyer)
+        || !round.householdEconomies.containsKey(seller)) {
       MarketLandBook.logRejected(
           ctx,
           buy,
@@ -613,7 +906,7 @@ final class MarketTradeExecutor {
               + (buyer == null ? "absent" : buyer.value())
               + ";sellerHousehold="
               + (seller == null ? "absent" : seller.value()));
-      return false;
+      return 0L;
     }
     if (buyer.equals(seller)) {
       MarketLandBook.logRejected(
@@ -621,78 +914,83 @@ final class MarketTradeExecutor {
           buy,
           MarketLandBook.LandRejectReason.SELF_TRADE,
           "same-household-on-both-sides=" + buyer.value());
-      return false;
+      return 0L;
     }
-    // ① 复读**当刻**产权：撮合与执行之间不得有第二笔把同一块转走。
-    OwnershipStake current = round.assetShares.get(share.id());
-    if (!MarketLandBook.tradableLand(current)) {
+    long sellerHolding = ctx.landLedger.holdingOf(hex, seller);
+    if (sellerHolding <= 0L) {
       MarketLandBook.logRejected(
           ctx,
           sell,
-          MarketLandBook.LandRejectReason.SHARE_MISSING,
-          "share-no-longer-tradable=" + share.id().value());
-      return false;
+          MarketLandBook.LandRejectReason.NO_LAND_HOLDING,
+          "seller=" + seller.value() + ";hex=" + hex);
+      return 0L;
     }
-    if (!current.owner().equals(sell.actor())) {
-      MarketLandBook.logRejected(
-          ctx,
-          sell,
-          MarketLandBook.LandRejectReason.SELLER_NOT_OWNER,
-          "owner=" + current.owner() + ";seller=" + sell.actor());
-      return false;
-    }
-    long quantity = current.quantity();
-    if (buy.quantityMilliMu() != quantity || sell.quantityMilliMu() != quantity) {
-      // 整块口径复核：撮合后份额数量若漂开（不应发生），宁可不成交也不做隐性部分成交/找零。
-      MarketLandBook.logRejected(
-          ctx,
-          buy,
-          MarketLandBook.LandRejectReason.SHARE_MISMATCH,
-          "buyQuantityMilliMu="
-              + buy.quantityMilliMu()
-              + ";sellQuantityMilliMu="
-              + sell.quantityMilliMu()
-              + ";shareQuantityMilliMu="
-              + quantity);
-      return false;
-    }
+    long quantity = Math.min(requestedQuantity, sellerHolding);
     long payment = MarketLandBook.landValueMilli(quantity, unitPricePerMu);
-    if (payment > buy.maxBudget()) {
-      MarketLandBook.logRejected(
-          ctx,
-          buy,
-          MarketLandBook.LandRejectReason.NO_BUDGET,
-          "paymentMilli=" + payment + ";maxBudgetMilli=" + buy.maxBudget());
-      return false;
-    }
     long cashAvailable = spendableMoneyOf(round, buyer, buy.payWith());
-    long paidCash = Math.min(payment, cashAvailable);
-    long deferred = payment - paidCash;
-    if (deferred > 0L && !ctx.deferredPaymentsEnabled()) {
-      // 没有普通货币债通道 ⇒ 只支持现金全额；不伪造成交、不静默免单。
-      MarketLandBook.logRejected(
-          ctx,
-          buy,
-          MarketLandBook.LandRejectReason.CASH_ONLY_UNPAYABLE,
-          "paymentMilli="
-              + payment
-              + ";cashAvailableMilli="
-              + cashAvailable
-              + ";deferralEnabled=false");
-      return false;
+    boolean deferredPossible =
+        ctx.deferredPaymentsEnabled()
+            && round.householdMarketRole(buyer)
+                != MarketSettlement.HouseholdMarketRole.AUTHORIZATION_ONLY;
+    long paidCash;
+    long deferred;
+    if (deferredPossible) {
+      paidCash = Math.min(payment, cashAvailable);
+      deferred = payment - paidCash;
+    } else {
+      long affordable =
+          MarketLandBook.cashAffordableQuantity(cashAvailable, unitPricePerMu, quantity);
+      if (affordable <= 0L) {
+        MarketLandBook.logRejected(
+            ctx,
+            buy,
+            MarketLandBook.LandRejectReason.CASH_ONLY_UNPAYABLE,
+            "paymentMilli="
+                + payment
+                + ";cashAvailableMilli="
+                + cashAvailable
+                + ";deferralEnabled=false");
+        return 0L;
+      }
+      if (affordable < quantity) {
+        EventLog.channel(MARKET)
+            .info(
+                LogEvent.of(
+                    "LAND_TRADE_CASH_LIMITED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "hex",
+                    hex.q() + "," + hex.r(),
+                    "buyer",
+                    buyer.value(),
+                    "requestedQuantityMilliMu",
+                    quantity,
+                    "executedQuantityMilliMu",
+                    affordable,
+                    "cashAvailableMilli",
+                    cashAvailable,
+                    "reason",
+                    "no-deferral-channel-quantity-shrunk-to-cash-affordable"));
+      }
+      quantity = affordable;
+      payment = MarketLandBook.landValueMilli(quantity, unitPricePerMu);
+      paidCash = payment;
+      deferred = 0L;
     }
-    HexCoord location = MarketLandBook.hexOf(current);
-    MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, location);
-    if (zoneId == null) { // 不应到达：撮合工作集已要求有区；具名抛而不是静默落一块没有市场区的产权
-      throw new IllegalStateException("土地成交缺少市场区（撮合工作集与执行漂开）: share=" + current.id().value());
+    MarketZoneId zoneId = MarketLandBook.zoneIdOf(ctx, hex);
+    if (zoneId == null) { // 不应到达：撮合工作集已要求有区；具名抛而不是静默落一块没有市场的产权
+      throw new IllegalStateException("土地成交缺少市场区（撮合工作集与执行漂开）: hex=" + hex);
     }
-    // ③ 现金腿：既有唯一账户写口。
+    // ⑥ 产权腿（先做纯账本校验/转移：失败时现金/债务腿一字未动）。
+    ctx.landLedger = ctx.landLedger.transfer(new LandTransfer(hex, seller, buyer, quantity));
+    // ④ 现金腿：既有唯一账户写口。
     if (paidCash > 0L) {
       Transfer moneyLeg =
           round.ledger.mint(
               buy.actor(),
               sell.actor(),
-              location,
+              hex,
               Map.of(),
               Map.of(buy.payWith(), paidCash),
               TransferReason.MARKET_TRADE);
@@ -704,11 +1002,9 @@ final class MarketTradeExecutor {
           round.householdOfActor,
           moneyLeg);
     }
-    // ⑤ 产权腿：只改 owner/operator（id/location/quantity/industry/kind 不变）。
-    OwnershipStakeBook.transferLandBlock(round.assetShares, current.id(), buy.actor(), buy.actor());
-    // ⑥ 本轮取得标记（P3 消费；不落盘）。
-    round.markLandAcquired(current.id());
-    // ④ 赊购腿：同一本债账、同一条普通货币债条款。
+    // ⑦ 本轮取得标记（按 (hex, buyer) 数量累加；不落盘）。
+    round.markLandAcquired(MarketLandBook.acquisitionKey(hex, buyer), quantity);
+    // ⑤ 赊购腿：同一本债账、同一条普通货币债条款。
     if (deferred > 0L) {
       DebtUnit.Money unit = new DebtUnit.Money(buy.payWith());
       DebtContract contract =
@@ -733,8 +1029,8 @@ final class MarketTradeExecutor {
                   EconomyLogSource.ECONOMY_DEBT,
                   "day",
                   round.day,
-                  "land",
-                  current.id().value(),
+                  "hex",
+                  hex.q() + "," + hex.r(),
                   "buyer",
                   buyer.value(),
                   "seller",
@@ -758,8 +1054,7 @@ final class MarketTradeExecutor {
         new MarketLandBook.LandFill(
             round.day,
             zoneId,
-            current.id(),
-            location,
+            hex,
             buy.actor(),
             sell.actor(),
             quantity,
@@ -779,8 +1074,8 @@ final class MarketTradeExecutor {
                 round.day,
                 "market",
                 zoneId.value(),
-                "land",
-                current.id().value(),
+                "hex",
+                hex.q() + "," + hex.r(),
                 "buyer",
                 buyer.value(),
                 "seller",
@@ -798,7 +1093,7 @@ final class MarketTradeExecutor {
                 "deferredMilli",
                 deferred,
                 "reason",
-                "whole-block-land-title-transfer-in-the-same-market-round"));
+                "scalar-land-title-transfer-in-the-same-market-round"));
     if (MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
           .debug(
@@ -807,16 +1102,18 @@ final class MarketTradeExecutor {
                   EconomyLogSource.ECONOMY_MARKET,
                   "day",
                   round.day,
-                  "land",
-                  current.id().value(),
+                  "hex",
+                  hex.q() + "," + hex.r(),
                   "cashAvailableMilli",
                   cashAvailable,
-                  "maxBudgetMilli",
-                  buy.maxBudget(),
+                  "deferralPossible",
+                  deferredPossible,
                   "paidCashMilli",
                   paidCash,
                   "deferredMilli",
                   deferred,
+                  "priceTaker",
+                  buy.limitPricePerMu().isEmpty(),
                   "why",
                   "commodity-orders-were-frozen-and-settled-first-land-only-uses-the-remaining-spendable-budget"));
     }
@@ -828,10 +1125,8 @@ final class MarketTradeExecutor {
                   EconomyLogSource.ECONOMY_MARKET,
                   "day",
                   round.day,
-                  "land",
-                  current.id().value(),
-                  "location",
-                  location.q() + "," + location.r(),
+                  "hex",
+                  hex.q() + "," + hex.r(),
                   "fromOwner",
                   sell.actor().id(),
                   "toOwner",
@@ -851,7 +1146,83 @@ final class MarketTradeExecutor {
                   "goodsLeg",
                   false));
     }
-    return true;
+    return quantity;
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：运费未付部分记普通货币债</b>（0‰，债权人 = 实际承运家户）。
+   *
+   * <p>只在活动运输计划路径、且该 carrier 的运费腿真的有一部分未付时调用；无本地容量时整笔不成交，不会到这里。 不得记货债、不得把买方余额扣成负、不得把未付运费算进 {@code
+   * freightPaidByCurrency}。
+   */
+  private static void recordDeferredFreightDebt(
+      MatchContext ctx,
+      BuySlot buy,
+      HouseholdId carrier,
+      long amountMilli,
+      long serviceWorkMilli,
+      String commodityValue) {
+    if (amountMilli <= 0L) {
+      return;
+    }
+    HouseholdId debtor = buy.buyer.household();
+    if (debtor == null || carrier == null || ctx.debts == null) {
+      throw new IllegalStateException(
+          "运输运费欠款无法记账（需要双方家户与债务工作副本）: day="
+              + ctx.round.day
+              + " commodity="
+              + commodityValue
+              + " debtor="
+              + debtor
+              + " carrier="
+              + carrier
+              + " debtsPresent="
+              + (ctx.debts != null)
+              + " unpaidFreightMilli="
+              + amountMilli);
+    }
+    DebtUnit.Money unit = new DebtUnit.Money(buy.currency);
+    DebtContract contract =
+        DebtContractBook.upsert(
+            ctx.debts,
+            debtor,
+            carrier,
+            unit,
+            DebtTerms.ordinaryZeroInterestDefault(),
+            DebtSource.ORDINARY_LOAN,
+            amountMilli,
+            ctx.round.day,
+            ctx.deferredPaymentConfig == null
+                ? null
+                : OptionalLong.of(ctx.deferredPaymentConfig.dueCycle()));
+    ctx.transportFreightDeferredMilli =
+        Math.addExact(ctx.transportFreightDeferredMilli, amountMilli);
+    ctx.transportFreightDeferredFills++;
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "TRANSPORT_FREIGHT_DEBT",
+                EconomyLogSource.ECONOMY_DEBT,
+                "day",
+                ctx.round.day,
+                "debtor",
+                debtor.value(),
+                "carrier",
+                carrier.value(),
+                "currency",
+                buy.currency.value(),
+                "unpaidFreightMilli",
+                amountMilli,
+                "serviceWorkMilli",
+                serviceWorkMilli,
+                "commodity",
+                commodityValue,
+                "contract",
+                contract.id().value(),
+                "outstandingMilli",
+                contract.principal(),
+                "reason",
+                "unpaid-transport-freight-becomes-ordinary-zero-interest-money-debt"));
   }
 
   /**

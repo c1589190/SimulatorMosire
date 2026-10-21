@@ -138,6 +138,15 @@ class EconomySeederConditions extends WorldBalanceSeeder {
     for (int i = 0; i < conditions.assetSplits().size(); i++) {
       TestConditions.AssetSplit split = conditions.assetSplits().get(i);
       String where = "assetSplits[" + i + "]";
+      // ★★★ RA1b2b：LAND 已不在 assetShares（改由 entry.landHoldings 承载）；本拆分器只处理资产份额，
+      //   涉 LAND 的拆分必须在同一入口同步改 landHoldings —— 本单不做，故具名拒绝（不静默当"找不到份额"）。
+      if (split.asset().filter(asset -> asset == AssetKind.LAND).isPresent()) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 不能拆分 LAND（标量土地走 entry.landHoldings，不在 assetShares；"
+                + "landHoldings 拆分未在 RA1b2b 实现）");
+      }
       requireSeededHousehold(
           split.targetHousehold(), householdStocks, householdMoney, where + ".targetHousehold");
       ShareHandle source = resolveSourceShare(split, shares, where);

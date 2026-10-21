@@ -161,6 +161,41 @@ final class ProductionInputSettlement {
       Map<ActorRef, HouseholdId> householdOfActor,
       ProductionLedger.Accumulator ledger,
       long day) {
+    return drawCycleInputs(
+        units,
+        industries,
+        householdEconomies,
+        relations,
+        operatorConditions,
+        index,
+        householdGoods,
+        householdMoney,
+        consumedGoods,
+        householdOfActor,
+        ledger,
+        day,
+        null);
+  }
+
+  /**
+   * ★★ <b>RF2：只对实际入选/实际有劳动的 unit 现扣周期投入</b>。
+   *
+   * @param producingUnits 非 {@code null} ⇒ 只有这些 unit 进入调查/配给/落账；{@code null} = 不限制（legacy 路径逐值不变）
+   */
+  static CapacityDeductionSummary drawCycleInputs(
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      SettlementIndex index,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      ProductionLedger.Accumulator ledger,
+      long day,
+      Set<ProductionUnitId> producingUnits) {
     // ── 第一遍：调查（**只读**：不改任何账）────────────────────────────────────────────
     List<InputPlan> plans =
         surveyInputDemands(
@@ -171,9 +206,10 @@ final class ProductionInputSettlement {
             operatorConditions,
             index,
             householdGoods,
-            householdOfActor);
+            householdOfActor,
+            producingUnits);
     // ── 第二遍：同格争用 ⇒ 开池 + 按需求比例配给（H6-lite；无争用 ⇒ 一个字段都不动）────────
-    rationContestedInputs(plans, householdGoods);
+    rationContestedInputs(plans, householdGoods, householdEconomies, day);
     // ── 第二遍b：★★★ S-11 定规模 —— 实际产能 = 计划产能 × 投入满足率（最短缺那一项投入）。
     //   位置必须在开池**之后**：池子把 available 换成"取料口径"的可供量，S-11 的"拿不到"必须按同一份量算
     //   （否则"自己账上没料、同格池子里有"的 unit 会被误判成产能 0 ⇒ 把 H6-lite 那条实测修好的通道堵死）。
@@ -193,7 +229,8 @@ final class ProductionInputSettlement {
           householdMoney,
           consumedGoods,
           householdOfActor,
-          ledger);
+          ledger,
+          day);
     }
     return deductions;
   }
@@ -315,8 +352,40 @@ final class ProductionInputSettlement {
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ActorRef, HouseholdId> householdOfActor) {
+    return surveyInputDemands(
+        units,
+        industries,
+        householdEconomies,
+        relations,
+        operatorConditions,
+        index,
+        householdGoods,
+        householdOfActor,
+        null);
+  }
+
+  /**
+   * ★★ <b>RF2：调查只覆盖实际入选/实际有劳动的 unit</b>。
+   *
+   * <p>{@code producingUnits == null} ⇒ 不限制（legacy 路径逐值不变）；否则未入选 unit 不进入池、不要料、不扣种。
+   */
+  static List<InputPlan> surveyInputDemands(
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      SettlementIndex index,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      Set<ProductionUnitId> producingUnits) {
     List<InputPlan> plans = new ArrayList<>();
+    long cycleStartUnits = 0L;
+    long firstSowUnits = 0L;
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
+      if (producingUnits != null && !producingUnits.contains(id)) {
+        continue; // ★★ RF2：未入选/无实际劳动的 unit 不预扣整周期种子。
+      }
       ProductionProcess unit = units.get(id);
       IndustryDefinitionView industry = industries.get(unit.industry());
       if (industry == null) {
@@ -325,8 +394,24 @@ final class ProductionInputSettlement {
       if (index.assetRejectionOf(id).isPresent()) {
         continue; // ★★★ D4：预算具名拒绝的 unit 在执行前不扣任何周期投入（本日不半推进）。
       }
-      if (unit.progressDays() != 0L) {
-        continue; // 只有周期的第一天扣投入
+      // ★★★ RF2e：周期门 = 周期第一天，或**周期中途才第一次实际入选**且本周期尚未扣过任何投入。
+      //   后者修的是实测病：tick125 才重新选中的 62 个 farm 已 progressDays=4 且 cycleInputUsedMilli 为空，
+      //   若仍只认 progressDays==0，它们本周期永远补不到种子 ⇒ 关账 finalScale=0。
+      //   ★ producingUnits==null 是 legacy 路径 ⇒ firstSowInCycle 恒 false，逐值不变。
+      //   ★ 已扣过（cycleInputUsedMilli 非空）⇒ 不重复扣；未入选/无实际劳动在上一道门槛已被排除。
+      boolean cycleStart = unit.progressDays() == 0L;
+      boolean firstSowInCycle =
+          unit.progressDays() > 0L
+              && unit.cycleInputUsedMilli().isEmpty()
+              && producingUnits != null
+              && producingUnits.contains(id);
+      if (!cycleStart && !firstSowInCycle) {
+        continue;
+      }
+      if (cycleStart) {
+        cycleStartUnits++;
+      } else {
+        firstSowUnits++;
       }
       Map<CommodityId, Long> perScale = industry.inputPerUnit();
       if (perScale.isEmpty()) {
@@ -345,11 +430,12 @@ final class ProductionInputSettlement {
       List<HouseholdId> ownKeys =
           supplierAccountsOf(supplier, unit, industry, householdEconomies, householdOfActor, index);
       // ① 可供量（逐商品）= relation 名下的家户账（聚合主体已由 supplierAccountsOf 解析到 unit 名下的家户账）。
+      //   ★★ RF2：粮（种子）要先减掉该户**一 tick 基础口粮**；真正可扣量才是投入通道。
       Map<CommodityId, Long> available = new LinkedHashMap<>();
       for (CommodityId commodity : perScale.keySet()) {
         long sum = 0L;
         for (HouseholdId key : ownKeys) {
-          sum += stockOf(householdGoods, key, commodity);
+          sum += drawableStockOf(householdEconomies, householdGoods, key, commodity);
         }
         available.put(commodity, sum);
       }
@@ -368,6 +454,23 @@ final class ProductionInputSettlement {
               plannedScale,
               ownKeys,
               available));
+    }
+    if (TRACE.isDebugEnabled() && (cycleStartUnits > 0L || firstSowUnits > 0L)) {
+      // ★ RF2e 读数：本分区本次调查里，周期第一天 vs 周期中途首次入选（补扣）各多少 unit。
+      //   DEBUG 而非 INFO：本方法按分区调用，INFO 会变成每分区一条；数量只服务根因追踪。
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "PRODUCTION_INPUT_CYCLE_GATE",
+                  EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                  "cycleStartUnits",
+                  cycleStartUnits,
+                  "firstSowUnits",
+                  firstSowUnits,
+                  "producingUnits",
+                  producingUnits == null ? "legacy" : producingUnits.size(),
+                  "reason",
+                  "cycle-start-or-first-midcycle-sow-with-no-input-used"));
     }
     return plans;
   }
@@ -596,6 +699,23 @@ final class ProductionInputSettlement {
    */
   static void rationContestedInputs(
       List<InputPlan> plans, Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
+    rationContestedInputs(plans, householdGoods, null, 0L);
+  }
+
+  /**
+   * ★★ <b>RF2：同格争用只在**同一组织（同一 operator）**内开池</b>。
+   *
+   * <p>标准农业按家户独立（每个 farm unit 的 operator = 自己家户）⇒ 同 hex 的独立家户**不共享 grain 种子池**； 只有同一组织/同一 roster 的
+   * unit（operator 相同）才允许共用投入。跨户的池子会从"别人账"扣种，本批明确拆掉。
+   *
+   * @param householdEconomies 非 {@code null} ⇒ 池内可供量按"扣种后保留一 tick 口粮"的可扣量计（与第三遍同一把尺）
+   * @param day 日志用（只读读数）
+   */
+  static void rationContestedInputs(
+      List<InputPlan> plans,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      long day) {
     // ① 归集：格 → 商品 → 需求方（保序；键是格 + 商品，值是该商品在本格的全部需求方）。
     Map<HexCoord, Map<CommodityId, List<InputPlan>>> byHex = new LinkedHashMap<>();
     for (InputPlan plan : plans) {
@@ -611,51 +731,111 @@ final class ProductionInputSettlement {
         byCommodity.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).add(plan);
       }
     }
-    // ② 逐（格，商品）判争用 ⇒ 开池 + 配给。
-    for (Map<CommodityId, List<InputPlan>> byCommodity : byHex.values()) {
-      for (Map.Entry<CommodityId, List<InputPlan>> entry : byCommodity.entrySet()) {
+    // ② 逐（格，商品）判争用 ⇒ **按 operator 分组**开池 + 配给（跨 operator 不共享）。
+    for (Map.Entry<HexCoord, Map<CommodityId, List<InputPlan>>> hexEntry : byHex.entrySet()) {
+      HexCoord hex = hexEntry.getKey();
+      for (Map.Entry<CommodityId, List<InputPlan>> entry : hexEntry.getValue().entrySet()) {
         CommodityId commodity = entry.getKey();
         List<InputPlan> demanders = entry.getValue();
         if (demanders.size() < 2) {
           continue; // ★ 只有一个需求方 ⇒ 逐值 = 改前（"缸空 ⇒ 地荒"那条机构也在这一档里）
         }
-        List<HouseholdId> pool = new ArrayList<>();
+        Map<ActorRef, List<InputPlan>> byOperator = new LinkedHashMap<>();
         for (InputPlan plan : demanders) {
-          for (HouseholdId key : plan.ownKeys) {
-            if (!pool.contains(key)) {
-              pool.add(key);
+          byOperator.computeIfAbsent(plan.unit.operator(), key -> new ArrayList<>()).add(plan);
+        }
+        boolean pooledAny = false;
+        for (List<InputPlan> sameOperator : byOperator.values()) {
+          if (sameOperator.size() < 2) {
+            continue; // 独立家户/单一需求方：不共享，按自己的账算
+          }
+          pooledAny = true;
+          List<HouseholdId> pool = new ArrayList<>();
+          for (InputPlan plan : sameOperator) {
+            for (HouseholdId key : plan.ownKeys) {
+              if (!pool.contains(key)) {
+                pool.add(key);
+              }
             }
           }
+          long poolStock = 0L;
+          for (HouseholdId key : pool) {
+            poolStock +=
+                householdEconomies == null
+                    ? stockOf(householdGoods, key, commodity)
+                    : drawableStockOf(householdEconomies, householdGoods, key, commodity);
+          }
+          // 逐需求方：可供量换成池子 ⇒ 规模按池子算；同时记下池子（第三遍取料要用）。
+          for (InputPlan plan : sameOperator) {
+            plan.available.put(commodity, poolStock);
+            plan.sharedKeys.put(commodity, pool);
+          }
+          // 需求 = 规模 × 每单位用量，而"规模"与第三遍同一条算式（产能那一路 × 每种投入的可供量那一路，取小）。
+          long[] needs = new long[sameOperator.size()];
+          long totalNeed = 0L;
+          for (int i = 0; i < sameOperator.size(); i++) {
+            InputPlan plan = sameOperator.get(i);
+            needs[i] = usableScaleOf(plan) * plan.perScale.getOrDefault(commodity, 0L);
+            totalNeed += needs[i];
+          }
+          if (totalNeed <= 0L) {
+            continue; // 谁都用不上这一种料（池子空、或每单位需求为 0）⇒ 不必配给
+          }
+          long[] quotas =
+              totalNeed > poolStock
+                  ? ProportionalSplit.byDenominator(poolStock, needs, totalNeed)
+                  : needs;
+          for (int i = 0; i < sameOperator.size(); i++) {
+            sameOperator.get(i).quota.put(commodity, quotas[i]);
+          }
         }
-        long poolStock = 0L;
-        for (HouseholdId key : pool) {
-          poolStock += stockOf(householdGoods, key, commodity);
-        }
-        // 逐需求方：可供量换成池子 ⇒ 规模按池子算；同时记下池子（第三遍取料要用）。
-        for (InputPlan plan : demanders) {
-          plan.available.put(commodity, poolStock);
-          plan.sharedKeys.put(commodity, pool);
-        }
-        // 需求 = 规模 × 每单位用量，而"规模"与第三遍同一条算式（产能那一路 × 每种投入的可供量那一路，取小）。
-        long[] needs = new long[demanders.size()];
-        long totalNeed = 0L;
-        for (int i = 0; i < demanders.size(); i++) {
-          InputPlan plan = demanders.get(i);
-          needs[i] = usableScaleOf(plan) * plan.perScale.getOrDefault(commodity, 0L);
-          totalNeed += needs[i];
-        }
-        if (totalNeed <= 0L) {
-          continue; // 谁都用不上这一种料（池子空、或每单位需求为 0）⇒ 不必配给
-        }
-        long[] quotas =
-            totalNeed > poolStock
-                ? ProportionalSplit.byDenominator(poolStock, needs, totalNeed)
-                : needs;
-        for (int i = 0; i < demanders.size(); i++) {
-          demanders.get(i).quota.put(commodity, quotas[i]);
+        if (!pooledAny && TRACE.isDebugEnabled()) {
+          // ★ RF2：同格多户争同一投入，但分属不同 operator ⇒ 明确"不共享池"，不是静默跳过。
+          EventLog.channel(TRACE)
+              .debug(
+                  LogEvent.of(
+                      "PRODUCTION_INPUT_SHARED_POOL",
+                      EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                      "day",
+                      day,
+                      "hex",
+                      hex,
+                      "commodity",
+                      commodity.value(),
+                      "demanders",
+                      demanders.size(),
+                      "operators",
+                      byOperator.size(),
+                      "reason",
+                      "independent-operators-no-cross-household-pool"));
         }
       }
     }
+  }
+
+  /**
+   * ★★ <b>RF2：某家户在某种生产投入上真正可扣的余额</b>。
+   *
+   * <p>粮当种子时先扣掉该户**一 tick 基础口粮**（{@code naturalNeeds[grain]} 的当前值）—— 这是本批的工程默认：
+   * 不允许把所有户粮清零；扣种后的库存必须至少够下一 tick 的口粮。其它商品无此保留。
+   *
+   * <p>★ 只读；负存量按 0 计（"拿不出来"不是"负投入"）。缺家户行 ⇒ 不保留（无法知道口粮，按 0 reserve 处理， 与缺行=0 的既有口径同侧）。
+   */
+  static long drawableStockOf(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      HouseholdId key,
+      CommodityId commodity) {
+    long stock = Math.max(0L, stockOf(householdGoods, key, commodity));
+    if (!EconomySettlement.GRAIN.equals(commodity) || stock <= 0L) {
+      return stock;
+    }
+    HouseholdEconomy row = householdEconomies == null ? null : householdEconomies.get(key);
+    long reserve =
+        row == null
+            ? 0L
+            : Math.max(0L, row.naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L));
+    return Math.max(0L, stock - reserve);
   }
 
   /**

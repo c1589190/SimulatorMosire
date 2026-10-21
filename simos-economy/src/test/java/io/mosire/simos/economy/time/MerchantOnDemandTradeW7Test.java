@@ -689,7 +689,8 @@ class MerchantOnDemandTradeW7Test {
     assertThat(transfer.source()).isEqualTo(SOURCE);
     assertThat(transfer.target()).isEqualTo(NEW_TARGET);
     assertThat(transfer.population()).as("④ 搬走的人数逐值等于计划里那一笔").isEqualTo(MOVED_POPULATION);
-    assertThat(transfer.targetMode()).isEqualTo(DefaultProductionModes.MERCHANT);
+    assertThat(transfer.targetMode())
+        .isEqualTo(java.util.Optional.of(DefaultProductionModes.MERCHANT));
     assertThat(transfer.targetHex()).isEqualTo(H2);
     assertThat(session.sheet().householdEconomies().get(SOURCE).population())
         .as("④′ 经济行人口**不被执行器旁路写**（P0 防回归：只允许推投影账/outbox）")

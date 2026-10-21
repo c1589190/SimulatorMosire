@@ -20,7 +20,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /** P0.5-E1 机械拆分自 {@code ModeMigrationSettlement}；职责见类名与各方法注释。 */
 final class MigrationDebtMove {
@@ -82,6 +84,39 @@ final class MigrationDebtMove {
       long day,
       ProductionLedger.Accumulator auditLedger,
       int moveOrdinal) {
+    carryGoodsForMove(
+        accounts,
+        source,
+        target,
+        popTake,
+        populationBefore,
+        empties,
+        targetHex,
+        day,
+        auditLedger,
+        moveOrdinal,
+        Set.of());
+  }
+
+  /**
+   * ★★ D-032 C8：按人口比例搬库存，但允许调用方显式排除某商品。
+   *
+   * <p>LAND 向上混合步骤必须把 {@code transport_horse} 留给紧随其后的马匹步骤全量转移；否则同一次买入的马匹会被 LAND
+   * 步骤先按人口比例带走一部分、再被马匹步骤全量转走，形成跨目标错配。旧调用方传空集 ⇒ 逐值退回原行为。
+   */
+  static void carryGoodsForMove(
+      AccountSession accounts,
+      HouseholdId source,
+      HouseholdId target,
+      long popTake,
+      long populationBefore,
+      boolean empties,
+      HexCoord targetHex,
+      long day,
+      ProductionLedger.Accumulator auditLedger,
+      int moveOrdinal,
+      Set<CommodityId> excludedGoods) {
+    Objects.requireNonNull(excludedGoods, "excludedGoods");
     Map<CommodityId, Long> sourceGoods = accounts.householdGoods().getOrDefault(source, Map.of());
     if (sourceGoods.isEmpty()) {
       return;
@@ -91,7 +126,7 @@ final class MigrationDebtMove {
     LinkedHashMap<CommodityId, Long> carried = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : sourceGoods.entrySet()) {
       CommodityId commodity = entry.getKey();
-      if (!isMobileCommodity(commodity)) {
+      if (excludedGoods.contains(commodity) || !isMobileCommodity(commodity)) {
         continue;
       }
       long available = entry.getValue() - frozenGoods.getOrDefault(commodity, 0L);
@@ -206,7 +241,7 @@ final class MigrationDebtMove {
   /**
    * ★★ <b>把一笔 move 的债务份额从源户搬到目标户</b>（逐合同，金额按计划分摊）。
    *
-   * <p>★★ <b>D3（2026-10-09）：目标恰是债权人的那部分 ⇒ 自债净额，不落合同</b>。旧实现把它 upsert 回 <b>源户</b>
+   * <p>★ <b>D3（2026-10-09）：目标恰是债权人的那部分 ⇒ 自债净额，不落合同</b>。旧实现把它 upsert 回 <b>源户</b>
    * （注释直言"人口清零时会因残留债具名抛"）—— 于是"源户人口归零"与"这笔债的债权人正是迁入目标"同时成立时， {@code retireSource} 的"拒绝消亡丢账"守卫当场
    * ERROR 500（三区世界 day=270 实测：source={@code hh--3_3-urban-middle_peasant}，target=creditor={@code
    * hh--3_3-rural-poor_peasant}，grain=323）。
@@ -220,16 +255,45 @@ final class MigrationDebtMove {
       LinkedHashMap<DebtContractId, DebtContract> debts,
       long day,
       ProductionLedger.Accumulator auditLedger) {
+    Objects.requireNonNull(move, "move");
+    moveDebt(move.source(), move.target(), move.debtMilli(), debts, day, auditLedger);
+  }
+
+  /**
+   * 无 mode 的直接债务迁移入口：只读 source/target/debtMilli，供合户等不需要 mode 的原语使用。
+   *
+   * <p>算法与 {@link #moveDebt(ModeMigrationPolicy.MigrationMove, LinkedHashMap, long,
+   * ProductionLedger.Accumulator)} 完全同源（同一 distributeDebt / DebtContractBook 写口），mode 不参与债务分摊。
+   */
+  static void moveDebt(
+      HouseholdId source,
+      HouseholdId target,
+      long debtMilli,
+      LinkedHashMap<DebtContractId, DebtContract> debts,
+      long day,
+      ProductionLedger.Accumulator auditLedger) {
+    Objects.requireNonNull(source, "source");
+    Objects.requireNonNull(target, "target");
+    Objects.requireNonNull(debts, "debts");
+    if (source.equals(target)) {
+      throw new IllegalArgumentException("债务迁移 source 不得 == target: " + source);
+    }
+    if (debtMilli < 0L) {
+      throw new IllegalArgumentException("债务迁移计划额不得为负: " + debtMilli);
+    }
+    if (debtMilli == 0L) {
+      return;
+    }
     List<DebtContract> contracts = new ArrayList<>();
     long totalPrincipal = 0L;
     for (DebtContract contract : debts.values()) {
-      if (contract.debtor().equals(move.source()) && contract.principal() > 0L) {
+      if (contract.debtor().equals(source) && contract.principal() > 0L) {
         contracts.add(contract);
         totalPrincipal = Math.addExact(totalPrincipal, contract.principal());
       }
     }
     contracts.sort(Comparator.comparing(contract -> contract.id().value()));
-    long[] takes = distributeDebt(move, contracts, totalPrincipal);
+    long[] takes = distributeDebt(debtMilli, contracts, totalPrincipal);
     long selfNetted = 0L;
     long moved = 0L;
     for (int i = 0; i < contracts.size(); i++) {
@@ -240,10 +304,10 @@ final class MigrationDebtMove {
       }
       moved = Math.addExact(moved, take);
       DebtContractBook.reduce(debts, contract.id(), take);
-      if (!move.target().equals(contract.creditor())) {
+      if (!target.equals(contract.creditor())) {
         DebtContractBook.upsert(
             debts,
-            move.target(),
+            target,
             contract.creditor(),
             contract.unit(),
             contract.terms(),
@@ -262,9 +326,9 @@ final class MigrationDebtMove {
                     "day",
                     day,
                     "source",
-                    move.source().value(),
+                    source.value(),
                     "target",
-                    move.target().value(),
+                    target.value(),
                     "contract",
                     contract.id().value(),
                     "principalBefore",
@@ -278,7 +342,7 @@ final class MigrationDebtMove {
               new ProductionLedger.LiquidationAudit(
                   day,
                   "migration-netted-self-debt",
-                  Optional.of(move.source()),
+                  Optional.of(source),
                   Optional.of(contract.id()),
                   Optional.empty(),
                   Optional.empty(),
@@ -291,19 +355,21 @@ final class MigrationDebtMove {
         }
       }
     }
-    if (moved != move.debtMilli()) {
+    if (moved != debtMilli) {
       // distributeDebt 已保证分摊总额 == 计划额；这条例行守卫挡住"未来有人改分摊口径"。
       throw new IllegalStateException(
-          "债务迁移金额没有全部分摊（拒绝静默丢债）: move="
-              + move
+          "债务迁移金额没有全部分摊（拒绝静默丢债）: source="
+              + source
+              + " target="
+              + target
               + " planDebtMilli="
-              + move.debtMilli()
+              + debtMilli
               + " moved="
               + moved);
     }
     long sourceResidualAfter = 0L;
     for (DebtContract contract : debts.values()) {
-      if (contract.debtor().equals(move.source()) && contract.principal() > 0L) {
+      if (contract.debtor().equals(source) && contract.principal() > 0L) {
         sourceResidualAfter = Math.addExact(sourceResidualAfter, contract.principal());
       }
     }
@@ -316,11 +382,11 @@ final class MigrationDebtMove {
                   "day",
                   day,
                   "source",
-                  move.source().value(),
+                  source.value(),
                   "target",
-                  move.target().value(),
+                  target.value(),
                   "planDebtMilli",
-                  move.debtMilli(),
+                  debtMilli,
                   "principalBefore",
                   totalPrincipal,
                   "contracts",
@@ -350,11 +416,30 @@ final class MigrationDebtMove {
    */
   static long[] distributeDebt(
       ModeMigrationPolicy.MigrationMove move, List<DebtContract> contracts, long totalPrincipal) {
+    Objects.requireNonNull(move, "move");
+    return distributeDebt(move.debtMilli(), contracts, totalPrincipal);
+  }
+
+  static long[] distributeDebt(long debtMilli, List<DebtContract> contracts, long totalPrincipal) {
+    Objects.requireNonNull(contracts, "contracts");
+    if (debtMilli < 0L) {
+      throw new IllegalArgumentException("债务分摊计划额不得为负: " + debtMilli);
+    }
+    if (debtMilli == 0L) {
+      return new long[contracts.size()];
+    }
+    if (totalPrincipal <= 0L || debtMilli > totalPrincipal) {
+      throw new IllegalStateException(
+          "债务迁移计划额超过源户剩余本金（拒绝静默丢债）: planDebtMilli="
+              + debtMilli
+              + " totalPrincipal="
+              + totalPrincipal);
+    }
     long[] takes = new long[contracts.size()];
-    long remaining = move.debtMilli();
+    long remaining = debtMilli;
     for (int i = 0; i < contracts.size(); i++) {
       long principal = contracts.get(i).principal();
-      long share = Math.multiplyExact(move.debtMilli(), principal) / totalPrincipal;
+      long share = Math.multiplyExact(debtMilli, principal) / totalPrincipal;
       takes[i] = Math.min(principal, Math.min(share, remaining));
       remaining = Math.subtractExact(remaining, takes[i]);
     }
@@ -368,8 +453,8 @@ final class MigrationDebtMove {
     }
     if (remaining != 0L) {
       throw new IllegalStateException(
-          "债务迁移计划额超过源户剩余本金（拒绝静默丢债）: move="
-              + move
+          "债务迁移计划额没有全部分摊（拒绝静默丢债）: planDebtMilli="
+              + debtMilli
               + " totalPrincipal="
               + totalPrincipal
               + " remaining="

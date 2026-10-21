@@ -1,6 +1,8 @@
 package io.mosire.simos.core.store;
 
+import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -46,8 +48,22 @@ public final class Envelope {
    */
   public static final String TIME_BASE_DAY = "DAY";
 
-  /** 只碰信封自己的四个字段；配置保持默认——这里没有需要定制的 feature。 */
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  /**
+   * 模块载荷是完整的模块状态 JSON 文本，会随世界规模增长；32hex/360 tick 的 economy 载荷已超过 Jackson 默认的 20,000,000
+   * 字符上限。这里把单字符串上限提高到 64 MiB：足以承载完整模块载荷，同时仍是明确的有限安全上限， 不是无界读取；超限仍由 Jackson 报错，并由 decode fail-closed
+   * 包装为 IllegalArgumentException。
+   */
+  private static final long MAX_MODULE_PAYLOAD_STRING_BYTES = 64L * 1024L * 1024L;
+
+  /** 只碰信封自己的字段；显式 JsonFactory 让更宽松的字符串上限只作用于本映射器，不修改 Jackson 的全局默认约束。 */
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper(
+          JsonFactory.builder()
+              .streamReadConstraints(
+                  StreamReadConstraints.builder()
+                      .maxStringLength(Math.toIntExact(MAX_MODULE_PAYLOAD_STRING_BYTES))
+                      .build())
+              .build());
 
   private Envelope() {}
 

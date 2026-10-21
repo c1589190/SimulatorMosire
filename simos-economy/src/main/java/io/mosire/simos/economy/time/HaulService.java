@@ -27,7 +27,8 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
  * <pre>
  * 服务需求(毫服务) = {@link CapacityDemand#workMilliOf}(货量(毫商品), {@link CapacityDemand#workPerGoodPerMille}(基础运费, 路线费率‰))
  *                  = ⌈ 货量 × max(1, 基础运费 × (1000 + 路线费率‰)) ÷ 1000 ⌉        ← 与 {@code CapacityDemand} **同一个**函数
- * 单位运费(毫钱/商品单位) = {@link #unitFreightMilli}(服务耗用‰, 服务牌价) = max(1, ⌈ 服务耗用‰ × 服务牌价 ÷ 1000 ⌉)
+ * 单位运费(毫钱/商品单位) = {@link #unitFreightMilli}(服务耗用‰, 服务牌价)
+ *                        = 服务牌价 == 0 ? 0 : max(1, ⌈ 服务耗用‰ × 服务牌价 ÷ 1000 ⌉)
  * 本笔运费(毫钱)         = ⌈ 货量 × 单位运费 ÷ 1000 ⌉                              ← 与既有 {@code freightOf} 逐字同形
  * </pre>
  *
@@ -160,14 +161,14 @@ public final class HaulService {
   //   {@code MerchantCapacityPool.select}（{@code workConsumedBy}）两处读同一份算式 ⇒ 本类只引用、不复制。
 
   /**
-   * ★★ <b>单位运费（毫计价货币 / 商品单位）</b>：{@code max(1, ⌈ 服务耗用‰ × 服务牌价 ÷ 1000 ⌉)} —— 算式骨架与既有 {@code
-   * MarketSettlement.freightUnitMilli} 逐字同形，只把第三因子换成服务牌价（类注）。
+   * ★★ <b>单位运费（毫计价货币 / 商品单位）</b>：{@code 服务牌价 == 0 ? 0 : max(1, ⌈ 服务耗用‰ × 服务牌价 ÷ 1000 ⌉)} ——
+   * 正价算式骨架与既有 {@code MarketSettlement.freightUnitMilli} 逐字同形，只把第三因子换成服务牌价（类注）。
    *
-   * <p>★ <b>{@code 0} 牌价仍算 1 毫</b>：沿用既有语义（"免费服务"不等于"不需要结算"，末尾 {@code max(1, …)}）—— 与 {@code
-   * freightUnitMilli} 的 {@code max(1, …)} 同款，逐条可核对。
+   * <p>★ <b>{@code 0} 牌价 = 明确免费</b>：直接返回 {@code 0}，不得用 {@code max(1, …)} 凭空产生 1 毫运费债（I7/A6）。 正价仍保留
+   * {@code max(1, …)} 的整数粒度；负价拒绝，正价乘法溢出仍 fail-closed。
    *
    * @param workPerGoodPerMille 本 lane 的服务耗用（‰；{@link CapacityDemand#workPerGoodPerMille}）
-   * @param servicePriceMilli 本格运输服务的牌价（毫计价货币 / 商品单位服务）
+   * @param servicePriceMilli 本格运输服务的牌价（毫计价货币 / 商品单位服务；0 = 明确免费）
    */
   public static long unitFreightMilli(long workPerGoodPerMille, long servicePriceMilli) {
     if (workPerGoodPerMille <= 0L) {
@@ -176,7 +177,10 @@ public final class HaulService {
     if (servicePriceMilli < 0L) {
       throw new IllegalArgumentException("服务牌价不得为负（0 = 明确免费服务）: " + servicePriceMilli);
     }
-    // ★ 溢出口径与既有 freightUnitMilli 同款（那里也是 multiplyExact 直乘）：乘法越界 ⇒ 当场抛，
+    if (servicePriceMilli == 0L) {
+      return 0L;
+    }
+    // ★ 正价溢出口径与既有 freightUnitMilli 同款（那里也是 multiplyExact 直乘）：乘法越界 ⇒ 当场抛，
     //   绝不静默落一个"便宜"的数（"贵到买不起"与"算错了"必须分得开）。
     return Math.max(
         1L, ceilDiv(Math.multiplyExact(workPerGoodPerMille, servicePriceMilli), PER_MILLE));

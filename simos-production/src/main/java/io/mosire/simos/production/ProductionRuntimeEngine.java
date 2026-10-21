@@ -451,6 +451,155 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     return new ProductionInstanceOutcome.Written(rewritten);
   }
 
+  /**
+   * ★★★ {@inheritDoc}
+   *
+   * <p>★ <b>RC4-B 只改本实例的周期贡献台账</b>：把 {@code from} 户的逐 role 项搬到 {@code to} 户；同 role 精确相加、不同 role
+   * 分行，其余字段逐字带过。没有 source 项 ⇒ 幂等 no-op（连候选态都不重写）。
+   */
+  @Override
+  public ProductionInstanceOutcome rekeyCycleContributions(
+      ProductionUnitId unit, HouseholdId from, HouseholdId to) {
+    if (unit == null) {
+      throw new IllegalArgumentException(
+          "ProductionRuntimeEngine.rekeyCycleContributions 的 unit 不得为 null");
+    }
+    Objects.requireNonNull(from, "ProductionRuntimeEngine.rekeyCycleContributions 的 from 不得为 null");
+    Objects.requireNonNull(to, "ProductionRuntimeEngine.rekeyCycleContributions 的 to 不得为 null");
+    ProductionProcess existing = current.instances().get(unit);
+    if (existing == null) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "PRODUCTION_INSTANCE_REJECTED",
+                  ProductionLogSource.PRODUCTION_RUNTIME,
+                  "reason",
+                  "instance-unknown",
+                  "unit",
+                  unit.value(),
+                  "from",
+                  from.value(),
+                  "to",
+                  to.value()));
+      return new ProductionInstanceOutcome.Rejected("instance-unknown");
+    }
+    if (from.equals(to)) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "PRODUCTION_INSTANCE_REJECTED",
+                  ProductionLogSource.PRODUCTION_RUNTIME,
+                  "reason",
+                  "same-household",
+                  "unit",
+                  unit.value(),
+                  "household",
+                  from.value()));
+      return new ProductionInstanceOutcome.Rejected("same-household");
+    }
+
+    Map<ProductionParticipantKey, CycleContribution> original = existing.cycleContributions();
+    boolean hasSource = false;
+    for (ProductionParticipantKey key : original.keySet()) {
+      if (key.household().equals(from)) {
+        hasSource = true;
+        break;
+      }
+    }
+    if (!hasSource) {
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "PRODUCTION_CYCLE_CONTRIBUTIONS_REKEY_NOOP",
+                    ProductionLogSource.PRODUCTION_RUNTIME,
+                    "unit",
+                    unit.value(),
+                    "from",
+                    from.value(),
+                    "to",
+                    to.value(),
+                    "entries",
+                    original.size()));
+      }
+      return new ProductionInstanceOutcome.Written(existing);
+    }
+
+    // ★ 保序不可变：LinkedHashMap 拷贝 + 按输入序处理；非 source 项原样保留，同 role 目标项用 plus
+    //   （内部 Math.addExact）精确累计。源键先删、目标键后落 ⇒ 输出由输入序唯一决定。
+    Map<ProductionParticipantKey, CycleContribution> next = new LinkedHashMap<>(original);
+    int movedEntries = 0;
+    int mergedEntries = 0;
+    for (Map.Entry<ProductionParticipantKey, CycleContribution> entry : original.entrySet()) {
+      ProductionParticipantKey sourceKey = entry.getKey();
+      if (!sourceKey.household().equals(from)) {
+        continue;
+      }
+      CycleContribution source = entry.getValue();
+      ProductionParticipantKey targetKey = new ProductionParticipantKey(to, sourceKey.role());
+      next.remove(sourceKey);
+      CycleContribution targetBefore = next.get(targetKey);
+      CycleContribution targetAfter;
+      boolean mergedIntoExisting = targetBefore != null;
+      if (mergedIntoExisting) {
+        targetAfter = targetBefore.plus(source.laborMilli(), source.efficiencyWeightedLaborMilli());
+        mergedEntries++;
+      } else {
+        targetAfter =
+            new CycleContribution(
+                to, sourceKey.role(), source.laborMilli(), source.efficiencyWeightedLaborMilli());
+      }
+      next.put(targetKey, targetAfter);
+      movedEntries++;
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "PRODUCTION_CYCLE_CONTRIBUTIONS_REKEY_ROLE",
+                    ProductionLogSource.PRODUCTION_RUNTIME,
+                    "unit",
+                    unit.value(),
+                    "from",
+                    from.value(),
+                    "to",
+                    to.value(),
+                    "role",
+                    sourceKey.role().value(),
+                    "laborMilli",
+                    source.laborMilli(),
+                    "efficiencyWeightedLaborMilli",
+                    source.efficiencyWeightedLaborMilli(),
+                    "mergedIntoExisting",
+                    mergedIntoExisting,
+                    "targetLaborMilli",
+                    targetAfter.laborMilli(),
+                    "targetEfficiencyWeightedLaborMilli",
+                    targetAfter.efficiencyWeightedLaborMilli()));
+      }
+    }
+
+    ProductionProcess rewritten = existing.withCycleContributions(next);
+    current = current.withInstance(rewritten);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PRODUCTION_CYCLE_CONTRIBUTIONS_REKEYED",
+                ProductionLogSource.PRODUCTION_RUNTIME,
+                "unit",
+                unit.value(),
+                "from",
+                from.value(),
+                "to",
+                to.value(),
+                "movedEntries",
+                movedEntries,
+                "mergedEntries",
+                mergedEntries,
+                "changed",
+                true));
+    return new ProductionInstanceOutcome.Written(rewritten);
+  }
+
   // ── ① 试算（无副作用）────────────────────────────────────────────────────────────────
 
   @Override
@@ -479,7 +628,8 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     long efficiency = efficiencyScaleFor(plan, household.household(), household);
 
     // ★ 四路约束（与 execute 共用 ProductionEfficiency 的那一段公式）。
-    long assetScaleRaw = capacityScaleOf(plan, request.assetOccupancy());
+    long assetScaleRaw =
+        capacityScaleOf(plan, request.assetOccupancy(), request.durableCommodityOccupancy());
     boolean assetsAvailable =
         !plan.capacityPerUnit().isEmpty() && !request.assetOccupancy().isEmpty();
     if (assetsAvailable && assetScaleRaw <= 0L) {
@@ -745,7 +895,8 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     }
 
     // ── 与单户 probe 相同的三通道预检（资产/原料）；劳动由整份 roster + 招工目标共同决定 ─────────────
-    long assetScaleRaw = capacityScaleOf(plan, request.assetOccupancy());
+    long assetScaleRaw =
+        capacityScaleOf(plan, request.assetOccupancy(), request.durableCommodityOccupancy());
     boolean assetsAvailable =
         !plan.capacityPerUnit().isEmpty() && !request.assetOccupancy().isEmpty();
     if (assetsAvailable && assetScaleRaw <= 0L) {
@@ -1315,7 +1466,8 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
       weightedLaborByHousehold.merge(
           contribution.household(), contribution.efficiencyWeightedLaborMilli(), Math::addExact);
     }
-    long assetScaleRaw = capacityScaleOf(plan, request.assetOccupancy());
+    long assetScaleRaw =
+        capacityScaleOf(plan, request.assetOccupancy(), request.durableCommodityOccupancy());
     // ★★ 唯一入口（试算/实际/家户利润比较共用）：三通道都不乘 E 求 baseScale，再整体乘一次得 finalScale。
     ProductionEfficiency.Evaluation evaluation =
         ProductionEfficiency.evaluate(
@@ -1643,19 +1795,35 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
   }
 
   /**
-   * ★ <b>资产那一路的原始规模</b>：{@code min_k ⌊可用_k ÷ capacityPerUnit_k⌋} （capacityPerUnit 逐值 &gt; 0
-   * 已由定义守卫）。
+   * ★★ <b>资产/耐久商品资本那一路的原始规模（probe/roster/execute 共用的唯一入口）</b>：
    *
-   * <p>★ 无占用读数（{@code occupancy} 为空）⇒ {@code 0}：没占资产就没法生产（<b>不</b>给 {@code Long.MAX_VALUE}
-   * 那种"看起来不受限"的假值 —— 那会让一个空表变成"资产无限"）。
+   * <pre>
+   * assetScaleRaw = min(
+   *   min_k ⌊assetOccupancy_k ÷ capacityPerUnit_k⌋,                 // AssetKind 通道
+   *   min_j ⌊durableCommodityOccupancy_j ÷ durableCommodityCapacityPerUnit_j⌋ ) // 耐久商品资本通道
+   * </pre>
+   *
+   * <p>★ <b>无 durable 通道</b>（{@code durableCommodityCapacityPerUnit} 为空）⇒ 结果与旧 {@code
+   * capacityScaleOf} 逐值相同。★ durable occupancy <b>缺项按 0</b>（该通道规模 = 0），<b>不</b>给 {@code
+   * Long.MAX_VALUE} 那种"看起来不受限" 的假值。★ 两条 capacity map 的逐值 {@code > 0} 已由 {@link
+   * IndustryDefinitionView} 守卫。
+   *
+   * <p>★ <b>只读</b>：本方法不扣减任何商品（马匹不按趟消耗），也不从参与户 conditions 聚合占用。
    */
-  private static long capacityScaleOf(IndustryDefinitionView plan, Map<AssetKind, Long> occupancy) {
-    if (occupancy == null || occupancy.isEmpty()) {
-      return 0L;
-    }
+  private static long capacityScaleOf(
+      IndustryDefinitionView plan,
+      Map<AssetKind, Long> assetOccupancy,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : plan.capacityPerUnit().entrySet()) {
-      long have = occupancy.getOrDefault(entry.getKey(), 0L);
+      long have = assetOccupancy == null ? 0L : assetOccupancy.getOrDefault(entry.getKey(), 0L);
+      scale = Math.min(scale, have / entry.getValue());
+    }
+    for (Map.Entry<CommodityId, Long> entry : plan.durableCommodityCapacityPerUnit().entrySet()) {
+      long have =
+          durableCommodityOccupancy == null
+              ? 0L
+              : durableCommodityOccupancy.getOrDefault(entry.getKey(), 0L);
       scale = Math.min(scale, have / entry.getValue());
     }
     return scale == Long.MAX_VALUE ? 0L : Math.max(0L, scale);

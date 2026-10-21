@@ -18,6 +18,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -29,7 +30,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
@@ -182,23 +182,9 @@ class W3WageSettlementTickIntegrationTest {
             new LinkedHashMap<>());
     ProductionData definitions = ProductionData.empty().withIndustry(industry).withInstance(unit);
 
-    OwnershipStake land =
-        new OwnershipStake(
-            OwnershipStake.idOf(
-                FARM,
-                AssetKind.LAND,
-                PAYER_ACTOR,
-                PAYER_ACTOR,
-                AssetRightKind.OWNED,
-                ProductionLocation.parse(HEX_KEY),
-                0L),
-            FARM,
-            AssetKind.LAND,
-            PAYER_ACTOR,
-            PAYER_ACTOR,
-            1_000L,
-            AssetRightKind.OWNED,
-            ProductionLocation.parse(HEX_KEY));
+    // ★ D-032 RA1b2b：LAND 的唯一权威 = landArableSupply + landHoldings（不再进 assetShares）；
+    //   SettlementIndex 会按 unit 的 (industry, operator household, location) 合成瞬态 LAND 投影喂 D4。
+    LandHolding land = new LandHolding(PAYER, HEX, 1_000L);
     InventoryReservation reservation =
         new InventoryReservation(
             InventoryReservationId.idOf(
@@ -229,11 +215,12 @@ class W3WageSettlementTickIntegrationTest {
                         Optional.empty())))
             .withHouseholdEconomies(
                 Map.of(
-                    PAYER, row(PAYER, PAYER_GRAIN, PAYER_MONEY),
-                    WORKER, row(WORKER, 0L, 0L)))
+                    PAYER, row(PAYER, PAYER_GRAIN, PAYER_MONEY, 200_000L),
+                    // ★ RC8b：当前实际劳动的唯一权威是 HouseholdEconomy.laborMilli；WORKER 必须与
+                    //   composition/roster 的 100,000 毫小时一致，不能再用旧夹具的 200,000 让 due 变成 200。
+                    WORKER, row(WORKER, 0L, 0L, WORKER_LABOR_MILLI)))
             .withProductionRosters(Map.of(UNIT, roster()))
             .withProductionWageAnchors(Map.of(anchorKey, anchor))
-            .withOwnershipStakes(Map.of(land.id(), land))
             .withInventoryReservations(Map.of(reservation.id(), reservation))
             .withRelations(
                 Map.of(
@@ -254,7 +241,8 @@ class W3WageSettlementTickIntegrationTest {
             definitions,
             new ProductionRuntimeEngine(definitions),
             accounts,
-            MarketTopology.singleHex(base.marketTables(), base.marketZones()));
+            MarketTopology.singleHex(base.marketTables(), base.marketZones()),
+            EconomyFixtures.landLedger(Map.of(land.key(), land)));
     // ★★ D-032 T1：劳动队列要靠 composition 给雇工选批次；旧夹具用一条预种配额"代替" composition，
     //   但那会与新架构的队列写回同键并存 ⇒ 回执 2× 劳动。这里显式给 composition，配额完全由队列物化。
     stepper.updateComposition(Map.of(WORKER, Map.of(WORKER_LOT, 100L)));
@@ -319,7 +307,8 @@ class W3WageSettlementTickIntegrationTest {
                 WORKER, ROLE_WORKER, false, WORKER_LABOR_MILLI)));
   }
 
-  private static HouseholdEconomy row(HouseholdId household, long grain, long money) {
+  private static HouseholdEconomy row(
+      HouseholdId household, long grain, long money, long laborMilli) {
     return new HouseholdEconomy(
         household,
         new io.mosire.simos.economy.api.cohort.CohortKey(
@@ -327,7 +316,7 @@ class W3WageSettlementTickIntegrationTest {
             io.mosire.simos.economy.api.cohort.ResidenceKind.RURAL,
             SocialClassId.POOR_PEASANT),
         100L,
-        200_000L,
+        laborMilli,
         1_000,
         money,
         Map.of(GRAIN, grain),

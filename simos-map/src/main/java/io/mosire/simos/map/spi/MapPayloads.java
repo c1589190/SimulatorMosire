@@ -183,7 +183,7 @@ final class MapPayloads {
   }
 
   /**
-   * 属性表字段键（2026-10-12 批次 2）：{@code key}（**内置字段**，enum 标签 {@code urban}/{@code rural}）与 {@code
+   * 属性表字段键（2026-10-12 批次 2）：{@code key}（**内置字段**，enum 标签 {@code urban}/{@code arable}）与 {@code
    * customKey}（**自定义字段**，String）**恰给一个**。
    *
    * <p>★ 两个字段名分开写，是用户裁定「自定义字段必须是一个 String，应当明确标注为"自定义字段"，已有的城市/乡村走 enum 标签声明」在**载荷形状**上的落地：
@@ -197,7 +197,7 @@ final class MapPayloads {
     if (hasBuiltin == hasCustom) {
       debugFieldRejected("key", "key 与 customKey 必须恰给一个");
       throw new IllegalArgumentException(
-          "字段 key 与 customKey 必须恰给一个：内置字段（urban | rural）走 key，自定义字段走 customKey（字符串）");
+          "字段 key 与 customKey 必须恰给一个：内置字段（urban | arable）走 key，自定义字段走 customKey（字符串）");
     }
     if (hasBuiltin) {
       if (!builtin.isTextual()) {

@@ -9,6 +9,9 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexLand;
+import io.mosire.simos.map.LandAttributeKey;
+import io.mosire.simos.map.LandTypeId;
 import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.MapSnapshot;
@@ -82,7 +85,7 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
-  /** 六个键类型各接一路 {@code parse}。 */
+  /** 组合键类型各接一路 {@code parse}（含新土地树的 type/attribute Map key）。 */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("map-json-keys");
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
@@ -91,6 +94,8 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(CityId.class, keyDeserializer(CityId::parse));
     module.addKeyDeserializer(PathwayId.class, keyDeserializer(PathwayId::parse));
     module.addKeyDeserializer(EdgeRef.class, keyDeserializer(EdgeRef::parse));
+    module.addKeyDeserializer(LandTypeId.class, keyDeserializer(LandTypeId::parse));
+    module.addKeyDeserializer(LandAttributeKey.class, keyDeserializer(LandAttributeKey::parse));
     return module;
   }
 
@@ -345,9 +350,11 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
         return gameMap; // 混合形状：不做部分迁移
       }
       terrainByHex.put(HexCoord.parse(entry.getKey()), terrain.asText());
-      ObjectNode heightOnly = MAPPER.createObjectNode();
-      heightOnly.set("height", cell.get("height"));
-      newHexes.set(entry.getKey(), heightOnly);
+      ObjectNode migratedCell = MAPPER.createObjectNode();
+      migratedCell.set("height", cell.get("height"));
+      migratedCell.set(
+          "land", cell.hasNonNull("land") ? cell.get("land") : MAPPER.valueToTree(HexLand.empty()));
+      newHexes.set(entry.getKey(), migratedCell);
     }
     ObjectNode map = (ObjectNode) gameMap;
     var blocks = TerrainBlocks.split(terrainByHex);

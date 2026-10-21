@@ -94,7 +94,7 @@ class GmActAsToolTest {
   private static final String PROPOSABLE = "simos.gov.retireStaff";
 
   /** {@link #PROPOSABLE} 的目标家户：在 {@code capital-province}（中央直辖）内 ⇒ 该 DM 够得着。 */
-  private static final String IN_SCOPE_HOUSEHOLD = "hh-0_0-rural-poor_peasant";
+  private static final String IN_SCOPE_HOUSEHOLD = "hh-0_0-rural-landed_peasant";
 
   /** 越界的目标家户：在 {@code small-world}（省辖区）⇒ 中央 DM 够不着（§6-4 负向的靶子）。 */
   private static final String OUT_OF_SCOPE_HOUSEHOLD = "hh-gov-gov-province";
@@ -1157,7 +1157,7 @@ class GmActAsToolTest {
                     "callIndex",
                     0,
                     "args",
-                    retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                    retireArgs(1, "hh-0_0-rural-landless_laborer"),
                     "intent",
                     "改后的意图")));
     mutators.put(
@@ -1632,7 +1632,7 @@ class GmActAsToolTest {
                 "callIndex",
                 0,
                 "args",
-                retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                retireArgs(1, "hh-0_0-rural-landless_laborer"),
                 // ★★ 旁路：没有 tick 参数的口，靠历史坐标把 tick 拉回 0（这正是 §3.9.3 之外必须补的那条）。
                 "expectedRevision",
                 revisionAtTick0)));
@@ -1777,7 +1777,7 @@ class GmActAsToolTest {
                 "callIndex",
                 0,
                 "args",
-                retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                retireArgs(1, "hh-0_0-rural-landless_laborer"),
                 "expectedRevision",
                 historicalRevision)));
     attempts.put(
@@ -2023,19 +2023,16 @@ class GmActAsToolTest {
    */
   @Test
   void i6_packetWritesAccumulateAcrossRevisionsWithinOneTick() {
-    String[] households = {"poor_peasant", "middle_peasant", "rich_peasant"};
+    String[] households = {
+      "hh-0_0-rural-landed_peasant", "hh-0_0-rural-landless_laborer", "hh-0_0-urban-poor_peasant"
+    };
     List<Long> revisions = new ArrayList<>();
     for (int round = 1; round <= 3; round++) {
       Map<String, Object> args = new LinkedHashMap<>();
       args.put("intent", "第" + round + "次提议");
       args.put(
           "calls",
-          List.of(
-              Map.of(
-                  "tool",
-                  PROPOSABLE,
-                  "args",
-                  retireArgs(1, "hh-0_0-rural-" + households[round - 1]))));
+          List.of(Map.of("tool", PROPOSABLE, "args", retireArgs(1, households[round - 1]))));
       // ★ 每次都钉在**上一次写的落点**（第 1 次 = 当下 head）。
       long base = world.head();
       args.put("expectedRevision", base);
@@ -2438,7 +2435,10 @@ class GmActAsToolTest {
 
   /** 四轮各用一个**真实存在**的 {@code (0,0)} 家户（都在 {@code capital-province} 内 ⇒ 该 DM 够得着）。 */
   private static final String[] ROUND_HOUSEHOLDS = {
-    "poor_peasant", "middle_peasant", "rich_peasant", "landlord"
+    "hh-0_0-rural-landed_peasant",
+    "hh-0_0-rural-landless_laborer",
+    "hh-0_0-urban-poor_peasant",
+    "hh-0_0-urban-middle_peasant"
   };
 
   /**
@@ -2451,12 +2451,7 @@ class GmActAsToolTest {
     args.put("intent", "第" + round + "轮决策");
     args.put(
         "calls",
-        List.of(
-            Map.of(
-                "tool",
-                PROPOSABLE,
-                "args",
-                retireArgs(1, "hh-0_0-rural-" + ROUND_HOUSEHOLDS[round - 1]))));
+        List.of(Map.of("tool", PROPOSABLE, "args", retireArgs(1, ROUND_HOUSEHOLDS[round - 1]))));
     return args;
   }
 

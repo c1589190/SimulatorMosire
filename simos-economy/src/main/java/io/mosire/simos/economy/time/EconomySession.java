@@ -2,6 +2,10 @@ package io.mosire.simos.economy.time;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKey;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
+import io.mosire.simos.economy.api.land.LandArableSupply;
+import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -48,6 +52,14 @@ public final class EconomySession {
   private final ParticipantAttributeLookup participantAttributeLookup;
 
   /**
+   * ★★★ <b>D-032 RC4-A：家户文化 key 的跨模块只读口</b>。
+   *
+   * <p>economy 只认 economy-api 的 {@link HouseholdCultureKeyLookup}，<b>不 import culture 模块</b>；真实实现由
+   * app 从当前 culture 切片装配，旧构造器/窄会话一律用 {@link HouseholdCultureKeyLookup#unavailable()}（empty 不伪造文化）。
+   */
+  private final HouseholdCultureKeyLookup cultureLookup;
+
+  /**
    * ★★★ D-032 D4-C：本次 Advance 的权威 revision（资产占用快照必须与它同版本）。 组合根未提供 ⇒ {@link
    * java.util.Optional#empty()} ⇒ 名册执行路径具名 {@code asset-occupancy-unavailable}。
    */
@@ -83,11 +95,16 @@ public final class EconomySession {
   private final List<EconomyHouseholdGap> householdGaps = new ArrayList<>();
 
   /**
-   * ★★★ <b>B1（D-032 §4.3）：本 tick"现扣周期投入"的实扣量（键 = 生产实例）</b>。
+   * ★★★ <b>B1/M7fix（D-032 §4.3、§1.2 M7）：本 tick"现扣周期投入"的<b>实扣增量（delta）</b>（键 = 生产实例）</b>。
    *
-   * <p>★★ <b>为什么它是瞬态而不是状态</b>：它是"这一次日结算里已经扣到多少料"的<b>过程读数</b>，一个生产日 过完就没有意义 —— 周期投入的<b>权威</b>在
+   * <p>★★ <b>契约（M7fix 冻结）</b>：值 = <b>本 tick 新扣到的量</b>，<b>不是</b>本周期的累计量 {@code
+   * ProductionProcess.cycleInputUsedMilli()}。它正好是 {@code
+   * ProductionDayRequest.Step.finalInputsMilli} 的语义 —— production 的 {@code execute} 会把它 merge
+   * 进自己的周期累计 ⇒ economy <b>不得</b>把累计值再交一次 （那会让无新扣的 tick 也重复累加，tick 42 起 long overflow）。
+   *
+   * <p>★★ <b>为什么它是瞬态而不是状态</b>：它是"这一次日结算里已经扣到多少新料"的<b>过程读数</b>，一个生产日 过完就没有意义 —— 周期投入的<b>权威</b>在
    * production 的 {@code ProductionProcess.cycleInputUsedMilli()} （由 {@code
-   * ProductionRuntime#executeDay} 的 {@code finalInputsMilli} 写）。⇒ 它<b>不进</b> {@link
+   * ProductionRuntime#executeDay} 的 {@code finalInputsMilli} 增量累加）。⇒ 它<b>不进</b> {@link
    * io.mosire.simos.economy.EconomyData}、不进变更集、不进 codec，且每 tick 开头清零 （见 {@link
    * #clearDrawnProductionInputs()}）。
    *
@@ -100,25 +117,30 @@ public final class EconomySession {
           Map<io.mosire.simos.economy.api.id.CommodityId, Long>>
       drawnProductionInputs = new LinkedHashMap<>();
 
-  /** ★ B1：清空本 tick 的现扣读数（每个生产日开头调一次 —— 不跨日累计，权威在 production）。 */
+  /** ★ B1：清空本 tick 的现扣 delta 读数（每个生产日开头调一次 —— 不跨日累计，权威在 production）。 */
   public void clearDrawnProductionInputs() {
     drawnProductionInputs.clear();
   }
 
-  /** ★ B1：记一条"这个实例本 tick 实扣到了这些料"（协调器线程；覆盖写 = 同一实例只留最后一份累计量）。 */
+  /**
+   * ★★★ <b>M7fix：记一条"这个实例本 tick 新扣到了这些料"</b>（协调器线程）。
+   *
+   * <p>★★ <b>只收 delta</b>：调用方必须传"本 tick 实扣增量"（现扣后周期累计 − 现扣前周期累计），<b>不得</b>传 {@code
+   * ProductionProcess.cycleInputUsedMilli()} 周期累计值。空表 ⇒ 删行（本 tick 一根没扣到 / 无新扣）。
+   */
   public void recordDrawnProductionInput(
       io.mosire.simos.economy.api.id.ProductionUnitId unit,
-      Map<io.mosire.simos.economy.api.id.CommodityId, Long> drawn) {
+      Map<io.mosire.simos.economy.api.id.CommodityId, Long> drawnDelta) {
     java.util.Objects.requireNonNull(unit, "unit");
-    java.util.Objects.requireNonNull(drawn, "drawn");
-    if (drawn.isEmpty()) {
+    java.util.Objects.requireNonNull(drawnDelta, "drawnDelta");
+    if (drawnDelta.isEmpty()) {
       drawnProductionInputs.remove(unit);
       return;
     }
-    drawnProductionInputs.put(unit, new LinkedHashMap<>(drawn));
+    drawnProductionInputs.put(unit, new LinkedHashMap<>(drawnDelta));
   }
 
-  /** ★ B1：本 tick 某实例实扣到的料（缺 ⇒ 空表 = 这个实例本 tick 一根料都没扣到）。 */
+  /** ★ B1：本 tick 某实例新扣到的料（delta；缺 ⇒ 空表 = 这个实例本 tick 没有新扣）。 */
   public Map<io.mosire.simos.economy.api.id.CommodityId, Long> drawnProductionInputsOf(
       io.mosire.simos.economy.api.id.ProductionUnitId unit) {
     return drawnProductionInputs.getOrDefault(unit, Map.of());
@@ -152,12 +174,33 @@ public final class EconomySession {
       EconomyData base,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       io.mosire.simos.production.contract.ProductionRuntime runtime) {
+    this(base, definitions, runtime, LandComponentLedger.empty());
+  }
+
+  /** ★★★ D-032 L3：简装入口显式接收 app 从 Map 构造的 arable 瞬态快照。 */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      LandComponentLedger landLedger) {
     this(
         base,
         definitions,
         runtime,
         new UnavailableAssetOccupancyLookup(),
-        new UnavailableParticipantAttributeLookup());
+        new UnavailableParticipantAttributeLookup(),
+        null,
+        HouseholdCultureKeyLookup.unavailable(),
+        landLedger);
+  }
+
+  /** 旧夹具兼容：只有 arable 总量快照的装配口（真生产路径必须用 Ledger）。 */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      LandArableSupply landArableSupply) {
+    this(base, definitions, runtime, LandComponentLedger.fromArableSupplyOnly(landArableSupply));
   }
 
   /**
@@ -184,6 +227,55 @@ public final class EconomySession {
       AssetOccupancyLookup assetOccupancyLookup,
       ParticipantAttributeLookup participantAttributeLookup,
       io.mosire.simos.util.state.RevisionId expectedRevision) {
+    this(
+        base,
+        definitions,
+        runtime,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        HouseholdCultureKeyLookup.unavailable());
+  }
+
+  /**
+   * ★★★ <b>D-032 RC4-A 全参装配口</b>：在权威 revision 之外显式注入文化 key 只读口。
+   *
+   * <p>没有真实 culture 切片时调用方必须传 {@link HouseholdCultureKeyLookup#unavailable()}，不得传 null；empty 只表示“没有
+   * culture 标签”，不是伪造文化，也不改变任何经济数值。
+   */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      HouseholdCultureKeyLookup cultureLookup) {
+    this(
+        base,
+        definitions,
+        runtime,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        cultureLookup,
+        LandComponentLedger.empty());
+  }
+
+  /**
+   * ★★★ <b>D-032 L3 全参装配口</b>：显式接收 app 从 Map 构造的 arable 瞬态快照。
+   *
+   * <p>旧夹具可传 {@link LandArableSupply#empty()}；真生产入口必须从 Map 注入。快照不进 EconomyData/ChangeSet/Codec。
+   */
+  public EconomySession(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      HouseholdCultureKeyLookup cultureLookup,
+      LandComponentLedger landLedger) {
     this.base = Objects.requireNonNull(base, "base");
     // ★★ B3：runtime 必须非 null（§13.3 第 2 条 —— 所有支持生产的有效入口显式获得合法 runtime）。
     this.runtime =
@@ -194,8 +286,18 @@ public final class EconomySession {
     this.participantAttributeLookup =
         Objects.requireNonNull(
             participantAttributeLookup, "participantAttributeLookup（属性桥，缺实现用 Unavailable*）");
+    this.cultureLookup =
+        Objects.requireNonNull(
+            cultureLookup,
+            "cultureLookup（culture key 只读口，缺实现用 HouseholdCultureKeyLookup.unavailable()）");
     this.expectedRevision = java.util.Optional.ofNullable(expectedRevision);
-    this.sheet = new EconomyStateBuilder(base, definitions, runtime);
+    this.sheet =
+        new EconomyStateBuilder(
+            base,
+            definitions,
+            runtime,
+            Objects.requireNonNull(
+                landLedger, "landLedger（空土地/旧夹具请用 LandComponentLedger.empty()）"));
     this.flows = new LinkedHashMap<>(base.flows());
   }
 
@@ -240,6 +342,16 @@ public final class EconomySession {
     return expectedRevision;
   }
 
+  /**
+   * ★★★ <b>D-032 RC4-A：只转发 culture lookup</b>（不缓存、不猜、不写）。
+   *
+   * <p>lookup 返回 empty ⇒ empty；调用方（如 {@code HouseholdMergeBook}）负责把它映射成显式 {@link
+   * HouseholdCultureKey#missing()} 并记 INFO。
+   */
+  public java.util.Optional<HouseholdCultureKey> cultureKeyOf(HouseholdId household) {
+    return cultureLookup.cultureKeyOf(household);
+  }
+
   public EconomyData base() {
     return base;
   }
@@ -254,6 +366,11 @@ public final class EconomySession {
 
   public EconomyStateBuilder sheet() {
     return sheet;
+  }
+
+  /** ★★★ D-032 L4：本会话的瞬态 LAND 组件账本（轮末由组合根写回 Map）。 */
+  public LandComponentLedger landLedger() {
+    return sheet.landLedger();
   }
 
   /** 本期流水累加器（**就地更新**；一次推进会话内跨日累计，{@link #build()} 时挂上）。 */

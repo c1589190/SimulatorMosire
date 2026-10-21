@@ -231,7 +231,9 @@ final class MarketReadoutBook {
         } else if (!hasSupplyNear(buy, indexes)) {
           reason = MarketUnfilledReason.NO_ADJACENT_SUPPLY;
         } else if (minSellerPrice != Long.MAX_VALUE
-            && buy.order.maxLandedPrice() < minSellerPrice) {
+            // ★ RF1：价格接受者需求不会被价格上限挡下。
+            && buy.order.maxLandedPrice().isPresent()
+            && buy.order.maxLandedPrice().getAsLong() < minSellerPrice) {
           reason = MarketUnfilledReason.PRICE_LIMIT;
         } else {
           reason = MarketUnfilledReason.ALGORITHM_UNCOVERED;
@@ -389,7 +391,9 @@ final class MarketReadoutBook {
             continue;
           }
         }
-        if (buy.order.maxLandedPrice() < sell.order.minPrice()) {
+        // ★ RF1：价格接受者需求没有价格上限 ⇒ 它从不构成卖方的 PRICE_LIMIT 原因。
+        if (buy.order.maxLandedPrice().isPresent()
+            && buy.order.maxLandedPrice().getAsLong() < sell.order.minPrice()) {
           priceBlocked = true;
           continue;
         }

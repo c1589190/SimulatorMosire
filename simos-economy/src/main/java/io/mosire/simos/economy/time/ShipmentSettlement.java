@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.ProductionProcess;
@@ -210,6 +211,78 @@ final class ShipmentSettlement {
       }
     }
     return Collections.unmodifiableSet(hexes);
+  }
+
+  /**
+   * ★★★ <b>RC8a（2026-10-20）：本轮"运输服务成市"的格集 = ①有 haul 牌价 ∧ ②该 hex 当前至少有一户有可交付 haul 服务货</b>。
+   *
+   * <pre>
+   * ① 该 hex 的市场给 {@code haul} 定过价（{@link HaulService#pricedAt}，与 {@link #haulServiceHexes(EconomyDayView)} 同一判据）
+   * ② 该 hex 至少有一户 {@code available = max(0, haul 现货 − haul 冻结) > 0}
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须加 ②</b>：只按"有牌价"成市时，世界可以出现「运力池用劳动+工具造出可分配运力、交付腿却要求扣 {@code haul} 商品」的混合态 —— 服务货为 0
+   * ⇒ {@code HAUL_SERVICE_DELIVERY_FAULT} ⇒ 该笔成交作废。 加上 ② 后，服务商品腿只在**真的能交付**的 hex 上成立；没有可交付服务货的 hex
+   * 走父 v2 的简单生产性运力 + {@code CARRIER_FEE} 腿（见 {@code MerchantCapacityCore} 与 {@code
+   * MarketShipmentBook.haulServiceAt} 的同源分流）。
+   *
+   * <p>★ 口径：本方法只做**逐轮派生**（读当刻账户活表），不落状态、不进 ChangeSet/Codec；结果保序、不可变。账户/家户缺失 ⇒ 该格不成市（fail-closed）。
+   */
+  static Set<HexCoord> haulServiceHexes(SettlementDayContext ctx) {
+    Set<HexCoord> priced = haulServiceHexes(ctx.dayView);
+    if (priced.isEmpty()) {
+      return priced;
+    }
+    if (ctx.accounts == null || ctx.householdEconomies == null) {
+      return Collections.emptySet();
+    }
+    Map<HouseholdId, Map<CommodityId, Long>> goods = ctx.accounts.householdGoods();
+    Map<HouseholdId, Map<CommodityId, Long>> frozenGoods = ctx.accounts.householdFrozenGoods();
+    if (goods.isEmpty() && frozenGoods.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<HexCoord> hexes = new LinkedHashSet<>();
+    // ① 的格序 = 价表成员的规范序；② 由 hasDeliverableHaulStockAt 逐格判（与 haulServiceAt 同一判据）。
+    for (HexCoord hex : priced) {
+      if (hasDeliverableHaulStockAt(ctx.householdEconomies, goods, frozenGoods, hex)) {
+        hexes.add(hex);
+      }
+    }
+    return Collections.unmodifiableSet(hexes);
+  }
+
+  /**
+   * ★★★ <b>RC8a 判据 ②：该 hex 当前至少有一户有可交付 haul 服务货</b>（{@code max(0, 现货 − 冻结) > 0}）。
+   *
+   * <p>★ 这是"服务成市/服务交付腿"的**唯一拼写点**：{@link #haulServiceHexes(SettlementDayContext)} 用它给本轮格集， {@code
+   * MarketShipmentBook.haulServiceAt} 用它判一条 lane 走不走服务商品腿 —— 两处读同一判据，不允许漂开。
+   *
+   * <p>★ 纯只读：不写账户、不落状态。账户/家户表缺失 ⇒ {@code false}（fail-closed：宁可走 CARRIER_FEE，不造无货服务容量）。
+   */
+  static boolean hasDeliverableHaulStockAt(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<CommodityId, Long>> goods,
+      Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
+      HexCoord hex) {
+    if (householdEconomies == null || goods == null || frozenGoods == null || hex == null) {
+      return false;
+    }
+    for (Map.Entry<HouseholdId, HouseholdEconomy> entry : householdEconomies.entrySet()) {
+      HouseholdEconomy row = entry.getValue();
+      if (row == null || !hex.equals(row.view().hex())) {
+        continue;
+      }
+      HouseholdId household = entry.getKey();
+      long available =
+          Math.max(
+              0L,
+              stockOf(goods, household, HaulService.HAUL_COMMODITY)
+                  - frozenGoodsOf(frozenGoods, household, HaulService.HAUL_COMMODITY));
+      if (available > 0L) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

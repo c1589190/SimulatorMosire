@@ -41,16 +41,17 @@ class ProductionContractGuardTest {
   // ── N4：定义视图字段白名单 ────────────────────────────────────────────────────────
 
   @Test
-  void industryDefinitionViewHasExactlyTheTwentyTwoDefinitionFields() {
-    // ★ D-032 迁移后组件数 14 → 22：新增 buildDays / acceptedRightKinds（B2c）、experience + availability
-    //   （S1）、roles / roleShareRemainderRule / upgradesTo / mode（D1 角色级定义面）。★ 这不是"放宽"：
+  void industryDefinitionViewHasExactlyTheTwentyThreeDefinitionFields() {
+    // ★ D-032 迁移后组件数 14 → 23：新增 buildDays / acceptedRightKinds（B2c）、experience + availability
+    //   （S1）、roles / roleShareRemainderRule / upgradesTo / mode（D1 角色级定义面）、
+    //   durableCommodityCapacityPerUnit（C5a 耐久商品资本通道）。★ 这不是"放宽"：
     //   本用例仍是逐字白名单，只是白名单按裁定加宽，且下面 FORBIDDEN_RUNTIME_FIELDS 的运行实例字段禁令一字未动。
     Set<String> names = new LinkedHashSet<>();
     for (var component : IndustryDefinitionView.class.getRecordComponents()) {
       names.add(component.getName());
     }
     assertThat(names)
-        .as("方案定义的 22 个字段逐字（顺序即声明序）")
+        .as("方案定义的 23 个字段逐字（顺序即声明序）")
         .containsExactly(
             "id",
             "name",
@@ -73,7 +74,8 @@ class ProductionContractGuardTest {
             "roles",
             "roleShareRemainderRule",
             "upgradesTo",
-            "mode");
+            "mode",
+            "durableCommodityCapacityPerUnit");
 
     for (String forbidden : FORBIDDEN_RUNTIME_FIELDS) {
       assertThat(declaredMemberNames(IndustryDefinitionView.class))

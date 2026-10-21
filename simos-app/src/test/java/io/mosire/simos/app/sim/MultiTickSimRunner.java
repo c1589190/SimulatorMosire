@@ -16,7 +16,7 @@ import java.util.stream.Stream;
  *
  * <p>★ <b>它是什么</b>：把原先塞在 JUnit 测试类里的**多 tick 全真世界模拟**（≥2 段 或 ≥60 tick，判据 M1）搬成的 **一个可执行 main**（不是
  * JUnit 类 —— surefire 的缺省 include 只收「Test 前缀 / Test 后缀 / Tests / TestCase」 四种类名，本类名不匹配 ⇒
- * 门禁永远不会跑到它）。三个 case：
+ * 门禁永远不会跑到它）。四个 case：
  *
  * <ol>
  *   <li>{@code economy-cycle-health} —— three-powers 真世界 240 天（8 段 × 30 天）+ 96 轮市场分布指纹 （原 {@code
@@ -24,7 +24,8 @@ import java.util.stream.Stream;
  *   <li>{@code gov-genesis-120d} —— 小世界 120 天逐日推进（原 {@code
  *       GovGenesisZ6Test#oneHundredTwentyDays…}）；
  *   <li>{@code segment-equivalence} —— 30 天一次推进 vs 30 次逐日推进的分段等价对拍 （原 {@code
- *       SegmentEquivalenceAcrossEconomyGovSocialTest} 两条）。
+ *       SegmentEquivalenceAcrossEconomyGovSocialTest} 两条）；
+ *   <li>{@code rural-32hex-360d} —— P6a1 的 32 hex / 1 市场区 / 1 地方政府世界跑 360 tick，输出固定列 CSV/MD 数据表。
  * </ol>
  *
  * <p>★★ <b>为什么隔离在这里跑</b>：每个 case 一个**自己的空 store**（默认 {@code
@@ -32,14 +33,15 @@ import java.util.stream.Stream;
  * test-world/store}（那是 {@code simos-testworld} 服务在用的 18Lvt 副本）、更不碰 {@code
  * ~/Simos-18Lvt/world}（全真世界）。⇒ 与门禁、与在跑的服务**互不影响**。
  *
- * <p>★ <b>判据没丢</b>：三个 case 里跑的还是原来那些断言（AssertJ 原文），失败 ⇒ 打印 + 退出码非 0。 用法与耗时见 {@code
+ * <p>★ <b>判据没丢</b>：前三个 case 里跑的还是原来那些断言（AssertJ 原文），失败 ⇒ 打印 + 退出码非 0。 用法与耗时见 {@code
  * docs/agents/08-七-门禁与关账命令.md} 的「多 tick 全真模拟的独立跑法」一节。
  *
  * <p>用法（★ 必须经 {@code tools/multitick-sim.sh}，它负责 classpath）：
  *
  * <pre>
- * tools/multitick-sim.sh                       # 三个 case 全跑
+ * tools/multitick-sim.sh                       # 全部 case 全跑
  * tools/multitick-sim.sh economy-cycle-health   # 只跑一个
+ * tools/multitick-sim.sh rural-32hex-360d        # P6a2 的 32hex/360 tick 数据表
  * tools/multitick-sim.sh --store-root=/tmp/x    # 换 store 根（默认 test-world/multitick）
  * </pre>
  */
@@ -79,7 +81,8 @@ public final class MultiTickSimRunner {
       }
     }
 
-    List<SimCase> all = List.of(economyCycleHealth(), govGenesis120d(), segmentEquivalence());
+    List<SimCase> all =
+        List.of(economyCycleHealth(), govGenesis120d(), segmentEquivalence(), rural32Hex360d());
     List<SimCase> selected = new ArrayList<>();
     for (SimCase simCase : all) {
       if (only == null || only.equals(simCase.name())) {
@@ -170,6 +173,13 @@ public final class MultiTickSimRunner {
         SegmentEquivalenceSim::run);
   }
 
+  private static SimCase rural32Hex360d() {
+    return new SimCase(
+        "rural-32hex-360d",
+        "32 hex / 1 市场区 / 1 地方政府世界 360 tick 逐日推进：固定列数据表（CSV+MD），不解读",
+        Rural32Hex360DaySim::run);
+  }
+
   /** 清空某个 case 的目录（**只删自己名下那一层**，绝不碰 store 根或别处）。 */
   private static void wipe(Path caseDir) throws IOException {
     if (!Files.exists(caseDir)) {
@@ -189,7 +199,7 @@ public final class MultiTickSimRunner {
   private static void usage() {
     System.out.println("用法：tools/multitick-sim.sh [case] [--store-root=DIR]");
     System.out.println(
-        "  case ∈ {economy-cycle-health | gov-genesis-120d | segment-equivalence | all}（缺省 all）");
+        "  case ∈ {economy-cycle-health | gov-genesis-120d | segment-equivalence | rural-32hex-360d | all}（缺省 all）");
     System.out.println("  --store-root 缺省 " + DEFAULT_STORE_ROOT + "（★ 只在这里面建/删目录）");
   }
 }

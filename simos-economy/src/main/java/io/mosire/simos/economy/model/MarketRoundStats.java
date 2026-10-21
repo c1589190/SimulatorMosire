@@ -1,7 +1,10 @@
 package io.mosire.simos.economy.model;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.codec.HexCoordKeyDeserializer;
+import io.mosire.simos.map.hex.HexCoord;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,7 +66,11 @@ public record MarketRoundStats(
     long cycleCashTurnoverMilli,
     Map<CommodityId, CommodityRound> previousCycle,
     long previousCycleTurnoverMilli,
-    long previousCycleCashTurnoverMilli) {
+    long previousCycleCashTurnoverMilli,
+    // ★★★ D-032 C10 blocker-D：Core 第四台 mapper 不认识 HexCoord ⇒ 键读侧必须由本类型的注解携带。
+    //   写侧仍走默认 HexCoord.toString()，读侧 HexCoord.parse；Map 形状与 @class 机制均不变。
+    @JsonDeserialize(keyUsing = HexCoordKeyDeserializer.class)
+        Map<HexCoord, TransportHexObservation> lastTransportByHex) {
 
   public MarketRoundStats {
     if (lastRoundTurnoverMilli < 0L
@@ -98,6 +105,34 @@ public record MarketRoundStats(
         Collections.unmodifiableMap(new LinkedHashMap<>(freeze(cycleToDate, "cycleToDate")));
     previousCycle =
         Collections.unmodifiableMap(new LinkedHashMap<>(freeze(previousCycle, "previousCycle")));
+    lastTransportByHex =
+        Collections.unmodifiableMap(new LinkedHashMap<>(freezeTransport(lastTransportByHex)));
+  }
+
+  /** ★★★ <b>D-032 C7b2：旧 10 参构造器</b> —— 无运输观察 = 空表（合法“本轮无运输”，不是缺数据）。 保留既有 main/test 调用点。 */
+  public MarketRoundStats(
+      long lastRoundDay,
+      Map<CommodityId, CommodityRound> lastRound,
+      long lastRoundTurnoverMilli,
+      long lastRoundCashTurnoverMilli,
+      Map<CommodityId, CommodityRound> cycleToDate,
+      long cycleTurnoverMilli,
+      long cycleCashTurnoverMilli,
+      Map<CommodityId, CommodityRound> previousCycle,
+      long previousCycleTurnoverMilli,
+      long previousCycleCashTurnoverMilli) {
+    this(
+        lastRoundDay,
+        lastRound,
+        lastRoundTurnoverMilli,
+        lastRoundCashTurnoverMilli,
+        cycleToDate,
+        cycleTurnoverMilli,
+        cycleCashTurnoverMilli,
+        previousCycle,
+        previousCycleTurnoverMilli,
+        previousCycleCashTurnoverMilli,
+        Map.of());
   }
 
   /**
@@ -130,7 +165,7 @@ public record MarketRoundStats(
 
   /** ★ <b>还没有过任何市场轮</b>（新世界的初值；不是"缺数据"）。 */
   public static final MarketRoundStats EMPTY =
-      new MarketRoundStats(-1L, Map.of(), 0L, 0L, Map.of(), 0L, 0L, Map.of(), 0L, 0L);
+      new MarketRoundStats(-1L, Map.of(), 0L, 0L, Map.of(), 0L, 0L, Map.of(), 0L, 0L, Map.of());
 
   /**
    * ★★ <b>记一轮</b>（每市场轮结束时调用一次）：本轮明细覆盖 {@code lastRound}；本周期累计加上本轮； 关账轮（{@code cycleClosed}）⇒
@@ -148,7 +183,24 @@ public record MarketRoundStats(
       long turnoverMilli,
       long cashTurnoverMilli,
       boolean cycleClosed) {
+    return withRound(day, round, turnoverMilli, cashTurnoverMilli, cycleClosed, Map.of());
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：带本轮运输观察的 withRound</b>（逐轮统计的唯一写口重载）。
+   *
+   * <p>{@code lastTransportByHex} 来自 S7-END 的同一份 {@code ctx.transportRoundPlan}；空表 = 本轮无运输。
+   * 其余窗口/累计语义一字不变。
+   */
+  public MarketRoundStats withRound(
+      long day,
+      Map<CommodityId, CommodityRound> round,
+      long turnoverMilli,
+      long cashTurnoverMilli,
+      boolean cycleClosed,
+      Map<HexCoord, TransportHexObservation> lastTransportByHex) {
     Objects.requireNonNull(round, "round");
+    Objects.requireNonNull(lastTransportByHex, "lastTransportByHex");
     if (day < 0L) {
       throw new IllegalArgumentException("市场轮的绝对日不得为负: " + day);
     }
@@ -172,7 +224,8 @@ public record MarketRoundStats(
           0L,
           closedCycle,
           closedTurnover,
-          closedCashTurnover);
+          closedCashTurnover,
+          lastTransportByHex);
     }
     return new MarketRoundStats(
         day,
@@ -184,7 +237,25 @@ public record MarketRoundStats(
         closedCashTurnover,
         previousCycle,
         previousCycleTurnoverMilli,
-        previousCycleCashTurnoverMilli);
+        previousCycleCashTurnoverMilli,
+        lastTransportByHex);
+  }
+
+  /** ★ C7b2：只替换本轮运输观察，其他窗口原样保留（用于 S7-END 写 observation）。 */
+  public MarketRoundStats withTransportObservations(
+      Map<HexCoord, TransportHexObservation> observations) {
+    return new MarketRoundStats(
+        lastRoundDay,
+        lastRound,
+        lastRoundTurnoverMilli,
+        lastRoundCashTurnoverMilli,
+        cycleToDate,
+        cycleTurnoverMilli,
+        cycleCashTurnoverMilli,
+        previousCycle,
+        previousCycleTurnoverMilli,
+        previousCycleCashTurnoverMilli,
+        observations);
   }
 
   /** ★ 逐商品相加（周期累计）：量相加、均价按成交量加权（见 {@link CommodityRound#plus}）。 */
@@ -227,7 +298,39 @@ public record MarketRoundStats(
         + " 上周期成交额="
         + previousCycleTurnoverMilli
         + " 上周期现金="
-        + previousCycleCashTurnoverMilli;
+        + previousCycleCashTurnoverMilli
+        + " 本地运输hex="
+        + lastTransportByHex.size();
+  }
+
+  /** ★ C7b2：运输观察按 (q,r) 规范序冻结；键与 value.shippingHex 必须一致。 */
+  private static Map<HexCoord, TransportHexObservation> freezeTransport(
+      Map<HexCoord, TransportHexObservation> source) {
+    if (source == null) {
+      throw new IllegalArgumentException("MarketRoundStats.lastTransportByHex 不得为 null（无运输请给空表）");
+    }
+    if (source.isEmpty()) {
+      return Map.of();
+    }
+    List<HexCoord> hexes = new ArrayList<>(source.keySet());
+    hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+    Map<HexCoord, TransportHexObservation> ordered = new LinkedHashMap<>();
+    for (HexCoord hex : hexes) {
+      TransportHexObservation observation = source.get(hex);
+      if (hex == null || observation == null) {
+        throw new IllegalArgumentException(
+            "MarketRoundStats.lastTransportByHex 的键与值都不得为 null: " + hex);
+      }
+      if (!hex.equals(observation.shippingHex())) {
+        throw new IllegalArgumentException(
+            "MarketRoundStats.lastTransportByHex 键与 observation.shippingHex 不一致: "
+                + hex
+                + " vs "
+                + observation.shippingHex());
+      }
+      ordered.put(hex, observation);
+    }
+    return Collections.unmodifiableMap(ordered);
   }
 
   /** ★ 一个市场的统计簿按**商品 id 规范序**冻结（迭代序 = 内容的纯函数；禁 {@code Map.copyOf}）。 */

@@ -23,6 +23,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.EconomySettlement.ClosedUnit;
 import io.mosire.simos.economy.time.ProductionRunSettlement.HarvestWork;
@@ -32,6 +34,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -47,10 +50,14 @@ final class SettlementDayProductionPipeline {
    * <p>这里只做"一天只该建一次的读表/快照/清零"：家户 ↔ unit / actor 反查、到货、套利收集器、本日实扣读数清零点、 W3 匹配快照，以及逐户 {@code
    * cycleDays} 派生。**不得**在这里扣投入、排劳动或做消费。
    *
-   * <p>★ P3c3 可按新日序单独调用本方法（{@code prepareProductionBase → M3/M4 → settleConsumption →
+   * <p>★ P3c3/RC0a 可按新日序单独调用本方法（{@code prepareProductionBase → S3 → S4 settleConsumption →
    * drawInputsAndPlanLabor → driveProduction}）；旧 {@link #prepareConsumption} 仍按原顺序调用它。
    */
   static void prepareProductionBase(SettlementDayContext ctx) {
+    // ★★★ RF4a：M3 的土地买盘会读 `ctx.hexToIndustries`；本字段原先只在 M7 `closeAndHarvest`
+    //   赋值，导致 M3 永远看到 null、无地户买盘恒为 0。这里在 M3 之前补上同一个索引（入口索引在
+    //   `withLabor` 重建时原样传递；`closeAndHarvest` 的既有赋值保留不动，幂等）。
+    ctx.hexToIndustries = ctx.settlementIndex.industriesByHex();
     // ★★ **H0：家户 → 它供给的产业**（从配额表推，唯一拼写点见 {@link #industriesOfHouseholds}）——
     //   本日的两处都要它：① 各行流水"本期"何时翻篇（家户没有自己的周期，见流水循环的注释）；
     //   ② 借粮的"本周期自需"要一个 cycleDays（见 {@link #cycleDaysByHousehold}）。
@@ -172,8 +179,8 @@ final class SettlementDayProductionPipeline {
   /**
    * ★★★ <b>P3c3：M6 的实际劳动编排</b>（只排劳动、不扣投入）。
    *
-   * <p>调用前提 = M4/M5 已结束、{@link SettlementDayContext#actualProductionPlan} 已由 {@link
-   * SettlementDayActualProductionPipeline} 产出。锁定雇佣槽不进队列（保留 M6 刚写好的承诺行），非雇佣槽只在 M6 实际计划内排队。
+   * <p>调用前提 = S4 消费已结束、{@link SettlementDayContext#actualProductionPlan} 已由 {@link
+   * SettlementDayActualProductionPipeline} 产出。锁定雇佣槽不进队列（保留实际计划刚写好的承诺行），非雇佣槽只在 S4 实际计划内排队。
    */
   static void planActualLabor(SettlementDayContext ctx) {
     if (ctx.actualProductionPlan == null) {
@@ -212,6 +219,10 @@ final class SettlementDayProductionPipeline {
    * #planActualLabor}) + M7（本方法）。
    */
   static void drawActualInputs(SettlementDayContext ctx) {
+    // ★★ RF2：M7 只对实际入选、且 M6 后仍有实际劳动承诺的 unit 现扣周期投入。
+    //   未入选/无劳动/今天不生产的 unit 不预扣整周期种子（`producingUnits == null` 只在没有 M6 计划的
+    //   legacy 路径出现，那里保持旧行为逐值不变）。
+    Set<ProductionUnitId> producingUnits = actualProducingUnitsOf(ctx);
     drawCycleInputsPartitioned(
         ctx.session,
         ctx.accounts,
@@ -220,7 +231,285 @@ final class SettlementDayProductionPipeline {
         ctx.ledger,
         ctx.day,
         ctx.parallelism,
-        ctx.settlementIndex);
+        ctx.settlementIndex,
+        producingUnits);
+  }
+
+  /**
+   * ★★★ <b>RC8c：S4 生成每户每 tick 唯一 {@link DailyDemandBill}</b>。
+   *
+   * <p>调用位置 = M7 实际投入现扣之后（{@code drawActualInputs}）—— 此时"本 tick 实际消费"与"本 tick 实际投入"都已落账，账单才能把
+   * {@code providedFromStock} 记成真实扣减量。构建一次即可；同一 {@link SettlementDayContext} 内重复调用是幂等的（不重复累计）。
+   *
+   * <p>行源：
+   *
+   * <ul>
+   *   <li>{@code BASE_SUBSISTENCE}：{@link HouseholdEconomy#naturalNeeds()}（Social
+   *       当刻注入的逐户日需求，不重算年龄/性别系数）； {@code providedFromStock} = 当日实际吃掉/穿掉的量（消费步写下的 {@code unmetToday}
+   *       反推，只对 GRAIN/CLOTH 生效）；
+   *   <li>{@code PRODUCTION_DAILY_EXTRA}：产业定义 {@code dailyInputPerUnit}（空表 ⇒ 不写行） × 实际 probe 的
+   *       baseScale； 本 tick 没有"每日额外项"的实扣通道 ⇒ {@code providedFromStock} 为 0（有定义才写行）；
+   *   <li>{@code PRODUCTION_INPUT}：实际生产位置 {@code probe.inputRequired()}（本周期一次性投入）× 实际生产单元；只写<b>本
+   *       tick 真正进入周期投入门</b>的 unit（{@code progressDays == 0} 或周期中首次补扣），{@code providedFromStock} =
+   *       本 tick 实扣 delta（{@code EconomySession#drawnProductionInputsOf}）。
+   * </ul>
+   *
+   * <p>★ 生产投入的 {@code quantityMilli} 是"本周期毛需求"，{@code providedFromStockMilli} 是已从库存扣掉的量；S7 的 {@code
+   * marketPurchaseNeed} 会先扣已提供量再扣当前库存（见 {@link DailyDemandBill#marketGapFor}）⇒ S4 已提供的部分不会再次挂买。
+   */
+  static void buildDailyDemandBill(SettlementDayContext ctx) {
+    if (!ctx.dailyDemandBills.isEmpty()) {
+      return; // 同一 tick 只建一次（每户每 tick 唯一副本）
+    }
+    // ── 1. BASE_SUBSISTENCE：Social 当刻 naturalNeeds + 当日实际消费提供量 ─────────────────────────
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEntry :
+        ctx.householdEconomies.entrySet()) {
+      HouseholdId household = householdEntry.getKey();
+      HouseholdEconomy row = householdEntry.getValue();
+      if (row == null) {
+        continue;
+      }
+      DailyDemandBill bill = ctx.dailyDemandBill(household); // 每户每 tick 恰好一张（即使无需求）
+      for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
+        long quantity = need.getValue();
+        if (quantity <= 0L) {
+          continue;
+        }
+        bill.addQuantity(need.getKey(), DailyDemandBill.DemandSource.BASE_SUBSISTENCE, quantity);
+        long provided = consumptionProvidedMilli(ctx, household, need.getKey(), quantity);
+        if (provided > 0L) {
+          bill.addProvidedFromStock(
+              need.getKey(), DailyDemandBill.DemandSource.BASE_SUBSISTENCE, provided);
+        }
+      }
+    }
+    // ── 2. 生产相关行：按实际入选 unit（只读 M6 事实）写 PRODUCTION_DAILY_EXTRA / PRODUCTION_INPUT ──
+    Set<ProductionUnitId> producing = actualProducingUnitsOf(ctx);
+    Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> unitFacts =
+        firstFactPerUnit(ctx.actualPositionFacts);
+    List<ProductionUnitId> unitIds = new ArrayList<>(ctx.units.keySet());
+    unitIds.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : unitIds) {
+      if (producing != null && !producing.contains(unitId)) {
+        continue; // 没有实际劳动/未入选 ⇒ 不写该 unit 的投入需求
+      }
+      ProductionProcess unit = ctx.units.get(unitId);
+      if (unit == null) {
+        continue;
+      }
+      IndustryDefinitionView industry = ctx.industries.get(unit.industry());
+      if (industry == null) {
+        continue;
+      }
+      ProductionPlanBridge.PositionFacts fact = unitFacts.get(unitId);
+      HouseholdId responsible =
+          fact == null
+              ? ctx.settlementIndex.economicHouseholdOf(unitId).orElse(null)
+              : fact.organizer();
+      if (responsible == null || !ctx.householdEconomies.containsKey(responsible)) {
+        continue; // 聚合主体不在家户账里：本批不伪造家户账单行
+      }
+      DailyDemandBill bill = ctx.dailyDemandBill(responsible);
+      long baseScale =
+          fact == null ? productionScaleOf(ctx, unit, industry) : fact.probe().baseScale();
+      if (baseScale > 0L) {
+        addDailyExtraLines(bill, industry, baseScale);
+      }
+      if (productionInputDue(unit, producing)) {
+        Map<CommodityId, Long> required =
+            fact == null ? fallbackInputRequired(ctx, unit, industry) : fact.inputRequired();
+        Map<CommodityId, Long> drawn = ctx.session.drawnProductionInputsOf(unitId);
+        for (Map.Entry<CommodityId, Long> input : required.entrySet()) {
+          long quantity = input.getValue();
+          if (quantity <= 0L) {
+            continue;
+          }
+          bill.addQuantity(input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, quantity);
+          long provided = Math.min(quantity, drawn.getOrDefault(input.getKey(), 0L));
+          if (provided > 0L) {
+            bill.addProvidedFromStock(
+                input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, provided);
+          }
+        }
+      }
+    }
+    logDailyDemandBill(ctx, producing);
+  }
+
+  /** BASE_SUBSISTENCE 的已提供量：消费步只吃 GRAIN/CLOTH，其他自然需求当前没有消费通道 ⇒ 0。 */
+  private static long consumptionProvidedMilli(
+      SettlementDayContext ctx, HouseholdId household, CommodityId commodity, long dailyNeed) {
+    HouseholdEconomy row = ctx.householdEconomies.get(household);
+    if (row == null || row.population() <= 0L) {
+      return 0L; // 消费步对 0 人口行不读账、不消费 ⇒ 没有"已提供"
+    }
+    if (!EconomySettlement.GRAIN.equals(commodity) && !EconomySettlement.CLOTH.equals(commodity)) {
+      return 0L;
+    }
+    long unmet = ctx.unmetToday.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
+    return Math.max(0L, dailyNeed - unmet);
+  }
+
+  /** 每个 unit 取第一条位置事实（同一 unit 的全部参与户共享同一份 probe / 投入需求）。 */
+  private static Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> firstFactPerUnit(
+      List<ProductionPlanBridge.PositionFacts> facts) {
+    Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> byUnit = new LinkedHashMap<>();
+    for (ProductionPlanBridge.PositionFacts fact : facts) {
+      byUnit.putIfAbsent(fact.position().unit(), fact);
+    }
+    return byUnit;
+  }
+
+  /** 生产投入门与 {@code ProductionInputSettlement.surveyInputDemands} 同口径：周期第一天，或周期中首次补扣。 */
+  private static boolean productionInputDue(
+      ProductionProcess unit, Set<ProductionUnitId> producing) {
+    if (unit.progressDays() == 0L) {
+      return true;
+    }
+    return unit.progressDays() > 0L
+        && unit.cycleInputUsedMilli().isEmpty()
+        && producing != null
+        && producing.contains(unit.id());
+  }
+
+  /** 产业 {@code dailyInputPerUnit} 有定义才写 {@code PRODUCTION_DAILY_EXTRA} 行（当前 32hex 通常为空）。 */
+  private static void addDailyExtraLines(
+      DailyDemandBill bill, IndustryDefinitionView industry, long baseScale) {
+    for (Map<CommodityId, Long> line : industry.dailyInputPerUnit().values()) {
+      for (Map.Entry<CommodityId, Long> entry : line.entrySet()) {
+        long perScale = entry.getValue();
+        if (perScale <= 0L) {
+          continue;
+        }
+        bill.addQuantity(
+            entry.getKey(),
+            DailyDemandBill.DemandSource.PRODUCTION_DAILY_EXTRA,
+            Math.multiplyExact(perScale, baseScale));
+      }
+    }
+  }
+
+  /** 没有 M6 probe 事实时的兜底：与投入现扣同源的"计划规模 × 配方单位投入"。 */
+  private static Map<CommodityId, Long> fallbackInputRequired(
+      SettlementDayContext ctx, ProductionProcess unit, IndustryDefinitionView industry) {
+    long scale = productionScaleOf(ctx, unit, industry);
+    if (scale <= 0L) {
+      return Map.of();
+    }
+    Map<CommodityId, Long> required = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+      if (entry.getValue() > 0L) {
+        required.put(entry.getKey(), Math.multiplyExact(entry.getValue(), scale));
+      }
+    }
+    return required;
+  }
+
+  private static long productionScaleOf(
+      SettlementDayContext ctx, ProductionProcess unit, IndustryDefinitionView industry) {
+    return ProductionProcessBook.plannedCapacityScaleOf(
+        unit, industry, ctx.settlementIndex, ctx.operatorConditions.get(unit.id()));
+  }
+
+  /** RC8c 一条 INFO 汇总（只读；账单行数/提供量/缺口可 grep）。 */
+  private static void logDailyDemandBill(
+      SettlementDayContext ctx, Set<ProductionUnitId> producingUnits) {
+    if (!EconomyLog.settlement().isInfoEnabled()) {
+      return;
+    }
+    long lines = 0L;
+    long baseLines = 0L;
+    long extraLines = 0L;
+    long inputLines = 0L;
+    long provided = 0L;
+    for (DailyDemandBill bill : ctx.dailyDemandBills.values()) {
+      for (DailyDemandBill.Line line : bill.lines()) {
+        lines++;
+        provided = Math.addExact(provided, line.providedFromStockMilli());
+        switch (line.source()) {
+          case BASE_SUBSISTENCE -> baseLines++;
+          case PRODUCTION_DAILY_EXTRA -> extraLines++;
+          case PRODUCTION_INPUT -> inputLines++;
+          case OTHER -> {
+            // 本批不产生 OTHER 行；保留分支让将来来源不静默漏计。
+          }
+        }
+      }
+    }
+    EventLog.channel(EconomyLog.settlement())
+        .info(
+            LogEvent.of(
+                "DAILY_DEMAND_BILL_BUILT",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "day",
+                ctx.day,
+                "households",
+                ctx.dailyDemandBills.size(),
+                "lines",
+                lines,
+                "baseLines",
+                baseLines,
+                "extraLines",
+                extraLines,
+                "inputLines",
+                inputLines,
+                "providedFromStockMilli",
+                provided,
+                "producingUnits",
+                producingUnits == null ? -1L : producingUnits.size(),
+                "reason",
+                "rc8c-one-bill-per-household-provided-from-s4-actual-draws"));
+  }
+
+  /**
+   * ★★ <b>RF2：M7 的 unit 资格集</b> = M6 实际编排入选的 unit ∩ 本 tick 仍有正 PRODUCTION 劳动承诺的 unit。
+   *
+   * <p>只看"unit 存在"就扣整周期种子会把未生产/无劳动 unit 的户粮清空；这里把扣料资格与真实劳动绑定。 没有 M6 计划（legacy 路径）⇒ 返回 {@code
+   * null}（调用方不限制，逐值不变）。
+   */
+  private static Set<ProductionUnitId> actualProducingUnitsOf(SettlementDayContext ctx) {
+    if (ctx.actualProductionPlan == null) {
+      return null;
+    }
+    Set<ProductionUnitId> withLabor = new LinkedHashSet<>();
+    for (HouseholdLaborCommitment commitment : ctx.laborCommitments.values()) {
+      if (commitment.kind() != LaborCommitmentKind.PRODUCTION || commitment.laborMilli() <= 0L) {
+        continue;
+      }
+      withLabor.add(new ProductionUnitId(commitment.activity()));
+    }
+    Set<ProductionUnitId> selected =
+        new LinkedHashSet<>(ctx.actualProductionPlan.byUnit().keySet());
+    int planned = selected.size();
+    // ★ RF2：M6 未再产出的**本周期在产 unit**（progressDays > 0）只要仍有实际劳动承诺，就继续扣料/生产；
+    //   新周期第一天（progressDays == 0）必须真的被 M6 入选。这样既不会预扣未入选新 unit，也不会让
+    //   "已经种下、还在周期中"的 farm 因 M6 当日重排失败而断供。
+    selected.retainAll(withLabor);
+    for (ProductionUnitId unitId : withLabor) {
+      if (selected.contains(unitId)) {
+        continue;
+      }
+      ProductionProcess continuing = ctx.units.get(unitId);
+      if (continuing != null && continuing.progressDays() > 0L) {
+        selected.add(unitId);
+      }
+    }
+    if (EconomyLog.settlement().isInfoEnabled()) {
+      EventLog.channel(EconomyLog.settlement())
+          .info(
+              LogEvent.of(
+                  "PRODUCTION_INPUT_SELECTION",
+                  EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                  "day",
+                  ctx.day,
+                  "plannedUnits",
+                  planned,
+                  "producingUnits",
+                  selected.size(),
+                  "reason",
+                  "m7-draw-only-actual-selected-with-labor"));
+    }
+    return selected;
   }
 
   /**
@@ -297,6 +586,10 @@ final class SettlementDayProductionPipeline {
 
   /** 由 EconomySettlement 的日序主方法机械抽取而来。 */
   static void driveProduction(SettlementDayContext ctx) {
+    // ★★★ D-032 C6：在本日的生产驱动入口注入唯一 sink。sink 冻结“本日 = 哪个 marketRoundId”，
+    //   并在每次 accept 时用 operator 户当刻 homeHex/市场区 fail-closed 地累加批次。
+    ctx.transportCapacitySink =
+        TransportCapacityBatchBook.sink(ctx.session.sheet(), ctx.dayView, ctx.day);
     // ★★★ B1（D-032 §4.3 数据流第 5 段）：**本生产日的推进改经 production 的两步契约** ——
     //   `probe`（无副作用）→ economy 排序与统一分配 → `executeDay`（按最终投入，一实例一次 = 一个生产日）→ 回执。
     //   ★ 位置是决定性的：必须在**劳动分配与现扣投入都落地之后**（那是"最终投入"），且在主循环读实例状态**之前**。
@@ -319,7 +612,9 @@ final class SettlementDayProductionPipeline {
             ctx.laborCommitments,
             ctx.operatorConditions,
             // ★★★ P3b：M7 的资产占用只用排除了“本轮新土地”的 allocation（M2 抵债取得 / P3c 后 M4 买入）。
-            ctx.landAcquiredThisRound());
+            ctx.landAcquiredThisRound(),
+            // ★★★ D-032 C9：运输马匹等 durable 商品资本只读 operator 户当刻 HouseholdInventory 工作副本。
+            ctx.householdGoods);
     if (EconomyLog.settlement().isInfoEnabled()) {
       EventLog.channel(EconomyLog.settlement())
           .info(
@@ -572,7 +867,8 @@ final class SettlementDayProductionPipeline {
         ctx.issuanceJournal,
         ctx.day,
         ctx.parallelism,
-        ctx.assetShares);
+        ctx.assetShares,
+        ctx.transportCapacitySink);
     // ── ★★★ W5（2026-10-11）：铸币生产方式的收获 ────────────────────────────────────────────────────
     //   ★ 位置 = **产业关账之后**（`harvestPartitioned` 已把本轮的净产计进各主体账）：
     //     铸币读的是关账处求好的 scale（与粮/布同一次 evaluateHarvest 的产物），因此"投入真实消耗"与

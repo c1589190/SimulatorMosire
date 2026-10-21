@@ -10,7 +10,6 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.asset.AssetRightKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -30,7 +29,6 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -335,6 +333,23 @@ class EconomySeedHandlerTest {
         .isEqualTo("{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"}");
   }
 
+  /** ★★★ D-032 L4：旧 LAND wire 键显式拒绝（Alpha 不兼容旧档，不静默吞）。 */
+  @Test
+  void rejectsRetiredLandWireKeys() {
+    String arable = PAYLOAD.replace("\"classes\":[", "\"landArableMilliMu\":1000000,\"classes\":[");
+    assertThat(arable).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+    assertThat(reasonOf(arable)).contains("land-arable-retired");
+
+    String holdings =
+        PAYLOAD.replace(
+            "\"classes\":[",
+            "\"landHoldings\":[{\"owner\":\""
+                + PEASANT_HOUSEHOLD.value()
+                + "\",\"quantityMilliMu\":1000000}],\"classes\":[");
+    assertThat(holdings).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+    assertThat(reasonOf(holdings)).contains("land-holdings-retired");
+  }
+
   /**
    * ★ **旧载荷（没有这两张表）照旧能播**：缺省 = 空表（与 {@code classes} 同款）。
    *
@@ -446,20 +461,9 @@ class EconomySeedHandlerTest {
   /** 正例：与 §3 的 record 字段**逐值**对应（元信息 / 产业模板 / 生产单元 / 阶层行）。 */
   @Test
   void seedsEveryFieldValueForValue() {
-    // ★★ D-032 T5（a 桶换源）：旧形状的 `plans[].capacity` ⇒ 整额 OWNED 份额的**合成路径已按 B5 裁定十九删除**
-    //   ⇒ 实物份额改由 entry 级 `assetShares[]` **显式声明**（新键；旧键 useRights 走一对一代际翻译）。
-    //   量到的仍是同一件事：本格该产业 1,000,000 千分亩 LAND（旧稿是 900,000 + 100,000 两行相加的合成结果）。
-    String payload =
-        PAYLOAD.replace(
-            "\"classes\":[",
-            "\"assetShares\":[{\"industry\":\"farm@0_0\","
-                + "\"owner\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
-                + "\"operator\":{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\"},"
-                + "\"asset\":\"LAND\",\"quantity\":1000000,\"kind\":\"OWNED\","
-                + "\"location\":\"0_0\"}],"
-                + "\"classes\":[");
-    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    EconomyData after = apply(payload, EconomyData.empty(), T7);
+    // ★★ D-032 L4：economy 载荷不再携带 landArableMilliMu/landHoldings —— 土地所有权由
+    //   map.SeedArableOwnership 写进 Map component.owner（旧 wire 键在下方负例里显式拒绝）。
+    EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
 
     EconomyMeta meta = after.meta().orElseThrow();
     assertThat(meta.mapId()).isEqualTo("Map1");
@@ -470,7 +474,7 @@ class EconomySeedHandlerTest {
     assertThat(meta.rulesVersion()).as("无待迁移配额 ⇒ meta 原样").isEqualTo("aggregate-v1");
     assertThat(meta.migrationSource()).isEmpty();
 
-    ProductionData definitions = seededDefinitions(payload);
+    ProductionData definitions = seededDefinitions(PAYLOAD);
     IndustryDefinitionView industry = definitions.industries().get(FARM);
     assertThat(definitions.industries()).hasSize(1);
     assertThat(industry.name()).isEqualTo("农业");
@@ -481,7 +485,7 @@ class EconomySeedHandlerTest {
     //   （`EconomyPayloads.java:119-133 / 366-374 / 427-433`；旧形状实例字段不再解析）；
     //   实例的唯一来源是 `production.Seed` 的 `instances[]`（`ProductionSeedHandler.java:91-100`）。
     //   ⇒ "economy 载荷不再产出实例"本身就是新判据：本处正面断言它（而不是留一条恒真的旧断言）。
-    assertThat(seededDefinitions(payload).instances())
+    assertThat(seededDefinitions(PAYLOAD).instances())
         .as("★ 新判据：economy 载荷（无 units[] 段）不再合成任何生产实例 —— 实例权威在 production.Seed")
         .isEmpty();
     assertThat(industry.cycleDays()).isEqualTo(120L);
@@ -502,21 +506,9 @@ class EconomySeedHandlerTest {
     assertThat(row.population()).isEqualTo(450L);
     assertThat(row.laborMilli()).isEqualTo(261_000L);
     assertThat(row.participationPerMille()).isEqualTo(950);
-    // ★★ 2026-09-27（H0/K3）→ R3B.1/B.2：改前断言"行的 meansOfProduction 有 900,000 千分亩"，后来搬到
-    //   IndustryDefinitionView.capacity；B.2 起 IndustryDefinitionView.capacity 也只是旧档兼容位（生产模型不再读它）⇒
-    // **实物产能的唯一真源是
-    //   OwnershipStake 的 quantity**。出处：EconomyData 构造期注释（约 582-604 行"OwnershipStake 是独立的实物资产总账"）
-    //   与 ProductionProcess 类注"OwnershipStake —— 实物总账：唯一的 quantity 真相"。
-    //   量到的仍是同一件事（两行的 900,000 + 100,000 = 1,000,000 千分亩进来了），只是落点又换了一次。
-    OwnershipStake land =
-        after.assetShares().values().stream()
-            .filter(share -> share.industry().equals(FARM) && share.asset() == AssetKind.LAND)
-            .findFirst()
-            .orElseThrow();
-    assertThat(land.quantity()).as("载荷显式声明 1,000,000 千分亩 LAND").isEqualTo(1_000_000L);
-    assertThat(land.owner()).as("份额的 owner 逐值落盘").isEqualTo(ESTATE_FARM);
-    assertThat(land.operator()).isEqualTo(ESTATE_FARM);
-    assertThat(land.kind()).isEqualTo(AssetRightKind.OWNED);
+    assertThat(after.assetShares().values())
+        .as("economy 不再持久保存 LAND 份额；assetShares 只剩载荷显式声明的非 LAND 资产")
+        .allMatch(share -> share.asset() != io.mosire.simos.actor.api.asset.AssetKind.LAND);
     // ★★ 2026-09-27（H1/K1）：改前这里断言"行里有 2,241,000 毫粮"（载荷的 goods 键 → HouseholdEconomy.goods）。
     //   那个字段已按裁定 D3-C/K1 **整个删除**（家户的商品库存住在 actor 切片的 HouseholdInventory 上），
     //   而载荷里也不再接受 goods 键（给了即抛）⇒ 这条断言的**主语不存在了**：整条删除（不是放宽），如实记在 H1 的变更说明里。

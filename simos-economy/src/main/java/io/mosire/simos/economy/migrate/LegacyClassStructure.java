@@ -21,9 +21,9 @@ import java.util.Optional;
  *
  * <p>★★ <b>它解决什么问题</b>：E1a 已把 {@code ProductionModeDefinitionView} / {@code ClassStructure} /
  * {@code ProductionRole} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
- * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
+ * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 8
  * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionModeDefinitionView}、一个默认 {@link
- * ClassStructure}、7 个 {@link ProductionRole}。迁移器（{@code
+ * ClassStructure}、8 个 {@link ProductionRole}。迁移器（{@code
  * ProductionRoleResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点 —— 其它任何地方不得再写第二套默认映射。
  *
  * <p>★★ <b>ID 三条硬约束</b>（E1b 判据）：
@@ -39,7 +39,7 @@ import java.util.Optional;
  *       下有两种形状，见 {@code ProductionRole.modeId} 的构造期判据）。
  * </ol>
  *
- * <p>★★ <b>7 个位置的 role 映射（唯一的权威表；改动只许改这里）</b>：
+ * <p>★★ <b>8 个位置的 role 映射（唯一的权威表；改动只许改这里）</b>：
  *
  * <pre>
  * SocialClassId      位置 id                   relationToMeans  laborRole  surplusRole
@@ -50,6 +50,7 @@ import java.util.Optional;
  * landless_laborer   legacy-landless_laborer    DIRECT_LABORER   PROVIDER   WAGE_EARNER
  * artisan            legacy-artisan             MIXED            BOTH       WAGE_EARNER
  * official           legacy-official            MIXED            NONE       SURPLUS_RECEIVER
+ * landed_peasant     legacy-landed_peasant      MIXED            BOTH       SELF_SUBSISTENCE
  * </pre>
  *
  * <p>★ <b>逐组理由（不是随手填的）</b>：
@@ -70,7 +71,7 @@ import java.util.Optional;
  *       官署依附/公职在旧档里没有对应的生产关系模板，E1b 只保证它有一个可解析的位置，不把任何分配规则画进 position。
  * </ul>
  *
- * <p>★★ <b>{@code defaultSharesPerMille}：全零，仅兼容占位，不驱动生产。</b>7 个键都在、值全为 0 —— 这是刻意的保守选择：
+ * <p>★★ <b>{@code defaultSharesPerMille}：全零，仅兼容占位，不驱动生产。</b>8 个键都在、值全为 0 —— 这是刻意的保守选择：
  *
  * <ol>
  *   <li>真实的旧档初始人口份额（贫农 450 / 中农 350 / 富农 150 / 地主 50）是 <b>app 侧 {@code EconomySeeder}
@@ -115,11 +116,11 @@ public final class LegacyClassStructure {
   private static final ProductionModeDefinitionView DEFAULT_MODE =
       new ProductionModeDefinitionView(DEFAULT_MODE_ID, "旧档默认生产方式", 1, DEFAULT_CLASS_STRUCTURE_ID);
 
-  /** ★ 7 个默认位置（键 = 值内 id；保序不可变）。由 {@link #buildDefaultPositions()} 一次生成。 */
+  /** ★ 8 个默认位置（键 = 值内 id；保序不可变）。由 {@link #buildDefaultPositions()} 一次生成。 */
   private static final Map<ClassPositionId, ProductionRole> DEFAULT_POSITIONS =
       buildDefaultPositions();
 
-  /** ★ 默认阶层结构：包含全部 7 个位置 + 全零默认份额（份额口径见类注释）。 */
+  /** ★ 默认阶层结构：包含全部 8 个位置 + 全零默认份额（份额口径见类注释）。 */
   private static final ClassStructure DEFAULT_CLASS_STRUCTURE =
       new ClassStructure(
           DEFAULT_CLASS_STRUCTURE_ID,
@@ -150,7 +151,7 @@ public final class LegacyClassStructure {
   }
 
   /**
-   * ★ 7 个默认位置（键 = {@link ClassPositionId}；保序）。
+   * ★ 8 个默认位置（键 = {@link ClassPositionId}；保序）。
    *
    * <p>返回的是每次新建的防御性副本（仍是不可变包装）：调用方拿不到也改不动类内的常量表；顺序与 {@link SocialClassId#all()} 相同，因而同一输入恒得逐项相同的序列。
    */
@@ -161,7 +162,7 @@ public final class LegacyClassStructure {
   /**
    * ★★ <b>社会阶层 → 默认阶层位置 id 的唯一映射</b>：{@code legacy-} + {@link SocialClassId#value()}。
    *
-   * <p>它是纯函数、无副作用；对 7 个词表值全部有定义（见类注释的表）。调用方不需要知道前缀怎么拼 —— 前缀只在本类里读。
+   * <p>它是纯函数、无副作用；对 8 个词表值全部有定义（见类注释的表）。调用方不需要知道前缀怎么拼 —— 前缀只在本类里读。
    *
    * @param socialClass 旧档社会阶层；不得为 null
    * @return 该社会阶层在本默认结构里的位置 id；同一输入恒得同一输出
@@ -222,12 +223,12 @@ public final class LegacyClassStructure {
     return DEFAULT_CLASS_STRUCTURE_ID.equals(structureId);
   }
 
-  /** ★ 该 {@link ClassPositionId} 是不是 7 个默认位置之一（只读查询；null ⇒ false）。 */
+  /** ★ 该 {@link ClassPositionId} 是不是 8 个默认位置之一（只读查询；null ⇒ false）。 */
   public static boolean isLegacyDefault(ClassPositionId positionId) {
     return socialClassOf(positionId).isPresent();
   }
 
-  /** 按 {@link SocialClassId#all()} 的稳定顺序生成 7 个位置；键 = 值内 id。 */
+  /** 按 {@link SocialClassId#all()} 的稳定顺序生成 8 个位置；键 = 值内 id。 */
   private static Map<ClassPositionId, ProductionRole> buildDefaultPositions() {
     Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
     for (SocialClassId socialClass : SocialClassId.all()) {
@@ -250,7 +251,7 @@ public final class LegacyClassStructure {
   }
 
   /**
-   * ★★ <b>7 个位置的 role 唯一裁决点</b>（类注释的表格逐行落在这里）。按 {@link SocialClassId#value()} 分支， 词表外的值走 {@code
+   * ★★ <b>8 个位置的 role 唯一裁决点</b>（类注释的表格逐行落在这里）。按 {@link SocialClassId#value()} 分支， 词表外的值走 {@code
    * default} 当场抛 —— 将来若给 {@code SocialClassId} 追加新阶层，默认结构的构建会立刻
    * fail-closed，而不是悄悄少一个位置（"少一个位置"正是迁移时最难查的那种静默漂移）。
    */
@@ -271,6 +272,8 @@ public final class LegacyClassStructure {
           new RoleSpec("手工业者", RelationToMeans.MIXED, LaborRole.BOTH, SurplusRole.WAGE_EARNER);
       case "official" ->
           new RoleSpec("官署公职", RelationToMeans.MIXED, LaborRole.NONE, SurplusRole.SURPLUS_RECEIVER);
+      case "landed_peasant" ->
+          new RoleSpec("有地农民", RelationToMeans.MIXED, LaborRole.BOTH, SurplusRole.SELF_SUBSISTENCE);
       default -> throw new IllegalStateException("旧档默认阶层结构尚未裁决该社会阶层的角色：" + socialClass);
     };
   }
@@ -286,9 +289,9 @@ public final class LegacyClassStructure {
   }
 
   /**
-   * 一个位置的不可变角色模板（只在本类的 7 个分支里构造）。
+   * 一个位置的不可变角色模板（只在本类的 8 个分支里构造）。
    *
-   * <p>它不落进任何状态：{@link ProductionRole} 才是权威形状；本 record 只是"常量表在代码里的中间变量"， 避免 7 个分支各写 6 个参数的重复。
+   * <p>它不落进任何状态：{@link ProductionRole} 才是权威形状；本 record 只是"常量表在代码里的中间变量"， 避免 8 个分支各写 6 个参数的重复。
    */
   private record RoleSpec(
       String name, RelationToMeans relationToMeans, LaborRole laborRole, SurplusRole surplusRole) {}

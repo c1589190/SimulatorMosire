@@ -565,21 +565,21 @@ class ModeMigrationPolicyW9Test {
   @Test
   void tierPositionTakesTheAscendingLadderAndCapsAtTheHighest() {
     List<ProductionRole> producing = producingPositionsOf(DefaultProductionModes.MERCHANT);
-    assertThat(producing).as("商人 mode 有三个可生产位置（本金主/脚夫/个体户）").hasSize(3);
+    assertThat(producing).as("商人 mode 现在只有两个运输位置（caravan_operator/hired_driver）").hasSize(2);
 
     List<ProductionRole> ascending = new ArrayList<>(producing);
     ascending.sort(ClassLadderBook.POSITION_LADDER_ASCENDING);
     assertThat(ascending.get(0).id())
-        .as("★ 逐值：升序第 0 项 = 脚夫（DIRECT_LABORER/WAGE_EARNER）—— 方向反了会当场红")
+        .as("★ 逐值：升序第 0 项 = hired_driver（DIRECT_LABORER/WAGE_EARNER）—— 方向反了会当场红")
         .isEqualTo(
             DefaultProductionModes.positionId(
-                    DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_PORTER)
+                    DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_HIRED_DRIVER)
                 .orElseThrow());
     assertThat(ascending.get(ascending.size() - 1).id())
-        .as("★ 逐值：升序最后一项 = 本金主（OWNER 最高）")
+        .as("★ 逐值：升序最后一项 = caravan_operator（OWNER 最高）")
         .isEqualTo(
             DefaultProductionModes.positionId(
-                    DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_PRINCIPAL)
+                    DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_CARAVAN_OPERATOR)
                 .orElseThrow());
 
     for (int t = 0; t < producing.size(); t++) {

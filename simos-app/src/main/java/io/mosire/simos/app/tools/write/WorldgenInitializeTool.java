@@ -164,6 +164,10 @@ public final class WorldgenInitializeTool implements SimosTool {
   /** ★★ D-031 P1：生产定义批量播种命令类型（industries + modes；与 {@code economy.Seed} 同一批原子提交）。 */
   public static final String SEED_PRODUCTION_TYPE = "production.Seed";
 
+  /** ★★★ D-032 L4：Map arable owner 属性播种命令类型（与 economy.Seed 同批、同一 revision）。 */
+  public static final String SEED_MAP_LAND_OWNERSHIP_TYPE =
+      io.mosire.simos.map.spi.SeedArableOwnershipHandler.TYPE;
+
   /**
    * ★★ <b>H1：家户 actor 的播种命令</b>（{@code actor.Seed}）—— 与人口/经济**同批**（同一 branch + 同一 expectedRevision
    * ⇒ 一条 revision），载荷由 {@link HouseholdSeeder} 从 {@link EconomySeeder#plan} 交回的 **同一份**家户开缸库存算出。
@@ -735,6 +739,16 @@ public final class WorldgenInitializeTool implements SimosTool {
             expectedRevision,
             SEED_ECONOMY_TYPE,
             seeding.economyPayload()));
+    // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威 —— 同一份 entries 的 landHoldings 转成
+    //   map.SeedArableOwnership，与 economy.Seed 同一批、同一 revision 原子提交。
+    batch.add(
+        envelope(
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            SEED_MAP_LAND_OWNERSHIP_TYPE,
+            seeding.landOwnershipSeedPayload()));
     batch.add(
         envelope(
             batchId,

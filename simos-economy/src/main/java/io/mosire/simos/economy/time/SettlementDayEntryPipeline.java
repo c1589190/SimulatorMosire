@@ -139,7 +139,10 @@ final class SettlementDayEntryPipeline {
             ctx.session.sheet().assetOccupanciesOrBase(),
             ctx.session.sheet().productionRostersOrBase(),
             ctx.day,
-            ctx.landAcquiredThisRound());
+            ctx.landAcquiredThisRound(),
+            ctx.session.sheet().landArableSupply(),
+            ctx.session.sheet().landHoldingsOrBase(),
+            ctx.landAcquiredQuantityThisRound());
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -221,17 +224,17 @@ final class SettlementDayEntryPipeline {
     ctx.enteredToday = Set.of();
     ctx.entryOutcomes = List.of();
     // ★★ B2c：触发门槛 = 有需求 **且** 有"可以被采用的方案"（= production 定义里 hexKeyOf(id) 为空的那些，
-    //   唯一拼写点见 EconomyEntrySettlement.plans）。★ 段首 base 的 demands/方案池在段内不被本段写
-    //   （写入口只有命令面/定义写面）⇒ 读它是"静态模板"而不是"跳过当日视图"。
+    //   唯一拼写点见 EconomyEntrySettlement.plans）。★ RC4-D 起 demand 读当刻 dayView（含合户会话工作副本）；
+    //   方案池仍是本段只读模板。两者都不得在进入阶段写回。
     ctx.planPool = EconomyEntrySettlement.plans(ctx.industries);
     ctx.planAssetSources = ctx.base.meta().map(EconomyMeta::planAssetSources).orElseGet(Map::of);
     // ★★ B3（裁定十二）：按方案声明的**劳动来源**（缺键 ⇒ SELF = 旧候选缺省，逐值不变）。
     ctx.planLaborSources = ctx.base.meta().map(EconomyMeta::planLaborSources).orElseGet(Map::of);
-    if (!ctx.base.demands().isEmpty() && !ctx.planPool.isEmpty()) {
+    if (!ctx.dayView.demands().isEmpty() && !ctx.planPool.isEmpty()) {
       EconomyEntrySettlement.Plan entryPlan =
           EconomyEntrySettlement.planEntries(
               ctx.session.productionRuntime(),
-              ctx.base.demands(),
+              ctx.dayView.demands(),
               ctx.industries,
               ctx.planAssetSources,
               ctx.planLaborSources,
@@ -253,7 +256,7 @@ final class SettlementDayEntryPipeline {
             EconomyEntrySettlement.execute(
                 ctx.session.productionRuntime(),
                 entryPlan.intents(),
-                ctx.base.demands(),
+                ctx.dayView.demands(),
                 ctx.industries,
                 ctx.planAssetSources,
                 ctx.planLaborSources,
@@ -287,7 +290,10 @@ final class SettlementDayEntryPipeline {
                   ctx.session.sheet().assetOccupanciesOrBase(),
                   ctx.session.sheet().productionRostersOrBase(),
                   ctx.day,
-                  ctx.landAcquiredThisRound());
+                  ctx.landAcquiredThisRound(),
+                  ctx.session.sheet().landArableSupply(),
+                  ctx.session.sheet().landHoldingsOrBase(),
+                  ctx.landAcquiredQuantityThisRound());
         }
       }
       ctx.entryOutcomes = outcomes;
@@ -482,7 +488,10 @@ final class SettlementDayEntryPipeline {
                 ctx.session.sheet().assetOccupanciesOrBase(),
                 ctx.session.sheet().productionRostersOrBase(),
                 ctx.day,
-                ctx.landAcquiredThisRound());
+                ctx.landAcquiredThisRound(),
+                ctx.session.sheet().landArableSupply(),
+                ctx.session.sheet().landHoldingsOrBase(),
+                ctx.landAcquiredQuantityThisRound());
         // ★ 今天由组织阶段新建的 unit 加进"刚进入"豁免集：不得让它触发/参与同格既有周期的重排
         //   （与 R4-E2b 的 enteredToday 同一条口径；下一个日结算日它自然成为普通 unit）。
         Set<ProductionUnitId> withOrganized = new LinkedHashSet<>(ctx.enteredToday);

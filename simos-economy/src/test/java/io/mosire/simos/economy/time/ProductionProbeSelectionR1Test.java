@@ -195,7 +195,12 @@ class ProductionProbeSelectionR1Test {
     assertThat(unlockedOffer.maxAbsorbableLaborMilli())
         .as("解锁后可用（usableScale=1 × laborPerUnit=1000）")
         .isEqualTo(1_000L);
-    assertThat(unlockedOffer.reason()).isEmpty();
+    // ★ RF2：旧 10 参 offer 入口不传 M5 后在手库存 ⇒ 投入通道记 INPUT_AWAITING_DRAW（交给 M7 按实际扣减），
+    //   不再是空串；关键判据是"不是 NO_INPUT / 仍可排队拿劳动"。
+    assertThat(unlockedOffer.reason())
+        .as("旧入口不传在手库存 ⇒ awaiting-draw，而不是 NO_INPUT 拒绝")
+        .isEqualTo("INPUT_AWAITING_DRAW");
+    assertThat(unlockedOffer.reason()).doesNotStartWith("NO_INPUT");
     LaborQueueBook.Plan unlockedPlan =
         LaborQueueBook.plan(MASTER_LOW, 10_000L, 0L, List.of(unlockedOffer));
     assertThat(unlockedPlan.decisions().get(0).outcome()).isEqualTo("GRANTED");
@@ -249,7 +254,9 @@ class ProductionProbeSelectionR1Test {
     assertThat(offer.netPerLaborScaled())
         .as("旧口径：⌊9 × 1e6 ÷ max(1,1000)⌋ = 9,000")
         .isEqualTo(9_000L);
-    assertThat(offer.reason()).as("旧词表：中性世界没有理由").isEmpty();
+    // ★ RF2：旧 10 参入口的 reason 词表从空串变为 INPUT_AWAITING_DRAW（M6 早于 M7；不把未现扣当 NO_INPUT）。
+    assertThat(offer.reason()).as("旧入口：中性世界没有拒绝理由，投入通道等待 M7 现扣").isEqualTo("INPUT_AWAITING_DRAW");
+    assertThat(offer.reason()).doesNotStartWith("NO_INPUT");
   }
 
   @Test

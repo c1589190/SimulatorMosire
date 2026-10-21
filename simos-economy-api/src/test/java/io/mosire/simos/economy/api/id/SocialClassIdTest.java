@@ -14,9 +14,9 @@ import org.junit.jupiter.api.Test;
 class SocialClassIdTest {
 
   @Test
-  void knowsExactlyTheSevenStrata() {
+  void knowsExactlyTheEightStrata() {
     assertThat(SocialClassId.all())
-        .as("★ 词表就是这七个（保序）—— 多一个或少一个都必须让本用例红")
+        .as("★ 词表就是这八个（保序；RC2b 末尾追加 landed_peasant）—— 多一个或少一个都必须让本用例红")
         .containsExactly(
             SocialClassId.POOR_PEASANT,
             SocialClassId.MIDDLE_PEASANT,
@@ -24,7 +24,8 @@ class SocialClassIdTest {
             SocialClassId.LANDLORD,
             SocialClassId.LANDLESS_LABORER,
             SocialClassId.ARTISAN,
-            SocialClassId.OFFICIAL);
+            SocialClassId.OFFICIAL,
+            SocialClassId.LANDED_PEASANT);
   }
 
   /** ★ **词表外即抛**（fail-closed）：静默接受会让"写错阶层"变成运行时幽灵。 */

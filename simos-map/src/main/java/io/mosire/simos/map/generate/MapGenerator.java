@@ -151,8 +151,8 @@ public final class MapGenerator {
         HexGrid.withinRadius(new HexCoord(0, 0), radius).stream().sorted().toList()) {
       Sample sample = sampleAt(coord);
       // ★ **创世初始化**（2026-10-12 批次 2）：按地形给"乡村面积"一个固定初值（该地形的默认可用面积），
-      //   城市面积不给初值、留给后续编辑。默认值为 0 的地形不写显式项（读出来同为 0，见 HexAreas.initialCell）。
-      hexes.put(coord, HexAreas.initialCell(sample.height(), sample.terrain()));
+      //   城市面积不给初值、留给后续编辑。默认值为 0 的地形不写 area（读出来同为 0，见 HexAreas.initialCell）。
+      hexes.put(coord, HexAreas.initialCell(coord, sample.height(), sample.terrain()));
       terrainByHex.put(coord, sample.terrain());
     }
 

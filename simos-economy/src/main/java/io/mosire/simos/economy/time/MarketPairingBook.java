@@ -12,6 +12,7 @@ import static io.mosire.simos.economy.time.MarketShipmentBook.blockLaneWithoutCa
 import static io.mosire.simos.economy.time.MarketTradeExecutor.executeTrade;
 import static io.mosire.simos.economy.time.MarketTradeMath.deferralPossible;
 import static io.mosire.simos.economy.time.MarketTradeMath.exactChargeAffordableUpTo;
+import static io.mosire.simos.economy.time.MarketTradeMath.exactTaxAffordableUpTo;
 import static io.mosire.simos.economy.time.MarketTradeMath.exactTotalCostAffordableUpTo;
 import static io.mosire.simos.economy.time.MarketTradeMath.payableMoneyOf;
 
@@ -171,8 +172,12 @@ final class MarketPairingBook {
           //   车道**根本不建**，"需求"连一次求值机会都没有（调查报告 §2.5：sw 18 格 / tp 36 格的货因此发不出去）。
           //   现在只在全池**一件可交付服务货都没有**时才在候选生成处拦下；池里还有货 ⇒ 放行进 executeTrade，
           //   由 {@code MerchantCapacityPool.select} 按**全局序**分配（够不着的承运方在那里具名归因）。
-          if (!ctx.carrierPool.hasCapacityAt(sell.hex)
-              && ctx.carrierPool.totalCapacityMilli() <= 0L) {
+          boolean noLocalTransportCapacity =
+              ctx.transportRoundPlan != null
+                  ? !ctx.transportPlanHasLocalCapacity(sell.hex)
+                  : (!ctx.carrierPool.hasCapacityAt(sell.hex)
+                      && ctx.carrierPool.totalCapacityMilli() <= 0L);
+          if (noLocalTransportCapacity) {
             blockLaneWithoutCapacity(
                 ctx, List.of(buy), List.of(sell), sell.hex, buy.hex, buy.order.commodity());
             crossHexCapacityBlocked = true;
@@ -214,15 +219,25 @@ final class MarketPairingBook {
         long payable = payableMoneyOf(ctx, buy);
         long quantityByCash =
             deferralPossible(ctx, buy, sell)
-                ? exactChargeAffordableUpTo(
-                    ctx,
-                    buy,
-                    sell,
-                    buy.order.commodity(),
-                    quantity,
-                    payable,
-                    buyerUnitPrice,
-                    effectiveRoute)
+                ? (ctx.transportRoundPlan != null
+                    ? exactTaxAffordableUpTo(
+                        ctx,
+                        buy,
+                        sell,
+                        buy.order.commodity(),
+                        quantity,
+                        payable,
+                        buyerUnitPrice,
+                        effectiveRoute)
+                    : exactChargeAffordableUpTo(
+                        ctx,
+                        buy,
+                        sell,
+                        buy.order.commodity(),
+                        quantity,
+                        payable,
+                        buyerUnitPrice,
+                        effectiveRoute))
                 : exactTotalCostAffordableUpTo(
                     ctx,
                     buy,
@@ -407,8 +422,25 @@ final class MarketPairingBook {
       long payable = payableMoneyOf(ctx, buy);
       long quantityByCash =
           deferralPossible(ctx, buy, sell)
-              ? exactChargeAffordableUpTo(
-                  ctx, buy, sell, buy.order.commodity(), quantity, payable, buyerUnitPrice, null)
+              ? (ctx.transportRoundPlan != null
+                  ? exactTaxAffordableUpTo(
+                      ctx,
+                      buy,
+                      sell,
+                      buy.order.commodity(),
+                      quantity,
+                      payable,
+                      buyerUnitPrice,
+                      null)
+                  : exactChargeAffordableUpTo(
+                      ctx,
+                      buy,
+                      sell,
+                      buy.order.commodity(),
+                      quantity,
+                      payable,
+                      buyerUnitPrice,
+                      null))
               : exactTotalCostAffordableUpTo(
                   ctx, buy, sell, buy.order.commodity(), quantity, payable, buyerUnitPrice, null);
       if (quantityByCash <= 0L) {

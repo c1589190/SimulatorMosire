@@ -1,5 +1,6 @@
 package io.mosire.simos.economy;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -17,15 +18,24 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
+import io.mosire.simos.economy.model.AssetOccupancyGrant;
+import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
+import io.mosire.simos.economy.model.HouseholdFlowTarget;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -295,6 +305,82 @@ final class EconomyDataInvariants {
     return assetShares;
   }
 
+  /**
+   * ★★★ <b>D-032 L4：LAND 不得出现在 assetShares / 占用 / 组织资产来源 / 名册权益里</b>。
+   *
+   * <p>Map component 的 {@code owner} 属性是 LAND 所有权的唯一持久权威；economy 只保留瞬态聚合视图。 因此 persistence 侧的
+   * assetShares、assetOccupancies、ProductionEnterprise.assetSources 与 ProductionRoster.rightsStakes
+   * 都不得再出现 LAND 行（否则就是第二本所有权账）。
+   */
+  static void validateLandAssetExclusions(
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
+      Map<io.mosire.simos.economy.api.id.ProductionOrganizationId, ProductionEnterprise>
+          productionOrganizations,
+      Map<ProductionUnitId, ProductionRoster> productionRosters) {
+    // ★ RA1b2b/L4：LAND 不再允许出现在 assetShares —— 与是否使用标量组件无关（无条件拒绝双权威）。
+    for (Map.Entry<AssetShareId, OwnershipStake> entry : assetShares.entrySet()) {
+      if (entry.getValue().asset() == AssetKind.LAND) {
+        throw new IllegalArgumentException(
+            "assetShares 不得包含 LAND 行（LAND 所有权只走 Map component.owner）：assetShare=" + entry.getKey());
+      }
+    }
+
+    // ★ RA1b2b：占用授予的来源只能是份额表里的非 LAND 份额；悬空 share 同样 fail-closed。
+    for (Map.Entry<AssetOccupancyGrantId, AssetOccupancyGrant> entry :
+        assetOccupancies.entrySet()) {
+      AssetOccupancyGrant grant = entry.getValue();
+      OwnershipStake share = assetShares.get(grant.shareId());
+      if (share == null) {
+        throw new IllegalArgumentException(
+            "asset-occupancy-share-missing: grant 指名的份额不在 assetShares 里（不得悬空）：grant="
+                + entry.getKey().value()
+                + " share="
+                + grant.shareId().value());
+      }
+      if (share.asset() == AssetKind.LAND) {
+        throw new IllegalArgumentException(
+            "assetOccupancies 不得引用 LAND 份额（LAND 不进占用表）：grant="
+                + entry.getKey().value()
+                + " share="
+                + grant.shareId().value());
+      }
+    }
+
+    // ★ RA1b2b：生产组织的资产来源不得指向 LAND。
+    for (ProductionEnterprise enterprise : productionOrganizations.values()) {
+      for (AssetShareId assetSource : enterprise.assetSources()) {
+        OwnershipStake share = assetShares.get(assetSource);
+        if (share != null && share.asset() == AssetKind.LAND) {
+          throw new IllegalArgumentException(
+              "ProductionEnterprise.assetSources 不得引用 LAND 份额：organization="
+                  + enterprise.id().value()
+                  + " share="
+                  + assetSource.value());
+        }
+      }
+    }
+
+    // ★ RA1b2b：名册的权益引用不得指向 LAND。
+    for (ProductionRoster roster : productionRosters.values()) {
+      for (io.mosire.simos.economy.model.ProductionParticipant participant :
+          roster.participants()) {
+        for (AssetShareId stake : participant.rightsStakes()) {
+          OwnershipStake share = assetShares.get(stake);
+          if (share != null && share.asset() == AssetKind.LAND) {
+            throw new IllegalArgumentException(
+                "ProductionParticipant.rightsStakes 不得引用 LAND 份额：unit="
+                    + roster.unit().value()
+                    + " household="
+                    + participant.household().value()
+                    + " share="
+                    + stake.value());
+          }
+        }
+      }
+    }
+  }
+
   /** relations：Payee 归一 + 键 == 行内 activity，并冻结。 */
   static Map<ProductionUnitId, ProductionRules> validateRelations(
       Map<ProductionUnitId, ProductionRules> relations,
@@ -549,5 +635,200 @@ final class EconomyDataInvariants {
     }
     commodityFreightBaseMilli = Collections.unmodifiableMap(commodityFreightCopy); // ★ 冻在赋值处
     return commodityFreightBaseMilli;
+  }
+
+  /**
+   * ★★★ D-032 RC7 / S7-C：家户向下流动表的跨表不变量（D-032 C1 起按 ownershipClass 口径）。
+   *
+   * <ul>
+   *   <li>键 == 值内 sourceHousehold；
+   *   <li>source/target 必须是现存家户，且 sourceHex == source 当前 view().hex；
+   *   <li>target 与 source 同 hex、不得等于 source。
+   * </ul>
+   *
+   * <p>★ <b>为什么这里不再判 source=OWNER/target=PROLETARIAN</b>：ownershipClass 由 Map LAND ledger、actor
+   * 商品库存与 assetShares 跨切片派生，{@code EconomyData} 构造期看不到完整输入；把它在这里硬判会退化成“只看 economy 自己那半份事实”的错误权威。派生
+   * class 的当刻一致性由装配层/日结算读口保证（同一 revision 内不持久 class）。 本方法只保留 EconomyData 自己能判的结构不变量。
+   *
+   * <p>返回保序不可变副本。这里不要求 targets 非空：空表是“本轮没找到正人口目标”的合法维护态。
+   */
+  static Map<HouseholdId, HouseholdFlowTable> validateHouseholdFlowTables(
+      Map<HouseholdId, HouseholdFlowTable> householdFlowTables,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    Map<HouseholdId, HouseholdFlowTable> copy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, HouseholdFlowTable> entry : householdFlowTables.entrySet()) {
+      HouseholdId key = entry.getKey();
+      HouseholdFlowTable table = entry.getValue();
+      if (key == null || table == null) {
+        throw new IllegalArgumentException("householdFlowTables 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(table.sourceHousehold())) {
+        throw new IllegalArgumentException(
+            "householdFlowTables 的键必须与 sourceHousehold 一致：键="
+                + key.value()
+                + "，行内 source="
+                + table.sourceHousehold().value());
+      }
+      HouseholdEconomy source = householdEconomies.get(key);
+      if (source == null) {
+        throw new IllegalArgumentException(
+            "householdFlowTables 的 source 必须是已存在的家户: " + key.value());
+      }
+      if (!source.view().hex().equals(table.sourceHex())) {
+        throw new IllegalArgumentException(
+            "householdFlowTables.sourceHex 必须等于 source 当前 view().hex: source="
+                + key.value()
+                + " tableHex="
+                + table.sourceHex()
+                + " rowHex="
+                + source.view().hex());
+      }
+      for (HouseholdFlowTarget target : table.targets()) {
+        HouseholdId targetId = target.targetHousehold();
+        if (targetId.equals(key)) {
+          throw new IllegalArgumentException(
+              "householdFlowTables.target 不得等于 source: " + key.value());
+        }
+        HouseholdEconomy targetRow = householdEconomies.get(targetId);
+        if (targetRow == null) {
+          throw new IllegalArgumentException(
+              "householdFlowTables.target 必须是已存在的家户: source="
+                  + key.value()
+                  + " target="
+                  + targetId.value());
+        }
+        if (!targetRow.view().hex().equals(table.sourceHex())) {
+          throw new IllegalArgumentException(
+              "householdFlowTables.target 必须与 source 同 hex: source="
+                  + key.value()
+                  + " sourceHex="
+                  + table.sourceHex()
+                  + " target="
+                  + targetId.value()
+                  + " targetHex="
+                  + targetRow.view().hex());
+        }
+      }
+      copy.put(key, table);
+    }
+    return Collections.unmodifiableMap(copy);
+  }
+
+  /**
+   * ★★★ D-032 C6：临时运输能力批次的跨表结构不变量。
+   *
+   * <ul>
+   *   <li>键与值都不得为 null；键的 {@code marketRoundId} 与值的 {@code capacityWorkMilli} 在各自构造期已判非负；
+   *   <li>值的 {@code marketZone} 必须是当前存在的市场区（持久区表或派生价表至少一侧存在）；
+   *   <li>{@code homeHex} 必须属于该市场区的成员格；
+   *   <li>同一键只能有一个值（由 Map 结构保证）。
+   * </ul>
+   *
+   * <p>★ 本方法只做 {@code EconomyData} 自己能判的结构校验；批次消费/跨轮匹配属 C7。
+   */
+  static Map<TransportCapacityBatchKey, TransportCapacityBatch> validateTransportCapacityBatches(
+      Map<TransportCapacityBatchKey, TransportCapacityBatch> transportCapacityBatches,
+      Map<MarketZoneId, MarketZone> marketZones,
+      Map<MarketZoneId, MarketTable> marketTables) {
+    Map<TransportCapacityBatchKey, TransportCapacityBatch> copy = new LinkedHashMap<>();
+    for (Map.Entry<TransportCapacityBatchKey, TransportCapacityBatch> entry :
+        transportCapacityBatches.entrySet()) {
+      TransportCapacityBatchKey key = entry.getKey();
+      TransportCapacityBatch batch = entry.getValue();
+      if (key == null || batch == null) {
+        throw new IllegalArgumentException("transportCapacityBatches 的键与值都不得为 null: " + key);
+      }
+      MarketZone zone = marketZones.get(batch.marketZone());
+      if (zone != null) {
+        if (!zone.hexes().contains(key.homeHex())) {
+          throw new IllegalArgumentException(
+              "transportCapacityBatches.homeHex 不属于值的 marketZone：key="
+                  + key
+                  + " zone="
+                  + batch.marketZone().value());
+        }
+      } else {
+        MarketTable table = marketTables.get(batch.marketZone());
+        if (table == null) {
+          throw new IllegalArgumentException(
+              "transportCapacityBatches.marketZone 不存在（持久区表与派生价表都查无）：key="
+                  + key
+                  + " zone="
+                  + batch.marketZone().value());
+        }
+        if (!table.hexes().contains(key.homeHex())) {
+          throw new IllegalArgumentException(
+              "transportCapacityBatches.homeHex 不属于派生市场价表的成员格：key="
+                  + key
+                  + " zone="
+                  + batch.marketZone().value());
+        }
+      }
+      copy.put(key, batch);
+    }
+    return Collections.unmodifiableMap(copy);
+  }
+
+  /**
+   * ★★★ D-032 C7a：运输市场区锚价的跨表结构不变量。
+   *
+   * <ul>
+   *   <li>键与值都不得为 null，且键必须等于 {@link TransportPriceAnchor#marketZone()}；
+   *   <li>锚的 marketZone 必须有 {@code MarketTable}（numeraire 的唯一来源）；
+   *   <li>持久形态（{@code MarketZone} 存在）锚的 currency 必须等于市场表 numeraire 且等于区法定币；
+   *   <li>派生形态（{@code marketZones} 为空、市场区由 {@code marketTables} 派生）没有 {@code MarketZone} 记录 ⇒ 只校验
+   *       currency 等于市场表 numeraire，跳过 legalTender 比对；
+   *   <li>值内 price/streak/lastAdjustedMarketRound 的 ≥ 0 由 record 构造期与规范构造期共同把守。
+   * </ul>
+   *
+   * <p>★ 本方法只判 {@code EconomyData} 自己能判的结构一致性；D/S 汇总与轮末调价属 C7b/TransportPriceAnchorBook。
+   */
+  static Map<MarketZoneId, TransportPriceAnchor> validateTransportPriceAnchors(
+      Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors,
+      Map<MarketZoneId, MarketZone> marketZones,
+      Map<MarketZoneId, MarketTable> marketTables) {
+    Map<MarketZoneId, TransportPriceAnchor> copy = new LinkedHashMap<>();
+    for (Map.Entry<MarketZoneId, TransportPriceAnchor> entry : transportPriceAnchors.entrySet()) {
+      MarketZoneId key = entry.getKey();
+      TransportPriceAnchor anchor = entry.getValue();
+      if (key == null || anchor == null) {
+        throw new IllegalArgumentException("transportPriceAnchors 的键与值都不得为 null: " + key);
+      }
+      if (!key.equals(anchor.marketZone())) {
+        throw new IllegalArgumentException(
+            "transportPriceAnchors 的键必须等于值内 marketZone：键="
+                + key.value()
+                + "，值内="
+                + anchor.marketZone().value());
+      }
+      MarketTable table = marketTables.get(key);
+      if (table == null) {
+        throw new IllegalArgumentException(
+            "transport-price-anchor-market-table-missing: 锚的市场表不存在: " + key.value());
+      }
+      if (!anchor.currency().equals(table.numeraire())) {
+        throw new IllegalArgumentException(
+            "transport-price-anchor-currency-mismatch: 锚币种必须等于市场表 numeraire：zone="
+                + key.value()
+                + "，currency="
+                + anchor.currency().value()
+                + "，numeraire="
+                + table.numeraire().value());
+      }
+      // ★★★ D-032 C10 blocker-D：派生形态没有 MarketZone 记录（市场区由 table 派生）⇒ 跳过
+      //   legalTender 比对；持久形态仍逐值保持原来的双币种守卫。
+      MarketZone zone = marketZones.get(key);
+      if (zone != null && !anchor.currency().equals(zone.legalTender())) {
+        throw new IllegalArgumentException(
+            "transport-price-anchor-legal-tender-mismatch: 锚币种必须等于市场区法定币：zone="
+                + key.value()
+                + "，currency="
+                + anchor.currency().value()
+                + "，legalTender="
+                + zone.legalTender().value());
+      }
+      copy.put(key, anchor);
+    }
+    return Collections.unmodifiableMap(copy);
   }
 }

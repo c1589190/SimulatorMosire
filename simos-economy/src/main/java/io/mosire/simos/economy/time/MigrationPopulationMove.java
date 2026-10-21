@@ -55,6 +55,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /** P0.5-E1 机械拆分自 {@code ModeMigrationSettlement}；职责见类名与各方法注释。 */
@@ -408,7 +409,7 @@ final class MigrationPopulationMove {
               move.target(),
               popTake,
               move.targetHex(),
-              move.targetMode(),
+              Optional.of(move.targetMode()),
               newTarget,
               move.reason());
       session.recordPopulationTransfer(populationTransfer);
@@ -602,26 +603,46 @@ final class MigrationPopulationMove {
         }
       }
     }
-    // 其它组织把源户列为 laborSource 时清掉该引用（源户已不存在）。
+    // ★★★ RC8e：roster 是 laborSources 的派生权威。整户迁空时 mergeHousehold 已把 source 替换/合并到 target；
+    //   这里必须按 roster.households() 重建企业引用 —— 只 remove(source) 会把 target/合并后的户集合漏掉，
+    //   下一 revision 的 HouseholdReferenceValidation 以 enterprise-roster-mismatch fail-closed。
+    //   有 roster ⇒ 逐户同步（保持 organizer/unit/classPosition/mode/资产/投入/产出/状态不变）；
+    //   无 roster ⇒ 保留旧防御路径：仅当源户仍在 laborSources 时 remove(source)。
+    Map<ProductionUnitId, ProductionRoster> rostersForEnterprises =
+        session.sheet().productionRostersOrBase();
     for (ProductionEnterprise enterprise : new ArrayList<>(enterprises.values())) {
+      ProductionRoster roster =
+          enterprise.unitId().isPresent()
+              ? rostersForEnterprises.get(enterprise.unitId().get())
+              : null;
+      if (roster != null) {
+        List<HouseholdId> derived = List.copyOf(roster.households());
+        if (!enterprise.laborSources().equals(derived)) {
+          enterprises.put(enterprise.id(), withLaborSources(enterprise, derived));
+          if (LOG.isDebugEnabled()) {
+            EventLog.channel(LOG)
+                .debug(
+                    LogEvent.of(
+                        "MIGRATION_ENTERPRISE_ROSTER_SYNC",
+                        EconomyLogSource.ECONOMY_MIGRATION,
+                        "day",
+                        day,
+                        "organization",
+                        enterprise.id().value(),
+                        "unit",
+                        enterprise.unitId().get().value(),
+                        "before",
+                        enterprise.laborSources().size(),
+                        "after",
+                        derived.size()));
+          }
+        }
+        continue;
+      }
       if (enterprise.laborSources().contains(source)) {
         List<HouseholdId> sources = new ArrayList<>(enterprise.laborSources());
         sources.remove(source);
-        enterprises.put(
-            enterprise.id(),
-            new ProductionEnterprise(
-                enterprise.id(),
-                enterprise.modeId(),
-                enterprise.classPositionId(),
-                enterprise.unitId(),
-                enterprise.organizer(),
-                sources,
-                enterprise.assetSources(),
-                enterprise.inputSources(),
-                enterprise.outputOwnership(),
-                enterprise.relationTemplateRef(),
-                enterprise.status(),
-                enterprise.statusReason()));
+        enterprises.put(enterprise.id(), withLaborSources(enterprise, List.copyOf(sources)));
       } else if (enterprise.organizer().equals(sourceActorForOrg)) {
         // 源户自己的组织已在下面退役分支处理
         continue;
@@ -779,5 +800,29 @@ final class MigrationPopulationMove {
       }
     }
     return false;
+  }
+
+  /**
+   * ★★★ RC8e：仅替换 {@code laborSources} 的企业重写 —— 其余字段逐值保留。
+   *
+   * <p>roster 是 laborSources 的派生权威；同步时不得顺带改 organizer / unitId / classPositionId / modeId /
+   * assetSources / inputSources / outputOwnership / status。构造器仍会做保序去重与冻结，{@code laborSources} 由调用方按
+   * {@code roster.households()} 的稳定序传入。
+   */
+  private static ProductionEnterprise withLaborSources(
+      ProductionEnterprise enterprise, List<HouseholdId> laborSources) {
+    return new ProductionEnterprise(
+        enterprise.id(),
+        enterprise.modeId(),
+        enterprise.classPositionId(),
+        enterprise.unitId(),
+        enterprise.organizer(),
+        laborSources,
+        enterprise.assetSources(),
+        enterprise.inputSources(),
+        enterprise.outputOwnership(),
+        enterprise.relationTemplateRef(),
+        enterprise.status(),
+        enterprise.statusReason());
   }
 }

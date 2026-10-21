@@ -16,6 +16,7 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionRole;
@@ -82,6 +83,10 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
     payload.put("mapId", mapId);
     // ★★ P10.1：新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）。
     payload.put("rulesVersion", productionRuntimeRulesVersion());
+    // ★★★ RF2c（D-032）：标准农业生产运行时默认 work-first —— 正收益工作先选，idle 只击败零/负收益
+    //   且无可计价补偿的工作。键用 {@link EconomyPolicyKey} 的稳定 name（唯一拼写点，不散落魔法字符串）；
+    //   ★ 不改 EconomyPolicyKey 的全局缺省（仍为 1）：其它世界/旧载荷省略本键时逐值不变。
+    payload.put("economyPolicies", Map.of(EconomyPolicyKey.SURVIVAL_IDLE_POLICY.name(), 0L));
     payload.put("entries", entries);
     Map<String, Object> marketNodes = new LinkedHashMap<>();
     for (Map.Entry<MarketZoneId, MarketTable> atMarket : markets.entrySet()) {
@@ -127,8 +132,9 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
   /**
    * ★★ <b>默认生产方式目录 → {@code modes[]} 节点</b>：{@code {id,name,version,classStructureId}}。
    *
-   * <p>键序 = {@code DefaultProductionModes.modes()} 的稳定声明序；每个键名与 {@code EconomyPayloads.parseModes}
-   * 的读取名逐字一致（不在这里发明第二套字段名）。
+   * <p>键序 = {@code DefaultProductionModes.modes()} 的稳定声明序；每个键名与 production 的 {@code
+   * ProductionDefinitionPayloads.mode(...)} 读取名逐字一致（不在这里发明第二套字段名）。D-032 C1 起 mode 不再声明 {@code
+   * classNatures}：位置访问由角色支付形态 + ownershipClass 推导。
    */
   static List<Map<String, Object>> productionModeNodes() {
     List<Map<String, Object>> nodes = new ArrayList<>();
@@ -183,7 +189,7 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
   /**
    * ★ 一个阶层位置的线格式节点：{@code {id,modeId,name,relationToMeans,laborRole,surplusRole,ruleExtensions?}}。
    *
-   * <p>{@code ruleExtensions} 只在非空时发出（P1 全空）；缺键 ⇒ 解析器给空表，不在这里多写一个空对象。
+   * <p>D-032 C1 起位置不再携带家户阶级字段；{@code ruleExtensions} 只在非空时发出（P1 全空）；缺键 ⇒ 解析器给空表，不在这里多写一个空对象。
    */
   static Map<String, Object> productionRoleNode(ProductionRole position) {
     Map<String, Object> node = new LinkedHashMap<>();
@@ -328,7 +334,8 @@ class ProductionPayloadSeeder extends WorldBalanceSeeder {
           "roles",
           "roleShareRemainderRule",
           "upgradesTo",
-          "mode");
+          "mode",
+          "durableCommodityCapacityPerUnit");
 
   /**
    * ★★★ <b>D-032 C3（D2 §5.5）：创世名册的唯一守卫</b>。

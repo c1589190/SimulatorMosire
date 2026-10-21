@@ -4,13 +4,17 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKey;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.land.LandArableSupply;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
+import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -144,6 +148,17 @@ public final class EconomyDayStepper implements AutoCloseable {
       io.mosire.simos.production.contract.ProductionRuntime runtime,
       AccountSession accounts,
       MarketTopology topology) {
+    this(base, definitions, runtime, accounts, topology, LandComponentLedger.empty());
+  }
+
+  /** ★★★ D-032 L4：组合根简装入口显式接收 app 从 Map 构造的瞬态 LAND 组件账本。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      LandComponentLedger landLedger) {
     this(
         base,
         definitions,
@@ -151,7 +166,29 @@ public final class EconomyDayStepper implements AutoCloseable {
         accounts,
         topology,
         EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
-        EconomyParallelism.singleThreaded());
+        EconomyParallelism.singleThreaded(),
+        new UnavailableAssetOccupancyLookup(),
+        new UnavailableParticipantAttributeLookup(),
+        null,
+        HouseholdCultureKeyLookup.unavailable(),
+        landLedger);
+  }
+
+  /** 旧夹具兼容：只有 arable 总量快照的装配口（真生产路径必须用 Ledger）。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      LandArableSupply landArableSupply) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        LandComponentLedger.fromArableSupplyOnly(landArableSupply));
   }
 
   // ★★★ D-032 B3（§13.13.7 第 8 条 / §13.3 第 2 条）：三个 **runtime = null** 的旧构造器已**删除**
@@ -220,6 +257,127 @@ public final class EconomyDayStepper implements AutoCloseable {
       AssetOccupancyLookup assetOccupancyLookup,
       ParticipantAttributeLookup participantAttributeLookup,
       io.mosire.simos.util.state.RevisionId expectedRevision) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        HouseholdCultureKeyLookup.unavailable());
+  }
+
+  /**
+   * ★★★ <b>D-032 RC4-A 全参构造器</b>：在既有装配面之外显式注入家户文化 key 只读口。
+   *
+   * <p>真实 culture 切片由 app 从当前 {@code SimulationState} 取出 ({@code CultureSnapshot.state()})；没有
+   * culture 切片时必须传 {@link HouseholdCultureKeyLookup#unavailable()}。本类只转交给 {@link EconomySession}，
+   * 不缓存文化标签、不写任何状态。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      HouseholdCultureKeyLookup cultureLookup) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        cultureLookup,
+        LandComponentLedger.empty());
+  }
+
+  /** ★★★ D-032 L4：C2 全参入口 + 瞬态 LAND 组件账本（culture lookup 使用 unavailable）。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      LandComponentLedger landLedger) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        HouseholdCultureKeyLookup.unavailable(),
+        landLedger);
+  }
+
+  /** 旧夹具兼容：只有 arable 总量快照的 11 参装配口。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      LandArableSupply landArableSupply) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        LandComponentLedger.fromArableSupplyOnly(landArableSupply));
+  }
+
+  /**
+   * ★★★ <b>D-032 L4 全参装配口</b>：显式接收 app 从 Map 构造的瞬态 LAND 组件账本。
+   *
+   * <p>旧夹具可传 {@link LandComponentLedger#empty()}；真生产入口必须从 Map 注入。账本不进任何持久结构。
+   */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      HouseholdCultureKeyLookup cultureLookup,
+      LandComponentLedger landLedger) {
     this.lastCycleClosed = false;
     // ★★ B3：runtime 必须非 null（同上：生产实例的唯一权威在 production）。
     this.runtime =
@@ -231,7 +389,12 @@ public final class EconomyDayStepper implements AutoCloseable {
             runtime,
             Objects.requireNonNull(assetOccupancyLookup, "assetOccupancyLookup（D4-C 读口）"),
             Objects.requireNonNull(participantAttributeLookup, "participantAttributeLookup（属性桥）"),
-            expectedRevision);
+            expectedRevision,
+            Objects.requireNonNull(
+                cultureLookup,
+                "cultureLookup（culture key 只读口，缺实现用 HouseholdCultureKeyLookup.unavailable()）"),
+            Objects.requireNonNull(
+                landLedger, "landLedger（空土地/旧夹具请用 LandComponentLedger.empty()）"));
     this.accounts = Objects.requireNonNull(accounts, "accounts（账户会话是会话状态，必须由调用方载入）");
     this.topology =
         Objects.requireNonNull(topology, "topology（M2.3：没有城市信息用 MarketTopology.singleHex）");
@@ -241,9 +404,59 @@ public final class EconomyDayStepper implements AutoCloseable {
         definitions.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
   }
 
+  /** 旧夹具兼容：只有 arable 总量快照的 13 参装配口。 */
+  public EconomyDayStepper(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      io.mosire.simos.production.contract.ProductionRuntime runtime,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      EconomyParallelism parallelism,
+      AssetOccupancyLookup assetOccupancyLookup,
+      ParticipantAttributeLookup participantAttributeLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      HouseholdCultureKeyLookup cultureLookup,
+      LandArableSupply landArableSupply) {
+    this(
+        base,
+        definitions,
+        runtime,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        parallelism,
+        assetOccupancyLookup,
+        participantAttributeLookup,
+        expectedRevision,
+        cultureLookup,
+        LandComponentLedger.fromArableSupplyOnly(landArableSupply));
+  }
+
+  /** ★★★ D-032 L4：本会话的瞬态 LAND 组件账本（轮末由组合根写回 Map）。 */
+  public LandComponentLedger landLedger() {
+    return session.landLedger();
+  }
+
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
   public EconomyParallelism parallelism() {
     return parallelism;
+  }
+
+  /** ★★★ <b>D-032 RC4-A：只转发本会话的 culture lookup</b>（empty = 没有文化标签；不猜、不写状态）。 */
+  public Optional<HouseholdCultureKey> cultureKeyOf(HouseholdId household) {
+    return session.cultureKeyOf(household);
+  }
+
+  /**
+   * ★★★ <b>D-032 RC4-D：在 step 前执行同 key 家户合并</b>。
+   *
+   * <p>本方法只生成并执行 {@link HouseholdMergeBook} 的当刻计划，返回本次新产生的人口 outbox；<b>不调用</b> {@link
+   * #step(long)}、不写 Social、不调用 {@code build()}。App 必须在拿到非空 {@code populationTransfers()} 后先经 {@code
+   * MigrationSocialBridge} 落 Social、回写经济行人口并刷新 composition/labor 投影，再进入 step，确保 S3 只看到合并后的活户。
+   */
+  public HouseholdMergeSettlement.MergeResult mergeSameKeyHouseholds(long day) {
+    return HouseholdMergeSettlement.mergeAll(session, accounts, session::cultureKeyOf, day, 1);
   }
 
   /**

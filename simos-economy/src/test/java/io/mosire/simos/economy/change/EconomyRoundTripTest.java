@@ -82,6 +82,9 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowReason;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
+import io.mosire.simos.economy.model.HouseholdFlowTarget;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.InventoryReservationStatus;
@@ -566,10 +569,14 @@ class EconomyRoundTripTest {
    * <p>★★★ <b>D-032 P4c3：36 → 34</b>：旧 {@code productionWageDefaults} / {@code
    * productionWagePostings} 两张工资表整段删除，工资报价的唯一权威只剩 {@code productionWageAnchors}（U20 锚）。本用例按实测把两侧组件数
    * 钉成 <b>34</b>；锚表与 {@code wageCarryRemainders} 的往返仍由逐组件用例覆盖，旧两维不再有夹具（Alpha：不补兼容位）。
+   *
+   * <p>★★★ <b>D-032 L4：36 → 34</b>：{@code landArableSupply} 与 {@code landHoldings} 两个持久 LAND 组件已删除
+   * —— Map component.owner 是土地所有权唯一权威，economy 只持有每 tick 从 Map 派生的瞬态 {@code LandComponentLedger}（不进
+   * EconomyData/ChangeSet/Codec）。本用例按**实测**把两侧组件数钉成 <b>35</b>。
    */
   @Test
-  void changeSetHasExactlyThirtyFourComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(34);
+  void changeSetHasExactlyThirtySevenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -801,7 +808,10 @@ class EconomyRoundTripTest {
                   7L));
       case "assetOccupancies" -> {
         AssetOccupancyGrant value = assetOccupancy();
-        yield base.withAssetOccupancies(Map.of(value.id(), value));
+        // ★ D-032 RA1b2b：grant 指名的份额不得悬空（构造期 fail-closed）⇒ 变异体自带支撑份额。
+        //   FARM_SHARE 是 CATTLE（非 LAND），所以不会被“assetShares 不得含 LAND”守卫拦。
+        yield base.withOwnershipStakes(Map.of(FARM_SHARE, share()))
+            .withAssetOccupancies(Map.of(value.id(), value));
       }
       case "inventoryReservations" -> {
         InventoryReservation value = inventoryReservation();
@@ -812,6 +822,42 @@ class EconomyRoundTripTest {
       case "productionWageAnchors" -> {
         WageAnchorKey key = new WageAnchorKey(MARKET, FARM, OPERATOR_ROLE);
         yield base.withProductionWageAnchors(Map.of(key, wageAnchor()));
+      }
+      // ★★★ D-032 RC7：第 37 个组件（家户向下流动表）。空表与“字段没进变更集”在值层面不可区分
+      //   ⇒ 判别力要求表非空；source 必须是已存在的 LANDED 户、target 必须同 hex（此处不落 class
+      //   standing，派生 classNature 为空 ⇒ 构造期按“不可派生”路径放行，形状判别力仍在）。
+      case "householdFlowTables" ->
+          base.withMeta(Optional.of(meta()))
+              .withHouseholdEconomies(
+                  Map.of(KEY_HH, classRow(KEY_HH, KEY), OTHER_HH, classRow(OTHER_HH, OTHER_KEY)))
+              .withHouseholdFlowTables(
+                  Map.of(
+                      KEY_HH,
+                      new HouseholdFlowTable(
+                          KEY_HH,
+                          KEY.hex(),
+                          List.of(
+                              new HouseholdFlowTarget(OTHER_HH, HouseholdFlowReason.DEBT_DOWNWARD)),
+                          1_000L,
+                          7L)));
+      // ★★★ D-032 C6：运输能力批次。空表与“字段没进变更集”不可区分 ⇒ 用一个当前轮非空批次；
+      //   homeHex 必须属于同一 marketZone 的成员格。
+      case "transportCapacityBatches" -> {
+        // 用派生市场形态（无持久 MarketZone）：价表键 = MARKET，成员格含 homeHex。
+        EconomyData withDerivedMarket = base.withMarketTables(Map.of(MARKET, market()));
+        var key =
+            new io.mosire.simos.economy.model.TransportCapacityBatchKey(KEY_HH, KEY.hex(), 5L);
+        yield withDerivedMarket.withTransportCapacityBatches(
+            Map.of(key, new io.mosire.simos.economy.model.TransportCapacityBatch(MARKET, 1_234L)));
+      }
+      // ★★★ D-032 C7a：运输市场区锚价。0 价是合法值，锚必须同时有 zone/table 且币种一致。
+      case "transportPriceAnchors" -> {
+        EconomyData withZone = withZoneAndItsTable(base, zone(), zoneMarket());
+        yield withZone.withTransportPriceAnchors(
+            Map.of(
+                ZONE,
+                new io.mosire.simos.economy.model.TransportPriceAnchor(
+                    ZONE, SILVER, 0L, 0L, 0L, 5L)));
       }
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
@@ -872,6 +918,9 @@ class EconomyRoundTripTest {
       case "inventoryReservations" -> cs.inventoryReservations().changed();
       // ★★★ D-032 P4b1：第 36 个组件（见 mutate 的同名 case）
       case "productionWageAnchors" -> cs.productionWageAnchors().changed();
+      case "householdFlowTables" -> cs.householdFlowTables().changed();
+      case "transportCapacityBatches" -> cs.transportCapacityBatches().changed();
+      case "transportPriceAnchors" -> cs.transportPriceAnchors().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -1327,7 +1376,12 @@ class EconomyRoundTripTest {
         base.assetOccupancies(),
         base.inventoryReservations(),
         // ★★★ D-032 P4b1：第 36 个组件（U20 工资锚）—— 本帮手是整份状态复制，必须逐字段带上。
-        base.productionWageAnchors());
+        base.productionWageAnchors(),
+        // ★★★ D-032 RC7：家户向下流动表 —— 整份状态复制必须逐字段带上。
+        base.householdFlowTables(),
+        // ★★★ D-032 C6/C7a：运输能力批次与市场区运输锚价 —— 整份状态复制必须逐字段带上。
+        base.transportCapacityBatches(),
+        base.transportPriceAnchors());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {

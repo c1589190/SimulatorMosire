@@ -18,6 +18,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.Payee;
@@ -26,7 +27,6 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
@@ -188,23 +188,9 @@ class W4SurvivalTickIntegrationTest {
             .withIndustry(industry)
             .withInstance(unit);
 
-    OwnershipStake land =
-        new OwnershipStake(
-            OwnershipStake.idOf(
-                FARM,
-                AssetKind.LAND,
-                WORKER_ACTOR,
-                WORKER_ACTOR,
-                AssetRightKind.OWNED,
-                ProductionLocation.parse(HEX_KEY),
-                0L),
-            FARM,
-            AssetKind.LAND,
-            WORKER_ACTOR,
-            WORKER_ACTOR,
-            1_000L,
-            AssetRightKind.OWNED,
-            ProductionLocation.parse(HEX_KEY));
+    // ★ D-032 RA1b2b：LAND 的唯一权威 = landArableSupply + landHoldings（不再进 assetShares）；
+    //   本自营 organizer 的 unit operator = WORKER_ACTOR ⇒ 土地持有归 WORKER 户。
+    LandHolding land = new LandHolding(WORKER, HEX, 1_000L);
     // ★★★ P4c3：工资报价只读 U20 锚（键 = 市场区 × 产业 × 角色）；缺锚具名拒绝、不按 0 兜底。
     WageAnchorKey anchorKey = new WageAnchorKey(ZONE, FARM, ROLE_WORKER);
     ProductionWageAnchor anchor = new ProductionWageAnchor(SILVER, 1L, 0L, 0L, -1L, 0L, 0L, 0L);
@@ -224,7 +210,6 @@ class W4SurvivalTickIntegrationTest {
             .withHouseholdEconomies(Map.of(PAYER, row(PAYER), WORKER, row(WORKER)))
             .withProductionRosters(Map.of(UNIT, roster()))
             .withProductionWageAnchors(Map.of(anchorKey, anchor))
-            .withOwnershipStakes(Map.of(land.id(), land))
             .withRelations(
                 Map.of(
                     UNIT,
@@ -248,7 +233,8 @@ class W4SurvivalTickIntegrationTest {
             definitions,
             new ProductionRuntimeEngine(definitions),
             accounts,
-            MarketTopology.singleHex(base.marketTables(), base.marketZones()));
+            MarketTopology.singleHex(base.marketTables(), base.marketZones()),
+            EconomyFixtures.landLedger(Map.of(land.key(), land)));
     stepper.updateComposition(
         Map.of(
             PAYER, Map.of(PAYER_LOT, 100L),

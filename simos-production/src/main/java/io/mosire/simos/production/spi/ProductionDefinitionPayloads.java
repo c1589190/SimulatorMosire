@@ -103,6 +103,12 @@ final class ProductionDefinitionPayloads {
     Set<AssetRightKind> acceptedRightKinds = rightKinds(node.get("acceptedRightKinds"));
     Map<AssetKind, Long> capacityPerUnit =
         assetMap(optionalObject(node, "capacityPerUnit"), "capacityPerUnit");
+    // ★★ D-032 C9：运输马匹等耐久商品资本容量锚（商品 id → 每规模数量）。缺键 ⇒ 空表 = 无此通道；
+    //   它只参与规模计算、不进入周期消耗，也不得另建 OwnershipStake 第二本账。
+    Map<CommodityId, Long> durableCommodityCapacityPerUnit =
+        commodityMap(
+            optionalObject(node, "durableCommodityCapacityPerUnit"),
+            "durableCommodityCapacityPerUnit");
     long laborPerUnit = optionalLong(node, "laborPerUnit", 0L);
     Map<AssetKind, Map<CommodityId, Long>> dailyInput =
         assetCommodityMap(optionalObject(node, "dailyInputPerUnit"), "dailyInputPerUnit");
@@ -166,7 +172,8 @@ final class ProductionDefinitionPayloads {
         roles,
         roleShareRemainderRule,
         upgradesTo,
-        mode);
+        mode,
+        durableCommodityCapacityPerUnit);
   }
 
   /**
@@ -458,7 +465,12 @@ final class ProductionDefinitionPayloads {
     return new ExpressionDefinition(version, inputs, tree);
   }
 
-  /** 生产方式节点：{@code {id,name,version?,classStructureId}}；version 缺省 = {@code null}（由命令层按旧语义补）。 */
+  /**
+   * 生产方式节点：{@code {id,name,version?,classStructureId}}；version 缺省 = {@code null} （由命令层按旧语义补）。
+   *
+   * <p>★ D-032 C1：mode 不再声明 {@code classNatures}/阶级集合；位置访问由 {@link
+   * io.mosire.simos.production.contract.RolePayment} 推导。
+   */
   static ModePayload mode(JsonNode node) {
     ProductionModeId id = ProductionModeId.parse(requireText(node, "id"));
     String name = requireText(node, "name");

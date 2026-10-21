@@ -35,6 +35,7 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 
 /** 市场轮机械拆分 helper（由 MarketSettlement 抽取；行为不变）。 */
 final class MarketGovernmentOrderBook {
@@ -265,7 +266,7 @@ final class MarketGovernmentOrderBook {
                 hex,
                 commodity,
                 quantity,
-                limit,
+                OptionalLong.of(limit),
                 deadline,
                 new Budget(budget, orderCurrency),
                 orderCurrency));

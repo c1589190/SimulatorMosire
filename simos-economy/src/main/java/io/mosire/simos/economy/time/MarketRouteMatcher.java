@@ -166,7 +166,12 @@ final class MarketRouteMatcher {
           continue;
         }
         long buyerUnitPrice = worstBuyerUnitPrice(ctx, buy, sells, unitPrice);
-        if (buyerUnitPrice < 0L || buy.limitInPayCurrency < buyerUnitPrice) {
+        // ★ RF1：empty = 价格接受者需求（无价格上限）⇒ 任何非负价都接受；present 才做真实限价过滤。
+        boolean priceRejected =
+            buyerUnitPrice < 0L
+                || (buy.limitInPayCurrency.isPresent()
+                    && buy.limitInPayCurrency.getAsLong() < buyerUnitPrice);
+        if (priceRejected) {
           // ★ E：限价用**买方支付币**的口径比（说不出这种钱的价 ⇒ 也算限价不过）；归因是市场性理由。
           //   ★★ P-T5b：右式是**买方支付币**的单价（3c 的折算结果），故左边的限价也必须折成同一个币
           //     （BuySlot.limitInPayCurrency；同币时与 order.maxLandedPrice() 逐值相同 ⇒ 旧世界逐值不变）。

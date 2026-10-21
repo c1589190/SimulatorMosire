@@ -11,6 +11,8 @@ import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.culture.codec.CultureCodec;
+import io.mosire.simos.culture.spi.SetHouseholdCultureHandler;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -24,16 +26,19 @@ import io.mosire.simos.map.HexAreas;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
+import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.map.spi.SeedArableOwnershipHandler;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
@@ -56,6 +61,7 @@ import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -65,8 +71,9 @@ import java.util.Objects;
 /**
  * ★★ <b>D-032 P6a1：32 hex / 单市场区 / 单地方政府测试世界</b>（test scope，仅用于 P6a2 的 360 tick 模拟）。
  *
- * <p>父设计锚点：{@code docs/superpowers/specs/2026-10-19-d032-rural-runtime-target-design.md} §1.1–§1.3、§6.3、§7。
- * 用户 2026-10-19 要求：小世界规模大一些（32 hex）、<b>1 个市场区</b>、<b>1 个地方政府</b>，跑 360 tick 后把数据表交用户核对。
+ * <p>父设计锚点：{@code docs/superpowers/specs/2026-10-19-d032-rural-runtime-target-design.md}
+ * §1.1–§1.3、§6.3、§7。 用户 2026-10-19 要求：小世界规模大一些（32 hex）、<b>1 个市场区</b>、<b>1 个地方政府</b>，跑 360 tick
+ * 后把数据表交用户核对。
  *
  * <p>★★ <b>本类只造创世世界，不改 M0–M9 顺序、公式或状态所有权</b>。装配序列逐条复用生产路径：
  *
@@ -77,21 +84,21 @@ import java.util.Objects;
  * → production.Seed → economy.Seed → actor.Seed
  * </pre>
  *
- * <p>★★ <b>刻意不调用 {@link io.mosire.simos.app.tools.write.GovWorldBootstrap#apply}</b>：那条路径会建中央/省两级 GOV
- * 单位。本世界只需要一个地方政府记录 + 一个国库家户（{@code hh-gov-local}）；GOV 切片保持合法的空状态。
+ * <p>★★ <b>刻意不调用 {@link io.mosire.simos.app.tools.write.GovWorldBootstrap#apply}</b>：那条路径会建中央/省两级
+ * GOV 单位。本世界只需要一个地方政府记录 + 一个国库家户（{@code hh-gov-local}）；GOV 切片保持合法的空状态。
  *
- * <p>★★ <b>地方政府命名</b>：现有 {@code PopulationSeeder}/{@code EconomySeeder} 只能经
- * {@code GENESIS_GOVERNMENT_ID} 播政府记录，故本夹具在 {@code economy.Seed} 载荷出口处把该唯一政府记录的
- * {@code id}/{@code nationRef} 改名为 {@code local}（家户引用仍由 {@code PopulationSeeder} 以 {@code "local"} 生成
- * {@code hh-gov-local}）。不改生产代码的常量与语义，只换本世界那份载荷的身份标签。
+ * <p>★★ <b>地方政府命名</b>：现有 {@code PopulationSeeder}/{@code EconomySeeder} 只能经 {@code
+ * GENESIS_GOVERNMENT_ID} 播政府记录，故本夹具在 {@code economy.Seed} 载荷出口处把该唯一政府记录的 {@code id}/{@code
+ * nationRef} 改名为 {@code local}（家户引用仍由 {@code PopulationSeeder} 以 {@code "local"} 生成 {@code
+ * hh-gov-local}）。不改生产代码的常量与语义，只换本世界那份载荷的身份标签。
  *
- * <p>★ <b>确定性</b>：无随机、无 UUID、无墙钟。格按 {@code (q,r)} 升序；城市/家户/名册均由既有 seeder 的确定序产生。
- * 同一 {@code mapId} 两次调用逐字段相等。
+ * <p>★ <b>确定性</b>：无随机、无 UUID、无墙钟。格按 {@code (q,r)} 升序；城市/家户/名册均由既有 seeder 的确定序产生。 同一 {@code mapId}
+ * 两次调用逐字段相等。
  */
-final class Rural32HexWorld {
+public final class Rural32HexWorld {
 
   /** 本世界的 mapId / worldId 建议值。 */
-  static final String MAP_ID = "d032-32hex";
+  public static final String MAP_ID = "d032-32hex";
 
   /** 唯一 Region 的稳定 id（32 格全含；不建 central/province 两级）。 */
   static final String REGION_ID = "d032-32hex";
@@ -139,8 +146,8 @@ final class Rural32HexWorld {
   /**
    * 32 格 = 4×8 平行四边形：{@code q ∈ {-1,0,1,2}}、{@code r ∈ {0..7}}，按 {@code q/r} 升序。
    *
-   * <p>六邻连通：相邻列之间按轴向邻居 {@code (q±1,r)/(q±1,r∓1)} 与同列 {@code (q,r±1)} 相连，整表连通、无重复。
-   * 顺序即 {@link GameMap#hexes()} 的插入序与人口/经济载荷的落盘序。
+   * <p>六邻连通：相邻列之间按轴向邻居 {@code (q±1,r)/(q±1,r∓1)} 与同列 {@code (q,r±1)} 相连，整表连通、无重复。 顺序即 {@link
+   * GameMap#hexes()} 的插入序与人口/经济载荷的落盘序。
    */
   private static final List<HexCoord> HEXES = buildHexes();
 
@@ -156,7 +163,7 @@ final class Rural32HexWorld {
    * @throws IllegalArgumentException {@code mapId} 为空白
    * @throws IllegalStateException 创世命令被某个 handler 拒（装配故障，当场上抛不静默）
    */
-  static SimulationState state(String mapId) {
+  public static SimulationState state(String mapId) {
     Objects.requireNonNull(mapId, "mapId");
     if (mapId.isBlank()) {
       throw new IllegalArgumentException("mapId 不得为空白: " + mapId);
@@ -167,8 +174,7 @@ final class Rural32HexWorld {
       throw new IllegalStateException("32hex 世界装配故障：地图里缺 Region " + REGION_ID);
     }
     SettlementPlan plan = settlementPlan();
-    PopulationSeeder.Seeding seeding =
-        PopulationSeeder.seed(plan, AT.tick(), LOCAL_GOVERNMENT_REF);
+    PopulationSeeder.Seeding seeding = PopulationSeeder.seed(plan, AT.tick(), LOCAL_GOVERNMENT_REF);
     EconomySeeder.Seed economy = EconomySeeder.plan(mapId, seeding, map);
 
     SimulationState state = emptyGenesisState(map);
@@ -209,6 +215,15 @@ final class Rural32HexWorld {
             new EconomySeedHandler(),
             new EconomyCodec(),
             localGovernmentEconomyPayload(economy));
+    // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威 —— 用与 economy.Seed 同一份 Seed 的
+    //   landHoldings 播种 arable owner 属性（同一创世 revision）。
+    state =
+        applyCommand(
+            state,
+            SeedArableOwnershipHandler.TYPE,
+            new SeedArableOwnershipHandler(),
+            new MapCodec(),
+            economy.landOwnershipSeedPayload());
     state =
         applyCommand(
             state,
@@ -221,6 +236,33 @@ final class Rural32HexWorld {
                 economy.householdStocks(),
                 economy.householdMoney(),
                 economy.operators()));
+    return applyDefaultCultureLabels(state);
+  }
+
+  /**
+   * ★ T1（D-032 v4 R4b/§9）：给本世界全部家户落统一默认文化标签。R1 的 merge key 含 {@code cultureKey}； 若测试世界没有 culture
+   * 标签，economy 只能走 {@code HouseholdCultureKey.missing()}，R1 的“同文化合并”就没有真实靶子。
+   *
+   * <p>用生产命令 {@code culture.SetHouseholdCulture} 写入（唯一写口），不把文化塞进人口/经济第二本账。
+   */
+  private static SimulationState applyDefaultCultureLabels(SimulationState state) {
+    SocialSnapshot social = (SocialSnapshot) state.module("social").orElseThrow();
+    List<HouseholdId> households = new ArrayList<>(social.data().households().keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    for (HouseholdId household : households) {
+      String payload =
+          "{\"householdId\":\""
+              + household.value()
+              + "\",\"cultureId\":\"d032-default\",\"religionId\":\"d032-default\","
+              + "\"customs\":[],\"label\":\"本地农户\"}";
+      state =
+          applyCommand(
+              state,
+              SetHouseholdCultureHandler.TYPE,
+              new SetHouseholdCultureHandler(),
+              new CultureCodec(),
+              payload);
+    }
     return state;
   }
 
@@ -237,7 +279,7 @@ final class Rural32HexWorld {
     }
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
-      hexes.put(hex, HexAreas.initialCell(HEX_HEIGHT, terrainByHex.get(hex)));
+      hexes.put(hex, HexAreas.initialCell(hex, HEX_HEIGHT, terrainByHex.get(hex)));
     }
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     TerrainType plains = TerrainCatalog.of(PLAINS);
@@ -338,9 +380,7 @@ final class Rural32HexWorld {
             state
                 .module(codec.namespace())
                 .orElseThrow(
-                    () ->
-                        new IllegalStateException(
-                            "32hex 世界装配故障：状态里没有切片 " + codec.namespace()));
+                    () -> new IllegalStateException("32hex 世界装配故障：状态里没有切片 " + codec.namespace()));
         Snapshot next = codec.apply(changeSet, base, state.meta());
         Map<String, Snapshot> modules = new LinkedHashMap<>(state.modules());
         modules.put(codec.namespace(), next);
@@ -350,8 +390,8 @@ final class Rural32HexWorld {
   }
 
   /**
-   * {@code economy.Seed} 载荷出口：把唯一政府记录（现有 seeder 只能经 {@code GENESIS_GOVERNMENT_ID} 播的那一条）的
-   * {@code id}/{@code nationRef} 改名为地方口径，并同步 {@code moneyIssuances[].governmentId}。
+   * {@code economy.Seed} 载荷出口：把唯一政府记录（现有 seeder 只能经 {@code GENESIS_GOVERNMENT_ID} 播的那一条）的 {@code
+   * id}/{@code nationRef} 改名为地方口径，并同步 {@code moneyIssuances[].governmentId}。
    *
    * <p>★ 只改本世界这份载荷的身份标签；不新增/删除政府、不改国库家户、不改发行总量、不改任何生产/土地/市场/名册数据。
    */
@@ -377,8 +417,7 @@ final class Rural32HexWorld {
     JsonNode rawGovernment = governments.get(0);
     if (!(rawGovernment instanceof ObjectNode government)
         || !EconomySeeder.GENESIS_GOVERNMENT_ID.value().equals(government.path("id").asText())) {
-      throw new IllegalStateException(
-          "32hex 世界的政府记录不是 GENESIS_GOVERNMENT_ID: " + rawGovernment);
+      throw new IllegalStateException("32hex 世界的政府记录不是 GENESIS_GOVERNMENT_ID: " + rawGovernment);
     }
     government.put("id", LOCAL_GOVERNMENT_ID);
     government.put("nationRef", LOCAL_GOVERNMENT_NATION_REF);
@@ -389,7 +428,8 @@ final class Rural32HexWorld {
     }
     for (JsonNode issuanceNode : issuances) {
       if (issuanceNode instanceof ObjectNode issuance
-          && EconomySeeder.GENESIS_GOVERNMENT_ID.value()
+          && EconomySeeder.GENESIS_GOVERNMENT_ID
+              .value()
               .equals(issuance.path("governmentId").asText())) {
         issuance.put("governmentId", LOCAL_GOVERNMENT_ID);
       }
@@ -397,7 +437,9 @@ final class Rural32HexWorld {
     return root.toString();
   }
 
-  /** {@code social.SetPopulation} 载荷：{@code {entries:[{q,r,population}…]}}，按 {@link HexCoord} 排序。 */
+  /**
+   * {@code social.SetPopulation} 载荷：{@code {entries:[{q,r,population}…]}}，按 {@link HexCoord} 排序。
+   */
   private static String setPopulationPayload(SettlementPlan plan) {
     List<Map.Entry<HexCoord, Long>> entries = new ArrayList<>(plan.ruralPopulation().entrySet());
     entries.sort(Map.Entry.comparingByKey());

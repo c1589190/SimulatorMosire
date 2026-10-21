@@ -1,6 +1,7 @@
 package io.mosire.simos.production.contract;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -28,6 +29,9 @@ import java.util.Optional;
  * @param plan 方案稳定 ID；不得为 null
  * @param household 家户条件；不得为 null
  * @param assetOccupancy ★ 该实例/该经营者为此方案实占的生产资料（按种类）；不得为 null（无占用用空表）、 逐值必须为正（0 不进表）
+ * @param durableCommodityOccupancy ★★ <b>D-032 C5a</b>：该实例/该经营者为此方案实占的<b>耐久商品资本</b> （商品 id → 数量，如
+ *     {@code transport_horse}）；不得为 null（无此通道用空表）、逐值必须为正（0 不进表）。 ★ 它只作规模锚、<b>不</b>被扣减；不得从参与户
+ *     conditions 聚合（必须由 economy 按 operator/owner 户同一份库存填）。
  * @param carry ★ 该实例当前周期已结转的精度余数（{@link ProductionEfficiencyState}）；不得为 null （没有实例/没有余数给 {@link
  *     Optional#empty()}）。★ 试算与执行必须读<b>同一份</b>余数， 否则"预计"与"实际"会在跨周期边界上分叉（复核裁决 §3「同一入口」）
  * @param attributes 外部属性事实；不得为 null（没有属性用 {@link ExternalAttributeFacts#EMPTY}）
@@ -36,13 +40,14 @@ public record ProductionProbeRequest(
     IndustryId plan,
     HouseholdProductionConditions household,
     Map<AssetKind, Long> assetOccupancy,
+    Map<CommodityId, Long> durableCommodityOccupancy,
     Optional<ProductionEfficiencyState> carry,
     ExternalAttributeFacts attributes) {
 
-  /** ★ 三入参形态（无资产占用、无余数读数）——等价于占用空表 + 余数缺行；语义与五入参完全一致。 */
+  /** ★ 三入参形态（无资产占用、无耐久商品占用、无余数读数）——等价于两张占用表为空 + 余数缺行。 */
   public ProductionProbeRequest(
       IndustryId plan, HouseholdProductionConditions household, ExternalAttributeFacts attributes) {
-    this(plan, household, Map.of(), Optional.empty(), attributes);
+    this(plan, household, Map.of(), Map.of(), Optional.empty(), attributes);
   }
 
   /** ★ 四入参形态（有余数、无占用读数）。 */
@@ -51,7 +56,20 @@ public record ProductionProbeRequest(
       HouseholdProductionConditions household,
       ProductionEfficiencyState carry,
       ExternalAttributeFacts attributes) {
-    this(plan, household, Map.of(), Optional.ofNullable(carry), attributes);
+    this(plan, household, Map.of(), Map.of(), Optional.ofNullable(carry), attributes);
+  }
+
+  /**
+   * ★ <b>C5a 之前的 5 参形状</b>（含资产占用、无耐久商品占用）：等价于 {@code durableCommodityOccupancy =
+   * Map.of()}；旧调用点逐值不变。
+   */
+  public ProductionProbeRequest(
+      IndustryId plan,
+      HouseholdProductionConditions household,
+      Map<AssetKind, Long> assetOccupancy,
+      Optional<ProductionEfficiencyState> carry,
+      ExternalAttributeFacts attributes) {
+    this(plan, household, assetOccupancy, Map.of(), carry, attributes);
   }
 
   public ProductionProbeRequest {
@@ -82,5 +100,25 @@ public record ProductionProbeRequest(
       occupancyCopy.put(entry.getKey(), entry.getValue());
     }
     assetOccupancy = Collections.unmodifiableMap(occupancyCopy); // ★ 冻在赋值处
+    if (durableCommodityOccupancy == null) {
+      throw new IllegalArgumentException(
+          "ProductionProbeRequest.durableCommodityOccupancy 不得为 null（无占用用空表）");
+    }
+    Map<CommodityId, Long> durableCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : durableCommodityOccupancy.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionProbeRequest.durableCommodityOccupancy 的键与值都不得为 null");
+      }
+      if (entry.getValue() <= 0L) {
+        throw new IllegalArgumentException(
+            "ProductionProbeRequest.durableCommodityOccupancy 必须为正（0 不进表）: "
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
+      }
+      durableCopy.put(entry.getKey(), entry.getValue());
+    }
+    durableCommodityOccupancy = Collections.unmodifiableMap(durableCopy); // ★ 冻在赋值处
   }
 }

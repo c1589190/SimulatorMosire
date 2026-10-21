@@ -232,54 +232,62 @@ class HaulServiceCommodityAcceptanceTest {
         .isEqualTo(expectedFreight);
   }
 
-  // ── ③ T-H2 负向：买不到服务 ⇒ 该笔不成交（具名） ────────────────────────────────────────
+  // ── ③ RC8a：有 haul 牌价但无 haul 货 ⇒ 退回 CARRIER_FEE ───────────────────────────────
 
   /**
-   * ★★ <b>服务成市但一件服务货都没有 ⇒ 跨格货单不成交</b>（fail-closed，设计书 §3.3「买不到 ⇒ 该笔不成交」）。
-   *
-   * <p>判据面逐条（**市场侧在前**：判据是"不成交"，池侧读数是解释它为什么买不到）：
+   * ★★ <b>服务货为 0 的 hex 不成服务市场</b>：跨格货单改走父 v2 的简单生产性运力 + 既有 {@code CARRIER_FEE} 腿。
    *
    * <pre>
-   * ① 市场侧：零成交、具名 LOGISTICS_CAPACITY（不是静默、不是钱的问题）
-   * ② 账目侧：买方一分钱没动、卖方一粒粮没少、承运户服务货仍为 0（不成交 = 库房一个字节都没动）
-   * ③ 池侧：该格有跑商家户（所以不是"没有承运人"），但服务运力预算 = 0 ⇒ 分配为空、全部转成未获服务
+   * ① 服务成市判据：只有 haul 牌价不够，还必须有可交付 haul 现货（RC8a）
+   * ② 运力：退回劳动+工具 productive 口径，整笔跨格需求仍可成交
+   * ③ 账目：运费只铸 CARRIER_FEE，不出现服务商品交付/成交腿，也不出现 HAUL_SERVICE_DELIVERY_FAULT
    * </pre>
    */
   @Test
-  void noServiceGoodsMeansNoCrossHexFillAndTheReasonIsNamed() {
+  void noHaulGoodsFallsBackToProductiveCapacityAndCarrierFeeWithoutAServiceMarket() {
     MarketSettlementFixtures.World world = crossHexWorld(0L);
-    MerchantCapacityPool pool = world.serviceCarrierPool(Set.of(H1));
+    // ★ RC8a：没有可交付 haul 货 ⇒ 本格不成服务市场，运力走既有“劳动 + 工具” productive 口径。
+    MerchantCapacityPool pool = world.carrierPool();
 
-    long sellerGrainBefore = world.grainOf(SELLER);
-    long buyerSilverBefore = world.silverOf(BUYER);
     MarketSettlementFixtures.Round round =
         MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketOutcome outcome =
-        MarketSettlementFixtures.settleWithPool(world, round, pool);
+        MarketSettlementFixtures.settleWithCarriers(world, round);
 
-    assertThat(outcome.report().fills()).as("★ 买不到服务 ⇒ 该笔不成交（不是「少运一点」）").isEmpty();
+    assertThat(outcome.report().fills()).as("★ 无 haul 货不是断运：跨格货单仍走 CARRIER_FEE 运力腿").hasSize(1);
+    MarketReport.Fill fill = outcome.report().fills().get(0);
+    assertThat(fill.quantity())
+        .as("productive 运力充足 ⇒ 整笔跨格需求被运走")
+        .isEqualTo(MarketSettlementFixtures.lifeReserveGrain(1L));
     assertThat(outcome.report().unfilledReasonCounts())
-        .as("★ 具名 LOGISTICS_CAPACITY（不是口岸/币种/预算）")
-        .containsKey(MarketUnfilledReason.LOGISTICS_CAPACITY);
-    assertThat(world.silverOf(BUYER)).as("买方一分钱没动").isEqualTo(buyerSilverBefore);
-    assertThat(world.grainOf(SELLER)).as("卖方一粒粮没少").isEqualTo(sellerGrainBefore);
-    assertThat(world.haulOf(CARRIER)).as("承运户的服务货仍为 0（没凭空造）。").isZero();
-    assertThat(round.ledger().toLedger().transfers().stream().map(Transfer::reason))
-        .as("零运费腿（CARRIER_FEE 与 MARKET_TRADE 都不许出现）")
-        .doesNotContain(TransferReason.CARRIER_FEE, TransferReason.MARKET_TRADE);
+        .as("productive 口径成交 ⇒ 不得报 LOGISTICS_CAPACITY")
+        .doesNotContainKey(MarketUnfilledReason.LOGISTICS_CAPACITY);
+    assertThat(outcome.haulService().deliveryFaults())
+        .as("★ RC8a：无货 hex 不得进入服务交付腿 ⇒ HAUL_SERVICE_DELIVERY_FAULT = 0")
+        .isZero();
+    assertThat(outcome.haulService().deliveredMilli()).as("没有服务商品交付").isZero();
+    assertThat(outcome.haulService().trades()).as("没有服务商品成交腿").isZero();
+    assertThat(world.haulOf(CARRIER)).as("承运户没有可凭空扣的服务货").isZero();
 
-    // ── 池侧：为什么买不到（第一现场）────────────────────────────────────────────────
-    assertThat(pool.householdCountAt(H1)).as("★ 这一格**有**跑商家户（把「没有承运人」排除掉）").isEqualTo(1L);
-    assertThat(pool.totalCapacityAt(H1)).as("★ 但它手上没有服务货 ⇒ 本格服务运力 = 0").isZero();
-    long workPerGoodPerMille =
-        CapacityDemand.workPerGoodPerMille(
-            world.topology().commodityFreightBaseMilliOf(MarketSettlementFixtures.GRAIN),
-            world.topology().freightPerMilleBetween(H1, H2, 0L, 0L));
-    long requested = MarketSettlementFixtures.lifeReserveGrain(1L);
-    MerchantCapacityPool.CarrierAllocation allocation =
-        pool.select(H1, H2, requested, workPerGoodPerMille);
-    assertThat(allocation.choices()).as("买不到 ⇒ 零分配").isEmpty();
-    assertThat(allocation.unallocatedMilli()).as("全部转成未获服务（不静默丢）").isEqualTo(requested);
+    assertThat(pool.householdCountAt(H1)).as("这一格有跑商家户").isEqualTo(1L);
+    assertThat(pool.totalCapacityAt(H1))
+        .as("服务不成市 ⇒ productive 运力 = 劳动 + 工具")
+        .isEqualTo(MerchantCapacity.capacityMilliOf(1_000L, 0L));
+
+    List<Transfer> carrierMoneyLegs =
+        round.ledger().toLedger().transfers().stream()
+            .filter(transfer -> transfer.to().equals(HouseholdActors.of(CARRIER)))
+            .filter(transfer -> !transfer.money().isEmpty())
+            .toList();
+    assertThat(carrierMoneyLegs)
+        .as("★ RC8a：无货 hex 的运费只铸既有 CARRIER_FEE 腿")
+        .singleElement()
+        .satisfies(
+            leg -> {
+              assertThat(leg.reason()).isEqualTo(TransferReason.CARRIER_FEE);
+              assertThat(leg.money())
+                  .containsEntry(MarketSettlementFixtures.SILVER, fill.freightMilli());
+            });
   }
 
   // ── ④ T-H1/T-H4 反向：工具存量不再是市场轮准入判据 ─────────────────────────────────────

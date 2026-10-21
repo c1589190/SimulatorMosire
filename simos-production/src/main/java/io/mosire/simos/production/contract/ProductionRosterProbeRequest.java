@@ -1,6 +1,7 @@
 package io.mosire.simos.production.contract;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -46,6 +47,9 @@ import java.util.Set;
  *     plannedLaborMilliPerCycle} 为准；{@link HouseholdProductionConditions#laborMilli()}
  *     不被读取（避免"同一份劳动两处口径"）
  * @param assetOccupancy 该实例本次实占的生产资料（按种类）；不得为 null（无占用用空表）、逐值必须为正（0 不进表）
+ * @param durableCommodityOccupancy ★★ <b>D-032 C5a</b>：该实例本次实占的<b>耐久商品资本</b>（商品 id → 数量，如 {@code
+ *     transport_horse}）；不得为 null（无此通道用空表）、逐值必须为正（0 不进表）。★ 它只作规模锚、<b>不</b>被扣减； <b>不得从各参与户 conditions
+ *     聚合</b>（必须由 economy 按 operator/owner 户同一份库存填）。
  * @param carry 该实例当前周期已结转的精度余数；不得为 null（没有实例/没有余数给 {@link Optional#empty()}）
  * @param participantAttributes 逐参与户外部属性事实；不得为 null（无条件/无事实用空表）。角色级资格缺事实 ⇒ fail-closed
  * @param wageTargetLaborMilliPerDay ★ <b>工资招工目标</b>（按角色，毫小时/日）——A3 的"最小事实"。
@@ -68,13 +72,14 @@ public record ProductionRosterProbeRequest(
     List<ProductionRosterProbeParticipant> participants,
     Map<HouseholdId, HouseholdProductionConditions> conditions,
     Map<AssetKind, Long> assetOccupancy,
+    Map<CommodityId, Long> durableCommodityOccupancy,
     Optional<ProductionEfficiencyState> carry,
     Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
     Map<ProductionRoleId, Long> wageTargetLaborMilliPerDay) {
 
   /**
    * ★ <b>冻结的七入参形态</b>（不带显式工资招工目标）：等价于 {@code wageTargetLaborMilliPerDay = Map.of()}； 此时 A3 退回方案角色的
-   * {@code standardLaborMilliPerCycle} 事实。
+   * {@code standardLaborMilliPerCycle} 事实。★ 无耐久商品占用（空表）。
    */
   public ProductionRosterProbeRequest(
       IndustryId plan,
@@ -90,9 +95,35 @@ public record ProductionRosterProbeRequest(
         participants,
         conditions,
         assetOccupancy,
+        Map.of(),
         carry,
         participantAttributes,
         Map.of());
+  }
+
+  /**
+   * ★ <b>C5a 之前的 8 参形状</b>（含工资招工目标、无耐久商品占用）：等价于 {@code durableCommodityOccupancy =
+   * Map.of()}；旧调用点逐值不变。
+   */
+  public ProductionRosterProbeRequest(
+      IndustryId plan,
+      HouseholdId organizer,
+      List<ProductionRosterProbeParticipant> participants,
+      Map<HouseholdId, HouseholdProductionConditions> conditions,
+      Map<AssetKind, Long> assetOccupancy,
+      Optional<ProductionEfficiencyState> carry,
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+      Map<ProductionRoleId, Long> wageTargetLaborMilliPerDay) {
+    this(
+        plan,
+        organizer,
+        participants,
+        conditions,
+        assetOccupancy,
+        Map.of(),
+        carry,
+        participantAttributes,
+        wageTargetLaborMilliPerDay);
   }
 
   public ProductionRosterProbeRequest {
@@ -157,6 +188,27 @@ public record ProductionRosterProbeRequest(
       occupancyCopy.put(entry.getKey(), entry.getValue());
     }
     assetOccupancy = Collections.unmodifiableMap(occupancyCopy); // ★ 冻在赋值处
+
+    if (durableCommodityOccupancy == null) {
+      throw new IllegalArgumentException(
+          "ProductionRosterProbeRequest.durableCommodityOccupancy 不得为 null（无占用用空表）");
+    }
+    Map<CommodityId, Long> durableCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : durableCommodityOccupancy.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionRosterProbeRequest.durableCommodityOccupancy 的键与值都不得为 null");
+      }
+      if (entry.getValue() <= 0L) {
+        throw new IllegalArgumentException(
+            "ProductionRosterProbeRequest.durableCommodityOccupancy 必须为正（0 不进表）: "
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
+      }
+      durableCopy.put(entry.getKey(), entry.getValue());
+    }
+    durableCommodityOccupancy = Collections.unmodifiableMap(durableCopy); // ★ 冻在赋值处
 
     if (carry == null) {
       throw new IllegalArgumentException(

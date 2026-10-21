@@ -22,7 +22,7 @@ import java.util.List;
 public record SocialClassId(String value) {
 
   /**
-   * ★★ **词表（保序：贫农 → 中农 → 富农 → 地主）—— 值的唯一来源。**
+   * ★★ **词表（保序：贫农 → 中农 → 富农 → 地主 → … → 追加档）—— 值的唯一来源。**
    *
    * <p>★★ **它必须是 {@code String} 字面量、且声明在四个常量之前**：四个常量都要经过本类型的**构造器**， 而构造器要拿词表做校验 —— 若校验读的是
    * `List<SocialClassId>` 那个常量， 就会在**静态初始化期**读到 `null`（{@code
@@ -36,7 +36,8 @@ public record SocialClassId(String value) {
           "landlord",
           "landless_laborer",
           "artisan",
-          "official");
+          "official",
+          "landed_peasant");
 
   /** 贫农。 */
   public static final SocialClassId POOR_PEASANT = new SocialClassId(VALUES.get(0));
@@ -59,6 +60,14 @@ public record SocialClassId(String value) {
   /** ★ S3：官署依附/公职（官署产业或 communal 权的 fallback 档）。 */
   public static final SocialClassId OFFICIAL = new SocialClassId(VALUES.get(6));
 
+  /**
+   * ★ S3（D-032 RC2b）：农村有地农民（自耕/雇工/小农与地主语义的集合体）。
+   *
+   * <p>★ <b>只追加、不改旧索引</b>：本常量位于词表末尾 ⇒ {@code IndustryClassSlots} 仍按前四个旧 id 工作； 农村二档池由 {@code
+   * WorldBalanceSeeder.RURAL_CLASS_IDS} 显式引用本值与 {@link #LANDLESS_LABORER}。
+   */
+  public static final SocialClassId LANDED_PEASANT = new SocialClassId(VALUES.get(7));
+
   /** 词表（**保序**）—— 由常量派生，供遍历与断言用（★ S3 只追加，旧四档位置不变）。 */
   private static final List<SocialClassId> ALL =
       List.of(
@@ -68,7 +77,8 @@ public record SocialClassId(String value) {
           LANDLORD,
           LANDLESS_LABORER,
           ARTISAN,
-          OFFICIAL);
+          OFFICIAL,
+          LANDED_PEASANT);
 
   public SocialClassId {
     if (value == null || value.isBlank()) {

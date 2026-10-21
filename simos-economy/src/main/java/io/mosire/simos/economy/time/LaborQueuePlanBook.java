@@ -13,6 +13,7 @@ import static io.mosire.simos.economy.time.LaborCandidateBook.moneyWageCandidate
 import static io.mosire.simos.economy.time.LaborQueueWritebackBook.applyPlan;
 import static io.mosire.simos.economy.time.LaborQueueWritebackBook.laborCommitmentContractFault;
 import static io.mosire.simos.economy.time.LaborQueueWritebackBook.preserveIntoBudget;
+import static io.mosire.simos.economy.time.LaborQueueWritebackBook.withLaborMilli;
 import static io.mosire.simos.economy.time.LaborSurvivalBook.survivalOutlookFor;
 
 import io.mosire.simos.economy.EconomyLog;
@@ -25,15 +26,19 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
+import io.mosire.simos.economy.model.CaravanTransportTemplate;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.time.LaborCandidateBook.LaborSlot;
 import io.mosire.simos.economy.time.LaborQueueWritebackBook.UnitRole;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -100,14 +105,37 @@ final class LaborQueuePlanBook {
     Objects.requireNonNull(arbitrageCollector, "arbitrageCollector");
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
         session.sheet().laborCommitments();
+    // ★★★ DEF-7：同一 (household, unit, role) 的锁定雇佣可能对应多条旧 PRODUCTION 承诺（group/period
+    //   不同）。锁定槽不进队列 ⇒ 队列不会删重复，而 preserveIntoBudget 会把 protected 行整额保留两次 ⇒
+    //   Σ PRODUCTION 超预算。必须在构建按家户索引之前把锁定槽收敛成唯一模板。
+    reconcileLockedCommitments(laborCommitments, locks, day);
     Map<ProductionUnitId, ProductionProcess> units = session.sheet().units();
+    Map<ProductionUnitId, ProductionRoster> productionRosters =
+        session.sheet().productionRostersOrBase();
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
         session.sheet().householdEconomies();
     Map<IndustryId, IndustryDefinitionView> industryTemplates = session.sheet().industries();
+    // ★★★ DEF-8 + RC8b：先删除"角色已不在名册且也不是当前同 hex MONEY_WAGE 响应者"的陈旧 PRODUCTION 承诺。
+    //   名册仍是 (household, role) 的历史参与权威，但 RC8b 起同 hex 工资响应者的当前劳动也可形成本 tick 的有效参与项。
+    LaborCommitmentReconcileBook.pruneStaleRoleCommitments(
+        laborCommitments, units, productionRosters, industryTemplates, householdEconomies, day);
+    // ★★★ D-032 C9 hotfix：运输 unit 不进 actualProductionPlan（服务产出无市场价 ⇒ positionNet=0），
+    //   若只靠创世种子一次，既有承诺一旦缺失/被替换就再也不会重发。这里按 roster/plannedLabor 每 tick
+    //   补发/确保运输 operator 的 PRODUCTION 承诺；预算按同一 household 的当刻剩余劳动封顶，不造第二份劳动。
+    reissueCaravanRosterCommitments(
+        laborCommitments,
+        units,
+        productionRosters,
+        industryTemplates,
+        householdEconomies,
+        composition,
+        day);
     // ★ W1：结算器内部持**逐格取价表解析器**（价表每区一张 ⇒ 不能再按 hex 直接查表）。
     MarketIndex markets =
         MarketIndex.of(session.sheet().marketTables(), session.sheet().base().marketZones());
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
+    // ★★★ RC8b：逐 unit 的当前招工需求缓存（同一 tick 只从 farm 实际劳动需求派生一次；不是 roster 历史快照）。
+    Map<ProductionUnitId, Map<ProductionRoleId, Long>> hiredDemandByUnit = new LinkedHashMap<>();
     LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
     // ★ P4c3：本 tick 的只读日视图（锚唯一报价权威；M6 不依赖 M8 之后的任何新价）。
@@ -152,8 +180,6 @@ final class LaborQueuePlanBook {
     for (HouseholdId household : orderedHouseholds) {
       candidatesByHousehold.put(household, new ArrayList<>());
     }
-    Map<ProductionUnitId, ProductionRoster> productionRosters =
-        session.sheet().productionRostersOrBase();
     // ★★ D-032 W5-E：名册 plannedLabor 是历史计划快照（人口/户结构变化后可能 &gt; 当刻预算）。
     //   运行时不硬拒（见 EconomyReferenceValidation 的运行时/写入口分流），但要在分配处留下具名读数：
     //   下面逐户 begin 时若 planned &gt; budget，记一条具名读数：
@@ -329,8 +355,8 @@ final class LaborQueuePlanBook {
         Optional<ProductionModeId> modeId = modeIdOf(unit, enterpriseByProcess);
         String rankModeKey = modeId.map(ProductionModeId::value).orElse(unit.modeKey());
         if (slot.moneyWage()) {
-          // ★★★ D-032 P4c3：工资报价唯一读 U20 锚（同一 tick 快照）；锚缺 ⇒ 具名拒绝。
-          //   ★ 招工目标只走"标准劳动/周期天数"的工程默认（= WageDemand 的 target 公式），不读旧表。
+          // ★★★ D-032 P4c3 + RC8b：工资报价唯一读 U20 锚（同一 tick 快照）；锚缺 ⇒ 具名拒绝。
+          //   ★ 招工目标来自本 unit 当前实际劳动需求 − organizer 当前自耕劳动，不读 roster 历史计划/标准角色固定值。
           WageQuoteBridge.WageQuoteResolution resolution =
               WageQuoteBridge.resolveWageQuote(
                   wageDayView,
@@ -358,13 +384,26 @@ final class LaborQueuePlanBook {
                     "wage-quote-missing:" + slot.role().value()));
             continue;
           }
-          long targetLaborMilliPerDay = 0L;
-          io.mosire.simos.production.contract.ProductionRoleDefinition queueRole =
-              ProductionPlanBridge.roleOf(industry, slot.role()).orElse(null);
-          if (queueRole != null) {
-            targetLaborMilliPerDay =
-                WageQuoteBridge.wageTargetLaborMilliPerDay(0L, queueRole, industry.cycleDays());
-          }
+          // ★★★ RC8b：招工目标 = 本 unit 当前实际劳动需求 − organizer 当前自耕劳动；
+          //   不再用 standardLaborMilliPerCycle / cycleDays 的标准角色固定值。
+          ProductionRoster queueRoster = productionRosters.get(unit.id());
+          Map<ProductionRoleId, Long> hiredDemandByRole =
+              queueRoster == null
+                  ? Map.of()
+                  : hiredDemandByUnit.computeIfAbsent(
+                      unit.id(),
+                      ignored ->
+                          ProductionPlanBridge.hiredLaborDemandByRole(
+                              session,
+                              index,
+                              unit,
+                              industry,
+                              queueRoster,
+                              householdEconomies,
+                              accounts == null ? null : accounts.householdGoods(),
+                              conditions,
+                              market));
+          long targetLaborMilliPerDay = hiredDemandByRole.getOrDefault(slot.role(), 0L);
           if (targetLaborMilliPerDay <= 0L) {
             offers.add(
                 new LaborQueueBook.Offer(
@@ -446,9 +485,12 @@ final class LaborQueuePlanBook {
                 household,
                 // ★★★ D-032 C2 §5.6：候选按名册角色分流；同 unit 多角色分别排队、分别落配额 id。
                 slot.role(),
-                // ★★★ B8（缺陷 DEF-T2b-2 的同源一处）：投入那一路读**本生产日实扣量**的权威视图
-                //   （`LaborQueueBook#cycleInputUsedMilliOf`：本 tick 现扣过就读会话那一份，否则读实例）。
-                session);
+                // ★★★ RF2：M6 早于 M7 ⇒ 投入通道读 **M5 后的家户在手库存**（粮先扣一 tick 口粮），
+                //   不得把"本 tick 尚未现扣"的 drawn=0 当成 NO_INPUT。
+                //   ★ RF6a：5 参兼容入口允许 accounts == null（无账视图）⇒ 必须原样传 null，
+                //   由 LaborQueueBook.offer 记为 awaiting-draw；不得用空 Map 冒充"有账但零库存"（会成 NO_INPUT）。
+                session,
+                accounts == null ? null : accounts.householdGoods());
         if (!LaborQueueBook.isPreservedByQueue(offer)) {
           offers.add(offer);
           queuedSlots.add(new UnitRole(unit.id(), slot.role()));
@@ -582,7 +624,10 @@ final class LaborQueuePlanBook {
           continue;
         }
         ProductionUnitId unitId = decision.offer().unitId();
-        capByUnit.put(unitId, decision.offer().maxAbsorbableLaborMilli());
+        // ★★★ RC8b：同一 unit 的不同角色 offer 携带的 maxAbsorbable 是不同切面（organizer 的产能需求 /
+        //   money-wage 的剩余需求）。全局封顶必须取**最大**那个（= farm 总劳动需求），不能取"最后一条"
+        //   （否则会把 organizer 的自耕劳动再从 cap 里扣一遍，导致 hired 永远拿不到剩余劳动）。
+        capByUnit.merge(unitId, decision.offer().maxAbsorbableLaborMilli(), Math::max);
         desiredByUnit
             .computeIfAbsent(unitId, ignored -> new ArrayList<>())
             .add(
@@ -785,6 +830,153 @@ final class LaborQueuePlanBook {
     return report;
   }
 
+  /**
+   * ★★★ <b>DEF-7：锁定槽旧承诺去重</b>。
+   *
+   * <p>M3 的 {@link EmploymentLock} 只是"本 tick 锁定雇佣关系"的权威快照；既有 {@code laborCommitments} 里可能因 历史
+   * group/period 差异留下同一 {@code (household, unit, role)} 的多条 PRODUCTION 行。锁定槽不进队列 ⇒ {@code
+   * applyPlan} 不会删它们，而 {@code preserveIntoBudget} 会把每条 protected 行都整额保留 ⇒ Σ PRODUCTION
+   * 超预算。本方法在按家户建索引之前把每个锁定槽收敛成唯一模板：
+   *
+   * <ul>
+   *   <li>同一锁定槽有多条旧行 ⇒ 按 {@link LaborAllocationId#value()} 升序保留最小 id，其余删除；
+   *   <li>保留行的 {@code laborMilli} 改写为锁的 {@code laborMilliPerDay}（锁是 M3 权威快照）；
+   *   <li>只有一条旧行 ⇒ 一律不改值（避免无谓行为变化）；
+   *   <li>同一锁定槽的多条锁 laborMilliPerDay 不一致、或清理后仍有多行 ⇒ 具名 ERROR + fail-closed。
+   * </ul>
+   *
+   * @return 删除的旧 PRODUCTION 行数
+   */
+  static int reconcileLockedCommitments(
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      List<EmploymentLock> locks,
+      long day) {
+    if (locks == null || locks.isEmpty()) {
+      return 0;
+    }
+    Objects.requireNonNull(laborCommitments, "laborCommitments");
+    Map<LockedSlot, EmploymentLock> lockBySlot = new LinkedHashMap<>();
+    for (EmploymentLock lock : locks) {
+      LockedSlot slot = LockedSlot.of(lock);
+      EmploymentLock previous = lockBySlot.putIfAbsent(slot, lock);
+      if (previous != null && previous.laborMilliPerDay() != lock.laborMilliPerDay()) {
+        throw laborCommitmentContractFault(
+            slot.household(),
+            day,
+            "locked-slot-multiple-locks: unit="
+                + slot.unit().value()
+                + " role="
+                + slot.role().value()
+                + " firstLaborMilli="
+                + previous.laborMilliPerDay()
+                + " secondLaborMilli="
+                + lock.laborMilliPerDay());
+      }
+    }
+
+    Map<LockedSlot, List<HouseholdLaborCommitment>> rowsBySlot = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION
+          || laborCommitment.productionRole().isEmpty()) {
+        continue; // GOV_SERVICE 与无角色行绝不进锁定槽去重
+      }
+      LockedSlot slot =
+          new LockedSlot(
+              laborCommitment.household(),
+              new ProductionUnitId(laborCommitment.activity()),
+              laborCommitment.productionRole().get());
+      if (lockBySlot.containsKey(slot)) {
+        rowsBySlot.computeIfAbsent(slot, ignored -> new ArrayList<>()).add(laborCommitment);
+      }
+    }
+
+    int removedTotal = 0;
+    for (Map.Entry<LockedSlot, List<HouseholdLaborCommitment>> entry : rowsBySlot.entrySet()) {
+      List<HouseholdLaborCommitment> rows = entry.getValue();
+      if (rows.size() <= 1) {
+        continue; // 单行不改值（DEF-7 规则 5）
+      }
+      rows.sort(Comparator.comparing(row -> row.id().value()));
+      HouseholdLaborCommitment kept = rows.get(0);
+      List<LaborAllocationId> removedIds = new ArrayList<>();
+      for (int i = 1; i < rows.size(); i++) {
+        LaborAllocationId removedId = rows.get(i).id();
+        laborCommitments.remove(removedId);
+        removedIds.add(removedId);
+      }
+      long lockedLaborMilli = lockBySlot.get(entry.getKey()).laborMilliPerDay();
+      laborCommitments.put(kept.id(), withLaborMilli(kept, lockedLaborMilli));
+      removedTotal += removedIds.size();
+      if (EconomyLog.population().isInfoEnabled()) {
+        EventLog.channel(EconomyLog.population())
+            .info(
+                LogEvent.of(
+                    "LABOR_LOCKED_COMMITMENT_DEDUPED",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "day",
+                    day,
+                    "household",
+                    entry.getKey().household().value(),
+                    "unit",
+                    entry.getKey().unit().value(),
+                    "role",
+                    entry.getKey().role().value(),
+                    "kept",
+                    kept.id().value(),
+                    "removed",
+                    removedIds.size(),
+                    "removedIds",
+                    removedIds.toString(),
+                    "laborMilli",
+                    lockedLaborMilli));
+      }
+    }
+
+    // ★ 契约后置条件：清理后同一锁定槽仍多于 1 行 ⇒ 契约故障，不静默继续（DEF-7 规则 6）。
+    Map<LockedSlot, Integer> remainingBySlot = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION
+          || laborCommitment.productionRole().isEmpty()) {
+        continue;
+      }
+      LockedSlot slot =
+          new LockedSlot(
+              laborCommitment.household(),
+              new ProductionUnitId(laborCommitment.activity()),
+              laborCommitment.productionRole().get());
+      if (lockBySlot.containsKey(slot)) {
+        remainingBySlot.merge(slot, 1, Integer::sum);
+      }
+    }
+    for (Map.Entry<LockedSlot, Integer> entry : remainingBySlot.entrySet()) {
+      if (entry.getValue() > 1) {
+        throw laborCommitmentContractFault(
+            entry.getKey().household(),
+            day,
+            "locked-slot-still-duplicated-after-reconcile: unit="
+                + entry.getKey().unit().value()
+                + " role="
+                + entry.getKey().role().value()
+                + " rows="
+                + entry.getValue());
+      }
+    }
+    return removedTotal;
+  }
+
+  /** DEF-7 锁定槽键：household = 受雇家户（{@link EmploymentLock#worker()}），不含雇主。 */
+  private record LockedSlot(HouseholdId household, ProductionUnitId unit, ProductionRoleId role) {
+    LockedSlot {
+      Objects.requireNonNull(household, "LockedSlot.household 不得为 null");
+      Objects.requireNonNull(unit, "LockedSlot.unit 不得为 null");
+      Objects.requireNonNull(role, "LockedSlot.role 不得为 null");
+    }
+
+    static LockedSlot of(EmploymentLock lock) {
+      return new LockedSlot(lock.worker(), lock.unit(), lock.role());
+    }
+  }
+
   /** 阶段 1 的中间件：一个家户的预算/保留量/批次/候选 unit/既有配额快照/想要的排队结果。 */
   private record HouseholdWork(
       HouseholdId household,
@@ -811,4 +1003,234 @@ final class LaborQueuePlanBook {
 
   /** 阶段 2 的"想要量"：同一户在同一 unit 的某个角色上想要多少劳动。 */
   private record Wanted(HouseholdId household, ProductionRoleId role, long laborMilli) {}
+
+  /**
+   * ★★★ <b>D-032 C9 hotfix：按 roster/plannedLabor 每 tick 确保运输 operator 的 PRODUCTION 承诺存在。</b>
+   *
+   * <p>运输 unit 的服务产出没有普通市场价 ⇒ M3 的 {@code positionNet=0}，它不会进入 M6 {@code actualProductionPlan}，于是
+   * labor queue 的常规 offer/写回路径不会重发它的承诺。本方法只处理 {@link CaravanTransportTemplate#KIND} 产业里<b>非
+   * MONEY_WAGE</b>（operator 自雇）参与项：
+   *
+   * <ul>
+   *   <li>已有正额承诺 ⇒ 不动（创世切出的份额/上一 tick 的承诺原样保留）；
+   *   <li>缺失或只有 0 额行 ⇒ 用同一 {@code HouseholdLaborCommitment.idOfProduction} 拼 id，按 {@code
+   *       min(plannedLabor, 当刻 remaining)} 新发；remaining = 该户当刻 {@code laborMilli} − 该户全部既存
+   *       PRODUCTION 承诺；
+   *   <li>remaining ≤ 0 / 缺批次 ⇒ 具名 INFO {@code CARAVAN_ROSTER_LABOR_REISSUE_SKIPPED}，不伪造劳动。
+   * </ul>
+   *
+   * <p>★ hired_driver 是 MoneyWage 角色：它的实际承诺仍只由常规排队在真实剩余劳动上形成，本方法不另发。
+   */
+  private static void reissueCaravanRosterCommitments(
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      Map<IndustryId, IndustryDefinitionView> industryTemplates,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      long day) {
+    if (productionRosters.isEmpty()) {
+      return;
+    }
+    Map<HouseholdId, List<HouseholdLaborCommitment>> byHousehold = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
+      byHousehold
+          .computeIfAbsent(commitment.household(), ignored -> new ArrayList<>())
+          .add(commitment);
+    }
+    List<ProductionUnitId> orderedUnits = new ArrayList<>(productionRosters.keySet());
+    orderedUnits.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : orderedUnits) {
+      ProductionProcess unit = units.get(unitId);
+      if (unit == null) {
+        continue;
+      }
+      IndustryDefinitionView industry = industryTemplates.get(unit.industry());
+      if (!isCaravanTransportIndustry(industry)) {
+        continue;
+      }
+      ProductionRoster roster = productionRosters.get(unitId);
+      if (roster == null) {
+        continue;
+      }
+      List<ProductionParticipant> participants = new ArrayList<>(roster.participants());
+      participants.sort(
+          Comparator.comparing((ProductionParticipant participant) -> participant.role().value())
+              .thenComparing(participant -> participant.household().value()));
+      for (ProductionParticipant participant : participants) {
+        ProductionRoleDefinition role = roleOf(industry, participant.role());
+        if (role == null || role.payment() instanceof RolePayment.MoneyWage) {
+          continue; // hired_driver 走常规 MONEY_WAGE 排队路径，不在此重发
+        }
+        long planned = participant.plannedLaborMilliPerDay();
+        if (planned <= 0L) {
+          continue;
+        }
+        HouseholdLaborCommitment existing =
+            slotCommitmentOf(laborCommitments, participant.household(), unitId, participant.role());
+        if (existing != null && existing.laborMilli() > 0L) {
+          continue; // 已有真实承诺：保留（不每 tick 覆盖运营中的份额）
+        }
+        HouseholdEconomy row = householdEconomies.get(participant.household());
+        if (row == null) {
+          logCaravanReissueSkipped(
+              day,
+              unitId,
+              participant.household(),
+              participant.role(),
+              "household-economy-missing");
+          continue;
+        }
+        long committed = productionCommittedLaborOf(laborCommitments, participant.household());
+        long remaining = Math.max(0L, row.laborMilli() - committed);
+        long amount = Math.min(planned, remaining);
+        if (amount <= 0L) {
+          logCaravanReissueSkipped(
+              day, unitId, participant.household(), participant.role(), "no-real-remaining-labor");
+          continue;
+        }
+        PeopleLotId lot = chooseLot(participant.household(), byHousehold, composition);
+        if (lot == null) {
+          logCaravanReissueSkipped(
+              day, unitId, participant.household(), participant.role(), "no-labor-lot");
+          continue;
+        }
+        LaborAllocationId id =
+            HouseholdLaborCommitment.idOfProduction(
+                unitId, participant.role(), lot, participant.household());
+        HouseholdLaborCommitment fresh =
+            new HouseholdLaborCommitment(
+                id,
+                lot,
+                participant.household(),
+                unit.operator(),
+                unitId.value(),
+                amount,
+                1L,
+                LaborCommitmentKind.PRODUCTION,
+                Optional.of(participant.role()));
+        HouseholdLaborCommitment previous = laborCommitments.putIfAbsent(id, fresh);
+        if (previous != null) {
+          if (previous.kind() == LaborCommitmentKind.GOV_SERVICE) {
+            throw laborCommitmentContractFault(
+                participant.household(), day, "运输名册重发撞上 GOV_SERVICE 承诺: id=" + id.value());
+          }
+          if (previous.laborMilli() > 0L) {
+            continue;
+          }
+          laborCommitments.put(id, withLaborMilli(previous, amount));
+        }
+        byHousehold
+            .computeIfAbsent(participant.household(), ignored -> new ArrayList<>())
+            .add(laborCommitments.get(id));
+        if (EconomyLog.population().isInfoEnabled()) {
+          EventLog.channel(EconomyLog.population())
+              .info(
+                  LogEvent.of(
+                      "CARAVAN_ROSTER_LABOR_REISSUED",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "unit",
+                      unitId.value(),
+                      "household",
+                      participant.household().value(),
+                      "role",
+                      participant.role().value(),
+                      "laborMilli",
+                      amount,
+                      "plannedLaborMilli",
+                      planned,
+                      "remainingBudgetMilli",
+                      remaining));
+        }
+      }
+    }
+  }
+
+  /** 运输产业判据：只认 CaravanTransportTemplate 的产业前缀（不另写字面量）。 */
+  private static boolean isCaravanTransportIndustry(IndustryDefinitionView industry) {
+    if (industry == null) {
+      return false;
+    }
+    String id = industry.id().value();
+    return id.equals(CaravanTransportTemplate.KIND)
+        || id.startsWith(CaravanTransportTemplate.KIND + "@");
+  }
+
+  /** 方案里该角色定义；缺 ⇒ null（调用方跳过，不猜第二套角色）。 */
+  private static ProductionRoleDefinition roleOf(
+      IndustryDefinitionView industry, ProductionRoleId roleId) {
+    if (industry == null || roleId == null) {
+      return null;
+    }
+    for (ProductionRoleDefinition role : industry.roles()) {
+      if (role.id().equals(roleId)) {
+        return role;
+      }
+    }
+    return null;
+  }
+
+  /** 同一 (household, unit, role) 的既有承诺（多 lot 时取 id 最小者）；没有 ⇒ null。 */
+  private static HouseholdLaborCommitment slotCommitmentOf(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      HouseholdId household,
+      ProductionUnitId unitId,
+      ProductionRoleId role) {
+    HouseholdLaborCommitment chosen = null;
+    for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
+      if (commitment.kind() != LaborCommitmentKind.PRODUCTION
+          || commitment.productionRole().isEmpty()
+          || !commitment.household().equals(household)
+          || !commitment.activity().equals(unitId.value())
+          || !commitment.productionRole().get().equals(role)) {
+        continue;
+      }
+      if (chosen == null || commitment.id().value().compareTo(chosen.id().value()) < 0) {
+        chosen = commitment;
+      }
+    }
+    return chosen;
+  }
+
+  /** 该户全部既有 PRODUCTION 承诺之和（GOV_SERVICE 不占普通生产预算）。 */
+  private static long productionCommittedLaborOf(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, HouseholdId household) {
+    long total = 0L;
+    for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
+      if (commitment.kind() == LaborCommitmentKind.PRODUCTION
+          && commitment.household().equals(household)) {
+        total = Math.addExact(total, commitment.laborMilli());
+      }
+    }
+    return total;
+  }
+
+  /** 运输名册重发被跳过时的具名 INFO（业务拒绝，不伪造 0 劳动）。 */
+  private static void logCaravanReissueSkipped(
+      long day,
+      ProductionUnitId unitId,
+      HouseholdId household,
+      ProductionRoleId role,
+      String reason) {
+    if (!EconomyLog.population().isInfoEnabled()) {
+      return;
+    }
+    EventLog.channel(EconomyLog.population())
+        .info(
+            LogEvent.of(
+                "CARAVAN_ROSTER_LABOR_REISSUE_SKIPPED",
+                EconomyLogSource.ECONOMY_POPULATION,
+                "day",
+                day,
+                "unit",
+                unitId.value(),
+                "household",
+                household.value(),
+                "role",
+                role.value(),
+                "reason",
+                reason));
+  }
 }

@@ -21,8 +21,10 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
+import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -80,6 +82,9 @@ class GovServiceCommitmentC7Test {
   private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, OP);
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = new CurrencyId("silver");
+  private static final LandHolding LAND = new LandHolding(H, HEX, 1L);
+  private static final LandComponentLedger LAND_LEDGER =
+      EconomyFixtures.landLedger(Map.of(LAND.key(), LAND));
 
   private static final LaborAllocationId GOV = new LaborAllocationId("c7-gov-service");
   private static final LaborAllocationId PRODUCTION_1 = new LaborAllocationId("c7-production-1");
@@ -103,7 +108,7 @@ class GovServiceCommitmentC7Test {
   void laborQueueSkipsGovServiceActivityAndKeepsTheRowWhole() {
     HouseholdLaborCommitment govService = commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L);
     EconomyData base = world(10_000L, Map.of(GOV, govService));
-    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()), LAND_LEDGER);
 
     LaborQueueReport report =
         LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of());
@@ -126,7 +131,7 @@ class GovServiceCommitmentC7Test {
     HouseholdLaborCommitment production =
         commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 4_000L);
     EconomyData base = world(10_000L, Map.of(PRODUCTION_1, production));
-    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()), LAND_LEDGER);
 
     LaborQueueReport report =
         LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of());
@@ -150,7 +155,7 @@ class GovServiceCommitmentC7Test {
         new HouseholdLaborCommitment(
             collided, LOT, H, OP, "free-work", 4_000L, 1L, LaborCommitmentKind.GOV_SERVICE);
     EconomyData base = world(10_000L, Map.of(collided, govService));
-    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()));
+    EconomySession session = new EconomySession(base, defs(), runtimeOf(defs()), LAND_LEDGER);
 
     assertThatThrownBy(
             () -> LaborQueueSettlement.apply(session, indexOf(base), 1L, composition(), Set.of()))
@@ -174,7 +179,7 @@ class GovServiceCommitmentC7Test {
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 3_000L));
     commitments.put(PRODUCTION_2, commitment(PRODUCTION_2, LaborCommitmentKind.PRODUCTION, 3_000L));
     EconomySession session =
-        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()));
+        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()), LAND_LEDGER);
 
     EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 8_000L));
 
@@ -198,7 +203,7 @@ class GovServiceCommitmentC7Test {
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
     EconomySession session =
-        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()));
+        new EconomySession(world(10_000L, commitments), defs(), runtimeOf(defs()), LAND_LEDGER);
 
     EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 3_000L));
 
@@ -243,7 +248,7 @@ class GovServiceCommitmentC7Test {
     Map<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     EconomySession session =
-        new EconomySession(world(20_000L, commitments), defs(), runtimeOf(defs()));
+        new EconomySession(world(20_000L, commitments), defs(), runtimeOf(defs()), LAND_LEDGER);
 
     EconomySettlement.applyPopulationChangeInto(session, List.of(new LotChange(LOT, HEX, 0L, 90L)));
 
@@ -423,10 +428,8 @@ class GovServiceCommitmentC7Test {
 
   private static EconomyData world(
       long householdLaborMilli, Map<LaborAllocationId, HouseholdLaborCommitment> commitments) {
-    OwnershipStake land = share(1L);
     return EconomyData.empty()
         .withHouseholdEconomies(Map.of(H, household(householdLaborMilli)))
-        .withOwnershipStakes(Map.of(land.id(), land))
         .withMarketTables(
             EconomyFixtures.hexMarkets(
                 Map.of(HEX, EconomyFixtures.quote(SILVER, Map.of(GRAIN, 1L)))))
@@ -440,7 +443,8 @@ class GovServiceCommitmentC7Test {
    */
   private static EconomyData applyPopulationChange(
       EconomyData base, ProductionData definitions, List<LotChange> changes) {
-    EconomySession session = new EconomySession(base, definitions, runtimeOf(definitions));
+    EconomySession session =
+        new EconomySession(base, definitions, runtimeOf(definitions), LAND_LEDGER);
     EconomySettlement.applyPopulationChangeInto(session, changes);
     return session.build();
   }
@@ -458,7 +462,12 @@ class GovServiceCommitmentC7Test {
         Map.of(),
         data.assetOccupancies(),
         data.productionRosters(),
-        0L);
+        0L,
+        // ★ D-032 L4：LAND 的唯一权威是 Map 组件；本夹具用同一份瞬态账本喂 D4/劳动队列。
+        Set.of(),
+        LAND_LEDGER.arableSupply(),
+        LAND_LEDGER.holdingsOrEmpty(),
+        Map.of());
   }
 
   private static Map<HouseholdId, Map<PeopleLotId, Long>> composition() {

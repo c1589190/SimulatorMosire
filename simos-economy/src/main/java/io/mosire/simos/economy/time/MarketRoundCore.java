@@ -18,6 +18,8 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -151,6 +153,72 @@ class MarketRoundCore {
   final List<SellOrder> injectedSellOrders = new ArrayList<>();
 
   /**
+   * ★★★ <b>D-032 C7b1：本轮最终商品订单快照（撮合前捕获；瞬态，不落盘、不进 ChangeSet/Codec）。</b>
+   *
+   * <p>自动订单由 {@code MarketRoundRunner} 在内部生成，显式订单由 {@link #injectedBuyOrders} / {@link
+   * #injectedSellOrders} 追加；C7b1 的运输计划必须在真正撮合之前看到<b>两者合并后的最终订单</b>。 {@link #planningBuyOrders()} /
+   * {@link #planningSellOrders()} 在未捕获时回落到显式订单，保证只读计划轮与 夹具仍可用同一条派生入口。
+   */
+  private List<BuyOrder> planningBuyOrders = List.of();
+
+  private List<SellOrder> planningSellOrders = List.of();
+
+  private boolean planningOrdersCaptured;
+
+  /** C7b1：由市场轮 runner 在订单构建完成、真正撮合之前调用一次；只捕获只读订单引用。 */
+  void capturePlanningOrders(List<BuyOrder> buys, List<SellOrder> sells) {
+    planningBuyOrders =
+        Collections.unmodifiableList(
+            new ArrayList<>(Objects.requireNonNull(buys, "planning buys 不得为 null")));
+    planningSellOrders =
+        Collections.unmodifiableList(
+            new ArrayList<>(Objects.requireNonNull(sells, "planning sells 不得为 null")));
+    planningOrdersCaptured = true;
+  }
+
+  /** C7b1：当轮最终买单快照；未捕获时回落到显式注入订单。 */
+  List<BuyOrder> planningBuyOrders() {
+    return planningOrdersCaptured
+        ? planningBuyOrders
+        : Collections.unmodifiableList(injectedBuyOrders);
+  }
+
+  /** C7b1：当轮最终卖单快照；未捕获时回落到显式注入订单。 */
+  List<SellOrder> planningSellOrders() {
+    return planningOrdersCaptured
+        ? planningSellOrders
+        : Collections.unmodifiableList(injectedSellOrders);
+  }
+
+  /**
+   * ★★★ <b>RC8c：本户商品键由 S4 {@link DailyDemandBill} 权威覆盖的集合</b>（瞬态；不落盘、不进 ChangeSet/Codec）。
+   *
+   * <p>★ 语义：只要某户某商品在这里，planner 的自动商品订单（BUY/SELL）就不再为该 {@code (actor, commodity)} 生成 —— 该键的
+   * 数量必须来自账单派生意向。没在这里的键仍走既有 planner 自动路径（政府授权、经营者/商号、纯状态读口等一个字节不动）。
+   *
+   * <p>★ 只活在本轮；{@link #inheritLandStateFrom(MarketRoundCore)} 逐值带过（withX 克隆与 worker 副本都不会丢）。
+   */
+  final Map<HouseholdId, Set<CommodityId>> billCoveredCommodities = new LinkedHashMap<>();
+
+  /** RC8c：登记"该户该商品由账单权威覆盖"。 */
+  void markBillCoveredCommodity(HouseholdId household, CommodityId commodity) {
+    Objects.requireNonNull(household, "billCoveredCommodities.household");
+    Objects.requireNonNull(commodity, "billCoveredCommodities.commodity");
+    billCoveredCommodities
+        .computeIfAbsent(household, ignored -> new LinkedHashSet<>())
+        .add(commodity);
+  }
+
+  /** RC8c：该户该商品的自动商品订单是否应让位给账单派生意向。 */
+  boolean billCoversCommodity(HouseholdId household, CommodityId commodity) {
+    if (household == null || commodity == null) {
+      return false;
+    }
+    Set<CommodityId> covered = billCoveredCommodities.get(household);
+    return covered != null && covered.contains(commodity);
+  }
+
+  /**
    * ★★★ <b>P3.0：本轮注入的原始 {@link MarketIntent} 列表</b>（保序只读保存）。
    *
    * <p>★ 转换后的订单已经进入 {@link #injectedBuyOrders}/{@link #injectedSellOrders}；本表保留原始 {@code priority}
@@ -159,12 +227,30 @@ class MarketRoundCore {
   final List<MarketIntent> injectedMarketIntents = new ArrayList<>();
 
   /**
-   * ★★ <b>P2f：本轮新取得土地块</b>（市场买地与 M2 抵债写同一份事实；见 {@code SettlementDayContext.landAcquiredThisRound}）。
+   * ★★ <b>旧整块土地取得标记（历史兼容；RA1b2c2 起市场与债务都不再写它）</b>。
    *
-   * <p>★ 保序去重（{@link LinkedHashSet}），只活在本轮；P3 的 M3/M6/M7 消费它来排除"本轮新买土地"。★ <b>不落盘、不进
-   * ChangeSet/Codec</b>。
+   * <p>★ 保序去重（{@link LinkedHashSet}），只活在本轮；保留读取口以免旧调用面编译断裂。★ <b>不落盘、不进 ChangeSet/Codec</b>。★
+   * 新的唯一生产者/消费者是 {@link #landAcquiredQuantityThisRound}（按数量扣减）。
    */
   final LinkedHashSet<AssetShareId> landAcquiredThisRound = new LinkedHashSet<>();
+
+  /**
+   * ★★★ <b>D-032 RA1b2a/RA1b2c2：本轮按 {@code (hex, owner)} 实际取得的土地数量</b>（唯一取得事实）。
+   *
+   * <p>★ 只活在本轮；数量按 key 累加，支持"部分取得"（原持有 100、本轮取得 30 ⇒ 可用 70）。M2 抵债与 M4 市场买地都写它； {@code
+   * LandProductionProjection} / {@code SettlementIndex} 按数量扣减，不整 key 排除。★ <b>不落盘、不进
+   * ChangeSet/Codec</b>。
+   */
+  final LinkedHashMap<LandHoldingKey, Long> landAcquiredQuantityThisRound = new LinkedHashMap<>();
+
+  /**
+   * ★★★ <b>D-032 RA1b2c2：本轮标量 LAND 持有工作副本</b>（键 = {@code (hex, owner)}；值 = 正数量持有）。
+   *
+   * <p>★ 由 {@code MarketRoundRunner} 在开盘时从会话 {@code landHoldings} 注入；土地成交经 {@code
+   * LandLedgerState.transfer} 更新工作态后由 runner 写回本表。轮末由 {@code SettlementDayMarketPipeline} 写回 {@code
+   * EconomyStateBuilder.landHoldings()}。★ <b>只活在本轮；不落盘、不进 ChangeSet/Codec</b>。
+   */
+  final LinkedHashMap<LandHoldingKey, LandHolding> landHoldings = new LinkedHashMap<>();
 
   /**
    * ★★ <b>P2f：下一轮的土地价</b>（键 = 市场区；值 = 毫计价货币 / 整亩）。
@@ -260,7 +346,9 @@ class MarketRoundCore {
   @SuppressFBWarnings(
       value = "CT_CONSTRUCTOR_THROW",
       justification =
-          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义"
+              + " finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒"
+              + " finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -314,7 +402,9 @@ class MarketRoundCore {
   @SuppressFBWarnings(
       value = "CT_CONSTRUCTOR_THROW",
       justification =
-          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义"
+              + " finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒"
+              + " finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -364,7 +454,9 @@ class MarketRoundCore {
   @SuppressFBWarnings(
       value = "CT_CONSTRUCTOR_THROW",
       justification =
-          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义"
+              + " finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒"
+              + " finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -424,7 +516,9 @@ class MarketRoundCore {
   @SuppressFBWarnings(
       value = "CT_CONSTRUCTOR_THROW",
       justification =
-          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义 finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒ finalizer 攻击面不存在")
+          "市场轮构造器只做装配期 fail-closed 校验（Objects.requireNonNull / 排除集冻结），失败必须整轮不产出；本类不定义"
+              + " finalizer，唯一子类 MarketSettlement.MarketRound 是包内 static final，外部无法子类化、拿不到半成品 ⇒"
+              + " finalizer 攻击面不存在")
   MarketRoundCore(
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -649,6 +743,18 @@ class MarketRoundCore {
     MarketOrderPlanner.putLandOrder(this, order);
   }
 
+  /** ★★★ RA1b2c2：本轮标量 LAND 持有工作副本（只读视图；轮末写回会话）。 */
+  Map<LandHoldingKey, LandHolding> landHoldings() {
+    return Collections.unmodifiableMap(landHoldings);
+  }
+
+  /** ★★★ RA1b2c2：注入/刷新本轮标量 LAND 持有工作副本（runner 开盘时与成交后各写一次；唯一写口）。 */
+  void setLandHoldings(Map<LandHoldingKey, LandHolding> source) {
+    Objects.requireNonNull(source, "setLandHoldings 的 source 不得为 null（没有土地给空表）");
+    landHoldings.clear();
+    landHoldings.putAll(source);
+  }
+
   /** ★★★ P3.0：追加一张 M3 显式买单到本轮订单簿（不清空 planner 自动订单）。 */
   void addInjectedBuyOrder(BuyOrder order) {
     injectedBuyOrders.add(Objects.requireNonNull(order, "injectedBuyOrder 不得为 null"));
@@ -675,6 +781,52 @@ class MarketRoundCore {
       throw new IllegalArgumentException("MarketRound.landAcquiredThisRound 不得登记 null 土地块");
     }
     landAcquiredThisRound.add(landShare);
+  }
+
+  /** ★★ D-032 RA1b2a/RA1b2c2：本轮按 key 取得的土地数量只读视图（M3/M6/M7 按数量排除；不落盘）。 */
+  Map<LandHoldingKey, Long> landAcquiredQuantityThisRound() {
+    return Collections.unmodifiableMap(landAcquiredQuantityThisRound);
+  }
+
+  /** ★★ D-032 RA1b2a：登记一笔本轮取得的标量土地数量；同 key 累加，数量必须严格为正。 */
+  void markLandAcquired(LandHoldingKey key, long quantityMilliMu) {
+    if (key == null) {
+      throw new IllegalArgumentException("MarketRound.landAcquiredQuantityThisRound 不得登记 null key");
+    }
+    if (quantityMilliMu <= 0L) {
+      throw new IllegalArgumentException(
+          "MarketRound.landAcquiredQuantityThisRound 的数量必须 > 0: key="
+              + key
+              + " -> "
+              + quantityMilliMu);
+    }
+    long previous = landAcquiredQuantityThisRound.getOrDefault(key, 0L);
+    try {
+      landAcquiredQuantityThisRound.put(key, Math.addExact(previous, quantityMilliMu));
+    } catch (ArithmeticException overflow) {
+      throw new IllegalArgumentException(
+          "MarketRound.landAcquiredQuantityThisRound 累加溢出: key="
+              + key
+              + " "
+              + previous
+              + " + "
+              + quantityMilliMu,
+          overflow);
+    }
+  }
+
+  /**
+   * ★★★ D-032 RC6：S7-B 把某个 {@code (hex, buyer)} 本轮市场取得的 LAND 全量转给 LANDED target 后，清除该项市场取得 标记。★ 只清
+   * {@code marketRound.landAcquiredQuantityThisRound}（市场事实）；不碰 {@code
+   * SettlementDayContext.landAcquiredQuantityThisRound} 里的 M2 抵债事实。
+   */
+  void clearMarketLandAcquired(LandHoldingKey key) {
+    if (key == null) {
+      throw new IllegalArgumentException("clearMarketLandAcquired 的 key 不得为 null");
+    }
+    if (landAcquiredQuantityThisRound.remove(key) == null) {
+      throw new IllegalStateException("clearMarketLandAcquired 找不到本轮市场 LAND 取得项（契约故障）: " + key);
+    }
   }
 
   /** ★★ P2f：下一轮的土地价（只读视图；轮末由 {@code SettlementDayMarketPipeline} 写回 MarketTable）。 */
@@ -704,10 +856,22 @@ class MarketRoundCore {
     injectedBuyOrders.addAll(source.injectedBuyOrders);
     injectedSellOrders.clear();
     injectedSellOrders.addAll(source.injectedSellOrders);
+    planningBuyOrders = source.planningBuyOrders;
+    planningSellOrders = source.planningSellOrders;
+    planningOrdersCaptured = source.planningOrdersCaptured;
     injectedMarketIntents.clear();
     injectedMarketIntents.addAll(source.injectedMarketIntents);
+    billCoveredCommodities.clear();
+    for (Map.Entry<HouseholdId, Set<CommodityId>> entry :
+        source.billCoveredCommodities.entrySet()) {
+      billCoveredCommodities.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
+    }
     landAcquiredThisRound.clear();
     landAcquiredThisRound.addAll(source.landAcquiredThisRound);
+    landAcquiredQuantityThisRound.clear();
+    landAcquiredQuantityThisRound.putAll(source.landAcquiredQuantityThisRound);
+    landHoldings.clear();
+    landHoldings.putAll(source.landHoldings);
     nextLandPrices.clear();
     nextLandPrices.putAll(source.nextLandPrices);
   }
@@ -883,6 +1047,8 @@ class MarketRoundCore {
         || procurementPriority != next.procurementPriority
         || next.landOrders().size() != landOrders.size()
         || next.landAcquiredThisRound().size() != landAcquiredThisRound.size()
+        || !next.landAcquiredQuantityThisRound().equals(landAcquiredQuantityThisRound)
+        || !next.landHoldings().equals(landHoldings)
         || !next.nextLandPrices().equals(nextLandPrices)) {
       EventLog.channel(MARKET)
           .error(

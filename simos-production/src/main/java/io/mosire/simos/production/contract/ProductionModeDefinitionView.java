@@ -11,6 +11,10 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
  *
  * <p>★ {@code version} 是真实既有字段（源类型构造期判 ≥ 1），不是本视图新造。
  *
+ * <p>★★ <b>D-032 C1（2026-10-21）</b>：家户阶级不再由生产方式/位置的单一 class 字段表达。位置访问只由 {@link RolePayment}
+ * 推导（{@code PRODUCT_SHARE} 只允许 {@code OWNER}，{@code MONEY_WAGE} 允许 {@code OWNER}/{@code
+ * PROLETARIAN}）。本视图因此不再持有 {@code supportedClassNatures} 之类的 mode 级阶级集合， 也不保留兼容别名。
+ *
  * @param id 生产方式稳定身份
  * @param name 展示名；非空白
  * @param version 规则版本；≥ 1

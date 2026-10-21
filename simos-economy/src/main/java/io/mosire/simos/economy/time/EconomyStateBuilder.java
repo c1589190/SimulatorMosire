@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -17,11 +18,15 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.land.LandArableSupply;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.AssetOccupancyGrant;
 import io.mosire.simos.economy.model.AssetOccupancyGrantId;
 import io.mosire.simos.economy.model.ClassShare;
@@ -31,7 +36,9 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
@@ -42,6 +49,9 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -94,6 +104,14 @@ public final class EconomyStateBuilder {
   private final ProductionRuntime runtime;
 
   /**
+   * ★★★ <b>D-032 L4：app 从 Map 构造并注入的瞬态 LAND 组件账本</b>（不进 EconomyData/ChangeSet/Codec）。
+   *
+   * <p>Map component 的 {@code owner} 属性是唯一持久权威；本账本只提供本 tick 的 arable 总量快照 + 聚合 holdings 工作副本。不得用
+   * static/ThreadLocal 传。
+   */
+  private final LandComponentLedger landLedger;
+
+  /**
    * ★★ <b>本会话的产业定义工作副本</b>（瞬态、不落盘）：常态下为空（直接读注入的 production 定义）；仅当日结算的 **按需创建**（如跑商为某格即时生成 {@code
    * trade} 模板）物化它。★ 它不是第二份持久权威——{@link #build()} 不把它写进 {@code EconomyData}；定义权威仍在 production。
    */
@@ -101,6 +119,15 @@ public final class EconomyStateBuilder {
 
   private LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies;
   private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
+
+  /**
+   * ★★★ D-032 RC4-D：HOUSEHOLD 需求重键的会话工作副本（未物化 ⇒ 原样复用 base）。
+   *
+   * <p>需求仍只有一份持久权威：本字段只在同一次 advance 内承载合并/迁移的候选重键，{@link #build()} 用它或 base 的不可变表。 不新增 EconomyData
+   * 组件、不改 ChangeSet/Codec 形状。
+   */
+  private LinkedHashMap<DemandId, HouseholdDemand> householdDemands;
+
   private LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
   private LinkedHashMap<AssetShareId, OwnershipStake> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
@@ -130,6 +157,15 @@ public final class EconomyStateBuilder {
 
   /** ★★★ D-032 P4b1：U20 工资锚工作副本（P4c 的 M8 观测/调价会写；未物化 ⇒ 原样复用 base）。 */
   private LinkedHashMap<WageAnchorKey, ProductionWageAnchor> productionWageAnchors;
+
+  /** ★★★ D-032 RC7 / S7-C：家户向下流动表工作副本（每市场轮维护；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<HouseholdId, HouseholdFlowTable> householdFlowTables;
+
+  /** ★★★ D-032 C6：临时运输能力批次工作副本（S5 累加；S7-END 清当前轮；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<TransportCapacityBatchKey, TransportCapacityBatch> transportCapacityBatches;
+
+  /** ★★★ D-032 C7a：运输市场区锚价工作副本（S7-END 更新；未物化 ⇒ 原样复用 base）。 */
+  private LinkedHashMap<MarketZoneId, TransportPriceAnchor> transportPriceAnchors;
 
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -166,10 +202,34 @@ public final class EconomyStateBuilder {
       EconomyData base,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       ProductionRuntime runtime) {
+    this(base, definitions, runtime, LandComponentLedger.empty());
+  }
+
+  /**
+   * ★★★ <b>D-032 L4 装配口</b>：显式接收 app 从 Map 构造的瞬态 LAND 组件账本。
+   *
+   * <p>旧夹具可传 {@link LandComponentLedger#empty()}；真生产入口必须从 Map 构造，不得用空账本冒充。
+   */
+  public EconomyStateBuilder(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ProductionRuntime runtime,
+      LandComponentLedger landLedger) {
     this.base = Objects.requireNonNull(base, "base");
     this.definitions = Objects.requireNonNull(definitions, "definitions（定义权威在 production，必须显式注入）");
     this.runtime =
         Objects.requireNonNull(runtime, "runtime（D-032：生产实例的唯一权威在 production，必须显式注入合法运行时）");
+    this.landLedger =
+        Objects.requireNonNull(landLedger, "landLedger（空土地请用 LandComponentLedger.empty()）");
+  }
+
+  /** 旧夹具兼容：只有 arable 总量快照的装配口（真生产路径必须用 Ledger）。 */
+  public EconomyStateBuilder(
+      EconomyData base,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ProductionRuntime runtime,
+      LandArableSupply landArableSupply) {
+    this(base, definitions, runtime, LandComponentLedger.fromArableSupplyOnly(landArableSupply));
   }
 
   public EconomyData base() {
@@ -265,6 +325,19 @@ public final class EconomyStateBuilder {
     return debtContracts;
   }
 
+  /** ★★★ RC4-D：家户需求表的只读选择（已物化读工作副本，未物化读 base）。 */
+  public Map<DemandId, HouseholdDemand> demandsOrBase() {
+    return householdDemands == null ? base.demands() : householdDemands;
+  }
+
+  /** ★★★ RC4-D：家户需求表工作副本（首次访问时从 base 惰性拷贝；唯一持久权威仍是 EconomyData.demands）。 */
+  public LinkedHashMap<DemandId, HouseholdDemand> demands() {
+    if (householdDemands == null) {
+      householdDemands = new LinkedHashMap<>(base.demands());
+    }
+    return householdDemands;
+  }
+
   /** 劳动配额表工作副本。 */
   public LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments() {
     if (laborCommitments == null) {
@@ -279,6 +352,72 @@ public final class EconomyStateBuilder {
       assetShares = new LinkedHashMap<>(base.assetShares());
     }
     return assetShares;
+  }
+
+  /**
+   * ★★★ D-032 L3：每 hex 可耕总量的<b>只读</b>访问口（app 从 Map 构造的瞬态快照；段内不变）。
+   *
+   * <p>★ {@link LandArableSupply} 自身不可变；本单不提供可写副本，也不从持久状态读取。
+   */
+  public LandArableSupply landArableSupply() {
+    return landLedger.arableSupply();
+  }
+
+  /** ★★★ D-032 L4：本会话的瞬态 LAND 组件账本（Map 派生，唯一权威仍在 Map）。 */
+  public LandComponentLedger landLedger() {
+    return landLedger;
+  }
+
+  /** ★★★ D-032 L4：瞬态聚合持有表的只读视图（不是 EconomyData 的持久组件）。 */
+  public Map<LandHoldingKey, LandHolding> landHoldingsOrBase() {
+    return landLedger.holdingsOrEmpty();
+  }
+
+  /** ★★★ D-032 L4：瞬态聚合持有表工作副本（轮末由 app 写回 Map）。 */
+  public LinkedHashMap<LandHoldingKey, LandHolding> landHoldings() {
+    return landLedger.holdings();
+  }
+
+  /** ★★★ D-032 RC7：家户向下流动表的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<HouseholdId, HouseholdFlowTable> householdFlowTablesOrBase() {
+    return householdFlowTables == null ? base.householdFlowTables() : householdFlowTables;
+  }
+
+  /** ★★★ D-032 RC7：家户向下流动表工作副本（每市场轮维护；惰性物化）。 */
+  public LinkedHashMap<HouseholdId, HouseholdFlowTable> householdFlowTables() {
+    if (householdFlowTables == null) {
+      householdFlowTables = new LinkedHashMap<>(base.householdFlowTables());
+    }
+    return householdFlowTables;
+  }
+
+  /** ★★★ D-032 C6：临时运输能力批次的只读选择（已物化读工作副本、未物化直接复用 base）。 */
+  public Map<TransportCapacityBatchKey, TransportCapacityBatch> transportCapacityBatchesOrBase() {
+    return transportCapacityBatches == null
+        ? base.transportCapacityBatches()
+        : transportCapacityBatches;
+  }
+
+  /** ★★★ D-032 C6：临时运输能力批次工作副本（S5 累加 / S7-END 清除；惰性物化）。 */
+  public LinkedHashMap<TransportCapacityBatchKey, TransportCapacityBatch>
+      transportCapacityBatches() {
+    if (transportCapacityBatches == null) {
+      transportCapacityBatches = new LinkedHashMap<>(base.transportCapacityBatches());
+    }
+    return transportCapacityBatches;
+  }
+
+  /** ★★★ D-032 C7a：运输市场区锚价表的只读选择（未物化 ⇒ 复用 base 的不可变表）。 */
+  public Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchorsOrBase() {
+    return transportPriceAnchors == null ? base.transportPriceAnchors() : transportPriceAnchors;
+  }
+
+  /** ★★★ D-032 C7a：S7-END 更新运输锚价的唯一工作副本入口。 */
+  public LinkedHashMap<MarketZoneId, TransportPriceAnchor> transportPriceAnchors() {
+    if (transportPriceAnchors == null) {
+      transportPriceAnchors = new LinkedHashMap<>(base.transportPriceAnchors());
+    }
+    return transportPriceAnchors;
   }
 
   /** 经营者状态表工作副本（S3.2 第 13 个组件；R3B.2 起键 = unit id）。 */
@@ -608,9 +747,10 @@ public final class EconomyStateBuilder {
         operatorConditions == null ? base.operatorConditions() : operatorConditions,
         // ★★ B2b：生产实例表已从 {@link EconomyData} 删除（唯一权威在 production 的当刻候选态；
         //   读它一律走 {@link #units()} = {@link ProductionRuntime#units()} 的只读投影）。
-        // ★★ R4-E2：需求不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
+        // ★★ R4-E2：需求表原本只服务 GM 命令；★★ RC4-D 起增加会话工作副本，供同 key 合户在本 advance 内重键
+        //   HOUSEHOLD scope 的 source→survivor（未物化 ⇒ 原样复用 base 的不可变表）。
         //   ★★ B2c：候选预设表已从 EconomyData 删除（裁定八）⇒ 本处不再有它的带过腿。
-        base.demands(),
+        demandsOrBase(),
         // ★★★ B5（§13.15.2 裁定十八）：第 17 个组件 `modes` 已从 EconomyData 删除 ⇒ 本处不再有带过腿；
         //   生产方式定义的唯一权威在 production（读它一律走 {@link #definitions()} / {@code EconomyDayView#modes()}）。
         // ★★ E1：阶层结构与阶层位置不参与旧日结算写回 —— 原样带过 base 的表；
@@ -672,6 +812,17 @@ public final class EconomyStateBuilder {
         inventoryReservations == null ? base.inventoryReservations() : inventoryReservations,
         // ★★★ D-032 P4b1：U20 工资锚工作副本；未物化 ⇒ 原样复用 base。漏了它 = 任意一次 advance
         //   都会把显式命令/seed 写入的锚静默抹掉。
-        productionWageAnchors == null ? base.productionWageAnchors() : productionWageAnchors);
+        productionWageAnchors == null ? base.productionWageAnchors() : productionWageAnchors,
+        // ★★★ D-032 RC7：流动表是会话工作副本；未物化 ⇒ 原样复用 base。漏了它 = 上一轮债务基线/目标
+        //   在每次 advance 起点静默丢失，向下流动重复触发或永不触发。
+        householdFlowTables == null ? base.householdFlowTables() : householdFlowTables,
+        // ★★★ D-032 C6：运输能力批次工作副本；未物化 ⇒ 原样复用 base。漏了它 = 每 tick 累加的
+        //   当前市场轮容量在任意一次 advance 起点被静默抹掉。
+        transportCapacityBatches == null
+            ? base.transportCapacityBatches()
+            : transportCapacityBatches,
+        // ★★★ D-032 C7a：运输市场区锚价工作副本；未物化 ⇒ 原样复用 base。漏了它 = 每轮已调好的
+        //   锚价在任意一次 advance 起点被静默抹回 0。
+        transportPriceAnchors == null ? base.transportPriceAnchors() : transportPriceAnchors);
   }
 }

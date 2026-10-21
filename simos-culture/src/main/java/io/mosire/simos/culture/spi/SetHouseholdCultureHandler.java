@@ -24,7 +24,7 @@ import java.util.Set;
  * {@code culture.SetHouseholdCulture} 命令的处理器（D-031 spec §6.2）。
  *
  * <pre>{@code
- * {"householdId":"h-0001","cultureId":"latium","religionId":"roman","customs":["patrilineal"]}
+ * {"householdId":"h-0001","cultureId":"latium","religionId":"roman","customs":["patrilineal"],"label":"本地稻农"}
  * }</pre>
  *
  * <p>★ <b>幂等键 = {@code householdId}</b>（spec §6.2）：设置/覆盖该家户的文化标签；内容逐值相同 ⇒ {@code
@@ -61,8 +61,10 @@ public final class SetHouseholdCultureHandler implements CommandHandler {
       for (String custom : CulturePayloads.optionalTextList(payload, "customs")) {
         customs.add(CustomTag.parse(custom));
       }
+      // ★ D-032 v4 §9：label 缺省空串；不 trim 用户文本。
+      String label = CulturePayloads.optionalText(payload, "label", "");
       HouseholdCulture value =
-          new HouseholdCulture(household, new CultureTag(culture, religion, customs));
+          new HouseholdCulture(household, new CultureTag(culture, religion, customs), label);
       CultureData target = base.withHouseholdCulture(value);
       CultureChangeSet changeSet = CultureChangeSet.between(base, target);
       EventLog.channel(CultureLog.command())
@@ -78,6 +80,8 @@ public final class SetHouseholdCultureHandler implements CommandHandler {
                   religion.value(),
                   "customs",
                   customs.size(),
+                  "labelLength",
+                  label.length(),
                   "householdCultures",
                   target.householdCultures().size(),
                   "changed",

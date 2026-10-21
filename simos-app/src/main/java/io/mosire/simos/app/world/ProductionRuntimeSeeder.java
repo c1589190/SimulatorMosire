@@ -6,10 +6,10 @@ import static io.mosire.simos.app.world.GovernmentSeeder.governmentHouseholdGove
 import static io.mosire.simos.app.world.GovernmentSeeder.seedGovernmentHousehold;
 import static io.mosire.simos.app.world.GovernmentSeeder.seedGovernmentMint;
 import static io.mosire.simos.app.world.IndustrySeeder.agriculture;
+import static io.mosire.simos.app.world.IndustrySeeder.caravanTransport;
 import static io.mosire.simos.app.world.IndustrySeeder.handicraft;
 import static io.mosire.simos.app.world.IndustrySeeder.householdWeaving;
 import static io.mosire.simos.app.world.IndustrySeeder.planOf;
-import static io.mosire.simos.app.world.IndustrySeeder.trade;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.chooseHiredFarmUnit;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.collectiveRelation;
 import static io.mosire.simos.app.world.LandOwnershipSeeder.grainFarmRosterNode;
@@ -30,10 +30,10 @@ import static io.mosire.simos.app.world.RuralHouseholdSeeder.ruralCohort;
 import static io.mosire.simos.app.world.RuralHouseholdSeeder.urbanCohort;
 import static io.mosire.simos.app.world.RuralHouseholdSeeder.withoutDisplaced;
 import static io.mosire.simos.app.world.RuralLaborSeeder.appendAllocation;
+import static io.mosire.simos.app.world.RuralLaborSeeder.availableLaborMilli;
 import static io.mosire.simos.app.world.RuralLaborSeeder.industryDailyLabor;
 import static io.mosire.simos.app.world.RuralLaborSeeder.laborBudget;
 import static io.mosire.simos.app.world.RuralLaborSeeder.laborMilli;
-import static io.mosire.simos.app.world.RuralLaborSeeder.landMilliMuOf;
 import static io.mosire.simos.app.world.RuralLaborSeeder.participationAdjustedLaborMilli;
 import static io.mosire.simos.app.world.RuralLaborSeeder.populationOf;
 import static io.mosire.simos.app.world.RuralLaborSeeder.toolPerWorkshopMilli;
@@ -55,7 +55,10 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.CaravanTransportTemplate;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
@@ -93,10 +96,12 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       String mapId,
       PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
+      Function<HexCoord, Long> arableOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
       TestConditions conditions,
       Function<HexCoord, CurrencyId> numeraireOf) {
+    Objects.requireNonNull(arableOf, "arableOf");
     Objects.requireNonNull(numeraireOf, "numeraireOf");
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
@@ -149,7 +154,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       // ★★ R3B.2：新载荷显式产生 unit —— 先建 plan（模板 + 经营者 + 产能），再逐 unit/份额落载荷。
       // ★★ **本格的产能与人口派生量**（H0.3：产能从"行"搬到"产业"，故它们在这里一次算好）：
       //   亩 = 地形系数决定（**与人口无关**：没人种的格，地还在）；织机/作坊 = 人口 ÷ 场景参数。
-      long landMilliMu = landMilliMuOf(terrainOf.apply(hex));
+      long landMilliMu = requireArableMilliMu(hex, arableOf);
       long looms = populationOf(ruralAll) / RURAL_CAPITA_PER_LOOM;
       long urbanPopulation = populationOf(urbanAll);
       long workshops = urbanPopulation / URBAN_CAPITA_PER_WORKSHOP;
@@ -164,13 +169,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         throw new IllegalStateException(
             "逐格计价币函数对格 " + hex + " 回了 null（说不出这格按什么钱报价 ⇒ 播种器 fail-closed，不静默落到银）");
       }
-      // ★★ P11.7/D-024：城市格的商号本金主 = 该格城镇 landlord 家户（位置 = merchant.principal）。它的身份从
-      //   Social 侧的 PoolCohorts 读入（P2-A：不再另拼 ofSeed），actor 拼写点走 HouseholdActors。
-      HouseholdId merchantPrincipalHousehold =
-          hasCraft ? urbanCohorts.classHouseholds().get(LANDLORD_SLOT_INDEX) : null;
-      ActorRef merchantPrincipalActor =
-          hasCraft ? HouseholdActors.of(merchantPrincipalHousehold) : null;
-      List<IndustryPlan> plans = new ArrayList<>(hasCraft ? 4 : 3);
+      List<IndustryPlan> plans = new ArrayList<>(hasCraft ? 5 : 4);
       // ★★ P2-A §13.3：作坊不是账户主体 —— 主 unit 的经营者改成**组织者家户**：
       //   · craft（handicraft 作坊）⇒ 该格城镇中农家户（{@code handicraft_workshop.workshop_owner}）。
       //   ★ 家户纺织（household）保持聚合主体：它是**多个家户共同经营**的 unit，账户主体 = unit 名下劳动家户的集合
@@ -182,11 +181,68 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
               : null;
       IndustryPlan farmPlan = agriculture(hex, landMilliMu);
       plans.add(farmPlan);
-      // ★★★ P5b1：本 hex 的 grain_farm 逐户 unit —— 四个阶层家户按确定性权重分 LAND（owner=operator=家户），
-      //   流民/无地户保留 0 土地 unit。跨 hex 不伪造：份额 location 恒为本 hex。
-      List<GrainFarmUnit> farmUnits =
-          grainFarmUnits(
-              farmPlan, hex, ruralCohorts.classHouseholds(), ruralCohorts.displacedHousehold());
+      // ★★★ P5b1 / RC2b：本 hex 的 grain_farm 逐户 unit —— **只给 share>0 的有地家户建 unit**
+      //   （owner=operator=家户）；无地户不建 unit，只作为有地 farm 名册上的 hired_laborer。
+      //   跨 hex 不伪造：份额 location 恒为本 hex。
+      List<GrainFarmUnit> farmUnits = grainFarmUnits(farmPlan, hex, ruralCohorts.classHouseholds());
+      // ★★ RC2b：有地家户 = 真正拿到 farm unit 的户（share>0）。farm/weave 配额与 hired roster 都按这张集合分流。
+      Set<HouseholdId> landedHouseholds = new LinkedHashSet<>();
+      for (GrainFarmUnit unit : farmUnits) {
+        landedHouseholds.add(unit.household());
+      }
+      // ★★ RC2b：farm / weave 配额只发给有地家户；这张池子同时是运输 operator 自雇劳动的**唯一来源池**。
+      List<PopulationGroup> ruralLandedPool = new ArrayList<>();
+      for (PopulationGroup group : ruralPool) {
+        if (landedHouseholds.contains(ruralCohorts.householdOfGroup(group))) {
+          ruralLandedPool.add(group);
+        }
+      }
+      long ruralDaily = availableLaborMilli(ruralLandedPool);
+      long weaveQuota = ruralDaily * WEAVE_SHARE_PER_MILLE / 1000L;
+      long urbanCraftDaily =
+          hasCraft
+              ? industryDailyLabor(
+                  urbanCohorts.classPopulations(), laborMilli(urbanPool), populationOf(urbanPool))
+              : 0L;
+      // ★★★ D-032 C9：每 hex 的运输组织 = 本 hex 既有 OWNER 户（不新建阶级/马商）。
+      //   · 农村格优先取有地 farm unit 的 owner（LAND > 0 ⇒ C1 派生 OWNER）；
+      //   · 没有农村有地户时才取城市作坊主；两者都没有 ⇒ 本 hex 不凭空造 owner，也不 seed 运输组织。
+      //   ★ 选中的 owner 必须在本 hex 的 landHoldings/assetShares 里真实出现；否则下方 horse seed fail-closed。
+      HouseholdId transportOperatorHousehold =
+          chooseTransportOperator(landedHouseholds, hasCraft, urbanCohorts);
+      // ★★★ D-032 C9 hotfix：运输劳动必须从 operator 自有、同 hex 的**同一份** landed/urban 劳动预算里切出。
+      //   切不出至少 LABOR_MILLI_PER_SCALE_UNIT ⇒ 本 hex 不 seed 运输组织（具名 INFO，不伪造 0 劳动名册）。
+      TransportLabor transportLabor =
+          transportLaborOf(
+              hex,
+              transportOperatorHousehold,
+              ruralLandedPool,
+              ruralCohorts,
+              ruralDaily,
+              weaveQuota,
+              urbanPool,
+              urbanCohorts,
+              urbanCraftDaily,
+              hasRural,
+              hasCraft);
+      if (transportOperatorHousehold != null && transportLabor == null) {
+        io.mosire.simos.util.log.EventLog.channel(LOG)
+            .info(
+                io.mosire.simos.util.log.LogEvent.of(
+                    "CARAVAN_LABOR_UNAVAILABLE",
+                    io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                    "hex",
+                    hex,
+                    "operator",
+                    transportOperatorHousehold,
+                    "reason",
+                    "transport-labor-share-not-carveable"));
+        transportOperatorHousehold = null;
+      }
+      ActorRef transportOperatorActor =
+          transportOperatorHousehold == null
+              ? null
+              : HouseholdActors.of(transportOperatorHousehold);
       if (hasRural) {
         // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + SMALL_TOOL → CLOTH，由**同一批农村人**承担（见
         // appendAllocation）。
@@ -196,8 +252,12 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       }
       if (hasCraft) {
         plans.add(handicraft(hex, workshops).withOperator(craftOrganizer));
-        // ★★ P11.7/D-024：城市 trade 产业 —— 制度 merchant、产出运输服务、以**工具**为作业资本（W7-fix）；经营者 = 商号本金主。
-        plans.add(trade(hex, merchantPrincipalActor));
+      }
+      // ★★★ D-032 C9：运输生产方式由 CaravanTransportTemplate.industry(hex) 唯一驱动；旧 trade/haul 活动 plan 退出。
+      if (transportOperatorActor != null) {
+        // ★ 位置目录先校验：caravan_operator / hired_driver 缺任一 ⇒ 具名 fail-closed，不退回旧商人位置。
+        io.mosire.simos.app.world.ProductionRoleSeeder.requireCaravanTransportPositions();
+        plans.add(caravanTransport(hex, transportOperatorActor));
       }
       // ★★ P2-A：作坊主 unit 的显式关系 —— operator/residualOwner = 组织者家户，inputSupplier 仍指**原产业主体 actor**
       //   （{@code ToActor(org)} 在 supplierAccountsOf 里代理到 unit 名下劳动家户 ⇒ 播种期"谁出种/出料"逐字不变）。
@@ -209,6 +269,18 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
                   Set.of(ResidenceKind.URBAN),
                   new ActorRef(ActorKind.ORGANIZATION, craftId.value()))
               : null;
+      // ★ C9：运输 unit 的显式自留关系（merchant 制度没有默认 relation 模板；空 rules + SELF 与旧 trade 同形）。
+      ProductionRules caravanMainRelation =
+          transportOperatorActor == null
+              ? null
+              : new ProductionRules(
+                  io.mosire.simos.economy.api.id.ProductionUnitId.idOf(
+                      CaravanTransportTemplate.industryId(hex), transportOperatorActor),
+                  transportOperatorActor,
+                  new Payee.ToActor(transportOperatorActor),
+                  List.of(),
+                  transportOperatorActor,
+                  LaborSource.SELF);
       // ★★ P2-E：家户纺织主 unit 是**集体经营** unit（operator 是聚合主体，名下有多个劳动家户）。
       //   它必须显式带一条"无规则"关系：净产出已由 harvest 的 creditOutput 按劳动权重分给各家家户账；
       //   若沿用制度默认的 HOUSEHOLD 模板，模板的四个受方 cohort 与集体成员是同一批家户 ⇒ 规则结算会在
@@ -231,29 +303,57 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       // ★★ S1：成员份额（逐 lot → 家户）：由 cohortGroup 按 row population × pool 各批次人数权重拆出。
       if (hasRural) {
         IndustryPlan weavePlan = planOf(plans, weaveId);
-        long ruralDaily =
-            industryDailyLabor(
-                ruralCohorts.classPopulations(), laborMilli(ruralPool), populationOf(ruralPool));
-        long weaveQuota = ruralDaily * WEAVE_SHARE_PER_MILLE / 1000L;
-        // ★ 残差归农业（"农业 = ruralDaily − weaveQuota"⇒ **要切的总量**之和恒等于本池日劳动（折扣后口径））。
-        //   ★★ M1.8 起不等于"实际发出的配额之和"：预算按**逐批次折扣后的可用劳动**封顶，性别权重偏斜时某些批次会
-        //      被压到上限 ⇒ 总配额可以**分不满**（合法状态；见 appendAllocation / laborBudget 的类注）。
-        Map<PeopleLotId, Long> budget = laborBudget(ruralPool);
-        // ★★★ P5b1：先按既有算法发农业配额（占位 unit = plan.unitId），随后逐行改挂到该家户自己的 grain_farm unit。
+        // ★★★ RC2b：farm / weave 配额**只发给有地家户**（= share>0 的 farm unit 所有者）。
+        //   无地农民**不进** farm 自营配额、也不进 weave 配额；它的劳动只通过有地 farm 的 hired_laborer 名册提供
+        //   ⇒ 同一份 landless 劳动不会被 farm 配额 / weave 配额 / hired roster 三处重复计。
+        // ★★ 残差归农业（"农业 = ruralDaily − weaveQuota − transportQuota"⇒ **要切的总量**之和恒等于有地池日劳动
+        //   （折扣后口径））。M1.8 起不等于"实际发出的配额之和"：预算按**逐批次折扣后的可用劳动**封顶，性别权重偏斜时某些
+        //   批次会被压到上限 ⇒ 总配额可以**分不满**（合法状态；见 appendAllocation / laborBudget 的类注）。
+        Map<PeopleLotId, Long> budget = laborBudget(ruralLandedPool);
+        long ruralTransportQuota =
+            transportLabor != null && transportLabor.ruralPool()
+                ? transportLabor.quotaLaborMilli()
+                : 0L;
+        // ★★★ D-032 C9 hotfix：运输配额**先从同一张预算表切走**（appendAllocation 唯一算法），农场总量等额减少。
+        //   operator 自雇池 = operator 家户在本 hex landed pool 的批次；因此这份劳动只属于该 OWNER 户，不会分给别户。
+        if (ruralTransportQuota > 0L) {
+          IndustryPlan caravanPlan = planOf(plans, CaravanTransportTemplate.industryId(hex));
+          appendAllocation(
+              allocations,
+              budget,
+              transportLabor.households(),
+              hex,
+              caravanPlan.unitId(),
+              caravanPlan.operator(),
+              ACTIVITY_TRANSPORT,
+              ruralTransportQuota);
+          long actual =
+              plannedLaborOfHousehold(
+                  allocations, caravanPlan.unitId(), transportOperatorHousehold);
+          logCaravanLaborAllocated(
+              hex,
+              caravanPlan,
+              transportOperatorHousehold,
+              "rural-landed",
+              ruralTransportQuota,
+              actual,
+              transportLabor.operatorAvailableLaborMilli());
+        }
+        // ★★★ P5b1：再按既有算法发农业配额（占位 unit = plan.unitId），随后逐行改挂到该家户自己的 grain_farm unit。
         //   只换 unit/actor；laborMilli / group / household 一个不动 ⇒ 家户劳动守恒与预算封顶逐值不变。
         appendAllocation(
             allocations,
             budget,
-            ruralPool,
+            ruralLandedPool,
             hex,
             farmPlan.unitId(),
             farmPlan.operator(),
             FARM,
-            ruralDaily - weaveQuota);
+            ruralDaily - weaveQuota - ruralTransportQuota);
         appendAllocation(
             allocations,
             budget,
-            ruralPool,
+            ruralLandedPool,
             hex,
             weavePlan.unitId(),
             weavePlan.operator(),
@@ -283,6 +383,33 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         //   ★ 顺序不变、口径不变（appendAllocation 的 total/权重/预算封顶一字未改）：这里只是把同一张预算表
         //     多做一次读取 —— 铸币拿的是**作坊配额封顶之后真的没被用掉的那部分**，不是"再造一份劳动"。
         Map<PeopleLotId, Long> urbanMintBudget = laborBudget(urbanPool);
+        long urbanTransportQuota =
+            transportLabor != null && !transportLabor.ruralPool()
+                ? transportLabor.quotaLaborMilli()
+                : 0L;
+        if (urbanTransportQuota > 0L) {
+          IndustryPlan caravanPlan = planOf(plans, CaravanTransportTemplate.industryId(hex));
+          appendAllocation(
+              allocations,
+              urbanMintBudget,
+              transportLabor.households(),
+              hex,
+              caravanPlan.unitId(),
+              caravanPlan.operator(),
+              ACTIVITY_TRANSPORT,
+              urbanTransportQuota);
+          long actual =
+              plannedLaborOfHousehold(
+                  allocations, caravanPlan.unitId(), transportOperatorHousehold);
+          logCaravanLaborAllocated(
+              hex,
+              caravanPlan,
+              transportOperatorHousehold,
+              "urban-craft",
+              urbanTransportQuota,
+              actual,
+              transportLabor.operatorAvailableLaborMilli());
+        }
         appendAllocation(
             allocations,
             urbanMintBudget,
@@ -291,8 +418,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
             craftPlan.unitId(),
             craftPlan.operator(),
             CRAFT,
-            industryDailyLabor(
-                urbanCohorts.classPopulations(), laborMilli(urbanPool), populationOf(urbanPool)));
+            Math.max(0L, urbanCraftDaily - urbanTransportQuota));
         urbanSlackLaborByHex.put(hex, urbanMintBudget);
       }
       // ★★ **R4-B.3a：把上面的"整额配额 + 整份 capacity"确定性地拆成主 unit + 家户副 unit** ——
@@ -311,10 +437,17 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       }
       List<Map<String, Object>> units = new ArrayList<>();
       List<Map<String, Object>> assetShares = new ArrayList<>();
-      // ★★★ P5b1：farm 的逐户 unit + LAND 份额（owner=operator=家户；无地户份额 0 也登记）。
+      // ★★★ RA1b2b：farm 的逐户 unit 保留；LAND 不再进 assetShares，而是 entry 级 landHoldings[]。
+      //   ★ 0 数量（流民/无地户）只保留 unit，不写 0 持有行；Σ 正份额 == landMilliMu（由 grainFarmUnits 保证）。
+      List<Map<String, Object>> landHoldings = new ArrayList<>();
       for (GrainFarmUnit unit : farmUnits) {
         units.add(unit.unitNode());
-        assetShares.add(unit.shareNode());
+        if (unit.landMilliMu() > 0L) {
+          Map<String, Object> holding = new LinkedHashMap<>();
+          holding.put("owner", unit.household().value());
+          holding.put("quantityMilliMu", unit.landMilliMu());
+          landHoldings.add(holding);
+        }
       }
       List<Map<String, Object>> splitAllocations = new ArrayList<>();
       // ★★★ D-032 C3（裁定选项 (a)）：逐 plan 收集**主 unit + 全部副 unit** 的旧规则；全部 unit 建好后由
@@ -325,22 +458,21 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         // 主 unit：载荷逐字段与 B.2 同形（operator 不变），capacity 变成"剩余"量（体现在 assetShares）。
         // ★★ P11.7/D-024：trade 的 unit 由解析器从 industry 节点的 legacy operator 合成（见 {@link #trade} 的
         //   兼容读口注释）—— 这里不重发，避免解析器判"同一 (产业, 经营者) 两处拼写"；作业资本（SMALL_TOOL）份额仍照发。
-        if (!TRADE.equals(plan.kind())) {
-          ProductionRules mainRelation =
-              switch (plan.kind()) {
-                case FARM -> null; // P5b1：farm 不走主 unit（逐户 unit 已在上面加入）。
-                case CRAFT -> craftMainRelation;
-                case WEAVE -> weaveMainRelation;
-                default -> null;
-              };
-          if (mainRelation != null) {
-            legacyRulesByPlan
-                .computeIfAbsent(plan.id(), ignored -> new ArrayList<>())
-                .addAll(mainRelation.rules());
-          }
-          units.add(
-              mainRelation == null ? unitOf(plan) : unitOf(plan, plan.operator(), mainRelation));
+        ProductionRules mainRelation =
+            switch (plan.kind()) {
+              case FARM -> null; // P5b1：farm 不走主 unit（逐户 unit 已在上面加入）。
+              case CRAFT -> craftMainRelation;
+              case WEAVE -> weaveMainRelation;
+              case CaravanTransportTemplate.KIND -> caravanMainRelation;
+              default -> null;
+            };
+        if (mainRelation != null) {
+          legacyRulesByPlan
+              .computeIfAbsent(plan.id(), ignored -> new ArrayList<>())
+              .addAll(mainRelation.rules());
         }
+        units.add(
+            mainRelation == null ? unitOf(plan) : unitOf(plan, plan.operator(), mainRelation));
         assetShares.addAll(
             ownershipStakesOf(
                 plan, split.mainCapacity(), IndustryHexKeys.hexKey(hex.q(), hex.r())));
@@ -370,26 +502,29 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         }
       }
       allocations.addAll(splitAllocations);
-      // ★★★ P5b2：真实初始雇工关系 —— 每个有流民户的 hex 选 1 个**有地** grain_farm unit，把该流民户作为
-      //   hired_laborer 参与项加入其显式名册；plannedLabor = 该户真实批次按参与率折算后的可用劳动（≤ 劳动预算）。
-      //   ★ 实际工资劳动由运行期劳动队列按名册 plannedLabor 物化成配额（M3/M6→M7/M8）；创世不重复种第二份配额。
-      //   ★ 流民户自己的零土地 unit 仍是 operator planned=0（它没有自己的农场劳动），避免同户劳动双计。
+      // ★★★ P5b2 / RC2b：真实初始雇工关系 —— 每个有农村人口的 hex 选 1 个**有地** grain_farm unit，把该 hex 的
+      //   **无地农民户**作为 hired_laborer 参与项加入其显式名册；plannedLabor = 该户真实批次按参与率折算后的可用劳动。
+      //   ★ 实际工资劳动由运行期劳动队列按名册 plannedLabor 物化成配额（M3/M6→M7/M8）；创世不为无地户另种 farm 配额
+      //     （它不在 farm/weave 配额池里）⇒ 同一份 landless 劳动只经 hired roster 提供一次。
+      //   ★ RC2b 起不再生成 displaced 初始雇工（displaced 户 = 0）。
       Map<ProductionUnitId, List<HiredLaborerParticipant>> hiredByUnit = new LinkedHashMap<>();
-      HouseholdId displacedHousehold = ruralCohorts.displacedHousehold();
-      if (hasRural && displacedHousehold != null) {
-        long displacedAvailableLabor = 0L;
+      // ★ RC2b：农村二档次序固定 = {landed_peasant, landless_laborer} ⇒ 无地户是第 2 条 class 家户。
+      HouseholdId landlessHousehold =
+          ruralCohorts.classHouseholds().size() > 1 ? ruralCohorts.classHouseholds().get(1) : null;
+      if (hasRural && landlessHousehold != null) {
+        long landlessAvailableLabor = 0L;
         for (PopulationGroup group : ruralAll) {
-          if (!displacedHousehold.equals(ruralCohorts.householdOfGroup(group))) {
+          if (!landlessHousehold.equals(ruralCohorts.householdOfGroup(group))) {
             continue;
           }
-          displacedAvailableLabor =
-              Math.addExact(displacedAvailableLabor, participationAdjustedLaborMilli(group));
+          landlessAvailableLabor =
+              Math.addExact(landlessAvailableLabor, participationAdjustedLaborMilli(group));
         }
         GrainFarmUnit hiredFarm = chooseHiredFarmUnit(farmUnits);
         String skipReason = null;
         if (hiredFarm == null) {
           skipReason = "no-land-owning-grain-farm-unit";
-        } else if (displacedAvailableLabor <= 0L) {
+        } else if (landlessAvailableLabor <= 0L) {
           skipReason = "no-available-labor";
         }
         if (skipReason != null) {
@@ -401,7 +536,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
                       "hex",
                       hex,
                       "household",
-                      displacedHousehold,
+                      landlessHousehold,
                       "reason",
                       skipReason));
         } else {
@@ -409,41 +544,27 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
           //   plannedLabor 物化成 HouseholdLaborCommitment（M3/M6）。若这里再种一份配额，劳动队列会把它
           //   当成"已有承诺"之外的另一份需求再加一次 ⇒ M8 实付按 2× 计划劳动计（实测 due 翻倍）。
           //   plannedLabor = 该户真实批次按参与率折算后的可用劳动（≤ 劳动预算），不是虚构 worker。
-          long plannedLabor = displacedAvailableLabor;
-          if (plannedLabor <= 0L) {
-            io.mosire.simos.util.log.EventLog.channel(LOG)
-                .info(
-                    io.mosire.simos.util.log.LogEvent.of(
-                        "D032_P5B2_HIRED_LABOR_SKIPPED",
-                        io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
-                        "hex",
-                        hex,
-                        "household",
-                        displacedHousehold,
-                        "reason",
-                        "no-real-labor"));
-          } else {
-            hiredByUnit.put(
-                hiredFarm.unitId(),
-                List.of(new HiredLaborerParticipant(displacedHousehold, plannedLabor)));
-            io.mosire.simos.util.log.EventLog.channel(LOG)
-                .info(
-                    io.mosire.simos.util.log.LogEvent.of(
-                        "D032_P5B2_HIRED_LABOR",
-                        io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
-                        "hex",
-                        hex,
-                        "unit",
-                        hiredFarm.unitId(),
-                        "employer",
-                        hiredFarm.operator(),
-                        "worker",
-                        displacedHousehold,
-                        "plannedLaborMilliPerDay",
-                        plannedLabor,
-                        "availableLaborMilliPerDay",
-                        displacedAvailableLabor));
-          }
+          long plannedLabor = landlessAvailableLabor;
+          hiredByUnit.put(
+              hiredFarm.unitId(),
+              List.of(new HiredLaborerParticipant(landlessHousehold, plannedLabor)));
+          io.mosire.simos.util.log.EventLog.channel(LOG)
+              .info(
+                  io.mosire.simos.util.log.LogEvent.of(
+                      "D032_P5B2_HIRED_LABOR",
+                      io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                      "hex",
+                      hex,
+                      "unit",
+                      hiredFarm.unitId(),
+                      "employer",
+                      hiredFarm.operator(),
+                      "worker",
+                      landlessHousehold,
+                      "plannedLaborMilliPerDay",
+                      plannedLabor,
+                      "availableLaborMilliPerDay",
+                      landlessAvailableLabor));
         }
       }
       // ★★★ P5b1/P5b2：farm 名册必须在配额落定后生成（operator plannedLabor 只算 organizer 自己那部分；
@@ -459,7 +580,7 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       //   ★ P5b1：farm 的 roles 是显式两角色、且 unit 已有显式名册 ⇒ 不进入旧规则映射（否则会被单 operator 覆盖）。
       List<IndustryPlan> legacyRolePlans = new ArrayList<>(plans.size());
       for (IndustryPlan plan : plans) {
-        if (!FARM.equals(plan.kind())) {
+        if (!FARM.equals(plan.kind()) && !CaravanTransportTemplate.KIND.equals(plan.kind())) {
           legacyRolePlans.add(plan);
         }
       }
@@ -474,7 +595,8 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       //   ★ **两组恒在**（即使某池人口为 0）：格集本身由批次落点决定，而"这一格有没有城镇家户"是一件事、
       //     "这一格此刻有没有城镇人口"是另一件事（H1 的家户 actor 按 格 × 居住 × 阶层 播，形状必须与行集一致）。
       //     人口为 0 的行是**合法的空账**（人口/劳动/需求全 0），不是噪声：它是"这一格有这个家户、只是没人"。
-      List<Map<String, Object>> classes = new ArrayList<>(2 * CLASS_IDS.length);
+      List<Map<String, Object>> classes =
+          new ArrayList<>(RURAL_CLASS_IDS.length + CLASS_IDS.length);
       // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code HouseholdInventory}）。本方法把它**一次算好**并交回
       //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
       //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
@@ -523,6 +645,86 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
           householdMoney.put(workshopOwner, wallet);
         }
       }
+      // ★★★ D-032 C9：每个既有 OWNER 家户在唯一 HouseholdInventory 上获得运输马匹大库存。
+      Set<HouseholdId> ownerHouseholds =
+          ownerHouseholdsOf(hex, landHoldings, assetShares, householdLocations, householdStocks);
+      if (transportOperatorHousehold != null
+          && !ownerHouseholds.contains(transportOperatorHousehold)) {
+        throw new IllegalStateException(
+            "transport-caravan-owner-not-derivable: hex="
+                + hex
+                + " operator="
+                + transportOperatorHousehold.value()
+                + " owners="
+                + ownerHouseholds);
+      }
+      seedTransportHorses(hex, ownerHouseholds, householdLocations, householdStocks);
+      // ★★★ D-032 C9：运输 unit 的显式多角色名册（operator + 可选 hired_driver；角色 id 只读模板 ROLES）。
+      if (transportOperatorHousehold != null) {
+        IndustryPlan caravanPlan = planOf(plans, CaravanTransportTemplate.industryId(hex));
+        // ★ hotfix：hired_driver 只拿**真实剩余劳动**（已扣 farm/weave/craft 配额 + farm hired 计划后的余额）；
+        //   与 farm 共用同一户同一份预算 ⇒ 不得把 farm 的 22040 再当成车夫的第二份 22040。
+        Map<HouseholdId, Long> plannedLaborByHousehold = new LinkedHashMap<>();
+        for (Map<String, Object> allocation : allocations) {
+          plannedLaborByHousehold.merge(
+              HouseholdId.parse((String) allocation.get("household")),
+              ((Number) allocation.get("laborMilli")).longValue(),
+              Math::addExact);
+        }
+        for (List<HiredLaborerParticipant> participants : hiredByUnit.values()) {
+          for (HiredLaborerParticipant participant : participants) {
+            plannedLaborByHousehold.merge(
+                participant.household(), participant.plannedLaborMilliPerDay(), Math::addExact);
+          }
+        }
+        TransportDriver driver =
+            chooseTransportDriver(
+                transportOperatorHousehold,
+                ruralAll,
+                ruralCohorts,
+                urbanAll,
+                urbanCohorts,
+                plannedLaborByHousehold);
+        long operatorPlannedLabor =
+            plannedLaborOfHousehold(allocations, caravanPlan.unitId(), transportOperatorHousehold);
+        if (operatorPlannedLabor < CaravanTransportTemplate.LABOR_MILLI_PER_SCALE_UNIT) {
+          throw new IllegalStateException(
+              "caravan-labor-share-below-minimum: hex="
+                  + hex
+                  + " unit="
+                  + caravanPlan.unitId().value()
+                  + " operator="
+                  + transportOperatorHousehold.value()
+                  + " plannedLaborMilliPerDay="
+                  + operatorPlannedLabor
+                  + " minimum="
+                  + CaravanTransportTemplate.LABOR_MILLI_PER_SCALE_UNIT);
+        }
+        productionRosters.add(
+            caravanRosterNode(
+                caravanPlan, transportOperatorHousehold, operatorPlannedLabor, driver));
+        io.mosire.simos.util.log.EventLog.channel(LOG)
+            .info(
+                io.mosire.simos.util.log.LogEvent.of(
+                    "CARAVAN_TRANSPORT_SEEDED",
+                    io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                    "hex",
+                    hex,
+                    "industry",
+                    caravanPlan.id(),
+                    "unit",
+                    caravanPlan.unitId(),
+                    "operator",
+                    transportOperatorHousehold,
+                    "operatorPlannedLaborMilliPerDay",
+                    operatorPlannedLabor,
+                    "hiredDriver",
+                    driver == null ? null : driver.household(),
+                    "hiredDriverPlannedLaborMilliPerDay",
+                    driver == null ? 0L : driver.plannedLaborMilliPerDay(),
+                    "mode",
+                    CaravanTransportTemplate.REGIME.value()));
+      }
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
@@ -532,8 +734,12 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
       entry.put("plans", industries);
       entry.put("classes", classes);
       entry.put("allocations", allocations);
-      // ★★ S1/R3B.2：本格各产业的资产份额由 plan 显式发出（容量整额 OWNED 给 unit.operator）。
+      // ★★ S1/R3B.2：本格各产业的**非 LAND** 资产份额由 plan 显式发出（容量整额 OWNED 给 unit.operator）。
+      //   ★★★ RA1b2b：farm LAND 已从 assetShares 移除，改由下面两个 entry 级字段落标量土地。
       entry.put("assetShares", assetShares);
+      // ★★★ D-032 L3：只写持久 landHoldings（只写正份额；Σ == Map arable 由 app 创世守卫与运行期快照复核）。
+      //   arable 总量不再是 economy 持久/载荷字段。
+      entry.put("landHoldings", landHoldings);
       entry.put("units", units);
       entries.add(entry);
       // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
@@ -638,5 +844,450 @@ class ProductionRuntimeSeeder extends WorldBalanceSeeder {
         applied.extraMoneyIssuances(),
         productionRosters,
         applied.report());
+  }
+
+  /** 本 hex 既有 OWNER 户的确定性选择：先农村有地户，再城市作坊主；都没有 ⇒ null（不造户）。 */
+  private static HouseholdId chooseTransportOperator(
+      Set<HouseholdId> landedHouseholds, boolean hasCraft, PoolCohorts urbanCohorts) {
+    HouseholdId chosen = null;
+    for (HouseholdId household : landedHouseholds) {
+      if (chosen == null || household.value().compareTo(chosen.value()) < 0) {
+        chosen = household;
+      }
+    }
+    if (chosen != null) {
+      return chosen;
+    }
+    if (hasCraft && urbanCohorts.classHouseholds().size() > WORKSHOP_OWNER_SLOT_INDEX) {
+      return urbanCohorts.classHouseholds().get(WORKSHOP_OWNER_SLOT_INDEX);
+    }
+    return null;
+  }
+
+  /**
+   * ★★★ D-032 C9 hotfix：为运输 operator 解析**可切出的真实劳动份额**。
+   *
+   * <p>只在 operator 自己所属、同 hex 的 landed/urban 池里取批次；份额 = {@code max(1000, available ×
+   * TRANSPORT_LABOR_SHARE_PER_MILLE ÷ 1000)}，再受 operator 可用劳动与来源池剩余预算双重封顶。 不足 {@link
+   * CaravanTransportTemplate#LABOR_MILLI_PER_SCALE_UNIT} ⇒ 返回 null（调用方具名 INFO 并跳过运输组织， 不伪造 0 劳动
+   * roster）。
+   */
+  private static TransportLabor transportLaborOf(
+      HexCoord hex,
+      HouseholdId operator,
+      List<PopulationGroup> ruralLandedPool,
+      PoolCohorts ruralCohorts,
+      long ruralDaily,
+      long weaveQuota,
+      List<PopulationGroup> urbanPool,
+      PoolCohorts urbanCohorts,
+      long urbanCraftDaily,
+      boolean hasRural,
+      boolean hasCraft) {
+    if (operator == null) {
+      return null;
+    }
+    if (hasRural) {
+      List<PopulationGroup> pool = groupsOfHousehold(ruralLandedPool, ruralCohorts, operator);
+      if (!pool.isEmpty()) {
+        long available = availableLaborMilli(pool);
+        long sourceRemaining = Math.max(0L, ruralDaily - weaveQuota);
+        long quota = transportQuota(available, sourceRemaining);
+        return quota >= CaravanTransportTemplate.LABOR_MILLI_PER_SCALE_UNIT
+            ? new TransportLabor(true, List.copyOf(pool), quota, available)
+            : null;
+      }
+    }
+    if (hasCraft) {
+      List<PopulationGroup> pool = groupsOfHousehold(urbanPool, urbanCohorts, operator);
+      if (!pool.isEmpty()) {
+        long available = availableLaborMilli(pool);
+        long quota = transportQuota(available, urbanCraftDaily);
+        return quota >= CaravanTransportTemplate.LABOR_MILLI_PER_SCALE_UNIT
+            ? new TransportLabor(false, List.copyOf(pool), quota, available)
+            : null;
+      }
+    }
+    io.mosire.simos.util.log.EventLog.channel(LOG)
+        .info(
+            io.mosire.simos.util.log.LogEvent.of(
+                "CARAVAN_LABOR_UNAVAILABLE",
+                io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                "hex",
+                hex,
+                "operator",
+                operator,
+                "reason",
+                "operator-not-in-rural-landed-or-urban-pool"));
+    return null;
+  }
+
+  /** 本户在本池里的批次（用于 operator 自雇，不把份额分给别户）。 */
+  private static List<PopulationGroup> groupsOfHousehold(
+      List<PopulationGroup> pool, PoolCohorts cohorts, HouseholdId household) {
+    List<PopulationGroup> groups = new ArrayList<>();
+    for (PopulationGroup group : pool) {
+      if (household.equals(cohorts.householdOfGroup(group))) {
+        groups.add(group);
+      }
+    }
+    return groups;
+  }
+
+  /** 运输份额的唯一切法：至少一份 scale 劳动；不得超过 operator 可用与来源池剩余。 */
+  private static long transportQuota(long operatorAvailable, long sourceRemaining) {
+    if (operatorAvailable <= 0L || sourceRemaining <= 0L) {
+      return 0L;
+    }
+    long desired =
+        Math.multiplyExact(operatorAvailable, (long) TRANSPORT_LABOR_SHARE_PER_MILLE) / 1000L;
+    long atLeastMinimum = Math.max(CaravanTransportTemplate.LABOR_MILLI_PER_SCALE_UNIT, desired);
+    return Math.min(atLeastMinimum, Math.min(operatorAvailable, sourceRemaining));
+  }
+
+  /** 运输劳动份额的 INFO 证据：份额、实际落账、operator 可用与来源池。 */
+  private static void logCaravanLaborAllocated(
+      HexCoord hex,
+      IndustryPlan plan,
+      HouseholdId operator,
+      String source,
+      long shareLaborMilli,
+      long actualAllocatedLaborMilli,
+      long operatorAvailableLaborMilli) {
+    io.mosire.simos.util.log.EventLog.channel(LOG)
+        .info(
+            io.mosire.simos.util.log.LogEvent.of(
+                "CARAVAN_LABOR_ALLOCATED",
+                io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                "hex",
+                hex,
+                "unit",
+                plan.unitId(),
+                "operator",
+                operator,
+                "source",
+                source,
+                "activity",
+                ACTIVITY_TRANSPORT,
+                "shareLaborMilliPerDay",
+                shareLaborMilli,
+                "actualAllocatedLaborMilliPerDay",
+                actualAllocatedLaborMilli,
+                "operatorAvailableLaborMilliPerDay",
+                operatorAvailableLaborMilli));
+  }
+
+  /** 运输 operator 自雇份额的解析结果：来源池、批次、份额与 operator 可用劳动（只读瞬态）。 */
+  private record TransportLabor(
+      boolean ruralPool,
+      List<PopulationGroup> households,
+      long quotaLaborMilli,
+      long operatorAvailableLaborMilli) {
+    private TransportLabor {
+      Objects.requireNonNull(households, "TransportLabor.households 不得为 null");
+      if (quotaLaborMilli <= 0L) {
+        throw new IllegalArgumentException(
+            "TransportLabor.quotaLaborMilli 必须为正: " + quotaLaborMilli);
+      }
+      if (operatorAvailableLaborMilli <= 0L) {
+        throw new IllegalArgumentException(
+            "TransportLabor.operatorAvailableLaborMilli 必须为正: " + operatorAvailableLaborMilli);
+      }
+    }
+  }
+
+  /**
+   * 本 hex 创世时已经存在的真实 OWNER 家户：只从该 hex 的真实资产事实派生，并过滤掉合成聚合经营者。
+   *
+   * <p>LAND 取 {@code landHoldings} 的正持有；非 LAND 取 {@code assetShares} 中 owner.kind=HOUSEHOLD 且
+   * quantity>0。 这正是 C1 ownershipClass 的输入面（不含尚未播下的运输马匹），因此不会用“马匹自己证明自己是 owner”形成循环。
+   *
+   * <p>★ 合成聚合经营者（如 {@code weave@<hex>}）也会以 {@code owner.kind=HOUSEHOLD} 出现在 assetShares 中，
+   * 但它不是真实家户、没有家户落点/库存挂点，不能取得马匹库存。真实家户的存在性判据取家户落点或库存挂点 （任一存在即可）；这样真实候选即使缺 location/stock 中另一项，仍会进入
+   * {@link #seedTransportHorses} 并 按原 fail-closed 规则报错，而不是被误当成合成主体静默过滤。
+   */
+  private static Set<HouseholdId> ownerHouseholdsOf(
+      HexCoord hex,
+      List<Map<String, Object>> landHoldings,
+      List<Map<String, Object>> assetShares,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks) {
+    Set<HouseholdId> candidates = new LinkedHashSet<>();
+    for (Map<String, Object> holding : landHoldings) {
+      Object owner = holding.get("owner");
+      Object quantity = holding.get("quantityMilliMu");
+      if (owner instanceof String ownerText
+          && quantity instanceof Number number
+          && number.longValue() > 0L) {
+        candidates.add(HouseholdId.parse(ownerText));
+      }
+    }
+    for (Map<String, Object> share : assetShares) {
+      Object quantity = share.get("quantity");
+      Object ownerNode = share.get("owner");
+      if (quantity instanceof Number number && number.longValue() > 0L) {
+        HouseholdId owner = householdOwnerOf(ownerNode);
+        if (owner != null) {
+          candidates.add(owner);
+        }
+      }
+    }
+    List<HouseholdId> sortedCandidates = new ArrayList<>(candidates);
+    sortedCandidates.sort(Comparator.comparing(HouseholdId::value));
+    Set<HouseholdId> realOwners = new LinkedHashSet<>();
+    for (HouseholdId owner : sortedCandidates) {
+      if (!householdLocations.containsKey(owner) && !householdStocks.containsKey(owner)) {
+        io.mosire.simos.util.log.EventLog.channel(LOG)
+            .info(
+                io.mosire.simos.util.log.LogEvent.of(
+                    "TRANSPORT_HORSE_OWNER_SKIPPED",
+                    io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                    "hex",
+                    hex,
+                    "household",
+                    owner,
+                    "reason",
+                    "synthetic-aggregate-not-household"));
+        continue;
+      }
+      realOwners.add(owner);
+    }
+    return realOwners;
+  }
+
+  /** {@code {kind,id}} owner 节点 → HOUSEHOLD id；非 HOUSEHOLD 返回 null（马匹不能记在非家户主体上）。 */
+  private static HouseholdId householdOwnerOf(Object rawOwnerNode) {
+    if (!(rawOwnerNode instanceof Map<?, ?> ownerNode)) {
+      return null;
+    }
+    Object kind = ownerNode.get("kind");
+    Object id = ownerNode.get("id");
+    if (!ActorKind.HOUSEHOLD.name().equals(kind) || !(id instanceof String idText)) {
+      return null;
+    }
+    return HouseholdId.parse(idText);
+  }
+
+  /**
+   * D-032 C9：给本 hex 每个既有 OWNER 户的 HouseholdInventory 增加运输马匹大库存。
+   *
+   * <p>唯一数量入口 = {@link #TRANSPORT_HORSE_OWNER_STOCK_MILLI}；马匹是普通商品库存，不建 OwnershipStake/AssetKind。
+   * 缺价格、缺家户落点、缺库存挂点都具名 fail-closed。库存不冻结，市场卖侧按既有“库存 − 保留”规则即可形成可售余量。
+   */
+  private static void seedTransportHorses(
+      HexCoord hex,
+      Set<HouseholdId> owners,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks) {
+    Long price = MARKET_PRICES_FACTORY.get(CaravanTransportTemplate.TRANSPORT_HORSE);
+    if (price == null || price <= 0L) {
+      throw new IllegalStateException(
+          "transport-horse-price-missing: hex="
+              + hex
+              + " commodity="
+              + CaravanTransportTemplate.TRANSPORT_HORSE.value()
+              + " price="
+              + price);
+    }
+    if (owners.isEmpty()) {
+      io.mosire.simos.util.log.EventLog.channel(LOG)
+          .info(
+              io.mosire.simos.util.log.LogEvent.of(
+                  "TRANSPORT_HORSE_SEED_SKIPPED",
+                  io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                  "hex",
+                  hex,
+                  "reason",
+                  "no-existing-owner-household"));
+      return;
+    }
+    long seeded = 0L;
+    for (HouseholdId owner : owners) {
+      HexCoord location = householdLocations.get(owner);
+      if (location == null) {
+        throw new IllegalStateException(
+            "transport-horse-owner-location-missing: hex=" + hex + " household=" + owner.value());
+      }
+      if (!location.equals(hex)) {
+        throw new IllegalStateException(
+            "transport-horse-owner-location-mismatch: hex="
+                + hex
+                + " household="
+                + owner.value()
+                + " location="
+                + location);
+      }
+      Map<CommodityId, Long> stock = householdStocks.get(owner);
+      if (stock == null) {
+        throw new IllegalStateException(
+            "transport-horse-inventory-anchor-missing: hex=" + hex + " household=" + owner.value());
+      }
+      Map<CommodityId, Long> updated = new LinkedHashMap<>(stock);
+      updated.merge(
+          CaravanTransportTemplate.TRANSPORT_HORSE,
+          TRANSPORT_HORSE_OWNER_STOCK_MILLI,
+          Math::addExact);
+      householdStocks.put(owner, updated);
+      seeded = Math.addExact(seeded, TRANSPORT_HORSE_OWNER_STOCK_MILLI);
+    }
+    io.mosire.simos.util.log.EventLog.channel(LOG)
+        .info(
+            io.mosire.simos.util.log.LogEvent.of(
+                "TRANSPORT_HORSE_SEEDED",
+                io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                "hex",
+                hex,
+                "ownerHouseholds",
+                owners.size(),
+                "transportHorseMilli",
+                seeded,
+                "price",
+                price));
+  }
+
+  /**
+   * 运输名册的 hired_driver 候选：按家户 id 稳定序选第一个**扣除既有计划后仍有真实剩余劳动**的同 hex 户。
+   *
+   * <p>★ hotfix：剩余量 = 该户可用劳动 − 已在 allocations/farm hired 名册里计划掉的劳动。32hex 的 landless 户已被 farm 的
+   * hired_laborer 名册占满 ⇒ 车夫计划劳动 = 0（只保留工资位置参与项，不形成第二份承诺、不与 farm 重复计同一份劳动）。 没有任何真实剩余也不塞假 worker；返回一个
+   * 0 计划的参与项只为保留 hired_driver 位置合同。
+   */
+  private static TransportDriver chooseTransportDriver(
+      HouseholdId operator,
+      List<PopulationGroup> ruralAll,
+      PoolCohorts ruralCohorts,
+      List<PopulationGroup> urbanAll,
+      PoolCohorts urbanCohorts,
+      Map<HouseholdId, Long> plannedLaborByHousehold) {
+    List<HouseholdId> candidates = new ArrayList<>();
+    candidates.addAll(ruralCohorts.classHouseholds());
+    candidates.addAll(urbanCohorts.classHouseholds());
+    candidates.sort(Comparator.comparing(HouseholdId::value));
+    Set<HouseholdId> seen = new LinkedHashSet<>();
+    TransportDriver zeroLaborFallback = null;
+    for (HouseholdId candidate : candidates) {
+      if (!seen.add(candidate) || candidate.equals(operator)) {
+        continue;
+      }
+      long available = availableLaborOf(candidate, ruralAll, ruralCohorts, urbanAll, urbanCohorts);
+      long alreadyPlanned = plannedLaborByHousehold.getOrDefault(candidate, 0L);
+      long remaining = Math.max(0L, available - alreadyPlanned);
+      if (remaining > 0L) {
+        return new TransportDriver(candidate, remaining);
+      }
+      if (zeroLaborFallback == null) {
+        zeroLaborFallback = new TransportDriver(candidate, 0L);
+      }
+    }
+    return zeroLaborFallback;
+  }
+
+  private static long availableLaborOf(
+      HouseholdId household,
+      List<PopulationGroup> ruralAll,
+      PoolCohorts ruralCohorts,
+      List<PopulationGroup> urbanAll,
+      PoolCohorts urbanCohorts) {
+    long total = 0L;
+    for (PopulationGroup group : ruralAll) {
+      if (household.equals(ruralCohorts.householdOfGroup(group))) {
+        total = Math.addExact(total, participationAdjustedLaborMilli(group));
+      }
+    }
+    for (PopulationGroup group : urbanAll) {
+      if (household.equals(urbanCohorts.householdOfGroup(group))) {
+        total = Math.addExact(total, participationAdjustedLaborMilli(group));
+      }
+    }
+    return total;
+  }
+
+  /** D-032 C9：运输 unit 的显式名册节点（角色 id/形状只读 CaravanTransportTemplate.ROLES）。 */
+  private static Map<String, Object> caravanRosterNode(
+      IndustryPlan plan,
+      HouseholdId operator,
+      long operatorPlannedLaborMilliPerDay,
+      TransportDriver driver) {
+    // ★★ hotfix：unit id 与 organizer 必须同源。unit id 从 (plan.id, organizer actor) 唯一派生；
+    //   与 plan 里已物化的 operator/unit 不一致 ⇒ 具名 fail-closed，绝不静默生成矛盾名册。
+    ActorRef organizerActor = HouseholdActors.of(operator);
+    ProductionUnitId expectedUnitId =
+        ProductionUnitId.idOf(new IndustryId(plan.id()), organizerActor);
+    if (!organizerActor.equals(plan.operator()) || !expectedUnitId.equals(plan.unitId())) {
+      throw new IllegalStateException(
+          "caravan-roster-unit-organizer-mismatch: unit="
+              + plan.unitId().value()
+              + " expectedUnit="
+              + expectedUnitId.value()
+              + " unitOperator="
+              + plan.operator()
+              + " organizer="
+              + organizerActor);
+    }
+    if (operatorPlannedLaborMilliPerDay < 0L) {
+      throw new IllegalArgumentException(
+          "caravan operator plannedLaborMilliPerDay 不得为负: " + operatorPlannedLaborMilliPerDay);
+    }
+    String operatorRole = CaravanTransportTemplate.ROLES.get(0).id().value();
+    String driverRole = CaravanTransportTemplate.ROLES.get(1).id().value();
+    List<Map<String, Object>> participants = new ArrayList<>(driver == null ? 1 : 2);
+    participants.add(
+        rosterParticipantNode(operator, operatorRole, true, operatorPlannedLaborMilliPerDay));
+    if (driver != null) {
+      participants.add(
+          rosterParticipantNode(
+              driver.household(), driverRole, false, driver.plannedLaborMilliPerDay()));
+    }
+    Map<String, Object> roster = new LinkedHashMap<>();
+    roster.put("unit", plan.unitId().value());
+    roster.put("participants", List.copyOf(participants));
+    return roster;
+  }
+
+  private static Map<String, Object> rosterParticipantNode(
+      HouseholdId household, String role, boolean organizer, long plannedLaborMilliPerDay) {
+    if (plannedLaborMilliPerDay < 0L) {
+      throw new IllegalArgumentException(
+          "roster plannedLaborMilliPerDay 不得为负: " + plannedLaborMilliPerDay);
+    }
+    Map<String, Object> participant = new LinkedHashMap<>();
+    participant.put("household", household.value());
+    participant.put("role", role);
+    participant.put("organizer", organizer);
+    participant.put("plannedLaborMilliPerDay", plannedLaborMilliPerDay);
+    participant.put("rightsStakes", List.of());
+    participant.put("configuredWeight", 0L);
+    return participant;
+  }
+
+  private record TransportDriver(HouseholdId household, long plannedLaborMilliPerDay) {
+    private TransportDriver {
+      Objects.requireNonNull(household, "TransportDriver.household 不得为 null");
+      if (plannedLaborMilliPerDay < 0L) {
+        throw new IllegalArgumentException(
+            "TransportDriver.plannedLaborMilliPerDay 不得为负: " + plannedLaborMilliPerDay);
+      }
+    }
+  }
+
+  /**
+   * 从调用方注入的逐格 arable 来源读取土地总量。真地图入口传 {@code HexAreas.arableMilliMu}；纯函数入口只允许在尚未持有 GameMap
+   * 的测试/夹具中走地形 fallback。未知格（null）与负数在此 fail-closed，绝不静默按 0 继续。
+   */
+  private static long requireArableMilliMu(HexCoord hex, Function<HexCoord, Long> arableOf) {
+    Objects.requireNonNull(hex, "hex");
+    Long value;
+    try {
+      value = arableOf.apply(hex);
+    } catch (RuntimeException e) {
+      throw new IllegalStateException("arableOf 无法解析格 " + hex + " 的 Map arable 总量（未知 hex）", e);
+    }
+    if (value == null) {
+      throw new IllegalStateException("arableOf 对格 " + hex + " 回了 null（未知 hex，拒绝按 0 伪造可耕地）");
+    }
+    if (value < 0L) {
+      throw new IllegalStateException("arableOf 对格 " + hex + " 回了负数（arableMilliMu=" + value + "）");
+    }
+    return value;
   }
 }

@@ -163,7 +163,9 @@ final class MarketPricer {
       //     在撮合与分配都做完之后（本方法的位置）已经齐备。
       //   ★ 缺省中性：服务未定价的区一个字节都不动（{@code hasPrice} 为假 ⇒ 不注入）；两侧都为 0 ⇒ 不注入
       //     ⇒ 既有世界（无运力、无需求）逐值不变。
-      if (zoneMarket.hasPrice(HaulService.HAUL_COMMODITY)) {
+      // ★★★ D-032 C7b2：活动运输计划路径的价格权威是 C7a 运输锚；旧 haul 商品牌的 D/S 自适应更新退出活动路径。
+      //   旧夹具/纯状态读者（transportRoundPlan == null）仍按原编译分支运行。
+      if (ctx.transportRoundPlan == null && zoneMarket.hasPrice(HaulService.HAUL_COMMODITY)) {
         long haulDemandMilli = 0L;
         long haulSupplyMilli = 0L;
         long haulUnservedMilli = 0L;

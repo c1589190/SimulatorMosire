@@ -33,8 +33,9 @@ final class SettlementDayWagePipeline {
   /** 由 EconomySettlement 的日序主方法机械抽取而来。 */
   static void settleWageAndCapitalize(SettlementDayContext ctx, boolean marketDay) {
     // ── ★★★ W3/P4a（D-032 P4a）：工资只付现金 → 未付差额成普通工资债 ─────────────────────────
-    //   ★ 位置钉死：`driveProductionDay` 与关账/收获/铸币之后。due 只读本 tick
-    //     ProductionReceipt 的实际劳动；M8 在本轮 M2 之后 ⇒ 本 tick 工资债不会被同 tick 二次偿还。
+    //   ★ 位置钉死：`driveProductionDay` 与关账/收获/铸币之后、S7-M2 债务清算之前。due 只读本 tick
+    //     ProductionReceipt 的实际劳动；S6 在本轮 S7-M2 之前 ⇒ 本 tick 新建工资债的合同 id 必须收集到
+    //     {@code ctx.sameDayWageDebtIds}，由 S7-M2 的 owed 过滤跳过；最早下一市场日同池处理。
     //   ★ 账户权威 = AccountSession 快照；P4a 起不再读任何商品库存/barter。
     ctx.wageAccountSnapshot = ctx.accounts.snapshot();
     // ★★★ W5-A（缺陷：W3 用 tick 前 unit 快照）：这里**必须**读当刻权威候选态，不得传日结算入口抓的 `units`。
@@ -61,8 +62,12 @@ final class SettlementDayWagePipeline {
     var wageCarries = ctx.session.sheet().wageCarryRemainders();
     wageCarries.clear();
     wageCarries.putAll(ctx.wageSettlement.carryRemainders());
-    // ★ P4a：主 M8 不再生成/传递 sameDayWageDebtIds；保留空集只为旧 capitalizeArrears 退出路径编译适配。
+    // ★★★ RC0a：S6 新生成的 WAGE_ARREARS 合同 id 收集到 ctx.sameDayWageDebtIds，供 S7-M2 的
+    //   DebtFirstSettlement owed 过滤跳过（只跳本 tick 新建，旧工资债照常清算）。
     ctx.sameDayWageDebtIds = new LinkedHashSet<>();
+    for (WageSettlementReadout readout : ctx.wageSettlement.readouts()) {
+      readout.debtContractId().ifPresent(ctx.sameDayWageDebtIds::add);
+    }
     // ★★★ D-032 W4：把 W3 已算出的读数原样投递给 app 只读面（不重算、不写状态；同日 tick 才可信）。
     WageSettlementReadoutFeed.publish(ctx.meta.mapId(), ctx.day, ctx.wageSettlement.readouts());
     if (TRACE.isTraceEnabled() && !ctx.wageSettlement.readouts().isEmpty()) {
@@ -103,8 +108,9 @@ final class SettlementDayWagePipeline {
     //     **不移动任何商品/货币库存**（欠款本来就是未付），也**不清零 Arrear 读数**（读数仍是制度事实）。
     //   ★★ P2：端点解析改走 {@link DebtPartyResolver}（唯一解析点）：家户 actor 直取；聚合主体先查
     //     E2 生产组织，再按 ESTATE/WORKSHOP 的人口成分回退；多户按人口最大余数拆分。解析不到 ⇒ 具名跳过（不伪造）。
-    //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入偿还排序（D-031 起不再进入任何借款额度门）；
-    //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
+    //   ★ 位置在 S6 工资之后、S7-M2 之前：新增工资债不会在同 tick 的 M2 被再付（其 id 已收进
+    //     sameDayWageDebtIds）；旧格式欠款同样只作制度事实，不移动库存。
+    //   ★ 不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
     capitalizeArrears(
         ctx.dayView,
         ctx.settlementIndex,

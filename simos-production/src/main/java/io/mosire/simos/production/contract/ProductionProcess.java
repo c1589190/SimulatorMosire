@@ -266,6 +266,27 @@ public record ProductionProcess(
         cycleInputUsedMilli);
   }
 
+  /**
+   * ★ <b>只换本周期贡献台账</b>（RC4-B 家户重键用）：身份、地点、经营者、方式键、进度与累计投入逐字带过。
+   *
+   * <p>★ 本方法不解释重键/合并规则（那是 {@code ProductionRuntime#rekeyCycleContributions} 的领域语义）；
+   * 这里只负责把调用方算好的新台账装回同一个实例，并让构造器继续守卫"键 == 值内家户×角色"与不可变性。
+   *
+   * @param nextContributions 新台账；不得为 null
+   */
+  public ProductionProcess withCycleContributions(
+      Map<ProductionParticipantKey, CycleContribution> nextContributions) {
+    return new ProductionProcess(
+        id,
+        plan,
+        location,
+        operator,
+        modeKey,
+        progressDays,
+        nextContributions,
+        cycleInputUsedMilli);
+  }
+
   /** 换本周期状态（进度 / 累计投入），身份、地点、经营者与贡献台账逐字带过。 */
   public ProductionProcess withCycleState(
       long nextProgressDays, Map<CommodityId, Long> nextInputUsedMilli) {

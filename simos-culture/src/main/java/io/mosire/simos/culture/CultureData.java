@@ -1,10 +1,16 @@
 package io.mosire.simos.culture;
 
 import io.mosire.simos.culture.contract.CultureLookup;
+import io.mosire.simos.culture.contract.CultureTag;
+import io.mosire.simos.culture.contract.CustomTag;
 import io.mosire.simos.culture.contract.HouseholdCulture;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKey;
+import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,13 +34,14 @@ import java.util.Optional;
  * <p>★ <b>保序不可变</b>：表 {@code LinkedHashMap} 拷贝 + 在赋值处 {@code Collections.unmodifiableMap} 冻结，
  * <b>绝不用 {@code Map.copyOf}</b>——它的迭代序不是内容的纯函数，字节级往返因此不成立。
  *
- * <p>★ <b>读口</b>：本类型直接实现 {@link CultureLookup}（状态是文化标签的权威读模型）；{@code cultureOf(...)} 与 record
- * 访问器不同签名，不构成 Jackson getter 冲突。
+ * <p>★ <b>读口</b>：本类型直接实现 {@link CultureLookup} 与 economy-api 的 {@link HouseholdCultureKeyLookup}
+ * （状态是文化标签的权威读模型）；{@code cultureOf(...)} / {@code cultureKeyOf(...)} 与 record 访问器不同签名， 不构成 Jackson
+ * getter 冲突。economy 只认 economy-api 的 key/lookup，不 import culture。
  *
  * @param householdCultures 家户文化标签表（键 == 值内 household；保序不可变；缺键读成空表）
  */
 public record CultureData(Map<HouseholdId, HouseholdCulture> householdCultures)
-    implements CultureLookup {
+    implements CultureLookup, HouseholdCultureKeyLookup {
 
   public CultureData {
     // ★ 逐字展开、不抽 helper（照 GovState/ProductionData 的冻结纪律）：EI_EXPOSE_REP 只认它看得见的包装。
@@ -79,5 +86,28 @@ public record CultureData(Map<HouseholdId, HouseholdCulture> householdCultures)
   public Optional<HouseholdCulture> cultureOf(HouseholdId household) {
     Objects.requireNonNull(household, "household");
     return Optional.ofNullable(householdCultures.get(household));
+  }
+
+  /**
+   * ★ RC1（D-032 v4 §9）：把 typed {@link HouseholdCulture} 映射成 economy-api 的不透明只读 key。
+   *
+   * <p>missing household / 未设置文化 ⇒ {@link Optional#empty()}（不伪造、不抛）。{@code customs} 的排序/去重/冻结由
+   * {@link HouseholdCultureKey} 构造期唯一执行，这里只做 typed → 字符串的忠实搬运。
+   */
+  @Override
+  public Optional<HouseholdCultureKey> cultureKeyOf(HouseholdId household) {
+    Objects.requireNonNull(household, "household");
+    HouseholdCulture culture = householdCultures.get(household);
+    if (culture == null) {
+      return Optional.empty();
+    }
+    CultureTag tag = culture.tag();
+    List<String> customs = new ArrayList<>(tag.customs().size());
+    for (CustomTag custom : tag.customs()) {
+      customs.add(custom.value());
+    }
+    return Optional.of(
+        new HouseholdCultureKey(
+            tag.culture().value(), tag.religion().value(), customs, culture.label()));
   }
 }

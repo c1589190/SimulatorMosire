@@ -119,10 +119,10 @@ public final class CorridorWorld {
     TerrainType desert = TerrainCatalog.of("desert");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     // ★ 创世初始化（2026-10-12 批次 2）：按地形给"乡村面积"固定初值（该地形的默认可用面积）。
-    //   本世界三格都是沙漠 ⇒ 默认可用面积为 0 ⇒ initialCell 不写显式项，读面照常按地形给出 0（来源标 terrain-default）。
-    hexes.put(H11, HexAreas.initialCell(0.5, desert.key()));
-    hexes.put(H12, HexAreas.initialCell(0.5, desert.key()));
-    hexes.put(H13, HexAreas.initialCell(0.5, desert.key()));
+    //   本世界三格都是沙漠 ⇒ 默认可用面积为 0 ⇒ initialCell 不写 component，读面照常按地形给出 0。
+    hexes.put(H11, HexAreas.initialCell(H11, 0.5, desert.key()));
+    hexes.put(H12, HexAreas.initialCell(H12, 0.5, desert.key()));
+    hexes.put(H13, HexAreas.initialCell(H13, 0.5, desert.key()));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     return new GameMap(

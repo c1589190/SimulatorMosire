@@ -45,7 +45,8 @@ import java.util.Set;
  * @param buildDays ★★ <b>D-032 B2c 新增</b>（裁定八：候选的 {@code buildDays} 搬进方案定义）：建设期（天）；≥ 0。 ★
  *     它只进"需求剩余窗口"与"投入/口粮覆盖窗口"两个门槛（{@code horizon = buildDays + cycleDays}）， <b>不</b>推迟结算进度 ——
  *     与旧候选口径逐字相同（见 {@code EconomyEntrySettlement} 类注）。
- * @param capacityPerUnit 每 1 单位规模需要的生产资料（LAND 千分亩、其余件）；非空、逐值 &gt; 0
+ * @param capacityPerUnit 每 1 单位规模需要的生产资料（LAND 千分亩、其余件）；逐值 &gt; 0；空表 = 没有 AssetKind 通道 （与 {@code
+ *     durableCommodityCapacityPerUnit} 至少一边非空）
  * @param dailyInputPerUnit 每 1 单位规模的每日原料需求（按生产资料种类归类）
  * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（毫小时/区域/日；1 小时 = 1000 毫小时）
  * @param laborPerUnit 每 1 单位规模需要的劳动（毫小时/区域；200 = 0.2 小时/区域）
@@ -67,6 +68,9 @@ import java.util.Set;
  *     residual
  * @param upgradesTo ★★ <b>D1 新增</b>：技术升级元数据（可空；只登记/读口/选择参考，不产生行为；未知 id 在使用处 fail-closed）
  * @param mode ★★ <b>D1 新增</b>：绑定的生产方式/阶层结构（仅元数据；可缺）
+ * @param durableCommodityCapacityPerUnit ★★ <b>D-032 C5a 新增</b>：每 1 单位规模需要的耐久商品资本（容量锚，不消耗）； 键 =
+ *     {@link CommodityId}、值必须 &gt; 0；空表 = 没有这一路。它与 {@code capacityPerUnit} 至少一边非空， 并与消耗性投入（{@code
+ *     cycleInputPerUnit}）<b>完全分离</b>。
  */
 public record IndustryDefinitionView(
     IndustryId id,
@@ -90,7 +94,8 @@ public record IndustryDefinitionView(
     List<ProductionRoleDefinition> roles,
     RoleShareRemainder roleShareRemainderRule,
     List<IndustryId> upgradesTo,
-    Optional<ProductionModeId> mode) {
+    Optional<ProductionModeId> mode,
+    Map<CommodityId, Long> durableCommodityCapacityPerUnit) {
 
   /**
    * ★★ <b>单户默认 operator 便利构造器</b>（C0 下游机械收口；不是第二定义权威）。
@@ -145,7 +150,63 @@ public record IndustryDefinitionView(
         List.of(ProductionRoleDefinition.defaultOperator()),
         RoleShareRemainder.UNALLOCATED,
         List.of(),
-        Optional.empty());
+        Optional.empty(),
+        Map.of());
+  }
+
+  /**
+   * ★ <b>C5a 之前的 canonical 22 参形状</b>（无耐久商品资本通道）：等价于 {@code durableCommodityCapacityPerUnit =
+   * Map.of()}；旧调用点逐值不变。
+   *
+   * <p>★ 需要显式耐久商品资本的调用方改用 canonical 23 参构造器（末位传 {@code Map<CommodityId, Long>}）。
+   */
+  public IndustryDefinitionView(
+      IndustryId id,
+      String name,
+      RegimeId regime,
+      Optional<ProductionSkillKey> skill,
+      long cycleDays,
+      long buildDays,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
+      long dailyLaborPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
+      List<ClassSlot> slots,
+      AllocationRule allocation,
+      MoneyOutput moneyOutputPerUnit,
+      ProductionExperienceUse experience,
+      List<ProductionAvailabilityCondition> availability,
+      Set<AssetRightKind> acceptedRightKinds,
+      List<ProductionRoleDefinition> roles,
+      RoleShareRemainder roleShareRemainderRule,
+      List<IndustryId> upgradesTo,
+      Optional<ProductionModeId> mode) {
+    this(
+        id,
+        name,
+        regime,
+        skill,
+        cycleDays,
+        buildDays,
+        capacityPerUnit,
+        dailyInputPerUnit,
+        dailyLaborPerUnit,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        slots,
+        allocation,
+        moneyOutputPerUnit,
+        experience,
+        availability,
+        acceptedRightKinds,
+        roles,
+        roleShareRemainderRule,
+        upgradesTo,
+        mode,
+        Map.of());
   }
 
   public IndustryDefinitionView {
@@ -279,11 +340,35 @@ public record IndustryDefinitionView(
       }
       capacityCopy.put(entry.getKey(), entry.getValue());
     }
-    if (capacityCopy.isEmpty()) {
-      throw new IllegalArgumentException(
-          "IndustryDefinitionView.capacityPerUnit 不得为空（它是\"单位规模\"的锚）");
-    }
     capacityPerUnit = Collections.unmodifiableMap(capacityCopy);
+
+    // ★★ C5a：耐久商品资本的容量锚（与 AssetKind capacity 平行、与消耗性投入分离）。
+    if (durableCommodityCapacityPerUnit == null) {
+      throw new IllegalArgumentException(
+          "IndustryDefinitionView.durableCommodityCapacityPerUnit 不得为 null（无此通道用空 map）");
+    }
+    Map<CommodityId, Long> durableCapacityCopy = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : durableCommodityCapacityPerUnit.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.durableCommodityCapacityPerUnit 的键与值都不得为 null: "
+                + entry.getKey());
+      }
+      if (entry.getValue() <= 0L) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.durableCommodityCapacityPerUnit 的数量必须为正："
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
+      }
+      durableCapacityCopy.put(entry.getKey(), entry.getValue());
+    }
+    durableCommodityCapacityPerUnit = Collections.unmodifiableMap(durableCapacityCopy); // ★ 冻在赋值处
+    if (capacityPerUnit.isEmpty() && durableCommodityCapacityPerUnit.isEmpty()) {
+      throw new IllegalArgumentException(
+          "IndustryDefinitionView 的 capacityPerUnit 与 durableCommodityCapacityPerUnit 至少一边非空"
+              + "（\"单位规模\"必须有锚）");
+    }
 
     if (dailyInputPerUnit == null) {
       throw new IllegalArgumentException(
@@ -358,7 +443,12 @@ public record IndustryDefinitionView(
    */
   public ProductionRecipe recipe() {
     return new ProductionRecipe(
-        capacityPerUnit, inputPerUnit(), laborPerUnit, outputPerUnit, moneyOutputPerUnit);
+        capacityPerUnit,
+        inputPerUnit(),
+        laborPerUnit,
+        outputPerUnit,
+        moneyOutputPerUnit,
+        durableCommodityCapacityPerUnit);
   }
 
   /** <b>每 1 单位规模每周期消耗的商品</b>（毫单位）= 各生产资料分路的<b>合计</b>（口径的唯一落点仍是 {@code cycleInputPerUnit}）。 */

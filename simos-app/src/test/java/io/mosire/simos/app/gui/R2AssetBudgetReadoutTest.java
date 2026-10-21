@@ -94,7 +94,11 @@ class R2AssetBudgetReadoutTest {
   /** 锚级视图的键之一；本夹具不落 marketZones ⇒ 不触发锚币种 == 区法定币的跨表校验。 */
   private static final MarketZoneId ZONE = new MarketZoneId("r2-readout-zone");
 
-  private static final long LAND = 100L;
+  /**
+   * ★ D-032 RA1b2b/RA5a：LAND 已改为标量唯一权威，且其 D4 授权是瞬态投影（写回时过滤）⇒ 本读口形状用例 改用非 LAND 的持久资产
+   * WORKSHOP，继续覆盖「grant 行 ← assetShares」的同一套读口。
+   */
+  private static final long WORKSHOP_QUANTITY = 100L;
 
   @Test
   void economyHexEmitsOnlyThisHexesReadoutFactsInStableOrder() {
@@ -132,7 +136,7 @@ class R2AssetBudgetReadoutTest {
             "status");
     assertThat(occupancies.get(0))
         .containsEntry("industry", FARM.value())
-        .containsEntry("assetKind", "LAND")
+        .containsEntry("assetKind", "WORKSHOP")
         .containsEntry("location", HEX_LOCATION.value())
         .containsEntry("unit", FIRST.value())
         .containsEntry("quantity", 4L)
@@ -310,9 +314,16 @@ class R2AssetBudgetReadoutTest {
       ProductionUnitId unit, ProductionLocation location, long sequence) {
     AssetShareId id =
         OwnershipStake.idOf(
-            FARM, AssetKind.LAND, OPERATOR, OPERATOR, AssetRightKind.OWNED, location, sequence);
+            FARM, AssetKind.WORKSHOP, OPERATOR, OPERATOR, AssetRightKind.OWNED, location, sequence);
     return new OwnershipStake(
-        id, FARM, AssetKind.LAND, OPERATOR, OPERATOR, LAND, AssetRightKind.OWNED, location);
+        id,
+        FARM,
+        AssetKind.WORKSHOP,
+        OPERATOR,
+        OPERATOR,
+        WORKSHOP_QUANTITY,
+        AssetRightKind.OWNED,
+        location);
   }
 
   private static AssetOccupancyGrant occupancy(
@@ -396,7 +407,7 @@ class R2AssetBudgetReadoutTest {
         Optional.empty(),
         1L,
         0L,
-        Map.of(AssetKind.LAND, 1_000L),
+        Map.of(AssetKind.WORKSHOP, 1_000L),
         Map.of(),
         0L,
         1_000L,

@@ -1,20 +1,18 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
+import io.mosire.simos.economy.land.LandLedgerState;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionParticipant;
-import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
@@ -24,37 +22,34 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * ★★★ <b>D-032 P3d：M3 土地意向的唯一职责类</b>（商品意向仍由 {@link MarketIntentBook} 负责）。
+ * ★★★ <b>D-032 RA1b2c2：M3 标量 LAND 意向的唯一职责类</b>（商品意向仍由 {@link MarketIntentBook} 负责）。
  *
- * <p>本类只把“生产位置的土地需求 / 本轮未使用的自有土地”转成整块 {@link MarketIntent}（LAND BUY / LAND
- * SELL）。它<b>不</b>生成订单、不写库存/货币/土地、不碰撮合器；订单仍由 M4 的同一个统一入口处理。
+ * <p>本类只把“生产位置的土地需求 / 本轮未使用的自有土地”转成标量 {@link MarketIntent}（LAND BUY / LAND SELL）： <b>按 {@code
+ * (actor, LAND, hex, side)} 合并、数量累加、限价取更严格值</b>。它<b>不</b>生成订单、不写库存/货币/土地、不碰撮合器； 订单仍由 M4 的同一个统一入口处理。
  *
  * <pre>
  * 需求（BUY）：
  *   ① 已入选生产位置：requiredLand = probe.assetRequired().get(LAND)
- *      → 与“本户在该 hex 当前可用 LAND”比较，正缺口才生成整块买盘；
- *   ② 无地户：按该 hex 的农业生产定义（capacityPerUnit[LAND] / laborPerUnit / outputPerUnit /
- *      inputPerUnit + 市场区价格）估一个最小整块的预期净收益，正收益且现金够付区级地价才生成买盘。
- *      ★ 只读生产定义与市场价格，不复制 production runtime 的效率/经验公式。
+ *      → 与“本户在该 hex 当前可用 landHoldings（持有 − 本轮已取得）”比较，正缺口才生成买盘；
+ *   ② 无地/少地户：若该 hex 有土地型生产定义，买盘数量 = max(capacityPerUnit[LAND],
+ *      minLandPerPersonMilliMu)。minLandPerPerson 与 S7-B 共用同一动态口径（Social naturalNeeds + production 配方），
+ *      保证一次买盘足够覆盖至少一名迁移人口；不做跨市场轮的临时 LAND 累计。
+ *      ★ 不以当前现金/库存/正收益作为挂单门：无供给只是 unmet，不记债；实际支付在撮合层走现金 + 普通货币债。
  * 供给（SELL）：
- *   本轮已入选 unit/roster 引用的 LAND rightsStakes（+ 等价事实：unit 所在 hex、组织者名下、覆盖
- *   requiredLand 的整块）视为“使用中”；其余自有 LAND 整块自动挂卖。
- *   卖出正在使用的地块不在自动路径里；外部显式挂卖仍由撮合层按 M6 失地校验处理。
+ *   本轮预期未使用的自有土地 = usable landHoldings − 已入选生产位置覆盖的 (hex,owner) 数量；
+ *   本轮新取得土地按数量扣减，不进入卖盘。
  * </pre>
  *
- * <p>★ <b>价格/预算</b>：一律用该 hex 所属市场区的 {@link MarketTable#landPrice()}（empty 不生成、0 合法）； 买盘 {@code
- * budgetMilli} 只给本户该币种当刻余额，撮合时再取商品冻结后的剩余可花额（{@link MarketTradeExecutor#executeLandTrade} 的 {@code
- * spendableMoneyOf}）⇒ 土地永远吃商品之后的剩余预算。
- *
- * <p>★ <b>本轮新取得土地</b>（{@link SettlementDayContext#landAcquiredThisRound()}）：既不计入“当前可用”，
- * 也不生成卖单（M2/M4 已规定本轮不可再卖）。整块不拆分、不找零、不伪造。
+ * <p>★★ <b>RF1 价格/现金口径</b>：市场区必须有 {@link MarketTable#landPrice()}（empty 不生成、0 合法）。BUY 是<b>数量型价格
+ * 接受者</b> —— 意向形状不带买价，撮合给任何非负地价都接受；现金不足由 {@link MarketTradeExecutor#executeLandTrade}
+ * 的既有普通货币债分支处理，数量不得折成现金可买量。SELL 侧最低保护价仍取该区地价。
  */
 final class MarketLandIntentBook {
 
@@ -63,18 +58,103 @@ final class MarketLandIntentBook {
   /** M3 的土地意向入口（由 {@link MarketIntentBook#marketIntents} 在商品意向之后追加）。 */
   static List<MarketIntent> landIntents(
       SettlementDayContext ctx, List<ProductionPlanBridge.PositionFacts> chosenFacts) {
-    MarketIndex markets = MarketIndex.of(ctx.markets, ctx.base.marketZones());
+    LandLedgerState ledger =
+        LandLedgerState.from(
+            ctx.session.sheet().landArableSupply(), ctx.session.sheet().landHoldingsOrBase());
+    Map<LandHoldingKey, Long> acquired = ctx.landAcquiredQuantityThisRound();
     Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> unitFacts =
         firstFactPerUnit(chosenFacts);
-    Set<AssetShareId> usedLandStakes = usedLandStakes(ctx, unitFacts);
-    Map<HouseholdId, Map<HexCoord, Long>> deficits = landDeficits(ctx, unitFacts);
-    List<SellBlock> sellBlocks = new ArrayList<>();
-    List<MarketIntent> intents = new ArrayList<>();
-    collectSellIntents(ctx, markets, usedLandStakes, deficits, sellBlocks, intents);
-    collectDeficitBuyIntents(ctx, deficits, sellBlocks, intents);
-    collectLandlessBuyIntents(ctx, sellBlocks, deficits, intents);
-    logLandIntents(ctx, deficits, sellBlocks, intents);
+    Map<HouseholdId, Map<HexCoord, Long>> required = requiredLandByHouseholdHex(ctx, unitFacts);
+    MarketIndex markets = MarketIndex.of(ctx.markets, ctx.base.marketZones());
+
+    Map<String, Draft> drafts = new LinkedHashMap<>();
+    collectSellDrafts(ctx, markets, ledger, required, acquired, drafts);
+    collectDeficitBuyDrafts(ctx, markets, ledger, required, acquired, drafts);
+    collectLandlessBuyDrafts(ctx, markets, ledger, required, acquired, drafts);
+    netOutSameActorHex(ctx, drafts);
+    List<MarketIntent> intents = materialize(ctx, drafts);
+    logLandIntents(ctx, required, ledger, intents);
     return intents;
+  }
+
+  /**
+   * ★ 同一 actor 同一 hex 若同时出现自动买/卖（净额化）：只保留净方向；净额为 0 ⇒ 两单都不留。
+   *
+   * <p>★ 正常构造下 {@code unused>0} 与 {@code gap>0} 互斥，本步骤是防御式收口；具名 INFO，不静默做 actor 级全删。
+   */
+  private static void netOutSameActorHex(SettlementDayContext ctx, Map<String, Draft> drafts) {
+    Map<String, List<Draft>> byActorHex = new LinkedHashMap<>();
+    for (Draft draft : drafts.values()) {
+      String actorHex = draft.household.value() + "|" + draft.hex.q() + "," + draft.hex.r();
+      byActorHex.computeIfAbsent(actorHex, ignored -> new ArrayList<>()).add(draft);
+    }
+    List<String> remove = new ArrayList<>();
+    for (List<Draft> pair : byActorHex.values()) {
+      if (pair.size() < 2) {
+        continue;
+      }
+      Draft buy = null;
+      Draft sell = null;
+      for (Draft draft : pair) {
+        if (draft.side == MarketIntentSide.BUY) {
+          buy = draft;
+        } else {
+          sell = draft;
+        }
+      }
+      if (buy == null || sell == null) {
+        continue;
+      }
+      long net = sell.quantityMilliMu - buy.quantityMilliMu;
+      String buyKey = draftKey(buy);
+      String sellKey = draftKey(sell);
+      if (net > 0L) {
+        sell.quantityMilliMu = net;
+        remove.add(buyKey);
+      } else if (net < 0L) {
+        buy.quantityMilliMu = -net;
+        remove.add(sellKey);
+      } else {
+        remove.add(buyKey);
+        remove.add(sellKey);
+      }
+      if (EconomyLog.settlement().isInfoEnabled()) {
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "LAND_INTENT_NETTED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    ctx.day,
+                    "household",
+                    buy.household.value(),
+                    "hex",
+                    buy.hex.q() + "," + buy.hex.r(),
+                    "buyQuantityMilliMu",
+                    buy.quantityMilliMu,
+                    "sellQuantityMilliMu",
+                    sell.quantityMilliMu,
+                    "netDirection",
+                    net > 0L ? "SELL" : net < 0L ? "BUY" : "NONE",
+                    "netQuantityMilliMu",
+                    Math.abs(net),
+                    "reason",
+                    "same-actor-same-hex-auto-land-orders-netted-not-actor-level-deleted"));
+      }
+    }
+    for (String key : remove) {
+      drafts.remove(key);
+    }
+  }
+
+  private static String draftKey(Draft draft) {
+    return draft.household.value()
+        + "|"
+        + draft.hex.q()
+        + ","
+        + draft.hex.r()
+        + "|"
+        + draft.side.name();
   }
 
   // ── 生产位置 → 土地需求 ─────────────────────────────────────────────────────────────────
@@ -121,360 +201,250 @@ final class MarketLandIntentBook {
     return required;
   }
 
-  /** 生产位置缺口：{@code requiredLand − 当前可用土地}，正缺口才进返回表。当前可用土地见 {@link #usableOwnedLandAt}。 */
-  private static Map<HouseholdId, Map<HexCoord, Long>> landDeficits(
-      SettlementDayContext ctx,
-      Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> unitFacts) {
-    Map<HouseholdId, Map<HexCoord, Long>> required = requiredLandByHouseholdHex(ctx, unitFacts);
-    Map<HouseholdId, Map<HexCoord, Long>> deficits = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, Map<HexCoord, Long>> byHousehold : required.entrySet()) {
-      HouseholdId household = byHousehold.getKey();
-      for (Map.Entry<HexCoord, Long> byHex : byHousehold.getValue().entrySet()) {
-        long usable = usableOwnedLandAt(ctx, household, byHex.getKey());
-        long deficit = byHex.getValue() - usable;
-        if (deficit > 0L) {
-          deficits
-              .computeIfAbsent(household, ignored -> new LinkedHashMap<>())
-              .put(byHex.getKey(), deficit);
-        }
-      }
-    }
-    return deficits;
-  }
-
   // ── 未使用土地 → 供给 ───────────────────────────────────────────────────────────────────
 
-  /**
-   * 本轮“使用中”的 LAND 块：
-   *
-   * <ul>
-   *   <li>已入选 unit 的 roster 里每个 participant 的 {@code rightsStakes}（LAND 才算）；
-   *   <li>等价事实：unit 所在 hex、组织者名下、按 share id 稳定序累计到 {@code requiredLand} 的整块 （roster 还没有
-   *       rightsStakes 的旧档/Seeder 也能识别“这块地在支撑本轮生产”）。
-   * </ul>
-   */
-  private static Set<AssetShareId> usedLandStakes(
-      SettlementDayContext ctx,
-      Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> unitFacts) {
-    Set<AssetShareId> used = new LinkedHashSet<>();
-    Map<ProductionUnitId, ProductionRoster> persisted =
-        ctx.session.sheet().productionRostersOrBase();
-    for (Map.Entry<ProductionUnitId, ProductionPlanBridge.PositionFacts> entry :
-        unitFacts.entrySet()) {
-      ProductionProcess unit = ctx.units.get(entry.getKey());
-      if (unit == null) {
-        continue;
-      }
-      IndustryDefinitionView industry = ctx.industries.get(unit.plan());
-      if (industry == null || !ProductionPlanBridge.isLandBased(industry)) {
-        continue;
-      }
-      ProductionRoster roster =
-          ProductionPlanBridge.effectiveRoster(ctx, unit, industry, persisted);
-      if (roster == null) {
-        continue;
-      }
-      for (ProductionParticipant participant : roster.participants()) {
-        for (AssetShareId shareId : participant.rightsStakes()) {
-          OwnershipStake share = ctx.assetShares.get(shareId);
-          if (share != null && share.asset() == AssetKind.LAND) {
-            used.add(shareId);
-          }
-        }
-      }
-    }
-    // 等价事实：按 organizer×hex 汇总的需求，一次性把该 hex 上组织者名下的整块按 share id 稳定序
-    // 累计到 requiredLand（同一 hex 多 unit 不重复计；required=0 时保守地把该 hex 全部自有块视为使用中）。
-    for (Map.Entry<HouseholdId, Map<HexCoord, Long>> byHousehold :
-        requiredLandByHouseholdHex(ctx, unitFacts).entrySet()) {
-      ActorRef organizer = HouseholdActors.of(byHousehold.getKey());
-      for (Map.Entry<HexCoord, Long> byHex : byHousehold.getValue().entrySet()) {
-        long requiredLand = byHex.getValue();
-        long covered = 0L;
-        for (OwnershipStake share : sortedLandAt(ctx, organizer, byHex.getKey())) {
-          if (requiredLand > 0L && covered >= requiredLand) {
-            break;
-          }
-          if (ctx.landAcquiredThisRound().contains(share.id())) {
-            continue;
-          }
-          used.add(share.id());
-          covered = Math.addExact(covered, share.quantity());
-        }
-      }
-    }
-    return used;
-  }
-
-  private static void collectSellIntents(
+  private static void collectSellDrafts(
       SettlementDayContext ctx,
       MarketIndex markets,
-      Set<AssetShareId> usedLandStakes,
-      Map<HouseholdId, Map<HexCoord, Long>> deficits,
-      List<SellBlock> sellBlocks,
-      List<MarketIntent> intents) {
-    List<OwnershipStake> landShares = new ArrayList<>();
-    for (OwnershipStake share : ctx.assetShares.values()) {
-      if (share.asset() == AssetKind.LAND && share.quantity() > 0L) {
-        landShares.add(share);
-      }
-    }
-    landShares.sort(Comparator.comparing(share -> share.id().value()));
-    for (OwnershipStake share : landShares) {
-      if (usedLandStakes.contains(share.id()) || ctx.landAcquiredThisRound().contains(share.id())) {
+      LandLedgerState ledger,
+      Map<HouseholdId, Map<HexCoord, Long>> required,
+      Map<LandHoldingKey, Long> acquired,
+      Map<String, Draft> drafts) {
+    List<LandHolding> holdings = new ArrayList<>(ledger.holdingsByKey().values());
+    holdings.sort(Comparator.comparing(LandHolding::key));
+    for (LandHolding holding : holdings) {
+      HouseholdId owner = holding.owner();
+      if (!ctx.householdEconomies.containsKey(owner)) {
         continue;
       }
-      HouseholdId owner = ctx.householdOfActor.get(share.owner());
-      if (owner == null || !ctx.householdEconomies.containsKey(owner)) {
-        continue;
-      }
-      HexCoord hex = MarketLandBook.hexOf(share);
-      if (deficits.getOrDefault(owner, Map.of()).containsKey(hex)) {
-        // 该 hex 尚缺地还去买：不把同一户的自有块当“未使用”卖出去（避免自相矛盾的自动清仓）。
-        continue;
-      }
+      HexCoord hex = holding.hex();
       MarketTable market = marketAt(markets, hex);
       if (market == null || !market.hasLandPrice()) {
         continue;
       }
-      long landPrice = market.landPrice().getAsLong();
-      sellBlocks.add(new SellBlock(share, hex, market, landPrice));
-      intents.add(
-          new MarketIntent(
-              MarketIntentKind.LAND,
-              MarketIntentSide.SELL,
-              HouseholdActors.of(owner),
-              hex,
-              Optional.empty(),
-              Optional.of(share.id()),
-              share.quantity(),
-              landPrice,
-              market.numeraire(),
-              0L,
-              2,
-              Optional.empty()));
+      long usable = ledger.usableQuantity(hex, owner, acquired);
+      long needed = required.getOrDefault(owner, Map.of()).getOrDefault(hex, 0L);
+      long unused = Math.max(0L, usable - needed);
+      if (unused > 0L) {
+        addDraft(
+            ctx,
+            drafts,
+            MarketIntentSide.SELL,
+            owner,
+            hex,
+            unused,
+            // ★ SELL 侧最低保护价 = 该区当前地价（语义不变）。
+            OptionalLong.of(market.landPrice().getAsLong()),
+            market.numeraire());
+      }
     }
   }
 
-  // ── 买盘：已选位置缺口 + 无地户最小整块 ──────────────────────────────────────────────────
+  // ── 买盘：已选位置缺口 + 无地户最小一份 ──────────────────────────────────────────────────
 
-  private static void collectDeficitBuyIntents(
+  private static void collectDeficitBuyDrafts(
       SettlementDayContext ctx,
-      Map<HouseholdId, Map<HexCoord, Long>> deficits,
-      List<SellBlock> sellBlocks,
-      List<MarketIntent> intents) {
-    for (HouseholdId household : sortedHouseholds(deficits.keySet())) {
-      ActorRef actor = HouseholdActors.of(household);
-      Map<HexCoord, Long> byHex = deficits.get(household);
+      MarketIndex markets,
+      LandLedgerState ledger,
+      Map<HouseholdId, Map<HexCoord, Long>> required,
+      Map<LandHoldingKey, Long> acquired,
+      Map<String, Draft> drafts) {
+    for (HouseholdId household : sortedHouseholds(required.keySet())) {
+      Map<HexCoord, Long> byHex = required.get(household);
       List<HexCoord> hexes = new ArrayList<>(byHex.keySet());
-      hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+      hexes.sort(HexCoord::compareTo);
       for (HexCoord hex : hexes) {
-        long deficit = byHex.get(hex);
-        long covered = 0L;
-        for (SellBlock block : sellBlocksAt(sellBlocks, hex, actor)) {
-          if (covered >= deficit) {
-            break;
-          }
-          if (!affordable(ctx, household, block)) {
-            continue;
-          }
-          intents.add(buyIntent(ctx, household, block));
-          covered = Math.addExact(covered, block.share().quantity());
+        MarketTable market = marketAt(markets, hex);
+        if (market == null || !market.hasLandPrice()) {
+          continue;
+        }
+        long usable = usableAt(ledger, hex, household, acquired);
+        long gap = byHex.get(hex) - usable;
+        if (gap > 0L) {
+          addDraft(
+              ctx,
+              drafts,
+              MarketIntentSide.BUY,
+              household,
+              hex,
+              gap,
+              // ★ BUY 是价格接受者：数量只由真实缺口决定，不带买价。
+              OptionalLong.empty(),
+              market.numeraire());
         }
       }
     }
   }
 
-  private static void collectLandlessBuyIntents(
+  private static void collectLandlessBuyDrafts(
       SettlementDayContext ctx,
-      List<SellBlock> sellBlocks,
-      Map<HouseholdId, Map<HexCoord, Long>> deficits,
-      List<MarketIntent> intents) {
+      MarketIndex markets,
+      LandLedgerState ledger,
+      Map<HouseholdId, Map<HexCoord, Long>> required,
+      Map<LandHoldingKey, Long> acquired,
+      Map<String, Draft> drafts) {
     for (HouseholdId household : sortedHouseholds(ctx.householdEconomies.keySet())) {
-      if (deficits.containsKey(household)) {
+      if (required.containsKey(household)) {
         continue; // “少地”已由已选位置缺口路径覆盖，避免重复买盘
       }
       HouseholdEconomy row = ctx.householdEconomies.get(household);
       if (row == null || row.laborMilli() <= 0L) {
         continue;
       }
-      ActorRef actor = HouseholdActors.of(household);
       HexCoord home = row.view().hex();
-      // “无地/少地”在本批的可执行口径 = 本户在 home hex 没有任何已拥有的 LAND（含本轮新取得，
-      // 本轮新取得也不能用 ⇒ 不重复加买）；已能入选生产位置但地不够的家户走上面的缺口路径。
-      if (ownsLandAt(ctx, household, home)) {
+      MarketTable market = marketAt(markets, home);
+      if (market == null || !market.hasLandPrice()) {
         continue;
       }
-      for (SellBlock block : sellBlocksAt(sellBlocks, home, actor)) {
-        if (!affordable(ctx, household, block) || !positiveFarmNet(ctx, household, block)) {
-          continue;
-        }
-        intents.add(buyIntent(ctx, household, block));
-        break; // “最小整块”：一个无地户本轮至多挂一块买盘。
+      if (usableAt(ledger, home, household, acquired) > 0L) {
+        continue; // 本户在 home hex 已有可用土地，不伪造“无地户”需求
       }
+      long minimumBlock = minimumLandCapacityPerUnit(ctx, home);
+      long minLandPerPerson = PostLandTradeClassCheck.minLandPerPersonMilliMu(ctx, household, home);
+      long quantity = Math.max(minimumBlock, minLandPerPerson);
+      if (quantity <= 0L) {
+        continue;
+      }
+      addDraft(
+          ctx,
+          drafts,
+          MarketIntentSide.BUY,
+          household,
+          home,
+          quantity,
+          // ★ BUY 是价格接受者：数量只由真实缺口决定，不带买价。
+          OptionalLong.empty(),
+          market.numeraire());
     }
   }
 
-  /**
-   * 无地户最小整块正收益口径：只用生产定义 + 市场区价格，不复制 production runtime 的效率/经验公式。
-   *
-   * <pre>
-   * units          = blockQuantity ÷ capacityPerUnit[LAND]
-   * revenue        = bid(outputPerUnit × units)
-   * inputCost      = ask(inputPerUnit × units)
-   * laborPerCycle  = laborPerUnit × units 必须 ≤ 家户劳动预算 × cycleDays
-   * 正收益          = revenue &gt; inputCost
-   * </pre>
-   */
-  private static boolean positiveFarmNet(
-      SettlementDayContext ctx, HouseholdId household, SellBlock block) {
-    HouseholdEconomy row = ctx.householdEconomies.get(household);
-    if (row == null || ctx.hexToIndustries == null) {
-      return false;
+  /** 该 hex 土地型生产定义的 {@code capacityPerUnit[LAND]} 最小一份；没有土地型定义 ⇒ 0。 */
+  private static long minimumLandCapacityPerUnit(SettlementDayContext ctx, HexCoord hex) {
+    if (ctx.hexToIndustries == null || hex == null) {
+      return 0L;
     }
     List<IndustryId> industryIds =
         new ArrayList<>(
-            ctx.hexToIndustries.getOrDefault(
-                IndustryHexKeys.hexKey(block.hex().q(), block.hex().r()), List.of()));
+            ctx.hexToIndustries.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of()));
     industryIds.sort(Comparator.comparing(IndustryId::value));
+    long minimum = Long.MAX_VALUE;
     for (IndustryId industryId : industryIds) {
       IndustryDefinitionView industry = ctx.industries.get(industryId);
       if (industry == null || !ProductionPlanBridge.isLandBased(industry)) {
         continue;
       }
-      try {
-        long capacityPerLand = industry.capacityPerUnit().getOrDefault(AssetKind.LAND, 0L);
-        if (capacityPerLand <= 0L) {
-          continue;
-        }
-        long units = block.share().quantity() / capacityPerLand;
-        if (units <= 0L) {
-          continue;
-        }
-        long cycleDays = Math.max(1L, industry.cycleDays());
-        long laborPerCycle = Math.multiplyExact(industry.laborPerUnit(), units);
-        if (industry.laborPerUnit() > 0L
-            && laborPerCycle > Math.multiplyExact(row.laborMilli(), cycleDays)) {
-          continue;
-        }
-        long revenue =
-            ProductionPlanBridge.bidValueMilli(
-                block.market(), scaled(industry.outputPerUnit(), units));
-        long inputCost =
-            ProductionPlanBridge.askValueMilli(
-                block.market(), scaled(industry.inputPerUnit(), units));
-        if (revenue > inputCost) {
-          return true;
-        }
-      } catch (ArithmeticException overflow) {
-        // 溢出不是“正收益”的证据：fail-closed 跳过该定义。
+      long capacityPerLand = industry.capacityPerUnit().getOrDefault(AssetKind.LAND, 0L);
+      if (capacityPerLand > 0L) {
+        minimum = Math.min(minimum, capacityPerLand);
       }
     }
-    return false;
+    return minimum == Long.MAX_VALUE ? 0L : minimum;
+  }
+
+  // ── 合并 / 物化 ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * ★ 自动订单按 {@code (actor, LAND, hex, side)} 合并：同 key 只保留一笔，数量 {@link Math#addExact} 累加；SELL
+   * 限价不一致时取 更严格（更高）值并具名 INFO。BUY 没有限价（价格接受者），因此合并时不需要也不允许折价。不允许 actor 级全删。
+   */
+  private static void addDraft(
+      SettlementDayContext ctx,
+      Map<String, Draft> drafts,
+      MarketIntentSide side,
+      HouseholdId household,
+      HexCoord hex,
+      long quantityMilliMu,
+      OptionalLong limitPricePerMu,
+      CurrencyId currency) {
+    String key = household.value() + "|" + hex.q() + "," + hex.r() + "|" + side.name();
+    Draft existing = drafts.get(key);
+    if (existing == null) {
+      drafts.put(key, new Draft(side, household, hex, quantityMilliMu, limitPricePerMu, currency));
+      return;
+    }
+    existing.quantityMilliMu = Math.addExact(existing.quantityMilliMu, quantityMilliMu);
+    if (side == MarketIntentSide.SELL
+        && (existing.limitPricePerMu.isEmpty()
+            || limitPricePerMu.isEmpty()
+            || existing.limitPricePerMu.getAsLong() != limitPricePerMu.getAsLong())) {
+      long previous = existing.limitPricePerMu.orElse(Long.MIN_VALUE);
+      long next = limitPricePerMu.orElse(Long.MIN_VALUE);
+      long stricter = Math.max(previous, next);
+      if (EconomyLog.settlement().isInfoEnabled()) {
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "LAND_INTENT_MERGED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    ctx.day,
+                    "household",
+                    household.value(),
+                    "hex",
+                    hex.q() + "," + hex.r(),
+                    "side",
+                    side.name(),
+                    "previousLimitPricePerMu",
+                    existing.limitPricePerMu.isPresent()
+                        ? existing.limitPricePerMu.getAsLong()
+                        : "price-taker",
+                    "newLimitPricePerMu",
+                    limitPricePerMu.isPresent() ? limitPricePerMu.getAsLong() : "price-taker",
+                    "stricterLimitPricePerMu",
+                    stricter,
+                    "quantityMilliMu",
+                    existing.quantityMilliMu,
+                    "reason",
+                    "same-actor-hex-side-land-intents-merged-with-stricter-limit"));
+      }
+      existing.limitPricePerMu = OptionalLong.of(stricter);
+    }
+  }
+
+  private static List<MarketIntent> materialize(
+      SettlementDayContext ctx, Map<String, Draft> drafts) {
+    List<Draft> ordered = new ArrayList<>(drafts.values());
+    ordered.sort(
+        Comparator.comparing((Draft draft) -> draft.hex)
+            .thenComparing(draft -> draft.side.ordinal())
+            .thenComparing(draft -> draft.household.value()));
+    List<MarketIntent> intents = new ArrayList<>(ordered.size());
+    for (Draft draft : ordered) {
+      intents.add(
+          new MarketIntent(
+              MarketIntentKind.LAND,
+              draft.side,
+              HouseholdActors.of(draft.household),
+              draft.hex,
+              Optional.empty(),
+              draft.quantityMilliMu,
+              draft.limitPricePerMu,
+              draft.currency,
+              2,
+              Optional.empty()));
+      if (draft.side == MarketIntentSide.BUY) {
+        logLandBuyIntent(ctx, draft);
+      }
+    }
+    return intents;
   }
 
   // ── 事实读取/工具 ───────────────────────────────────────────────────────────────────────
 
   private static MarketTable marketAt(MarketIndex markets, HexCoord hex) {
-    return hex == null ? null : markets.at(hex);
+    return hex == null || markets == null ? null : markets.at(hex);
   }
 
-  /** 本户在该 hex 是否已拥有/经营任何 LAND（含本轮新取得；不看是否可用 —— 用于“无地户”判据）。 */
-  private static boolean ownsLandAt(SettlementDayContext ctx, HouseholdId household, HexCoord hex) {
-    ActorRef actor = HouseholdActors.of(household);
-    for (OwnershipStake share : ctx.assetShares.values()) {
-      if (share.asset() == AssetKind.LAND
-          && share.quantity() > 0L
-          && MarketLandBook.hexOf(share).equals(hex)
-          && (share.owner().equals(actor) || share.operator().equals(actor))) {
-        return true;
-      }
+  /** 可用土地：持有 − 本轮已取得；不在土地供应表里的 hex ⇒ 0（不抛，非农 hex 没有土地）。 */
+  private static long usableAt(
+      LandLedgerState ledger,
+      HexCoord hex,
+      HouseholdId household,
+      Map<LandHoldingKey, Long> acquired) {
+    if (hex == null || !ledger.arableSupply().containsHex(hex)) {
+      return 0L;
     }
-    return false;
-  }
-
-  private static long usableOwnedLandAt(
-      SettlementDayContext ctx, HouseholdId household, HexCoord hex) {
-    ActorRef actor = HouseholdActors.of(household);
-    long total = 0L;
-    for (OwnershipStake share : ctx.assetShares.values()) {
-      if (share.asset() != AssetKind.LAND
-          || share.quantity() <= 0L
-          || !MarketLandBook.hexOf(share).equals(hex)
-          || ctx.landAcquiredThisRound().contains(share.id())) {
-        continue;
-      }
-      if (share.owner().equals(actor) || share.operator().equals(actor)) {
-        total = Math.addExact(total, share.quantity());
-      }
-    }
-    return total;
-  }
-
-  private static List<OwnershipStake> sortedLandAt(
-      SettlementDayContext ctx, ActorRef owner, HexCoord hex) {
-    List<OwnershipStake> matches = new ArrayList<>();
-    for (OwnershipStake share : ctx.assetShares.values()) {
-      if (share.asset() == AssetKind.LAND
-          && share.quantity() > 0L
-          && share.owner().equals(owner)
-          && MarketLandBook.hexOf(share).equals(hex)
-          && !ctx.landAcquiredThisRound().contains(share.id())) {
-        matches.add(share);
-      }
-    }
-    matches.sort(Comparator.comparing(share -> share.id().value()));
-    return matches;
-  }
-
-  private static List<SellBlock> sellBlocksAt(
-      List<SellBlock> sellBlocks, HexCoord hex, ActorRef buyer) {
-    List<SellBlock> matches = new ArrayList<>();
-    for (SellBlock block : sellBlocks) {
-      if (block.hex().equals(hex) && !block.share().owner().equals(buyer)) {
-        matches.add(block);
-      }
-    }
-    matches.sort(
-        Comparator.comparingLong((SellBlock block) -> block.share().quantity())
-            .thenComparing(block -> block.share().id().value()));
-    return matches;
-  }
-
-  private static boolean affordable(
-      SettlementDayContext ctx, HouseholdId household, SellBlock block) {
-    long payment = MarketLandBook.landValueMilli(block.share().quantity(), block.landPrice());
-    long money = ProductionPlanBridge.moneyOf(ctx, household, block.market().numeraire());
-    return money >= payment;
-  }
-
-  private static MarketIntent buyIntent(
-      SettlementDayContext ctx, HouseholdId household, SellBlock block) {
-    long money = ProductionPlanBridge.moneyOf(ctx, household, block.market().numeraire());
-    return new MarketIntent(
-        MarketIntentKind.LAND,
-        MarketIntentSide.BUY,
-        HouseholdActors.of(household),
-        block.hex(),
-        Optional.empty(),
-        Optional.of(block.share().id()),
-        block.share().quantity(),
-        block.landPrice(),
-        block.market().numeraire(),
-        money,
-        2,
-        Optional.empty());
-  }
-
-  private static Map<CommodityId, Long> scaled(Map<CommodityId, Long> perUnit, long units) {
-    Map<CommodityId, Long> scaled = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> entry : perUnit.entrySet()) {
-      long quantity = Math.multiplyExact(entry.getValue(), units);
-      if (quantity > 0L) {
-        scaled.put(entry.getKey(), quantity);
-      }
-    }
-    return scaled;
+    return ledger.usableQuantity(hex, household, acquired);
   }
 
   private static List<HouseholdId> sortedHouseholds(Set<HouseholdId> households) {
@@ -485,15 +455,16 @@ final class MarketLandIntentBook {
 
   private static void logLandIntents(
       SettlementDayContext ctx,
-      Map<HouseholdId, Map<HexCoord, Long>> deficits,
-      List<SellBlock> sellBlocks,
+      Map<HouseholdId, Map<HexCoord, Long>> required,
+      LandLedgerState ledger,
       List<MarketIntent> intents) {
     if (!EconomyLog.settlement().isInfoEnabled()) {
       return;
     }
+    long buys = intents.stream().filter(i -> i.side() == MarketIntentSide.BUY).count();
+    long sells = intents.size() - buys;
     if (intents.isEmpty()) {
-      if (EconomyLog.settlement().isDebugEnabled()
-          && (!sellBlocks.isEmpty() || !deficits.isEmpty())) {
+      if (EconomyLog.settlement().isDebugEnabled()) {
         EventLog.channel(EconomyLog.settlement())
             .debug(
                 LogEvent.of(
@@ -503,17 +474,15 @@ final class MarketLandIntentBook {
                     ctx.day,
                     "landIntents",
                     0,
-                    "sellBlocks",
-                    sellBlocks.size(),
-                    "deficitHouseholds",
-                    deficits.size(),
+                    "holdings",
+                    ledger.holdingsByKey().size(),
+                    "requiredHouseholds",
+                    required.size(),
                     "reason",
-                    "no-affordable-or-positive-return-land-demand"));
+                    "no-land-demand-or-unused-supply-at-priced-markets"));
       }
       return;
     }
-    long buys = intents.stream().filter(i -> i.side() == MarketIntentSide.BUY).count();
-    long sells = intents.size() - buys;
     EventLog.channel(EconomyLog.settlement())
         .info(
             LogEvent.of(
@@ -527,14 +496,70 @@ final class MarketLandIntentBook {
                 buys,
                 "landSells",
                 sells,
-                "sellBlocks",
-                sellBlocks.size(),
-                "deficitHouseholds",
-                deficits.size(),
+                "holdings",
+                ledger.holdingsByKey().size(),
+                "requiredHouseholds",
+                required.size(),
                 "reason",
-                "land-demand-from-production-positions-plus-unused-land-supply"));
+                "scalar-land-demand-from-production-positions-plus-unused-land-supply"));
   }
 
-  /** 一张待撮合的土地卖块（M3 内部只读事实；不落账、不进任何持久状态）。 */
-  record SellBlock(OwnershipStake share, HexCoord hex, MarketTable market, long landPrice) {}
+  /** ★ RF1：土地 BUY 意向的生成证据（谁、哪块 hex、多少、为什么是价格接受者）—— DEBUG 逐笔，不参与任何判据。 */
+  private static void logLandBuyIntent(SettlementDayContext ctx, Draft draft) {
+    if (!EconomyLog.market().isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(EconomyLog.market())
+        .debug(
+            LogEvent.of(
+                "MARKET_INTENT_BUY",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.day,
+                "actor",
+                HouseholdActors.of(draft.household).id(),
+                "household",
+                draft.household.value(),
+                "kind",
+                "LAND",
+                "commodity",
+                "-",
+                "hex",
+                draft.hex.q() + "," + draft.hex.r(),
+                "quantity",
+                draft.quantityMilliMu,
+                "priceTaker",
+                true,
+                "currency",
+                draft.currency.value(),
+                "sourceUnit",
+                "-",
+                "reason",
+                "household-land-demand-quantity-from-real-gap-not-price-or-cash"));
+  }
+
+  /** 一张待物化的标量土地意向（M3 内部只读事实；不落账、不进任何持久状态）。 */
+  private static final class Draft {
+    final MarketIntentSide side;
+    final HouseholdId household;
+    final HexCoord hex;
+    long quantityMilliMu;
+    OptionalLong limitPricePerMu;
+    final CurrencyId currency;
+
+    Draft(
+        MarketIntentSide side,
+        HouseholdId household,
+        HexCoord hex,
+        long quantityMilliMu,
+        OptionalLong limitPricePerMu,
+        CurrencyId currency) {
+      this.side = side;
+      this.household = household;
+      this.hex = hex;
+      this.quantityMilliMu = quantityMilliMu;
+      this.limitPricePerMu = limitPricePerMu;
+      this.currency = currency;
+    }
+  }
 }

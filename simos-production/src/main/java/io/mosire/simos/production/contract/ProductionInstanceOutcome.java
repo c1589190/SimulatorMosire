@@ -26,7 +26,8 @@ public sealed interface ProductionInstanceOutcome {
   /**
    * 业务拒绝（INFO，具名理由）。
    *
-   * @param reason 稳定短 id，如 {@code unit-conflict}/{@code plan-unknown}/{@code instance-unknown}
+   * @param reason 稳定短 id，如 {@code unit-conflict}/{@code plan-unknown}/{@code instance-unknown}/
+   *     {@code same-household}
    */
   record Rejected(String reason) implements ProductionInstanceOutcome {
 

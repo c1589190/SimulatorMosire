@@ -169,6 +169,35 @@ public interface ProductionRuntime {
       ProductionUnitId unit, io.mosire.simos.actor.api.actor.ActorRef operator, String modeKey);
 
   /**
+   * ★★★ <b>D-032 RC4-B：同 key 家户合并时，把指定实例本周期贡献台账中的 {@code from} 户重键到 {@code to} 户</b>。
+   *
+   * <p>★★ <b>为什么需要它</b>：population 已归入 survivor（{@code to}）后，若本周期劳动/加权劳动仍记在 source（{@code from}）这个
+   * 0 人口壳上，收获/经验/效率会按 source 结算 ⇒ 幽灵贡献。本方法只把该实例的 {@link ProductionProcess#cycleContributions()}
+   * 键/值里属于 {@code from} 的项改到 {@code to}，<b>不</b>改 operator / modeKey / 进度 / 投入 / 地点 / 实例 id（source
+   * 若是 operator，其身份重绑由调用方的 {@link #reoperateInstance} 另行完成）。
+   *
+   * <p>★★ <b>合并规则</b>：
+   *
+   * <ul>
+   *   <li>只处理 {@code key.household() == from} 的项；目标键 = {@code (to, role)}；
+   *   <li>同 role 的 {@code laborMilli} / {@code efficiencyWeightedLaborMilli} 用 {@code
+   *       Math.addExact} 精确相加；<b>不同 role 分开</b>，不得互相合并；
+   *   <li>源键删除，非 source 键与值逐字保留；输出仍保序、由 {@link ProductionProcess} 构造器冻结；
+   *   <li>没有 source 项 ⇒ 幂等 no-op，返回 {@link ProductionInstanceOutcome.Written}（当刻实例原样，不产生新实例）。
+   * </ul>
+   *
+   * <p>★ <b>拒绝语义（业务拒绝 = INFO 具名理由，不静默）</b>：实例不存在 ⇒ {@code instance-unknown}； {@code from == to} ⇒
+   * {@code same-household}。
+   *
+   * @param unit 生产实例；不得为 null
+   * @param from 要移出的家户；不得为 null
+   * @param to 要并入的家户；不得为 null、不得等于 {@code from}
+   * @return 重键后的实例（只读）或具名业务拒绝；不得为 null
+   */
+  ProductionInstanceOutcome rekeyCycleContributions(
+      ProductionUnitId unit, HouseholdId from, HouseholdId to);
+
+  /**
    * ★★★ <b>D-032 B3（I10 / §13.13.7 第 6 条）：人口迁移/合户的经验携带与合并</b> —— 迁移的 <b>完整携带</b>（主值 +
    * 余数、<b>不</b>乘人口比例）与合户的<b>人口加权平均</b>两件事的唯一权威在 production （裁决 §5 第 4 条末句"新增状态仍由 production 唯一维护"）。
    *

@@ -178,6 +178,30 @@ public record MerchantCapacity(
         serviceRadiusOf(tier));
   }
 
+  /**
+   * ★★★ <b>D-032 C7b2：由 C6 运输能力批次的 work 派生本市场轮承运条目</b>。
+   *
+   * <p>这条装配口只服务“活动运输池”：容量单位 = C6 {@code capacityWorkMilli}，不是劳动/工具，也不是旧 haul 服务货。半径返回 0；活动 matcher
+   * 的本地 lane 选择另行按 {@code from == homeHex} 判，不读旧服务半径。
+   */
+  public static MerchantCapacity ofTransportCapacity(
+      HouseholdId household, HexCoord homeHex, long capacityWorkMilli) {
+    Objects.requireNonNull(household, "transport carrier household 不得为 null");
+    Objects.requireNonNull(homeHex, "transport carrier homeHex 不得为 null");
+    if (capacityWorkMilli < 0L) {
+      throw new IllegalArgumentException("运输能力批次 work 不得为负: " + capacityWorkMilli);
+    }
+    return new MerchantCapacity(
+        household,
+        HouseholdActors.of(household),
+        homeHex,
+        0L,
+        0L,
+        capacityWorkMilli,
+        tierOf(capacityWorkMilli),
+        0L);
+  }
+
   /** 劳动项（毫商品）：{@code 劳动投入 × }{@link #CAPACITY_MILLI_PER_LABOR_HOUR}。 */
   public static long laborCapacityMilli(long laborInvestedMilli) {
     if (laborInvestedMilli < 0L) {

@@ -53,13 +53,16 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
       PoolCohorts cohorts,
       CurrencyId numeraire) {
     Map<String, long[]> goods = new LinkedHashMap<>();
-    goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
+    goods.put(
+        COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), RURAL_CLASS_SHARE_PER_MILLE));
     return cohortGroup(
         hex,
         ResidenceKind.RURAL,
         pool,
         allPool,
         goods,
+        RURAL_CLASS_IDS,
+        RURAL_CLASS_LABOR_PER_MILLE,
         locations,
         stocks,
         money,
@@ -124,6 +127,8 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
         pool,
         allPool,
         goods,
+        CLASS_IDS,
+        CLASS_LABOR_PER_MILLE,
         locations,
         stocks,
         money,
@@ -137,19 +142,22 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
    *
    * <pre>
    * raw = { PeopleLotId → {m,i,z,t,s,i}}         // 可选留痕，不进状态
-   * classHouseholds[i] = householdByCohort[(hex, residence, CLASS_IDS[i])]
+   * classHouseholds[i] = householdByCohort[(hex, residence, classIds[i])]
    * classPopulations[i] = Σ members(lot)         // 该阶层的批次人数之和（= Social 侧切分结果，不再二次切）
-   * displaced           = householdByCohort[(hex, residence, landless_laborer)]（可能缺）
+   * displaced           = null / 0               // RC2b 起所有池不再生成 displaced 户
    * </pre>
+   *
+   * <p>★ <b>农村二档 / 城市四档由居住类型分流</b>：{@link WorldBalanceSeeder#classIdsOf(ResidenceKind)}。
    *
    * <p>★ 缺常规家户 ⇒ fail-closed（Social 与 Economy 的格集/居住类型必须一一对应）。
    */
   static PoolCohorts poolCohorts(
       PopulationSeeder.Seeding seeding, HexCoord hex, ResidenceKind residence) {
-    List<HouseholdId> classHouseholds = new ArrayList<>(CLASS_IDS.length);
-    long[] classPopulations = new long[CLASS_IDS.length];
-    for (int i = 0; i < CLASS_IDS.length; i++) {
-      CohortKey key = new CohortKey(hex, residence, new SocialClassId(CLASS_IDS[i]));
+    String[] classIds = classIdsOf(residence);
+    List<HouseholdId> classHouseholds = new ArrayList<>(classIds.length);
+    long[] classPopulations = new long[classIds.length];
+    for (int i = 0; i < classIds.length; i++) {
+      CohortKey key = new CohortKey(hex, residence, new SocialClassId(classIds[i]));
       HouseholdId household =
           seeding
               .householdOfCohort(key)
@@ -158,13 +166,8 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
       classHouseholds.add(household);
       classPopulations[i] = seeding.populationOf(household);
     }
-    HouseholdId displaced =
-        seeding
-            .householdOfCohort(new CohortKey(hex, residence, SocialClassId.LANDLESS_LABORER))
-            .orElse(null);
-    long displacedPopulation = displaced == null ? 0L : seeding.populationOf(displaced);
-    return new PoolCohorts(
-        residence, classHouseholds, classPopulations, displaced, displacedPopulation);
+    // RC2b：displaced 户不再生成；PoolCohorts 保留空字段以便 withoutDisplaced 走原路（恒等于全池）。
+    return new PoolCohorts(residence, classHouseholds, classPopulations, null, 0L);
   }
 
   /** 从池里剔除流民批次（D-023：流民不进 laborSupply/allocations/资产；但成员份额用全池）。 */
@@ -205,6 +208,8 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
       List<PopulationGroup> pool,
       List<PopulationGroup> allPool,
       Map<String, long[]> goodsByClass,
+      String[] classIds,
+      int[] classLaborPerMille,
       Map<HouseholdId, HexCoord> locations,
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
@@ -212,16 +217,27 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
       PoolCohorts cohorts,
       CurrencyId numeraire) {
     long[] people = cohorts.classPopulations();
-    long displacedPopulation = cohorts.displacedPopulation();
-    List<Map<String, Object>> rows =
-        new ArrayList<>(CLASS_IDS.length + (displacedPopulation > 0L ? 1 : 0));
-    for (int i = 0; i < CLASS_IDS.length; i++) {
+    if (cohorts.classHouseholds().size() != classIds.length
+        || people.length != classIds.length
+        || classLaborPerMille.length != classIds.length) {
+      throw new IllegalStateException(
+          "家户/人口/劳动表长度不一致（拒绝静默截断）: households="
+              + cohorts.classHouseholds().size()
+              + " people="
+              + people.length
+              + " labor="
+              + classLaborPerMille.length
+              + " classIds="
+              + classIds.length);
+    }
+    List<Map<String, Object>> rows = new ArrayList<>(classIds.length);
+    for (int i = 0; i < classIds.length; i++) {
       // ★★ **H1：这个家户的开缸库存 → actor 侧的账本**（键 = {@link HouseholdActors#of} 的那个家户身份）。
       //   ★ **空账也落键**（人口 0 ⇒ 余额全 0）：读口因此读得到"这个家户在这一格有一本账"（既定口径），
       //     而"账本为空"与"这一格没有这个家户"是两件事。
       HouseholdId key = cohorts.classHouseholds().get(i);
       locations.put(key, hex);
-      stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
+      stocks.put(key, openingStock(people[i], classIds[i], goodsByClass, i));
       // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code HouseholdInventory}）—— 见 {@link
       // #genesisMoneyMilliPerCapita}。
       money.put(key, genesisMoney(people[i], genesisMoneyMilliPerCapita, numeraire));
@@ -229,28 +245,10 @@ class RuralHouseholdSeeder extends WorldBalanceSeeder {
           cohortRow(
               key,
               residence,
-              CLASS_IDS[i],
+              classIds[i],
               people[i],
-              CLASS_LABOR_PER_MILLE[i],
+              classLaborPerMille[i],
               householdBudgetMilli(allPool, cohorts, key)));
-    }
-    if (displacedPopulation > 0L) {
-      // ★★ D-023：流民没有工作、没有自动组织 —— 只落一条人口/需求行与它的家户账（库存/货币），不进劳动与资产表。
-      HouseholdId displacedKey = cohorts.displacedHousehold();
-      locations.put(displacedKey, hex);
-      stocks.put(
-          displacedKey,
-          openingStock(displacedPopulation, initialRationDays(CLASS_IDS[0]), Map.of(), 0));
-      money.put(
-          displacedKey, genesisMoney(displacedPopulation, genesisMoneyMilliPerCapita, numeraire));
-      rows.add(
-          cohortRow(
-              displacedKey,
-              residence,
-              DISPLACED_SLOT,
-              displacedPopulation,
-              0,
-              householdBudgetMilli(allPool, cohorts, displacedKey)));
     }
     return rows;
   }

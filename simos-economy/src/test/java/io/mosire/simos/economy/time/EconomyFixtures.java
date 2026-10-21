@@ -12,13 +12,18 @@ import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.map.HexLand;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.ops.LandComponentOperations;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionRuntimeEngine;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
@@ -77,6 +82,30 @@ public final class EconomyFixtures {
   static ProductionRuntime runtimeOf(ProductionDefinitionLookup definitions) {
     return new ProductionRuntimeEngine(
         definitions instanceof ProductionData data ? data : ProductionData.empty());
+  }
+
+  /**
+   * ★★★ D-032 L4：把旧夹具的 {@code (hex, owner) → quantity} 持有表翻译成 Map 派生的瞬态 {@link
+   * LandComponentLedger}。
+   *
+   * <p>新土地形状下 owner 是 Map arable component 的属性，economy 不再持久保存 LAND；本助手只负责把旧用例的 "每 hex 各 owner 多少"
+   * 逐值建成组件树，再走生产装配口 {@link LandComponentLedger#from(java.util.Map)}。
+   */
+  static LandComponentLedger landLedger(Map<LandHoldingKey, LandHolding> holdings) {
+    Map<HexCoord, Map<String, Long>> ownerQuantitiesByHex = new java.util.TreeMap<>();
+    for (LandHolding holding : holdings.values()) {
+      ownerQuantitiesByHex
+          .computeIfAbsent(holding.hex(), ignored -> new java.util.TreeMap<>())
+          .merge(holding.owner().value(), holding.quantityMilliMu(), Math::addExact);
+    }
+    Map<HexCoord, HexLand> lands = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, Map<String, Long>> entry : ownerQuantitiesByHex.entrySet()) {
+      lands.put(
+          entry.getKey(),
+          LandComponentOperations.setArableOwners(
+              HexLand.empty(), entry.getKey(), entry.getValue()));
+    }
+    return LandComponentLedger.from(lands);
   }
 
   /**

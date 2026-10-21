@@ -81,12 +81,22 @@ class EconomyPolicyEndToEndTest {
     try (GovZ6WorldFixture.World world =
         GovZ6WorldFixture.smallWorldGenesis(tempDir.resolve("econ-policy"), "policy-e2e")) {
 
-      // ── 前置：创世已激活经济（政策表的宿主在场），且政策表为空 ────────────────────────────────
+      // ── 前置：创世已激活经济（政策表的宿主在场），且标准农业创世政策 = work-first ────────────────
       //   ★ 非空转守卫：若 meta 缺失，下面的命令会具名拒 not-activated，本用例会红在提交那一步而不是
       //     悄悄变成"对着空表断言空表"。
+      //   ★ RF2c：标准农业生产运行时的创世载荷现在显式写 SURVIVAL_IDLE_POLICY=0（BEST_EFFORT_WORK），
+      //     所以基线不再是空表；WIRED_KEY（SLIDE_ROUND_DAYS）仍未被配置。
       EconomyData genesis = economy(world);
       EconomyMeta genesisMeta = genesis.meta().orElseThrow();
-      assertThat(genesisMeta.economyPolicies()).as("创世政策表必须为空（缺省中性的基线）").isEmpty();
+      assertThat(genesisMeta.economyPolicies())
+          .as("★ RF2c：标准农业创世政策表 = work-first 基线（SURVIVAL_IDLE_POLICY=0）")
+          .containsExactly(java.util.Map.entry(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, 0L));
+      assertThat(genesis.economyPolicyOf(EconomyPolicyKey.SURVIVAL_IDLE_POLICY))
+          .as("★ RF2c：标准世界读口 = BEST_EFFORT_WORK(0)")
+          .isZero();
+      assertThat(EconomyPolicyKey.SURVIVAL_IDLE_POLICY.defaultValue())
+          .as("★ RF2c：全局缺省仍为 PREFER_IDLE_WHEN_SUBSISTENCE_UNMET(1)，不得被 seed 静默改掉")
+          .isEqualTo(1L);
       assertThat(genesis.economyPolicyConfigured(WIRED_KEY)).as("创世时该键未被配置过").isFalse();
       assertThat(genesis.economyPolicyOf(WIRED_KEY))
           .as("没有政策时读口 = 该键的具名缺省（= 改造前的常量值）")
@@ -109,8 +119,9 @@ class EconomyPolicyEndToEndTest {
           .as("写入非缺省值 ⇒ 该键在政策表里（economyPolicyConfigured 看得见）")
           .isTrue();
       assertThat(afterWrite.meta().orElseThrow().economyPolicies())
-          .as("政策表里就是那一个键（只写一个键，不动别的组件）")
-          .containsExactly(java.util.Map.entry(WIRED_KEY, WIRED_VALUE));
+          .as("政策表里 = 创世 work-first 基线 + 刚写入的那一个键（只写一个键，不动别的组件）")
+          .containsExactlyInAnyOrderEntriesOf(
+              java.util.Map.of(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, 0L, WIRED_KEY, WIRED_VALUE));
 
       // 第二个键（非缺省）—— 给下一步的"写缺省 ⇒ 删行"留一个"另一个键仍在"的对照。
       submit(
@@ -119,8 +130,8 @@ class EconomyPolicyEndToEndTest {
           payload(SECOND_KEY, SECOND_VALUE),
           "写入 %s = %d".formatted(SECOND_KEY.name(), SECOND_VALUE));
       assertThat(economy(world).meta().orElseThrow().economyPolicies())
-          .as("两个键都在表里")
-          .containsOnlyKeys(WIRED_KEY, SECOND_KEY);
+          .as("两个写入键都在表里（外加创世 work-first 基线）")
+          .containsOnlyKeys(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, WIRED_KEY, SECOND_KEY);
 
       // ── ③ 推进 ≥ 1 天：逐日结算会**逐字段重建** EconomyMeta（W10-fix 修的那一处）──────────────
       long fromTick = tickOf(world);
@@ -132,6 +143,7 @@ class EconomyPolicyEndToEndTest {
           .as(
               "★★ W10-fix：逐日结算重建 meta 必须**原样带过**政策表 —— 缺这一行 ⇒ 政策只在写入的那一个 tick 内成立，"
                   + "下一个 advance 之后就被静默清空（W10-收口批实测 240/240 个结算日全中）")
+          .containsEntry(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, 0L)
           .containsEntry(WIRED_KEY, WIRED_VALUE)
           .containsEntry(SECOND_KEY, SECOND_VALUE);
 
@@ -156,8 +168,9 @@ class EconomyPolicyEndToEndTest {
           payload(SECOND_KEY, SECOND_KEY.defaultValue()),
           "把 %s 写回缺省 %d".formatted(SECOND_KEY.name(), SECOND_KEY.defaultValue()));
       assertThat(economy(world).meta().orElseThrow().economyPolicies())
-          .as("写回缺省 ⇒ 该行被删掉（不留等于现值的冗余行）；另一个键不受影响")
+          .as("写回缺省 ⇒ 该行被删掉（不留等于现值的冗余行）；work-first 基线与另一个键不受影响")
           .doesNotContainKey(SECOND_KEY)
+          .containsEntry(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, 0L)
           .containsEntry(WIRED_KEY, WIRED_VALUE);
 
       world.advance(fromTick + DAYS, fromTick + DAYS + 1L);
@@ -165,6 +178,7 @@ class EconomyPolicyEndToEndTest {
       assertThat(afterExtraDay.meta().orElseThrow().economyPolicies())
           .as("再推进一天：删掉的行不得被重建回来（缺键 = 缺省，不是往表里补一行）")
           .doesNotContainKey(SECOND_KEY)
+          .containsEntry(EconomyPolicyKey.SURVIVAL_IDLE_POLICY, 0L)
           .containsEntry(WIRED_KEY, WIRED_VALUE);
       assertThat(afterExtraDay.economyPolicyOf(SECOND_KEY))
           .as("被删的键读口回到具名缺省")

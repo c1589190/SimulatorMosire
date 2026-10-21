@@ -11,7 +11,6 @@ import static io.mosire.simos.economy.time.MarketRosterBook.stockOf;
 import static io.mosire.simos.economy.time.MarketSettlement.MarketRound;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -23,8 +22,13 @@ import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.TradeRoute;
+import io.mosire.simos.economy.land.LandLedgerState;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.LaneCapacityCommitment;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.TransportDemandKey;
+import io.mosire.simos.economy.model.TransportHexObservation;
+import io.mosire.simos.economy.model.TransportRoundPlan;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -33,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /** 市场轮机械拆分 helper（由 MarketSettlement 抽取；行为不变）。 */
@@ -82,10 +87,10 @@ final class MarketModelBook {
      * 一格一张价表、一个尺度），而撮合里与它比较的 {@code buyerUnitPrice} 是<b>买方支付币</b>的单价（3c 的 {@code
      * settlementUnitPrice}）—— 异币时两者不能直接比大小。故建槽位时折一次、只存这一个口径。
      *
-     * <p>★ 同币时它与 {@code maxLandedPrice} <b>逐值相同</b>（{@code ⌈x×1000÷1000⌉ = x}）⇒ 旧世界逐值不变。 ★ {@code
-     * -1} = 说不出价（哨兵：任何 ≥ 0 的真价格都比它大 ⇒ 限价不过；正常路径上不可达，因为订单生成侧已先拒）。
+     * <p>★★ <b>D-032 RF1：empty = 价格接受者需求</b>（家户 BUY）—— 没有价格上限可折，撮合与读数都不得再用价格过滤。 present 时同币与 {@code
+     * maxLandedPrice} <b>逐值相同</b>（{@code ⌈x×1000÷1000⌉ = x}）⇒ 旧世界逐值不变。
      */
-    final long limitInPayCurrency;
+    final OptionalLong limitInPayCurrency;
 
     /**
      * ★★ <b>D-027：本槽所属区的规范 id</b>（= {@code region.node().nodeId()}）—— 有效参考价/区级调控按它查 （单区里就是 {@code
@@ -169,12 +174,18 @@ final class MarketModelBook {
       // ★★ P-T5b：本槽的两个折算冻结值（同一份 CurrencyValuation、各折**一次**；见字段注）。
       this.payValueMicro = payChoice.valueMicroOf(market, this.currency, hex);
       //   ★ 面值（同币 / 当地流通 ⇒ 1:1）⇒ 限价原样：不做乘除 ⇒ 旧世界逐值不变是"一条都不算"。
-      this.limitInPayCurrency =
-          this.payValueMicro == CurrencyValuation.faceValueMicro()
-              ? order.maxLandedPrice()
-              : (this.payValueMicro <= 0L
-                  ? -1L
-                  : buyerUnitPriceFor(order.maxLandedPrice(), this.payValueMicro));
+      if (order.maxLandedPrice().isEmpty()) {
+        // ★ RF1：价格接受者需求没有价格上限；不保留任何"折出来的限价"。
+        this.limitInPayCurrency = OptionalLong.empty();
+      } else {
+        long maxLandedPrice = order.maxLandedPrice().getAsLong();
+        this.limitInPayCurrency =
+            this.payValueMicro == CurrencyValuation.faceValueMicro()
+                ? OptionalLong.of(maxLandedPrice)
+                : (this.payValueMicro <= 0L
+                    ? OptionalLong.of(-1L)
+                    : OptionalLong.of(buyerUnitPriceFor(maxLandedPrice, this.payValueMicro)));
+      }
     }
 
     /**
@@ -555,7 +566,22 @@ final class MarketModelBook {
      * ★★ <b>M-A1：本轮逐 hex 运力池</b>（派生量，见 {@link MerchantCapacityPool}）—— 承运选择的唯一权威。 ★ 池空 =
      * 世界里没有"选了跑商的家户" ⇒ 跨格货走不动；同格成交不受影响。
      */
-    final MerchantCapacityPool carrierPool;
+    MerchantCapacityPool carrierPool;
+
+    /**
+     * ★★★ <b>D-032 C7b2：本轮运输计划（瞬态）</b> —— C7b1 在同一轮订单快照之后产出；matcher 只读同一份
+     * demands/commitments/observations。{@code null} = 旧夹具/纯状态读者，走旧编译分支；生产路径恒由 {@link
+     * #installTransportRoundPlan(TransportRoundPlan, MerchantCapacityPool)} 装入。
+     */
+    TransportRoundPlan transportRoundPlan;
+
+    /**
+     * ★★★ <b>C7b2：本地 lane 的剩余承诺 work 预算</b>（逐 demand key；只由协调器单线程扣减）。
+     *
+     * <p>初值 = plan.commitments 中该 demand 的承诺之和。商品成交只能消费这里的剩余 work；无键/余额 ≤ 0 ⇒
+     * 不成交、不成债、不计价。批次容量本身只作为池的逐户上限，不跨 hex、不跨 lane。
+     */
+    final Map<TransportDemandKey, Long> transportLaneWorkRemaining = new LinkedHashMap<>();
 
     /**
      * ★★ <b>M-A2：本轮运力需求簿</b>（逐份需求 + 逐 hex / 逐区汇总 + 缺口；见 {@link CapacityDemandBook}）。
@@ -613,6 +639,12 @@ final class MarketModelBook {
     /** 见 {@link #deferredPaymentMilli}（本轮发生了赊购的成交笔数）。 */
     int deferredPaymentFills;
 
+    /** ★ C7b2：本轮因买方现金不足而未付的运费（毫买方支付币；债务本身落到 {@code debts}）。 */
+    long transportFreightDeferredMilli;
+
+    /** ★ C7b2：本轮发生运费赊欠的承运腿条数。 */
+    int transportFreightDeferredFills;
+
     /**
      * ★★ <b>W2：本轮的持久市场区表</b>（{@code MarketZoneId → MarketZone}）—— 只被自适应定价读一个字段： {@link
      * MarketZone#priceAlphaPerMille()}（逐区动态价步长 α，约束设计书 §2.1）。
@@ -667,12 +699,16 @@ final class MarketModelBook {
     long shipmentSequence;
 
     /**
-     * ★★ <b>P2f：本轮土地卖单的瞬态冻结集</b>（{@code AssetShareId}）—— 同一块地本轮最多卖一次；<b>不写</b> actor 的 {@code
-     * frozenGoods}、不写第二本库存（土地不是商品，冻结只表达"这一块本轮已占"）。★ 逐轮瞬态：不落盘、不进变更集。
+     * ★★★ <b>RA1b2c2：本轮标量 LAND 的产权工作态</b>（协调器单线程；只由 {@link MarketTradeExecutor#executeLandTrade} 经
+     * {@link LandLedgerState#transfer} 替换）。撮合期只读、成交即刻更新；轮末由 {@code MarketRoundRunner} 写回 {@code
+     * MarketRound.landHoldings}，再由 {@code SettlementDayMarketPipeline} 写回 {@code
+     * EconomyStateBuilder}。
+     *
+     * <p>★ 逐轮瞬态：不落盘、不进变更集；不新增持久组件。
      */
-    final Set<AssetShareId> landSellFrozen = new java.util.LinkedHashSet<>();
+    LandLedgerState landLedger;
 
-    /** ★★ P2f：本轮的土地成交读数（唯一写入点 = {@link MarketTradeExecutor#executeLandTrade}；只作日志/交账）。 */
+    /** ★★ RA1b2c2：本轮的土地成交读数（唯一写入点 = {@link MarketTradeExecutor#executeLandTrade}；只作日志/交账）。 */
     final List<MarketLandBook.LandFill> landFills = new ArrayList<>();
 
     /** ★★ P2f：本轮土地成交里记为普通货币债务的金额（毫买方支付币；只作日志/读数，债务本身落在 {@code debts}）。 */
@@ -784,6 +820,106 @@ final class MarketModelBook {
     /** ★★ E：本轮的"钱的价"（只读）。 */
     CurrencyValuation currencyValuation() {
       return currencyValuation;
+    }
+
+    /**
+     * ★★★ <b>D-032 C7b2：装入 C7b1 的运输计划与由 C6 批次构造的活动运输池</b>。
+     *
+     * <p>调用点 = runner 订单快照回调、matcher 之前。plan 与 pool 必须同源；lane 预算只从 plan 的 commitments
+     * 初始化，不由池容量反推（池容量只作逐户上限）。重复装入同一轮视为契约故障。
+     */
+    void installTransportRoundPlan(TransportRoundPlan plan, MerchantCapacityPool transportPool) {
+      Objects.requireNonNull(plan, "transportRoundPlan 不得为 null（无运输请给 empty）");
+      Objects.requireNonNull(transportPool, "transportPool 不得为 null（无运力请给 empty）");
+      if (this.transportRoundPlan != null && !this.transportRoundPlan.isEmpty()) {
+        throw new IllegalStateException("同一市场轮重复装入 transportRoundPlan（契约故障）: day=" + round.day);
+      }
+      Map<TransportDemandKey, Long> pending = new LinkedHashMap<>();
+      for (TransportDemandKey demandKey : plan.demands().keySet()) {
+        long committed = 0L;
+        for (LaneCapacityCommitment commitment :
+            plan.commitments().getOrDefault(demandKey, List.of())) {
+          committed = Math.addExact(committed, commitment.committedWorkMilli());
+        }
+        pending.put(demandKey, committed);
+      }
+      for (Map.Entry<TransportDemandKey, List<LaneCapacityCommitment>> entry :
+          plan.commitments().entrySet()) {
+        if (!pending.containsKey(entry.getKey())) {
+          throw new IllegalStateException("transportRoundPlan 有承诺却没有对应需求（契约故障）: " + entry.getKey());
+        }
+      }
+      this.transportRoundPlan = plan;
+      this.carrierPool = transportPool;
+      this.transportLaneWorkRemaining.clear();
+      this.transportLaneWorkRemaining.putAll(pending);
+    }
+
+    /** 当前是否处于 C7b2 活动运输计划路径。 */
+    boolean transportPlanActive() {
+      return transportRoundPlan != null;
+    }
+
+    /** 该 shippingHex 在 plan 中有没有本地容量（offered > 0）；空 plan / 缺观察 ⇒ false。 */
+    boolean transportPlanHasLocalCapacity(HexCoord shippingHex) {
+      if (transportRoundPlan == null) {
+        return false;
+      }
+      TransportHexObservation observation =
+          transportRoundPlan.observationsByShippingHex().get(shippingHex);
+      return observation != null && observation.offeredWorkMilli() > 0L;
+    }
+
+    /** 该 shippingHex 的 zone 锚价快照（0 合法；缺观察 ⇒ 0，只读兜底）。 */
+    long transportAnchorPriceAt(HexCoord shippingHex) {
+      if (transportRoundPlan == null) {
+        return 0L;
+      }
+      TransportHexObservation observation =
+          transportRoundPlan.observationsByShippingHex().get(shippingHex);
+      return observation == null ? 0L : observation.anchorPricePerWorkMilli();
+    }
+
+    /** 找 plan 中与 (shippingHex, arrivalHex, commodity) 对应的 demand key；找不到 ⇒ null。 */
+    TransportDemandKey transportDemandKeyFor(
+        HexCoord shippingHex, HexCoord arrivalHex, CommodityId commodity) {
+      if (transportRoundPlan == null) {
+        return null;
+      }
+      for (TransportDemandKey key : transportRoundPlan.demands().keySet()) {
+        if (key.shippingHex().equals(shippingHex)
+            && key.arrivalHex().equals(arrivalHex)
+            && key.commodity().equals(commodity)) {
+          return key;
+        }
+      }
+      return null;
+    }
+
+    /** 该 lane 的剩余承诺 work；无键 ⇒ null（不是伪造 0）。 */
+    Long transportLaneRemainingWork(TransportDemandKey key) {
+      return key == null ? null : transportLaneWorkRemaining.get(key);
+    }
+
+    /** 扣减本地 lane 承诺 work；负数/超承诺 ⇒ 具名 fail-closed。 */
+    void consumeTransportLaneWork(TransportDemandKey key, long workMilli) {
+      if (workMilli < 0L) {
+        throw new IllegalArgumentException("transport-lane-consumed-work-negative: " + workMilli);
+      }
+      Long remaining = transportLaneWorkRemaining.get(key);
+      if (remaining == null) {
+        throw new IllegalStateException("transport-lane-missing-at-consume: " + key);
+      }
+      if (workMilli > remaining) {
+        throw new IllegalStateException(
+            "transport-lane-overcommitted: key="
+                + key
+                + " consumed="
+                + workMilli
+                + " remaining="
+                + remaining);
+      }
+      transportLaneWorkRemaining.put(key, remaining - workMilli);
     }
 
     /**

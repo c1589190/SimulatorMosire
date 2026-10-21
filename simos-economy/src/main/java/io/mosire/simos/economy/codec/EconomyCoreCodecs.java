@@ -57,6 +57,7 @@ import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.map.hex.HexCoord;
@@ -213,6 +214,7 @@ final class EconomyCoreCodecs {
     //   值 MarketZone 走 Jackson 的 record 绑定；成员格集合是 Set<HexCoord> ⇒ 值侧走 HexCoord 的 record 绑定
     //   （q/r 两个 int），迭代序由 MarketZone 构造期的规范序（(q,r) 升序）保证 ⇒ 字节级往返稳定。
     //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表（市场区退回派生路径，既有世界逐值不变）。
+    //   ★ D-032 C7a：transportPriceAnchors 复用同一 MarketZoneId 键反序列化器（不新增第二套市场区 key）。
     module.addKeyDeserializer(MarketZoneId.class, keyDeserializer(MarketZoneId::parse));
     // ★★ 2026-10-09 选项 A：householdDebtRefs（第 37 个组件）的键 = HouseholdDebtReference（{@code 家户@合同}
     //   复合键，toString/parse 互逆）。值 = 标记位 Boolean，走 Jackson 的原生布尔绑定。
@@ -222,10 +224,17 @@ final class EconomyCoreCodecs {
     //   不经过本 codec 的整形层 —— 见那个注解的注释）。
     module.addKeyDeserializer(
         HouseholdDebtReference.class, keyDeserializer(HouseholdDebtReference::parse));
-    module.addKeyDeserializer(WageCarryKey.class, keyDeserializer(WageCarryKey::parse));
-    // ★★★ D-032 P4c3：U20 工资锚 productionWageAnchors 的键 = WageAnchorKey。
+    module.addKeyDeserializer(
+        WageCarryKey.class,
+        keyDeserializer(
+            WageCarryKey
+                ::parse)); // ★★★ D-032 P4c3：U20 工资锚 productionWageAnchors 的键 = WageAnchorKey。
     //   三字段长度前缀编码（toString/parse 互逆）；值 ProductionWageAnchor 走 Jackson record 绑定。
     module.addKeyDeserializer(WageAnchorKey.class, keyDeserializer(WageAnchorKey::parse));
+    // ★★★ D-032 C6：临时运输能力批次表的复合键（household/homeHex/marketRoundId 的长度前缀编码，
+    //   toString/parse 互逆）。值 TransportCapacityBatch 走 Jackson record 绑定。
+    module.addKeyDeserializer(
+        TransportCapacityBatchKey.class, keyDeserializer(TransportCapacityBatchKey::parse));
     // ★★★ D-032 D4-Ib1：第 36/37 组件的键。两者 toString()/parse() 互逆；写侧默认 toString，
     //   读侧在此注册（与其余稳定 id 同制，不引入旧档兼容/键归一）。
     module.addKeyDeserializer(

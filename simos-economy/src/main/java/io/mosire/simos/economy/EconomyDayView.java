@@ -34,6 +34,7 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -202,4 +203,15 @@ public interface EconomyDayView {
    * 日内读者必须看当刻窗口（"本轮"就是刚过去的那一刻）。
    */
   Map<MarketZoneId, MarketRoundStats> marketRoundStats();
+
+  /**
+   * ★★★ <b>D-032 C7a：运输市场区锚价（键 = 市场区）</b>。
+   *
+   * <p>★ <b>缺键 = 初始价 0</b>（只读默认）；0 是合法免费价，不是缺价。市场轮内只读，只在 S7-END 由 {@code
+   * TransportPriceAnchorBook#recordMarketRound(...)} 写回，下一市场轮生效。{@code EconomyData} 直接实现； {@code
+   * WorkingDayView} 覆盖为工作副本优先。
+   */
+  default Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors() {
+    return Map.of();
+  }
 }

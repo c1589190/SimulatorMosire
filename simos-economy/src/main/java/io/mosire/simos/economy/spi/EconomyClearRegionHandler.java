@@ -28,6 +28,8 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
+import io.mosire.simos.economy.model.HouseholdFlowTarget;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -49,6 +51,7 @@ import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -464,8 +467,31 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
             .withHouseholdDemands(householdDemands)
             .withCrisisSignals(crisisSignals)
             .withClassMemberships(classMemberships)
+            // ★ RA1b2b：先摘被引用的占用授予，再摘份额（构造期会拒绝 grant 指向已不存在的 share）。
+            .withAssetOccupancies(assetOccupancies)
             .withOwnershipStakes(assetShares)
             .withMarketTables(markets);
+
+    // ★★★ D-032 RC7：清区同批摘除被删户的流动表；若只删了目标行，保留源表但过滤掉该 target，
+    //   让下一市场轮重新找/建目标。sourceHex 落在目标格的表随源户一起消失（同 hex 不变量保证两者同格）。
+    Map<HouseholdId, HouseholdFlowTable> householdFlowTables = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, HouseholdFlowTable> entry : base.householdFlowTables().entrySet()) {
+      HouseholdFlowTable table = entry.getValue();
+      if (removedClasses.contains(entry.getKey()) || targetHexes.contains(table.sourceHex())) {
+        continue;
+      }
+      List<HouseholdFlowTarget> retainedTargets = new ArrayList<>();
+      for (HouseholdFlowTarget target : table.targets()) {
+        if (!removedClasses.contains(target.targetHousehold())) {
+          retainedTargets.add(target);
+        }
+      }
+      householdFlowTables.put(
+          entry.getKey(),
+          retainedTargets.size() == table.targets().size()
+              ? table
+              : table.withTargets(retainedTargets));
+    }
 
     // ⑥ classes 与 memberships **同一次规范构造**：先删任一侧的中间态都非法（另一侧悬空或 Σ 守恒失衡）。
     //    其余 28 个组件取 staged 的逐 with* 结果 ⇒ 等价于"32 个组件的同时复合"。
@@ -519,7 +545,12 @@ public final class EconomyClearRegionHandler implements CommandHandler, CommandT
         inventoryReservations,
         // ★★★ D-032 P4fix BUG-2：被清产业名下的锚已在上面按 removedIndustries 过滤（防定义删后悬空）；
         //   其余世界的锚原样带过。
-        productionWageAnchors);
+        productionWageAnchors,
+        householdFlowTables,
+        // ★★★ D-032 C6：运输能力批次是世界运行事实，清区域原样带过（本批不定义清区淘汰语义）。
+        staged.transportCapacityBatches(),
+        // ★★★ D-032 C7a：运输锚价按市场区持有；清区域不摘市场区，因此原样带过。
+        staged.transportPriceAnchors());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

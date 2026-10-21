@@ -40,6 +40,7 @@ import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -165,6 +166,36 @@ public final class ModeMigrationSettlement {
     LinkedHashMap<ClassShareId, ClassShare> classShares = session.sheet().classShares();
     Map<DemandId, HouseholdDemand> householdDemands = base.demands();
 
+    // ★★★ RF4b（2026-10-20）：**production.RebindInstanceOperator 未实现前的临时安全阀**。
+    //   迁移执行到 organizer 整户迁空时才由 MigrationPopulationMove 具名抛
+    //   `organizer-merge-requires-rebind` ⇒ 整个 advance 被拒，且此前 move 可能已落账。
+    //   这里在任何 move 的执行/副作用之前，先按当前 production roster 收集 organizer 家户；
+    //   这些家户作为 source 的**全部** move 整源跳过（不做半迁移、不合并 roster、不动资产/债务/人口），
+    //   非 organizer source 的 move 保持原逻辑。最终实现 RebindInstanceOperator 后删除本守卫。
+    Map<ProductionUnitId, ProductionRoster> productionRosters =
+        session.sheet().productionRostersOrBase();
+    Set<HouseholdId> organizerHouseholds = new LinkedHashSet<>();
+    Map<HouseholdId, Set<ProductionUnitId>> organizerUnitsByHousehold = new LinkedHashMap<>();
+    for (ProductionRoster roster : productionRosters.values()) {
+      HouseholdId organizer = roster.organizerHousehold();
+      organizerHouseholds.add(organizer);
+      organizerUnitsByHousehold
+          .computeIfAbsent(organizer, ignored -> new LinkedHashSet<>())
+          .add(roster.unit());
+    }
+    List<ModeMigrationPolicy.MigrationMove> guardedMoves = new ArrayList<>(plan.moves().size());
+    Map<HouseholdId, Set<HouseholdId>> skippedTargetsByOrganizerSource = new LinkedHashMap<>();
+    for (ModeMigrationPolicy.MigrationMove move : plan.moves()) {
+      if (organizerHouseholds.contains(move.source())) {
+        skippedTargetsByOrganizerSource
+            .computeIfAbsent(move.source(), ignored -> new LinkedHashSet<>())
+            .add(move.target());
+        continue;
+      }
+      guardedMoves.add(move);
+    }
+    logOrganizerRebindUnsupported(day, skippedTargetsByOrganizerSource, organizerUnitsByHousehold);
+
     // ★★★ W7（2026-10-11）：**跑商自己长出来** —— 把"目标格还没有 merchant 产业模板"的迁移笔挑出来，
     //   按需为它创建 {@code trade@hex} 记录（唯一拼写点 = {@link MerchantTradeTemplate}，与创世播种逐字段同值；
     //   与决策层的可行性预估**同一个模板**）。
@@ -175,7 +206,7 @@ public final class ModeMigrationSettlement {
     //     也绝不让 tick 在 {@code createEnterpriseAndProcess} 里当场抛（那会把整个世界卡死）。
     LinkedHashMap<IndustryId, IndustryDefinitionView> industries = session.sheet().industries();
     LinkedHashSet<HexCoord> onDemandTradeHexes = new LinkedHashSet<>();
-    for (ModeMigrationPolicy.MigrationMove move : plan.moves()) {
+    for (ModeMigrationPolicy.MigrationMove move : guardedMoves) {
       if (DefaultProductionModes.MERCHANT.equals(move.targetMode())
           && ModeMigrationPolicy.industriesForMode(industries, move.targetHex(), move.targetMode())
               .isEmpty()) {
@@ -184,7 +215,7 @@ public final class ModeMigrationSettlement {
     }
     List<ModeMigrationPolicy.MigrationMove> acceptedMoves =
         filterOnDemandMerchantMoves(
-            plan.moves(),
+            guardedMoves,
             onDemandTradeHexes,
             householdEconomies,
             assetShares,
@@ -316,6 +347,50 @@ public final class ModeMigrationSettlement {
                 + " laborAfter="
                 + row.laborMilli());
       }
+    }
+  }
+
+  /**
+   * ★★★ RF4b 临时守卫的审计日志：按 organizer source 聚合被跳过的 target(s) 与相关 unit(s)。
+   *
+   * <p>日志只读、失败不得影响结算（{@code EventLog}/logger 的异常在此吞掉）；生产逻辑不依赖本方法返回值。
+   */
+  private static void logOrganizerRebindUnsupported(
+      long day,
+      Map<HouseholdId, Set<HouseholdId>> skippedTargetsBySource,
+      Map<HouseholdId, Set<ProductionUnitId>> organizerUnitsByHousehold) {
+    if (skippedTargetsBySource.isEmpty()) {
+      return;
+    }
+    try {
+      List<HouseholdId> sources = new ArrayList<>(skippedTargetsBySource.keySet());
+      sources.sort(Comparator.comparing(HouseholdId::value));
+      for (HouseholdId source : sources) {
+        List<String> targets =
+            skippedTargetsBySource.get(source).stream().map(HouseholdId::value).sorted().toList();
+        List<String> units =
+            organizerUnitsByHousehold.getOrDefault(source, Set.of()).stream()
+                .map(ProductionUnitId::value)
+                .sorted()
+                .toList();
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "MIGRATION_ORGANIZER_REBIND_UNSUPPORTED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "source",
+                    source.value(),
+                    "targets",
+                    targets,
+                    "units",
+                    units,
+                    "reason",
+                    "production-rebind-not-implemented"));
+      }
+    } catch (RuntimeException ignored) {
+      // ★ RF4b：日志失败（含 EventLog 字段构造/logger 异常）不得影响迁移结算。
     }
   }
 

@@ -1,6 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -19,6 +21,8 @@ import io.mosire.simos.economy.time.ProductionLedger.RuleSettlement;
 import io.mosire.simos.economy.time.ProductionLedger.TransferMint;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -27,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>一次生产关账的结算「计算」</b>（S1 阶段 4+5 Task 3；spec §四 ①→⑤ 里"怎么分"那一步）。
@@ -110,6 +115,9 @@ public final class ProductionSettlement {
 
   /** 千分率的分母（{@code ratePerMille} 是千分数）。 */
   private static final long PER_MILLE = 1000L;
+
+  /** ★ RF2d：关系结算日志（主结算链 logger）。自规则跳过是<b>业务拒绝</b> ⇒ INFO（AGENTS §一.9）， 让坏种子关系在只看 INFO 的日志面上也可见。 */
+  private static final Logger SETTLEMENT = EconomyLog.settlement();
 
   private ProductionSettlement() {}
 
@@ -272,9 +280,16 @@ public final class ProductionSettlement {
     List<RuleSettlement> readings = new ArrayList<>();
     List<CompensationRule> deferred = new ArrayList<>();
     for (CompensationRule rule : ordered) {
+      ActorRef payee = payeeOf(rule);
+      if (payee.equals(relation.operator())) {
+        // ★★ RF2d：**受方 = operator ⇒ 自支付，不是经济发生额**。它在任何支付量计算、mint、欠额累加之前
+        //   被跳过（不铸 Transfer、不进 paid/owed/transfers 读数）。★ 不静默：具名 INFO 留审计线索。
+        logSelfRuleSkipped(relation, rule, payee);
+        continue;
+      }
       if (rule.type().money()) {
         // ★★ H4：货币档**真的结算**（I5.3 的"只定义、不结算"到此结束）—— 见 settleMoneyRule。
-        settleMoneyRule(rule, relation, facts, paidMoney, transfers, readings, mint);
+        settleMoneyRule(rule, payee, relation, facts, paidMoney, transfers, readings, mint);
         continue;
       }
       OptionalLong due = dueAmount(rule, facts, paid);
@@ -290,7 +305,7 @@ public final class ProductionSettlement {
               due.getAsLong(),
               paidNow,
               relation.operator(),
-              payeeOf(rule),
+              payee,
               relation.activity()));
       if (paidNow <= 0L) {
         continue; // 归零 ⇒ 不产生转移（自留的 0、付不出的 0、受方不在账里的 0 都走这一支）
@@ -302,7 +317,7 @@ public final class ProductionSettlement {
       transfers.add(
           mint.mint(
               relation.operator(),
-              payeeOf(rule),
+              payee,
               facts.location(),
               Map.of(commodity, paidNow),
               TransferReason.RELATION_PAYMENT));
@@ -382,12 +397,14 @@ public final class ProductionSettlement {
    * <p>★ <b>欠额不落债权</b>（同商品档）：{@code FIXED_MONEY_*} 付不出只报数，不产生 {@code Debt}、不产生索取权 ——
    * "欠款按规则开关落成债权"的开关默认值仍未定（S4）。
    *
+   * @param payee 这条规则的受方 actor（由 {@link #settle} 在循环入口解析并判过自规则）
    * @param paidMoney 已付的货币（逐币种；**就地更新** —— R6 的"本期可用"是**本期剩下的**可用，见上）
    * @param transfers 实付转移累加器（**就地追加**；本方法是唯一往它里面加货币腿的地方）
    * @param readings 逐规则读数累加器（**就地追加**；连实付 0 的那些也报）
    */
   private static void settleMoneyRule(
       CompensationRule rule,
+      ActorRef payee,
       ProductionRules relation,
       Facts facts,
       Map<CurrencyId, Long> paidMoney,
@@ -415,7 +432,7 @@ public final class ProductionSettlement {
             due,
             paidNow,
             relation.operator(),
-            payeeOf(rule),
+            payee,
             relation.activity()));
     if (paidNow <= 0L) {
       return; // 归零 ⇒ 不铸转移（同商品档的"实付 0 不产生转移"）
@@ -424,7 +441,7 @@ public final class ProductionSettlement {
     transfers.add(
         mint.mint(
             relation.operator(),
-            payeeOf(rule),
+            payee,
             facts.location(),
             Map.of(),
             Map.of(currency, paidNow),
@@ -443,6 +460,38 @@ public final class ProductionSettlement {
       case FIXED_MONEY_WAGE, FIXED_MONEY_RENT -> rule.fixedAmount();
       default -> throw unregisteredCombination(rule);
     };
+  }
+
+  /**
+   * ★★ RF2d：<b>自支付关系规则的具名留痕</b>（受方 actor 与 {@code relation.operator()} 完全相同）。
+   *
+   * <p>自支付不是一条经济发生额：该规则被<b>整条跳过</b>（不铸转移、不进 {@code paid}/{@code owed}/{@code transfers} 读数、不产生欠额）。★
+   * 这通常是坏种子关系（规则把付款方与受方配成同一户），故按业务拒绝记 INFO， 让只看 INFO 的日志面也能发现；它不是可执行的支付，也不许被解释成"已支付"。
+   *
+   * <p>字段：{@code activity}/{@code unit}（这条关系结算的 unit）、{@code operator}、{@code payee}、 {@code
+   * ruleType}、{@code priority}、{@code reason=self-payee-equals-operator}。
+   */
+  private static void logSelfRuleSkipped(
+      ProductionRules relation, CompensationRule rule, ActorRef payee) {
+    EventLog.channel(SETTLEMENT)
+        .info(
+            LogEvent.of(
+                "RELATION_SELF_RULE_SKIPPED",
+                EconomyLogSource.ECONOMY_SETTLEMENT,
+                "activity",
+                relation.activity().value(),
+                "unit",
+                relation.activity().value(),
+                "operator",
+                relation.operator(),
+                "payee",
+                payee,
+                "ruleType",
+                rule.type().name(),
+                "priority",
+                rule.priority(),
+                "reason",
+                "self-payee-equals-operator"));
   }
 
   /** 受方的 actor 引用（{@code ToCohort} 的家户 actor = {@code HouseholdActors.of(cohort)}；两档合流成同一条）。 */

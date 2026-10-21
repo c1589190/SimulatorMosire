@@ -6,14 +6,15 @@ import static io.mosire.simos.economy.time.SettlementLogSupport.TRACE;
 import static io.mosire.simos.economy.time.SettlementLogSupport.logArbitrageRound;
 import static io.mosire.simos.economy.time.SettlementLogSupport.logFxWindows;
 import static io.mosire.simos.economy.time.SettlementLogSupport.logTaxCollected;
-import static io.mosire.simos.economy.time.ShipmentSettlement.haulServiceHexes;
 import static io.mosire.simos.economy.time.ShipmentSettlement.haulServicePaidByCurrency;
 
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.land.LandHolding;
+import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.Budget;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -21,6 +22,9 @@ import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.TransportRoundPlan;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -28,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -79,8 +84,8 @@ final class SettlementDayMarketPipeline {
             ctx.operatorConditions,
             ctx.settlementIndex,
             // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
-            // ★ B2-保留段首base：`demands` 无工作副本（写入口只有命令面）⇒ 段内不变。
-            ctx.base.demands(),
+            // ★ RC4-D 起读当刻 dayView.demands()（含合户的 demand 会话工作副本），不再固定读段首 base。
+            ctx.dayView.demands(),
             // ★★ P-T1c：生产路径默认区内市场规则（单区锚格 = markets 规范序第一个 hex；无税费 ⇒ 逐值现状）。
             //   跨市场区/自定义税费由后续批次经 GM 命令面注入同一入口。
             MarketRegulation.defaultsFor(ctx.markets, ctx.base.marketZones()),
@@ -109,57 +114,24 @@ final class SettlementDayMarketPipeline {
     //       toolMilli = 装配时的可用量）由紧接着的那一行发出（见下）。
     // ★★★ A5（2026-10-10）：本日"服务成市"的格集**只算一次**，同一份值同时喂 ① 运力池的装配（下面第 7 参）
     //   ② 当日对账 INFO 一行的"要不要刷"判据（见 4 段末）—— 一处拼写、两处用它，不可能漂开。
-    ctx.haulServiceMarketHexes = haulServiceHexes(ctx.dayView);
-    ctx.carrierPool =
-        MerchantCapacityPool.of(
-            ctx.session.sheet().classMemberships(),
-            // ★ B2：阶层位置模板（无工作副本 ⇒ 段内不变）也统一走当日视图 —— 逐日读者只认一个"当刻值"来源。
-            ctx.dayView.classPositions(),
-            ctx.householdEconomies,
-            ctx.householdGoods,
-            ctx.householdFrozenGoods,
-            true,
-            // ★★ A2（2026-10-10）：**服务成市的格**（本格市场给 haul 定过价；唯一判据 = HaulService.pricedAt）。
-            //   这些格的运力预算改成"该户手上的运输服务货"（服务商品账，I-H2）；其余格一个判据都不变（I-H3）。
-            //   ★ 逐轮现算（价格是 GM 数据，可随时改）：不落任何状态、不进任何组件。
-            ctx.haulServiceMarketHexes,
-            // ★★ W7-fix3（2026-10-11）：把**本轮的世界日**交给池 —— {@code select} 的
-            //   MERCHANT_CAPACITY_LANE_TRUNCATED 一行据此补上 `day`（同族三条 INFO/DEBUG 都带日）。
-            //   ★ 与下面 MarketRound 的 `day` **同源**（本方法同一个 `day`）⇒ 池的 lane 读数与轮级
-            //     汇总读数不可能按不同的日对齐。★ 只被日志读：不改任何判据、不落状态。
-            ctx.day);
-    // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 由 tick 面的本处发
-    //   （与下面那条 CAPACITY_PRICING_ASSEMBLY 同位；池只把日**记下来**供 {@code select} 的 lane 读数用，本事件的
-    //   发射点不动）⇒ 该事件必须带 `day` 才能与同日的 MARKET_* 逐户按日对齐。
-    ctx.carrierPool.logHouseholdAssembly(ctx.day);
-    // ★★★ A3（2026-10-10）：原来这条 DEBUG 叫 {@code CAPACITY_QUOTE_BOOK}（报"报价表挂了多少户"）——
-    //   自报价簿已整族退役（{@code CapacityQuote}/{@code CapacityQuoteBook}）⇒ 改名
-    //   {@code CAPACITY_PRICING_ASSEMBLY}，报"限价是怎么派生的"（不再有逐户挂单这回事），并带上退役族/取代者的
-    //   具名行（§一.9 的 INFO/DEBUG 口径）。分类 logger = market（与池内运力事件同一门面）。
+    // ★★★ RC8a（2026-10-20）：判据从"有 haul 牌价"收紧为"有 haul 牌价 ∧ 该 hex 当前至少一户有可交付 haul 服务货"。
+    //   只按牌价成市会让运力池用劳动+工具造出服务容量、交付腿却强制扣 haul 商品 ⇒ HAUL_SERVICE_DELIVERY_FAULT。
+    //   收紧后：有可交付服务货 ⇒ 服务商品腿；没有 ⇒ 简单生产性运力 + 既有 CARRIER_FEE 腿（两条腿同源分流）。
+    // ★★★ D-032 C7b2：旧 MerchantCapacityPool 活动装配（merchant 角色 + haul 服务货 + 劳动/工具容量）**退出活动路径**。
+    //   活动运输池只能在 C7b1 plan 产出之后、matcher 之前从当前 C6 批次构造；此处先放空池占位，
+    //   由 executeMarketRound 的 beforeMatch 回调装入唯一活动池。旧 haul 成市日志集合同样不再参与活动路径。
+    ctx.haulServiceMarketHexes = Set.of();
+    ctx.carrierPool = MerchantCapacityPool.empty();
     if (MANDATE.isDebugEnabled()) {
       EventLog.channel(MANDATE)
           .debug(
               LogEvent.of(
-                  "CAPACITY_PRICING_ASSEMBLY",
+                  "TRANSPORT_POOL_DEFERRED_TO_PLAN",
                   EconomyLogSource.ECONOMY_ORGANIZATION,
                   "day",
                   ctx.day,
-                  "priced",
-                  ctx.carrierPool.isPriced(),
-                  "households",
-                  ctx.carrierPool.householdCount(),
-                  "maxAskPerMille",
-                  ctx.carrierPool.maxAskPerMille(),
-                  "getReadySurchargePerMille",
-                  MerchantCapacityPool.GET_READY_SURCHARGE_PER_MILLE,
-                  "pricing",
-                  "derived-carrier-cost-per-tier+flat-get-ready",
-                  "capacityBudgetMilli",
-                  ctx.carrierPool.totalCapacityMilli(),
-                  "retiredFamilies",
-                  MerchantCapacityPool.RETIRED_PARALLEL_MACHINE_FAMILIES,
-                  "replacedBy",
-                  MerchantCapacityPool.RETIRED_PARALLEL_MACHINE_REPLACEMENTS));
+                  "reason",
+                  "active-transport-pool-is-built-from-c6-batches-after-c7b1-plan"));
     }
     ctx.marketTrigger = MarketSettlement.triggerFor(ctx.day, ctx.markets);
     if (TRACE.isDebugEnabled()) {
@@ -302,7 +274,7 @@ final class SettlementDayMarketPipeline {
       //   ★ 位置（禁自指的全部理由）：它必须在 `clearOncePerCycle` **之前**构造一次 —— 快照一落，本轮撮合/改价/记账
       //     一个字节都进不了排序量（"把当日成交额翻倍 ⇒ 排序不变"由结构保证，不靠纪律）；
       //   ★ 区序的量取自 W1 统计簿的 `previousCycle`（上周期累计，关账轮轮转）→ 同值退 `cycleToDate` → 再退区 id；
-      //     两者都在**盘前**读 ⇒ 不含当轮。★ 家户净值与 {@code ClassSlideSettlement} 的债务/资产**同一把尺**
+      //     两者都在**盘前**读 ⇒ 不含当轮。
       //     （同一份快照，不另算第二套），见 {@link SettlementOrderBook}。
       SettlementOrderBook ordering =
           SettlementOrderBook.snapshot(
@@ -315,7 +287,61 @@ final class SettlementDayMarketPipeline {
               ctx.dayView);
       ctx.preparedSettlementOrdering = ordering;
     }
+    // ★★★ RC8c：把 S4 账单权威覆盖的 (家户, 商品) 键登记到本轮订单簿 —— planner 对同键的自动商品订单让位，
+    //   数量只由账单派生意向提供（没被覆盖的键仍走既有自动路径）。
+    applyDailyDemandBillCoverage(ctx, ctx.marketRound);
     return ctx.marketRound;
+  }
+
+  /**
+   * ★★★ <b>RC8c：账单权威覆盖集</b> —— 本户的自然需求键、本户当前持有的商品键、以及本户实际生产单元的投入/每日额外项键。
+   *
+   * <p>第三个集合是必要的：生产投入只在"周期第一天/首次补扣"缺料时才挂买；非投入日的自动 planner 仍会按整周期配方挂买 ⇒ 必须在 覆盖集里把该键标成"由账单决定（本次为 0
+   * 需要）"，否则 S4 已提供/本期未到期的投入会被自动订单再次挂买。
+   */
+  private static void applyDailyDemandBillCoverage(
+      SettlementDayContext ctx, MarketSettlement.MarketRound round) {
+    if (ctx.dailyDemandBills.isEmpty()) {
+      return;
+    }
+    for (Map.Entry<HouseholdId, DailyDemandBill> entry : ctx.dailyDemandBills.entrySet()) {
+      HouseholdId household = entry.getKey();
+      DailyDemandBill bill = entry.getValue();
+      for (CommodityId commodity : bill.commodities()) {
+        round.markBillCoveredCommodity(household, commodity);
+      }
+      for (CommodityId commodity : ctx.householdGoods.getOrDefault(household, Map.of()).keySet()) {
+        round.markBillCoveredCommodity(household, commodity);
+      }
+    }
+    // 生产单元的投入键：只取 M6 实际位置事实（organizer 的责任单元），并按 unit 去重。
+    Map<ProductionUnitId, ProductionPlanBridge.PositionFacts> unitFacts = new LinkedHashMap<>();
+    for (ProductionPlanBridge.PositionFacts fact : ctx.actualPositionFacts) {
+      unitFacts.putIfAbsent(fact.position().unit(), fact);
+    }
+    for (Map.Entry<ProductionUnitId, ProductionPlanBridge.PositionFacts> entry :
+        unitFacts.entrySet()) {
+      HouseholdId household = entry.getValue().organizer();
+      if (household == null || !ctx.dailyDemandBills.containsKey(household)) {
+        continue;
+      }
+      ProductionProcess unit = ctx.units.get(entry.getKey());
+      if (unit == null) {
+        continue;
+      }
+      IndustryDefinitionView industry = ctx.industries.get(unit.industry());
+      if (industry == null) {
+        continue;
+      }
+      for (CommodityId commodity : industry.inputPerUnit().keySet()) {
+        round.markBillCoveredCommodity(household, commodity);
+      }
+      for (Map<CommodityId, Long> line : industry.dailyInputPerUnit().values()) {
+        for (CommodityId commodity : line.keySet()) {
+          round.markBillCoveredCommodity(household, commodity);
+        }
+      }
+    }
   }
 
   /**
@@ -372,10 +398,53 @@ final class SettlementDayMarketPipeline {
     return round;
   }
 
+  /**
+   * ★★★ <b>RC8c：把市场轮结果写回同一张账单</b>（{@code purchasedFromMarket} / {@code unmet}）。
+   *
+   * <p>买侧成交按买方 actor → 家户回填；买方未成交剩余按 {@link MarketReport.Unfilled#buyerSide()} 回填。卖单成交不写账单（账单
+   * 记录的是本户需求，不是本户卖出量）。没有账单 / 非家户 actor ⇒ 跳过，不伪造行。
+   */
+  private static void recordDailyDemandBillResults(SettlementDayContext ctx, MarketReport report) {
+    if (ctx.dailyDemandBills.isEmpty() || report == null) {
+      return;
+    }
+    for (MarketReport.Fill fill : report.fills()) {
+      HouseholdId buyer = ctx.householdOfActor.get(fill.buyer());
+      DailyDemandBill bill = buyer == null ? null : ctx.dailyDemandBills.get(buyer);
+      if (bill != null) {
+        bill.recordMarketPurchase(fill.commodity(), fill.quantity());
+      }
+    }
+    for (MarketReport.Unfilled unfilled : report.unfilled()) {
+      if (!unfilled.buyerSide()) {
+        continue;
+      }
+      HouseholdId buyer = ctx.householdOfActor.get(unfilled.actor());
+      DailyDemandBill bill = buyer == null ? null : ctx.dailyDemandBills.get(buyer);
+      if (bill != null) {
+        bill.recordMarketUnmet(unfilled.commodity(), unfilled.quantity());
+      }
+    }
+  }
+
   /** 把一条冻结形状的 {@link MarketIntent} 转成现有订单或整块土地订单；只追加，不撮合、不落账。 */
   private static void appendMarketIntent(
       SettlementDayContext ctx, MarketSettlement.MarketRound round, MarketIntent intent) {
     Objects.requireNonNull(intent, "MarketIntent 列表不得含 null");
+    // ★★★ RC8c：账单派生的商品意向仍服从市场角色：国库户只按授权下单、单位户只买不卖（与 planner 自动路径同一判据）。
+    if (!ctx.dailyDemandBills.isEmpty() && intent.kind() == MarketIntentKind.COMMODITY) {
+      HouseholdId intentHousehold = ctx.householdOfActor.get(intent.actor());
+      if (intentHousehold != null) {
+        MarketSettlement.HouseholdMarketRole role = round.householdMarketRole(intentHousehold);
+        if (role == MarketSettlement.HouseholdMarketRole.AUTHORIZATION_ONLY) {
+          return;
+        }
+        if (role == MarketSettlement.HouseholdMarketRole.BUY_ONLY
+            && intent.side() == MarketIntentSide.SELL) {
+          return;
+        }
+      }
+    }
     round.addInjectedMarketIntent(intent);
     switch (intent.kind()) {
       case COMMODITY -> {
@@ -385,18 +454,23 @@ final class SettlementDayMarketPipeline {
                 .orElseThrow(
                     () -> new IllegalArgumentException("COMMODITY MarketIntent 必须带 commodity"));
         switch (intent.side()) {
-          case BUY ->
-              MarketSettlement.putCommodityBuyOrder(
-                  round,
-                  new BuyOrder(
-                      intent.actor(),
-                      intent.location(),
-                      commodity,
-                      intent.quantity(),
-                      intent.limitPrice(),
-                      ctx.day,
-                      new Budget(intent.budgetMilli(), intent.payWith()),
-                      intent.payWith()));
+          case BUY -> {
+            // ★★★ D-032 RF1：家户需求 = 数量型价格接受者。BuyOrder 的价格位写 empty（撮合与读数都不得用它过滤）；
+            //   Budget 只作本单现金预留读数，支付腿在成交时读当刻实际可花额，不足走既有普通货币债。
+            long budgetMilli = cashBudgetMilliOf(ctx, round, intent);
+            MarketSettlement.putCommodityBuyOrder(
+                round,
+                new BuyOrder(
+                    intent.actor(),
+                    intent.location(),
+                    commodity,
+                    intent.quantity(),
+                    OptionalLong.empty(),
+                    ctx.day,
+                    new Budget(budgetMilli, intent.payWith()),
+                    intent.payWith()));
+            logInjectedCommodityBuy(ctx, intent, commodity, budgetMilli);
+          }
           case SELL ->
               MarketSettlement.putCommoditySellOrder(
                   round,
@@ -405,35 +479,116 @@ final class SettlementDayMarketPipeline {
                       intent.location(),
                       commodity,
                       intent.quantity(),
-                      intent.limitPrice(),
+                      // ★ SELL 侧最低价是 intent 的必填字段（构造期已校验 present）。
+                      intent
+                          .limitPrice()
+                          .orElseThrow(
+                              () ->
+                                  new IllegalStateException(
+                                      "SELL MarketIntent 缺少最低价（形状校验应在构造期已拒）: "
+                                          + intent.actor().id())),
                       ctx.day,
                       intent.payWith()));
         }
       }
       case LAND -> {
-        var landShare =
-            intent
-                .landShare()
-                .orElseThrow(() -> new IllegalArgumentException("LAND MarketIntent 必须带 landShare"));
+        // ★ RA1b2c2：LAND 意向已标量化 —— location 就是 hex，quantity 就是千分亩，limitPrice 就是每亩限价。
         MarketSettlement.putLandOrder(
             round,
             new LandOrder(
                 intent.side() == MarketIntentSide.BUY ? LandOrder.Side.BUY : LandOrder.Side.SELL,
-                landShare,
                 intent.actor(),
                 intent.location(),
                 intent.quantity(),
+                // ★ BUY = 价格接受者（empty）；SELL = 最低保护价（present）。形状校验在 LandOrder 构造期。
                 intent.limitPrice(),
-                intent.payWith(),
-                intent.budgetMilli()));
+                intent.payWith()));
+        if (intent.side() == MarketIntentSide.BUY && EconomyLog.market().isDebugEnabled()) {
+          EventLog.channel(EconomyLog.market())
+              .debug(
+                  LogEvent.of(
+                      "MARKET_INTENT_BUY",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      ctx.day,
+                      "actor",
+                      intent.actor().id(),
+                      "kind",
+                      "LAND",
+                      "commodity",
+                      "-",
+                      "hex",
+                      intent.location().q() + "," + intent.location().r(),
+                      "quantity",
+                      intent.quantity(),
+                      "priceTaker",
+                      true,
+                      "currency",
+                      intent.payWith().value(),
+                      "sourceUnit",
+                      intent.sourceUnit().map(unit -> unit.value()).orElse("-"),
+                      "reason",
+                      "land-buy-intent-converted-to-price-taking-land-order"));
+        }
       }
     }
   }
 
   /**
+   * ★★★ <b>D-032 RF1：M3 买意向的现金预留读数</b>（不是数量门、不是成交门）。
+   *
+   * <p>订单形状已无价格/预算上限；这里只把该家户该币种当刻余额作为冻结/现金腿读数带进 {@link Budget}。 成交时 {@code payableMoneyOf}
+   * 对价格接受者直接读当刻实际可花额，{@code deferralPossible} 下的货款不足进既有普通货币债。
+   */
+  private static long cashBudgetMilliOf(
+      SettlementDayContext ctx, MarketSettlement.MarketRound round, MarketIntent intent) {
+    HouseholdId household = round.householdOfActor.get(intent.actor());
+    if (household == null) {
+      return 0L;
+    }
+    return ProductionPlanBridge.moneyOf(ctx, household, intent.payWith());
+  }
+
+  /** ★ RF1：显式买意向转成买订单后的逐笔证据（actor/commodity/quantity/priceTaker/reason）。 */
+  private static void logInjectedCommodityBuy(
+      SettlementDayContext ctx, MarketIntent intent, CommodityId commodity, long budgetMilli) {
+    if (!MANDATE.isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(MANDATE)
+        .debug(
+            LogEvent.of(
+                "MARKET_INTENT_BUY",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.day,
+                "actor",
+                intent.actor().id(),
+                "kind",
+                intent.kind(),
+                "commodity",
+                commodity.value(),
+                "hex",
+                intent.location().q() + "," + intent.location().r(),
+                "quantity",
+                intent.quantity(),
+                "priceTaker",
+                true,
+                "currency",
+                intent.payWith().value(),
+                "sourceUnit",
+                intent.sourceUnit().map(unit -> unit.value()).orElse("-"),
+                "budgetReadoutMilli",
+                budgetMilli,
+                "reason",
+                "commodity-buy-intent-converted-to-price-taking-buy-order"));
+  }
+
+  /**
    * ★★★ <b>P3.0：在已装配好的同一个 MarketRound 上执行唯一撮合入口。</b>
    *
-   * <p>从旧 {@code settleMarket} 的 {@code MarketSettlement.clearOncePerCycle(...)} 起到市场后处理/读数写回逐行保留。
+   * <p>从旧 {@code settleMarket} 的 {@code MarketSettlement.clearOncePerCycle(...)} 起到市场后处理/读数写回逐行保留；
+   * RA1b2c1 起生产路径直接走 {@code MarketRoundRunner} 的带标量土地重载（同一条 {@code MarketMatcher.matchAll} 撮合入口）。
    * 传入的 {@code round} 必须由 {@link #prepareMarketRound(SettlementDayContext)} 或其 intent 重载构造； 本方法把它写回
    * {@code ctx.marketRound} 后只撮合一次。
    */
@@ -442,6 +597,10 @@ final class SettlementDayMarketPipeline {
     Objects.requireNonNull(ctx, "executeMarketRound 的 ctx 不得为 null");
     Objects.requireNonNull(preparedRound, "executeMarketRound 的 round 不得为 null");
     ctx.marketRound = preparedRound;
+    // ★★★ D-032 C7b1：无市场/无订单的兜底空计划；真正计划由下面 runner 的 beforeMatch 回调在
+    //   最终订单构建完成、matcher 之前写入同一个瞬态字段。失败上抛 ⇒ 整次 advance 丢弃。
+    ctx.transportRoundPlan =
+        TransportRoundPlan.empty(TransportCapacityBatchBook.marketRoundIdOf(ctx.day));
     if (ctx.marketTrigger != MarketTrigger.NONE) {
       if (ctx.preparedPureMerchantHouseholds == null || ctx.preparedSettlementOrdering == null) {
         throw new IllegalStateException(
@@ -450,7 +609,7 @@ final class SettlementDayMarketPipeline {
       Set<HouseholdId> pureMerchantHouseholds = ctx.preparedPureMerchantHouseholds;
       SettlementOrderBook ordering = ctx.preparedSettlementOrdering;
       MarketSettlement.MarketOutcome outcome =
-          MarketSettlement.clearOncePerCycle(
+          MarketRoundRunner.clearOncePerCycle(
               ctx.markets,
               ctx.marketRound,
               ctx.marketTrigger,
@@ -464,16 +623,53 @@ final class SettlementDayMarketPipeline {
               //     它随 {@code outcome.marketTables()} 交回、由上面那段既有的价表写回落到会话工作副本。
               ctx.base.marketZones(),
               // ★★ W4：结算序快照（盘前构造、不可变；撮合期间不回读任何当轮量）。
-              ordering);
+              ordering,
+              // ★★★ D-032 RA1b2c1/RA1b2c2：纯库存财富 + 标量产权工作态都读会话 landHoldings（M2 抵债后的工作副本）；
+              //   arable supply 是每 hex 总量权威，供 LandBook.apply 守恒校验。
+              ctx.session.sheet().landHoldingsOrBase(),
+              ctx.session.sheet().landArableSupply(),
+              // ★★★ D-032 C7b1/C7b2：订单已由既有唯一 planner 建好、撮合尚未开始 ⇒ 在这里派生运输需求计划，
+              //   并用同一份 plan + 当前 C6 批次构造唯一活动运输池、装入 matcher 的 MatchContext。
+              //   本回调不碰订单/预算/冻结/成交；失败上抛 ⇒ 整次 advance 丢弃。
+              matchCtx -> {
+                Map<
+                        io.mosire.simos.economy.model.TransportCapacityBatchKey,
+                        io.mosire.simos.economy.model.TransportCapacityBatch>
+                    transportBatches = ctx.session.sheet().transportCapacityBatches();
+                TransportRoundPlan plan =
+                    TransportDemandBook.planRound(ctx, ctx.marketRound, transportBatches);
+                MerchantCapacityPool activeTransportPool =
+                    MerchantCapacityPool.ofTransportPlan(plan, transportBatches);
+                ctx.transportRoundPlan = plan;
+                ctx.carrierPool = activeTransportPool;
+                matchCtx.installTransportRoundPlan(plan, activeTransportPool);
+              });
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ctx.ledger.recordMarketReport(outcome.report());
+      // ★★★ RC8c：把本轮的成交/未成交回填到同一张 DailyDemandBill（purchasedFromMarket / unmet）。
+      recordDailyDemandBillResults(ctx, outcome.report());
       ctx.govMandateFills = outcome.mandateFills();
-      // ★★★ P2f：**市场买地 marker 接线** —— 本轮在同一个 MarketRound 里取得的土地块写进
-      //   SettlementDayContext.landAcquiredThisRound（P3 的 M3/M6/M7 消费；不落盘/不进 ChangeSet/Codec）。
-      //   与 M2 抵债取得的土地共用同一份事实（M2 在前、市场在后 ⇒ 保序去重）。
-      for (AssetShareId landShare : ctx.marketRound.landAcquiredThisRound()) {
-        ctx.markLandAcquired(landShare);
+      // ★★★ RA1b2c2：市场轮结束写回本轮 LAND 持有工作副本（同一 revision；生产/债务后续阶段读它）。
+      LinkedHashMap<LandHoldingKey, LandHolding> workingLand = ctx.session.sheet().landHoldings();
+      workingLand.clear();
+      workingLand.putAll(ctx.marketRound.landHoldings());
+      // ★★★ RA1b2c2：**市场买地 marker 接线** —— 本轮在同一个 MarketRound 里取得的标量土地数量写进
+      //   SettlementDayContext.landAcquiredQuantityThisRound（M3/M6/M7 按数量排除；不落盘/不进
+      // ChangeSet/Codec）。
+      //   与 M2 抵债取得的土地共用同一份事实（M2 在前、市场在后 ⇒ 同 key 累加）。
+      for (Map.Entry<LandHoldingKey, Long> acquired :
+          ctx.marketRound.landAcquiredQuantityThisRound().entrySet()) {
+        ctx.markLandAcquired(acquired.getKey(), acquired.getValue());
       }
+      // ★★★ D-032 RC6 / S7-B：市场 LAND 产权已写回工作副本 ⇒ 对本轮 S7-M2 后 PROLETARIAN 快照里的买方
+      //   把市场取得的全部 LAND 连同按各 hex LAND 比例拆出的人口/钱/货/债/经验转到该 hex 的 OWNER target。
+      //   ★ 只读 marketRound.landAcquiredQuantityThisRound()（市场事实）；M2 抵债在 ctx marker 里，不由本步触发。
+      //   ★★ C8：同时只读本轮 report 中已实际交付的 transport_horse fill，与 LAND 按吸收能力混合拆分。
+      PostLandTradeClassCheck.settle(ctx, ctx.day, outcome.report());
+      // ★★★ D-032 C4 / S7-C：同 hex OWNER→PROLETARIAN 的向下人口流动表。每个市场轮恰好一次，位于 S7-B 之后；
+      //   population-only 执行器只迁人口并缩 source PRODUCTION 劳动承诺；钱/货/债/LAND/资产/经验不随人走，
+      //   source 保留 ≥1 人。
+      HouseholdFlowBook.settle(ctx, ctx.day);
       MarketReport report = outcome.report();
       // ── 4a0d'. ★★★ A5（2026-10-10）：**每个开市日一行可对账 INFO**（产出 / 交付 / 作废 三个量）──────────
       //   ★ 它取代了市场轮里那条只在 {@code trades > 0} 时才刷的 HAUL_SERVICE_SETTLED（A4 账本 §5-2：B 世界
@@ -789,16 +985,45 @@ final class SettlementDayMarketPipeline {
       //   ★ 窗口固定（三段覆盖写 + 关账轮轮转）⇒ 状态大小与推进天数无关（性能红线：Revision Δ 不随天数增长；
       //     本写入在**同一次 advance 的工作副本**里，不产生额外 revision）。
       //   ★ 关账轮的语义：本轮先计入"本周期累计"，若本轮同时是关账轮 ⇒ 再把本周期轮转成上周期（关账发生在市场轮之后）。
-      if (!outcome.roundStats().isEmpty()) {
+      // ★★★ D-032 C7b2：先按同一份 transportRoundPlan 准备逐 zone 的 lastTransportByHex，再写统计簿。
+      //   空表 = 本轮无运输（不是缺数据）；含只有运力观察、没有商品成交的 zone。
+      TransportRoundPlan transportPlanForStats = ctx.transportRoundPlan;
+      Map<
+              MarketZoneId,
+              Map<
+                  io.mosire.simos.map.hex.HexCoord,
+                  io.mosire.simos.economy.model.TransportHexObservation>>
+          transportByZone = new LinkedHashMap<>();
+      if (transportPlanForStats != null) {
+        for (io.mosire.simos.economy.model.TransportHexObservation observation :
+            transportPlanForStats.observationsByShippingHex().values()) {
+          transportByZone
+              .computeIfAbsent(observation.marketZone(), ignored -> new LinkedHashMap<>())
+              .put(observation.shippingHex(), observation);
+        }
+      }
+      Map<MarketZoneId, MarketRoundStats> roundStats = new LinkedHashMap<>(outcome.roundStats());
+      for (MarketZoneId zone : transportByZone.keySet()) {
+        roundStats.putIfAbsent(
+            zone,
+            new MarketRoundStats(
+                ctx.day, Map.of(), 0L, 0L, Map.of(), 0L, 0L, Map.of(), 0L, 0L, Map.of()));
+      }
+      if (!roundStats.isEmpty()) {
         Map<MarketZoneId, MarketRoundStats> statsByMarket = ctx.session.sheet().marketRoundStats();
         long recorded = 0L;
         long tradedTotal = 0L;
         long turnoverTotal = 0L;
         long cashTurnoverTotal = 0L;
-        for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
+        long transportHexTotal = 0L;
+        for (Map.Entry<MarketZoneId, MarketRoundStats> entry : roundStats.entrySet()) {
           MarketRoundStats round = entry.getValue();
           MarketRoundStats current =
               statsByMarket.getOrDefault(entry.getKey(), MarketRoundStats.EMPTY);
+          Map<
+                  io.mosire.simos.map.hex.HexCoord,
+                  io.mosire.simos.economy.model.TransportHexObservation>
+              lastTransportByHex = transportByZone.getOrDefault(entry.getKey(), Map.of());
           // ★★ W2-fix7 / D4（v3.10 §7）：两栏都写 —— `turnover` = 名义货值（全额货款，含赊购）、
           //   `cashTurnover` = 实付现金（改前 `turnover` 的口径，逐值搬到新字段）。
           statsByMarket.put(
@@ -808,8 +1033,10 @@ final class SettlementDayMarketPipeline {
                   round.lastRound(),
                   round.lastRoundTurnoverMilli(),
                   round.lastRoundCashTurnoverMilli(),
-                  ctx.anyCycleClosed));
+                  ctx.anyCycleClosed,
+                  lastTransportByHex));
           recorded++;
+          transportHexTotal = Math.addExact(transportHexTotal, lastTransportByHex.size());
           turnoverTotal = Math.addExact(turnoverTotal, round.lastRoundTurnoverMilli());
           cashTurnoverTotal = Math.addExact(cashTurnoverTotal, round.lastRoundCashTurnoverMilli());
           for (CommodityRound commodityRound : round.lastRound().values()) {
@@ -826,9 +1053,7 @@ final class SettlementDayMarketPipeline {
                     "markets",
                     recorded,
                     "commodities",
-                    outcome.roundStats().values().stream()
-                        .mapToInt(stats -> stats.lastRound().size())
-                        .sum(),
+                    roundStats.values().stream().mapToInt(stats -> stats.lastRound().size()).sum(),
                     "tradedMilli",
                     tradedTotal,
                     // ★ D4：两栏都给（名义货值 / 实付现金）—— 只打一栏会让读者以为"成交额 = 现金"
@@ -836,6 +1061,8 @@ final class SettlementDayMarketPipeline {
                     turnoverTotal,
                     "cashTurnoverMilli",
                     cashTurnoverTotal,
+                    "transportHex",
+                    transportHexTotal,
                     "cycleClosed",
                     ctx.anyCycleClosed,
                     "window",
@@ -848,7 +1075,7 @@ final class SettlementDayMarketPipeline {
           //   day=360 的 DETAIL 写 `上周期商品=0`，而同 tick 的落盘原文里 `previousCycle` 有 5 商品、
           //   `previousCycleTurnoverMilli=5601`）—— 那是"字段名与所指对象不一致"的误导，读者会以为窗口是空的。
           //   ★ 只改**打印对象**：状态、公式、写口一字未动，级别仍是 DEBUG。
-          for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
+          for (Map.Entry<MarketZoneId, MarketRoundStats> entry : roundStats.entrySet()) {
             MarketRoundStats stored = statsByMarket.get(entry.getKey());
             EventLog.channel(MANDATE)
                 .debug(
@@ -866,49 +1093,33 @@ final class SettlementDayMarketPipeline {
           }
         }
       }
-      // ── ★★★ W4（2026-10-11，S-1）：**阶层滑落** —— 速度 = f(债务/资产)，结算点 = **市场轮最末** ────────────
-      //   ★ 位置为什么是"这里"（用户原话「这个速度的结算必须在当前经济操作搞完之后最后再结算…当轮算出这个家户的
-      //     债务规模后进行」）：上面这一段已经跑完 ① 撮合（本轮赊购 ⇒ 本轮的 debtContracts 已建）② 自适应价格写回
-      //     ③ 统计簿落盘 ⇒ "当轮债务规模"与"本轮价"都已是事实；而 4b 借粮 / 4c 偿还 / 计息都在**下面** ——
-      //     滑落读的是"市场轮结束时点"的债务/资产，不掺当天后续的借还（口径唯一、可复现）。
-      //   ★ 逐级不跳级：{@link ClassSlideSettlement} 每次调用对同一户只写一次、只写一个"最近严格低位"。
-      ClassSlideSettlement.SlideRound slideRound =
-          ClassSlideSettlement.settleAtMarketRoundEnd(
-              ctx.base,
+      // ★★★ D-032 C1：ClassSlideSettlement 已退役，不再作为向下阶级流动写口。
+      //   向下人口流动由 HouseholdFlowBook 的 population-only 执行器与债务/资产结果派生 ownershipClass 表达；
+      //   这里只清理当刻已不合法的 flow table（source 不再是 OWNER / target 不再是 PROLETARIAN / hex 变化），
+      //   不写 class、不写人口、不写资产。
+      HouseholdFlowBook.pruneStaleTables(ctx);
+      // ★★★ D-032 C7b1 / S7-END：先用同一份 transportRoundPlan 逐 zone 更新 C7a 锚价并输出本地 observation，
+      //   再沿用 C6 原顺序清除当前轮批次。D_zone/S_zone 是区级汇总量，本地 unserved/unsold 不做净额抵消。
+      TransportRoundPlan transportRoundPlan = ctx.transportRoundPlan;
+      if (transportRoundPlan != null && !transportRoundPlan.isEmpty()) {
+        for (Map.Entry<MarketZoneId, long[]> entry :
+            transportRoundPlan.demandSupplyByZone().entrySet()) {
+          long[] demandSupply = entry.getValue();
+          TransportPriceAnchorBook.recordMarketRound(
               ctx.session.sheet(),
-              ctx.day,
-              ctx.householdEconomies,
-              ctx.debts,
-              ctx.accounts,
-              ctx.topology,
-              ctx.markets);
-      if (TRACE.isDebugEnabled()) {
-        EventLog.channel(TRACE)
-            .debug(
-                LogEvent.of(
-                    "CLASS_SLIDE_SETTLED",
-                    EconomyLogSource.ECONOMY_MIGRATION,
-                    "day",
-                    ctx.day,
-                    "trigger",
-                    ctx.marketTrigger,
-                    "evaluated",
-                    slideRound.evaluated(),
-                    "slid",
-                    slideRound.slid(),
-                    "skippedNoDebt",
-                    slideRound.skippedNoDebt(),
-                    "skippedNoPosition",
-                    slideRound.skippedNoPosition(),
-                    "skippedCooldown",
-                    slideRound.skippedCooldown(),
-                    "skippedNoLowerTarget",
-                    slideRound.skippedNoLowerTarget(),
-                    "unpricedDebtHouseholds",
-                    slideRound.unpricedDebtHouseholds(),
-                    "at",
-                    "market-round-end-after-price-writeback"));
+              ctx.dayView,
+              entry.getKey(),
+              transportRoundPlan.marketRoundId(),
+              demandSupply[0],
+              demandSupply[1]);
+        }
+        TransportDemandBook.logS7EndObservations(ctx);
       }
+      // ★★★ D-032 C6 / S7-END：市场轮最终收尾只清除**当前 marketRoundId** 的运输能力批次；
+      //   上一市场轮/别的轮一条都不动。位置在 S7-B（PostLandTradeClassCheck）/ S7-C（HouseholdFlowBook）
+      //   之后，未售容量由 C7 后续读口/日志处理。
+      TransportCapacityBatchBook.clearCurrentMarketRound(
+          ctx.session.sheet(), TransportCapacityBatchBook.marketRoundIdOf(ctx.day));
     }
   }
 }

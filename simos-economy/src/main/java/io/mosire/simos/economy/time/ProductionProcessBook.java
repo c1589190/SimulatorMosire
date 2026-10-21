@@ -187,12 +187,41 @@ public final class ProductionProcessBook {
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       long today,
       Set<AssetShareId> excludedShareIds) {
+    return assetOccupancyBudget(
+        units,
+        assetShares,
+        existingGrants,
+        industries,
+        rosters,
+        laborCommitments,
+        today,
+        excludedShareIds,
+        Map.of());
+  }
+
+  /**
+   * ★★★ <b>RF3b：带“土地持有者零计划劳动占用回退”的 D4 预算入口</b>。
+   *
+   * <p>★ {@code fallbackLandScaleByUnit} 是调用方从标量土地持有量派生的<b>只读瞬态</b>规模表；只在 roster 存在且 organizer 计划劳动
+   * = 0 时覆盖 {@link #requestedScaleFromNonAssetFacts} 的结果。空表 ⇒ 与旧世界逐值相同。它不写回 roster、不进入任何持久状态。
+   */
+  public static AssetOccupancyBudget assetOccupancyBudget(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> existingGrants,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<ProductionUnitId, ProductionRoster> rosters,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      long today,
+      Set<AssetShareId> excludedShareIds,
+      Map<ProductionUnitId, Long> fallbackLandScaleByUnit) {
     Objects.requireNonNull(units, "units 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
     Objects.requireNonNull(existingGrants, "existingGrants 不得为 null（无占用用空表）");
     Objects.requireNonNull(industries, "industries 不得为 null");
     Objects.requireNonNull(rosters, "rosters 不得为 null（无名册用空表）");
     Objects.requireNonNull(laborCommitments, "laborCommitments 不得为 null（无配额用空表）");
+    Objects.requireNonNull(fallbackLandScaleByUnit, "fallbackLandScaleByUnit 不得为 null（无回退用空表）");
     Set<AssetShareId> excluded = ProductionLandFilter.normalize(excludedShareIds);
     if (today < 0L) {
       throw new IllegalArgumentException("asset-occupancy-invalid-tick: today 不得为负: " + today);
@@ -216,6 +245,11 @@ public final class ProductionProcessBook {
                 + " plan="
                 + unit.industry().value());
       }
+      if (industry.capacityPerUnit().isEmpty()
+          && !industry.durableCommodityCapacityPerUnit().isEmpty()) {
+        // durable-only 配方没有 AssetKind 容量锚：不伪造 kind、不默认数量，也不产生资产 occupancy 请求。
+        continue;
+      }
       accepted.put(unit.id(), industry.acceptedRightKinds());
       long cycleStart;
       try {
@@ -232,8 +266,10 @@ public final class ProductionProcessBook {
                 + cycleStart);
       }
 
+      ProductionRoster roster = rosters.get(unit.id());
       OptionalLong requestedScale =
-          requestedScaleFromNonAssetFacts(unit, industry, rosters.get(unit.id()), laborCommitments);
+          requestedScaleWithLandFallback(
+              unit, industry, roster, laborCommitments, fallbackLandScaleByUnit);
       Map<AssetOccupancyHorizonPolicy.Interval, Map<AssetKind, Long>> byInterval =
           new LinkedHashMap<>();
       for (AssetKind kind : sortedKinds(industry.capacityPerUnit())) {
@@ -264,7 +300,7 @@ public final class ProductionProcessBook {
           java.util.Comparator.comparingLong(AssetOccupancyHorizonPolicy.Interval::fromTick)
               .thenComparingLong(AssetOccupancyHorizonPolicy.Interval::toTickExclusive));
       if (intervals.isEmpty()) {
-        // 没有 capacityPerUnit 不可能（定义构造期拒绝空表）；保留 fail-closed。
+        // capacityPerUnit 与 durable capacity 同时为空不可能（定义构造期拒绝）；保留 fail-closed。
         throw new IllegalStateException(
             "asset-occupancy-horizon-unsupported: 无资产 kind unit=" + unit.id().value());
       }
@@ -290,6 +326,27 @@ public final class ProductionProcessBook {
     List<AssetKind> kinds = new ArrayList<>(capacityPerUnit.keySet());
     kinds.sort(java.util.Comparator.comparing(AssetKind::name));
     return kinds;
+  }
+
+  /**
+   * ★★★ <b>RF3b：逐 unit 的请求规模选择</b>。
+   *
+   * <p>只有 roster 存在、organizer 的 {@code plannedLaborMilliPerDay == 0}、且调用方提供了正的 fallback 规模时，才用土地持有量
+   * 派生的规模覆盖原非资产事实；其余（含 roster planned &gt; 0、非土地型、无 fallback）逐值走原函数。
+   */
+  private static OptionalLong requestedScaleWithLandFallback(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      ProductionRoster roster,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<ProductionUnitId, Long> fallbackLandScaleByUnit) {
+    if (roster != null && roster.organizer().plannedLaborMilliPerDay() == 0L) {
+      Long fallbackScale = fallbackLandScaleByUnit.get(unit.id());
+      if (fallbackScale != null && fallbackScale > 0L) {
+        return OptionalLong.of(fallbackScale);
+      }
+    }
+    return requestedScaleFromNonAssetFacts(unit, industry, roster, laborCommitments);
   }
 
   /** 从非资产事实派生计划规模：名册计划劳动优先；否则用实例已累计实际劳动/周期投入作“已存在事实”的保守日规模。 两条通道都读不到 ⇒ empty（不是默认 1，也不是 0）。 */

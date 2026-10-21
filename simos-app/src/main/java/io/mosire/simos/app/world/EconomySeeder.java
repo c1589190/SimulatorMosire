@@ -1,6 +1,7 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -12,10 +13,14 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexAreas;
+import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -175,6 +180,10 @@ public final class EconomySeeder {
   public static final String COMMODITY_TOOL = WorldBalanceSeeder.COMMODITY_TOOL;
   public static final String COMMODITY_IRON = WorldBalanceSeeder.COMMODITY_IRON;
   public static final String COMMODITY_HAUL = WorldBalanceSeeder.COMMODITY_HAUL;
+  public static final String COMMODITY_TRANSPORT_HORSE =
+      WorldBalanceSeeder.COMMODITY_TRANSPORT_HORSE;
+  public static final long TRANSPORT_HORSE_OWNER_STOCK_MILLI =
+      WorldBalanceSeeder.TRANSPORT_HORSE_OWNER_STOCK_MILLI;
   public static final CurrencyId MARKET_NUMERAIRE = WorldBalanceSeeder.MARKET_NUMERAIRE;
   public static final long MARKET_PRICE_GRAIN = WorldBalanceSeeder.MARKET_PRICE_GRAIN;
   public static final long MARKET_PRICE_CLOTH = WorldBalanceSeeder.MARKET_PRICE_CLOTH;
@@ -182,6 +191,8 @@ public final class EconomySeeder {
   public static final long MARKET_PRICE_IRON = WorldBalanceSeeder.MARKET_PRICE_IRON;
   public static final long MARKET_PRICE_TOOL = WorldBalanceSeeder.MARKET_PRICE_TOOL;
   public static final long MARKET_PRICE_HAUL = WorldBalanceSeeder.MARKET_PRICE_HAUL;
+  public static final long MARKET_PRICE_TRANSPORT_HORSE =
+      WorldBalanceSeeder.MARKET_PRICE_TRANSPORT_HORSE;
   public static final Map<CommodityId, Long> MARKET_PRICES_FACTORY =
       WorldBalanceSeeder.MARKET_PRICES_FACTORY;
   public static final String SINGLE_REGION_MARKET_ID = WorldBalanceSeeder.SINGLE_REGION_MARKET_ID;
@@ -213,6 +224,12 @@ public final class EconomySeeder {
   static final int[] CLASS_LABOR_PER_MILLE = WorldBalanceSeeder.CLASS_LABOR_PER_MILLE;
   static final int CLASS_WEIGHTED_LABOR_PER_MILLE =
       WorldBalanceSeeder.CLASS_WEIGHTED_LABOR_PER_MILLE;
+  static final String[] RURAL_CLASS_IDS = WorldBalanceSeeder.RURAL_CLASS_IDS;
+  static final String[] RURAL_CLASS_NAMES = WorldBalanceSeeder.RURAL_CLASS_NAMES;
+  static final int[] RURAL_CLASS_SHARE_PER_MILLE = WorldBalanceSeeder.RURAL_CLASS_SHARE_PER_MILLE;
+  static final int[] RURAL_CLASS_LABOR_PER_MILLE = WorldBalanceSeeder.RURAL_CLASS_LABOR_PER_MILLE;
+  static final int RURAL_CLASS_WEIGHTED_LABOR_PER_MILLE =
+      WorldBalanceSeeder.RURAL_CLASS_WEIGHTED_LABOR_PER_MILLE;
   static final int[] AGE_SHARE_PER_MILLE = WorldBalanceSeeder.AGE_SHARE_PER_MILLE;
   static final int[] AGE_LABOR_COEF_PER_MILLE = WorldBalanceSeeder.AGE_LABOR_COEF_PER_MILLE;
   static final Map<Sex, int[]> AGE_LABOR_COEF_BY_SEX = WorldBalanceSeeder.AGE_LABOR_COEF_BY_SEX;
@@ -368,7 +385,7 @@ public final class EconomySeeder {
     public String economyPayload() {
       return ProductionPayloadSeeder.jsonOf(
           mapId,
-          entries,
+          economyEntries(),
           marketTables,
           governments,
           genesisEndowment,
@@ -377,6 +394,68 @@ public final class EconomySeeder {
           extraMoneyIssuances,
           productionRosters,
           conditionReport);
+    }
+
+    /**
+     * ★★★ <b>D-032 L4：{@code map.SeedArableOwnership} 载荷</b>（来源 = 与 {@code economy.Seed} 同一份
+     * entries 的 {@code landHoldings[]}）。
+     *
+     * <pre>{@code
+     * {"entries":[{"hex":{"q":0,"r":0},
+     *              "owners":[{"owner":"hh-...","quantityMilliMu":3100000}]}]}
+     * }</pre>
+     *
+     * <p>★ 不在本方法另算土地：entry 的 owner 行就是 {@code ProductionRuntimeSeeder} 构造的那一份；命令边界再逐 hex 校验 {@code
+     * Σ ownerQuantity == Map arable 总量}。
+     */
+    public String landOwnershipSeedPayload() {
+      List<Map<String, Object>> nodes = new ArrayList<>();
+      for (Map<String, Object> entry : entries) {
+        Object qValue = entry.get("q");
+        Object rValue = entry.get("r");
+        if (!(qValue instanceof Number q) || !(rValue instanceof Number r)) {
+          throw new IllegalStateException(
+              "economy seed entry 缺 q/r，无法构造 map.SeedArableOwnership: " + entry);
+        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("hex", Map.of("q", q.intValue(), "r", r.intValue()));
+        List<Map<String, Object>> owners = new ArrayList<>();
+        Object holdingsValue = entry.get("landHoldings");
+        if (holdingsValue != null) {
+          if (!(holdingsValue instanceof List<?> holdings)) {
+            throw new IllegalStateException(
+                "economy seed 的 landHoldings 必须是数组: hex="
+                    + new HexCoord(q.intValue(), r.intValue()));
+          }
+          for (Object item : holdings) {
+            if (!(item instanceof Map<?, ?> holding)
+                || !(holding.get("owner") instanceof String owner)
+                || !(holding.get("quantityMilliMu") instanceof Number quantity)) {
+              throw new IllegalStateException(
+                  "economy seed 的 landHoldings 元素必须是 {owner, quantityMilliMu}: " + item);
+            }
+            Map<String, Object> ownerNode = new LinkedHashMap<>();
+            ownerNode.put("owner", owner);
+            ownerNode.put("quantityMilliMu", quantity.longValue());
+            owners.add(ownerNode);
+          }
+        }
+        node.put("owners", owners);
+        nodes.add(node);
+      }
+      return ToolSupport.json(Map.of("entries", nodes));
+    }
+
+    /** economy 载荷不携带任何 LAND 持久键（Map component.owner 才是唯一权威）。 */
+    private List<Map<String, Object>> economyEntries() {
+      List<Map<String, Object>> stripped = new ArrayList<>(entries.size());
+      for (Map<String, Object> entry : entries) {
+        Map<String, Object> copy = new LinkedHashMap<>(entry);
+        copy.remove("landHoldings");
+        copy.remove("landArableMilliMu");
+        stripped.add(copy);
+      }
+      return List.copyOf(stripped);
     }
 
     /**
@@ -568,19 +647,18 @@ public final class EconomySeeder {
       FoundationProfile profile,
       TestConditions conditions) {
     Map<HexCoord, String> terrain = map.terrainIndex();
-    return plan(
-        mapId,
-        seeding,
-        at -> {
-          String key = terrain.get(at);
-          if (key == null) {
-            throw new IllegalStateException("格 " + at + " 不在 terrainIndex 里（地图分割不变式被破坏）");
-          }
-          return key;
-        },
-        genesisMoneyMilliPerCapita,
-        profile,
-        conditions);
+    Seed seed =
+        plan(
+            mapId,
+            seeding,
+            terrainOf(map, terrain),
+            arableOf(map, terrain),
+            genesisMoneyMilliPerCapita,
+            profile,
+            conditions,
+            DEFAULT_NUMERAIRE_OF);
+    validateHoldingArableTotals(seed, map, terrain);
+    return seed;
   }
 
   /** ★★ P1：真地图 + 初始禀赋 + profile 的主入口；P3 起条件缺省为空（逐值等于 P1）。 */
@@ -619,20 +697,18 @@ public final class EconomySeeder {
       TestConditions conditions,
       Function<HexCoord, CurrencyId> numeraireOf) {
     Map<HexCoord, String> terrain = map.terrainIndex();
-    return plan(
-        mapId,
-        seeding,
-        at -> {
-          String key = terrain.get(at);
-          if (key == null) {
-            throw new IllegalStateException("格 " + at + " 不在 terrainIndex 里（地图分割不变式被破坏）");
-          }
-          return key;
-        },
-        genesisMoneyMilliPerCapita,
-        profile,
-        conditions,
-        numeraireOf);
+    Seed seed =
+        plan(
+            mapId,
+            seeding,
+            terrainOf(map, terrain),
+            arableOf(map, terrain),
+            genesisMoneyMilliPerCapita,
+            profile,
+            conditions,
+            numeraireOf);
+    validateHoldingArableTotals(seed, map, terrain);
+    return seed;
   }
 
   /** ★★ <b>B1：逐格计价币 + 出厂禀赋/profile</b>（条件取空；逐值等于带 {@code TestConditions.EMPTY} 的重载）。 */
@@ -752,6 +828,31 @@ public final class EconomySeeder {
       FoundationProfile profile,
       TestConditions conditions,
       Function<HexCoord, CurrencyId> numeraireOf) {
+    Objects.requireNonNull(terrainOf, "terrainOf");
+    // ★ B2 过渡：纯函数入口没有 GameMap，arable 只能按 terrain fallback；真地图入口必须传 Map 组件总量。
+    return plan(
+        mapId,
+        seeding,
+        terrainOf,
+        at -> RuralLaborSeeder.landMilliMuOf(terrainOf.apply(at)),
+        genesisMoneyMilliPerCapita,
+        profile,
+        conditions,
+        numeraireOf);
+  }
+
+  /** 显式 arable 来源入口：真地图传 Map 组件总和，纯函数/夹具才允许 terrain fallback。 */
+  static Seed plan(
+      String mapId,
+      PopulationSeeder.Seeding seeding,
+      Function<HexCoord, String> terrainOf,
+      Function<HexCoord, Long> arableOf,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      TestConditions conditions,
+      Function<HexCoord, CurrencyId> numeraireOf) {
+    Objects.requireNonNull(terrainOf, "terrainOf");
+    Objects.requireNonNull(arableOf, "arableOf");
     if (genesisMoneyMilliPerCapita < 0L) {
       throw new IllegalArgumentException("初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
     }
@@ -764,7 +865,122 @@ public final class EconomySeeder {
     // ★★ 2026-10-09：唯一路线 = production-runtime（完整生产 entries + 默认生产方式目录/资产规则；
     //   政府家户/政府记录只在 seeding.governmentHousehold() 非空时内置，见 planProductionRuntime/jsonOf）。
     return ProductionRuntimeSeeder.planProductionRuntime(
-        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions, numeraireOf);
+        mapId,
+        seeding,
+        terrainOf,
+        arableOf,
+        genesisMoneyMilliPerCapita,
+        profile,
+        conditions,
+        numeraireOf);
+  }
+
+  /** 真地图地形函数：一次物化 terrainIndex，未知格 fail-closed。 */
+  private static Function<HexCoord, String> terrainOf(GameMap map, Map<HexCoord, String> terrain) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(terrain, "terrain");
+    return at -> {
+      String key = terrain.get(at);
+      if (key == null) {
+        throw new IllegalStateException("格 " + at + " 不在 terrainIndex 里（地图分割不变式被破坏）");
+      }
+      return key;
+    };
+  }
+
+  /** 真地图 arable 来源：唯一读口 = {@link HexAreas#arableMilliMu(HexCell, String)}。 */
+  private static Function<HexCoord, Long> arableOf(GameMap map, Map<HexCoord, String> terrain) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(terrain, "terrain");
+    return at -> {
+      HexCell cell = map.hexes().get(at);
+      if (cell == null) {
+        throw new IllegalStateException("格 " + at + " 不在 map.hexes() 里（未知 hex，拒绝按 0 伪造可耕地）");
+      }
+      String key = terrain.get(at);
+      if (key == null) {
+        throw new IllegalStateException("格 " + at + " 不在 terrainIndex 里（地图分割不变式被破坏）");
+      }
+      return HexAreas.arableMilliMu(cell, key);
+    };
+  }
+
+  /**
+   * ★★★ <b>D-032 L3 创世守卫</b>：economy 不再持久 arable supply；真地图创世的每个 economy entry 必须逐 hex 满足 {@code Σ
+   * landHoldings[hex].quantityMilliMu == Map.arableMilliMu(hex)}。之后 app 每 tick 会从同一 Map 构造瞬态 {@code
+   * LandArableSupply} 注入 economy session；这里先把创世两本数钉死，任何缺失/负数/不等都拒绝创世。
+   */
+  private static void validateHoldingArableTotals(
+      Seed seed, GameMap map, Map<HexCoord, String> terrain) {
+    for (Map<String, Object> entry : seed.entries()) {
+      Object qValue = entry.get("q");
+      Object rValue = entry.get("r");
+      if (!(qValue instanceof Number q) || !(rValue instanceof Number r)) {
+        throw new IllegalStateException("economy seed entry 缺 q/r，无法对账 Map arable: " + entry);
+      }
+      HexCoord hex = new HexCoord(q.intValue(), r.intValue());
+      HexCell cell = map.hexes().get(hex);
+      if (cell == null) {
+        throw new IllegalStateException(
+            "economy seed 的格 " + hex + " 不在 map.hexes() 里（无法对账 Map arable）");
+      }
+      String key = terrain.get(hex);
+      if (key == null) {
+        throw new IllegalStateException(
+            "economy seed 的格 " + hex + " 不在 terrainIndex 里（无法对账 Map arable）");
+      }
+      long expected = HexAreas.arableMilliMu(cell, key);
+      Object holdingsValue = entry.get("landHoldings");
+      List<?> holdings = List.of();
+      if (holdingsValue != null) {
+        if (!(holdingsValue instanceof List<?> parsedHoldings)) {
+          throw new IllegalStateException(
+              "economy seed 的 landHoldings 必须是数组: hex=" + hex + " value=" + holdingsValue);
+        }
+        holdings = parsedHoldings;
+      }
+      long actual = 0L;
+      for (Object item : holdings) {
+        if (!(item instanceof Map<?, ?> holding)
+            || !(holding.get("quantityMilliMu") instanceof Number quantity)) {
+          throw new IllegalStateException(
+              "economy seed 的 landHoldings 元素必须是含 quantityMilliMu 的对象: hex="
+                  + hex
+                  + " item="
+                  + item);
+        }
+        long value = quantity.longValue();
+        if (value < 0L) {
+          throw new IllegalStateException(
+              "economy seed 的 landHoldings 数量不得为负: hex=" + hex + " value=" + value);
+        }
+        try {
+          actual = Math.addExact(actual, value);
+        } catch (ArithmeticException overflow) {
+          throw new IllegalStateException("economy seed 的 landHoldings 合计溢出: hex=" + hex, overflow);
+        }
+      }
+      if (actual != expected) {
+        EventLog.channel(io.mosire.simos.app.AppLog.shell())
+            .error(
+                LogEvent.of(
+                    "ECONOMY_SEED_ARABLE_SOURCE_MISMATCH",
+                    AppLogSource.SHELL_LIFECYCLE,
+                    "hex",
+                    hex,
+                    "landHoldingsQuantityMilliMu",
+                    actual,
+                    "mapArableMilliMu",
+                    expected));
+        throw new IllegalStateException(
+            "创世土地合计与 Map arable 不一致: hex="
+                + hex
+                + " ΣlandHoldings="
+                + actual
+                + " map.arableMilliMu="
+                + expected);
+      }
+    }
   }
 
   /**

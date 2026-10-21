@@ -164,6 +164,8 @@ final class SettlementDayActualProductionPipeline {
 
     // 锁定雇佣不可变 → 先写进既有 laborCommitments 工作副本，再由 labor queue 原样保留。
     materializeLocks(ctx, actualValidLocks, rosters);
+    // ★ RC8c：保留本次实际编排的位置事实（只读瞬态）。S4 账单用它取 probe 的投入需求，S7 LAND 用它取实际位置需求。
+    ctx.actualPositionFacts = List.copyOf(chosenFacts);
     Map<ProductionUnitId, PositionPlan.UnitPlan> byUnit = unitPlans(chosenFacts);
     ctx.actualProductionPlan =
         new ActualProductionPlan(ctx.day, byHousehold, byUnit, actualValidLocks);

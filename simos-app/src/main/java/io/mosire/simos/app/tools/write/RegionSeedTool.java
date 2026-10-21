@@ -570,13 +570,22 @@ public final class RegionSeedTool implements SimosTool {
             PopulationSeeder.payload(plan.population())));
     EconomySeeder.Seed seeding = plan.economySeed().orElse(null);
     if (plan.params().includeEconomy()) {
+      EconomySeeder.Seed requiredEconomy = requireSeed(seeding);
       batch.add(
           envelope(
               batchId,
               branch,
               expectedRevision,
               RegionSeedPlan.SEED_ECONOMY_TYPE,
-              requireSeed(seeding).economyPayload()));
+              requiredEconomy.economyPayload()));
+      // ★★★ D-032 L4：同一份 entries 的 landHoldings 写进 Map component.owner（同一 revision）。
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              RegionSeedPlan.SEED_MAP_LAND_OWNERSHIP_TYPE,
+              requiredEconomy.landOwnershipSeedPayload()));
     }
     if (plan.params().includeActors()) {
       EconomySeeder.Seed required = requireSeed(seeding);

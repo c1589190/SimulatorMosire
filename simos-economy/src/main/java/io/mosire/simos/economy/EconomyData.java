@@ -48,6 +48,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdFlowTable;
 import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.InventoryReservationId;
 import io.mosire.simos.economy.model.MarketRoundStats;
@@ -59,6 +60,9 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -273,8 +277,8 @@ import java.util.Set;
     value = "EI_EXPOSE_REP",
     justification =
         "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency、"
-            + " 2026-10-09 选项 A 的 householdDebtRefs 与 R1 的 govMarketMandates）均在 compact 构造器内逐键复制并"
-            + " Collections.unmodifiableMap；访问器返回冻结副本")
+            + " 2026-10-09 选项 A 的 householdDebtRefs、R1 的 govMarketMandates 与 RA1b1 的 landHoldings）"
+            + " 均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 // ★★ 退役组件的**具名**兼容（2026-10-09 纠正批）：F 批（f3366545）的组件 {@code commodityFreightPerMille}
 //   （商品运费**系数**，乘在整条费率上）已随用户裁定「甲」撤销；本类型现在叫
 //   {@code commodityFreightBaseMilli}（商品**基础运费**表）。
@@ -391,7 +395,18 @@ public record EconomyData(
     Map<InventoryReservationId, InventoryReservation> inventoryReservations,
     // ── ★★★ D-032 P4c3：U20 工资锚（唯一工资报价权威）───────────────────────────────────────
     //   键 = (marketZone, industry, role)；值 = 锚。空表 = 没有锚（缺锚 ≠ 0）；显式命令 / seed 才写。
-    Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors)
+    Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors,
+    // ── ★★★ D-032 RC7 / S7-C：第 37 个组件 —— 每个 LANDED 家户的向下流动表 ───────────────────
+    //   键 = sourceHousehold；值 = 同 hex / 同 culture / 同 mode 的 LANDLESS target + 上轮债务观察。
+    //   空表 = 尚未维护过任何流动表（非市场日不更新；首个市场轮只建表、不流动）。
+    Map<HouseholdId, HouseholdFlowTable> householdFlowTables,
+    // ── ★★★ D-032 C6：临时运输能力批次（键 = household/homeHex/marketRoundId）────────
+    //   短寿命市场轮批次，不是普通商品库存；每 tick 由 S5 累加，S7-END 只清当前 marketRoundId。
+    Map<TransportCapacityBatchKey, TransportCapacityBatch> transportCapacityBatches,
+    // ── ★★★ D-032 C7a：第 37 个领域组件 —— 运输市场区锚价（键 = MarketZoneId）────────────
+    //   每区最多一个锚；缺键 = 初始价 0（只读默认），0 是合法免费价。市场轮内只读，S7-END 由
+    //   TransportPriceAnchorBook.recordMarketRound 更新，下一市场轮生效。该表不是商品价，也不进 MarketTable。
+    Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors)
     implements EconomyDayView {
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
@@ -443,7 +458,8 @@ public record EconomyData(
   }
 
   /**
-   * 往返用例的起点：未激活 + 33 张空表（34 个组件 = meta + 33 张表）。
+   * 往返用例的起点：未激活 + 36 个空领域状态组件（record 共 37 个组件 = meta + 36 个领域组件；其中 RA1b1 的两个标量 LAND 组件、RC7 的流动表与
+   * C7a 的运输锚价也必须是显式空值，不是 null）。
    *
    * <p>★★ B2b（§13.11.2 裁定六）：{@code units} / {@code outputQuantityOverrides} / {@code
    * productionEfficiency} 三个组件已从本类型删除；★★ B2c（§13.12.2 裁定八）：第四个 {@code candidates} 同批删净（唯一权威在
@@ -490,6 +506,9 @@ public record EconomyData(
     assetOccupancies = EconomyDataInvariants.emptyIfNull(assetOccupancies);
     inventoryReservations = EconomyDataInvariants.emptyIfNull(inventoryReservations);
     productionWageAnchors = EconomyDataInvariants.emptyIfNull(productionWageAnchors);
+    householdFlowTables = EconomyDataInvariants.emptyIfNull(householdFlowTables);
+    transportCapacityBatches = EconomyDataInvariants.emptyIfNull(transportCapacityBatches);
+    transportPriceAnchors = EconomyDataInvariants.emptyIfNull(transportPriceAnchors);
 
     // ★ 旧词表判定必须在 currencies 归一到 legacy defs 之前取；与改前 compact 构造器同一时点。
     boolean legacyVocabulary = currencies.isEmpty();
@@ -550,6 +569,16 @@ public record EconomyData(
     productionWageAnchors =
         EconomyDataProductionInvariants.validateProductionWageAnchors(
             productionWageAnchors, marketZones);
+    EconomyDataInvariants.validateLandAssetExclusions(
+        assetShares, assetOccupancies, productionOrganizations, productionRosters);
+    householdFlowTables =
+        EconomyDataInvariants.validateHouseholdFlowTables(householdFlowTables, classes);
+    transportCapacityBatches =
+        EconomyDataInvariants.validateTransportCapacityBatches(
+            transportCapacityBatches, marketZones, marketTables);
+    transportPriceAnchors =
+        EconomyDataInvariants.validateTransportPriceAnchors(
+            transportPriceAnchors, marketZones, marketTables);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -761,6 +790,22 @@ public record EconomyData(
   public EconomyData withInventoryReservations(
       Map<InventoryReservationId, InventoryReservation> value) {
     return EconomyDataTransforms.withInventoryReservations(this, value);
+  }
+
+  /** 一个组件一个 with：替换/清空全部向下流动表。 */
+  public EconomyData withHouseholdFlowTables(Map<HouseholdId, HouseholdFlowTable> value) {
+    return EconomyDataTransforms.withHouseholdFlowTables(this, value);
+  }
+
+  /** ★★★ D-032 C6：替换/清空全部临时运输能力批次。 */
+  public EconomyData withTransportCapacityBatches(
+      Map<TransportCapacityBatchKey, TransportCapacityBatch> value) {
+    return EconomyDataTransforms.withTransportCapacityBatches(this, value);
+  }
+
+  /** ★★★ D-032 C7a：替换/清空全部运输市场区锚价。 */
+  public EconomyData withTransportPriceAnchors(Map<MarketZoneId, TransportPriceAnchor> value) {
+    return EconomyDataTransforms.withTransportPriceAnchors(this, value);
   }
 
   /** 写入/替换一个 unit 的名册（键 == 值内 unit 由构造期再判一次）。 */

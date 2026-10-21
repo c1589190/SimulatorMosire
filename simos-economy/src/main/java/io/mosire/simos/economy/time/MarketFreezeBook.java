@@ -10,10 +10,12 @@ import static io.mosire.simos.economy.time.MarketRosterBook.frozenMoneyOf;
 import static io.mosire.simos.economy.time.MarketRosterBook.setFrozenGoods;
 import static io.mosire.simos.economy.time.MarketRosterBook.setFrozenMoney;
 import static io.mosire.simos.economy.time.MarketRosterBook.spendableMoneyOf;
+import static io.mosire.simos.economy.time.MarketRosterBook.stockOf;
 import static io.mosire.simos.economy.time.MarketTradeMath.ceilDivPositive;
 import static io.mosire.simos.economy.time.MarketTradeMath.safeMulDiv;
 
 import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,12 +30,32 @@ final class MarketFreezeBook {
   // ── 冻结生命周期（M1.2 的写者）────────────────────────────────────────────────────────
 
   static void commitFreezes(MatchContext ctx) {
-    // 卖：每条卖单全额冻结（绝对值 = 底值 + 承诺）。★ P1.3：按 (seller, commodity) 轴一次求和，不再逐条扫全表。
+    // 卖：按 (seller, commodity) 轴的**当刻可卖上限**封顶后再冻结（绝对值 = 底值 + 轴累计承诺）。
+    //   ★★ DEF-2b（2026-10-20）：S3 生成的卖单到 S7-A 冻结时可能已 stale —— 若每条卖单各自冻结全额，
+    //     frozen 会大于当刻 stock，连冻结本身都非法（executeTrade 的 cap 只是第二道防线，救不了冻结读数）。
+    //   ⇒ 同一轴先算 axisAvailable = max(0, stock − base)，再按 ctx.sells 的稳定插入序逐条分配：
+    //     前一条吃掉的额度，后一条不能再冻结。正常 stock ≥ Σsellable 时逐值不变（分配额 == 请求额）。
     ctx.sellFrozenSums.clear();
+    Map<String, Long> sellAxisRemaining = new LinkedHashMap<>();
     for (SellSlot sell : ctx.sells) {
-      sell.baseFrozenGoods = frozenGoodsOf(ctx.round, sell.seller, sell.order.commodity());
-      sell.frozenRemaining = sell.order.sellable();
-      ctx.sellFrozenSums.merge(sellFrozenAxis(sell), sell.frozenRemaining, Long::sum);
+      String axis = sellFrozenAxis(sell);
+      long base = frozenGoodsOf(ctx.round, sell.seller, sell.order.commodity());
+      sell.baseFrozenGoods = base;
+      long axisAvailable =
+          Math.max(0L, stockOf(ctx.round, sell.seller, sell.order.commodity()) - base);
+      long axisRemaining = sellAxisRemaining.computeIfAbsent(axis, ignored -> axisAvailable);
+      long frozenForSell = Math.min(sell.order.sellable(), axisRemaining);
+      sell.frozenRemaining = frozenForSell;
+      sellAxisRemaining.put(axis, axisRemaining - frozenForSell);
+      if (frozenForSell == 0L) {
+        // 这个轴已无可卖额度（或本单可卖量就是 0）⇒ 本单不可能成交；remaining 同步归零，不留"空转"余量。
+        sell.remaining = 0L;
+        sell.blocked = MarketUnfilledReason.ALL_RESERVED;
+      } else if (sell.remaining > frozenForSell) {
+        // 部分冻结：撮合最多只能卖掉已冻结的这一份，remaining 必须同步，否则撮合会反复尝试超额量。
+        sell.remaining = frozenForSell;
+      }
+      ctx.sellFrozenSums.merge(axis, frozenForSell, Long::sum);
     }
     for (SellSlot sell : ctx.sells) {
       refreshSellFrozen(ctx, sell); // O(1)：读轴累计值（见 MatchContext.sellFrozenSums）
@@ -95,13 +117,23 @@ final class MarketFreezeBook {
    * 限价必须先折成同一个币（{@link BuySlot#limitInPayCurrency}，建槽位时已折一次）。★ 同币时它与 {@link
    * BuyOrder#maxLandedPrice()} 逐值相同 ⇒ 旧世界逐值不变（I-C2）。 ★ 限价折不出来（{@code -1}）⇒ 本单选不出可冻结额，按 0
    * 处理（订单生成侧本就不会产出这种单）。
+   *
+   * <p>★★ <b>D-032 RF1：价格接受者需求（{@link BuyOrder#maxLandedPrice()} 为 empty）</b>没有可乘的限价 ⇒ 冻结承诺只取
+   * {@code budget + 借入补额}（现金预留读数）。这是冻结/承诺，不是数量门也不是成交门；实际付款腿仍读当刻可花额。
    */
   static long requestedMoneyOf(BuySlot buy) {
-    if (buy.limitInPayCurrency < 0L) {
+    if (buy.order.maxLandedPrice().isEmpty()) {
+      return Math.addExact(buy.order.budget().amountMilli(), buy.borrowedBudgetTopUpMilli);
+    }
+    if (buy.limitInPayCurrency.isEmpty()) {
+      return 0L;
+    }
+    long limitInPayCurrency = buy.limitInPayCurrency.getAsLong();
+    if (limitInPayCurrency < 0L) {
       return 0L;
     }
     long goods =
-        ceilDiv(buy.order.quantity() * buy.limitInPayCurrency, EconomySettlement.MILLI_PER_GRAIN);
+        ceilDiv(buy.order.quantity() * limitInPayCurrency, EconomySettlement.MILLI_PER_GRAIN);
     // ★★ W5.5：订单预算 + **本槽从货币市场借到的那一笔**（见 BuySlot#borrowedBudgetTopUpMilli 的注：
     //   借钱按用户裁定的次序发生在下单之后，不补这一笔 ⇒ 借来的钱在冻结/现金腿上不可用）。
     return Math.min(

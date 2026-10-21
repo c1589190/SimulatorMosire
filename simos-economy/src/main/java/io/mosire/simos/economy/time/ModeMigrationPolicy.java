@@ -161,8 +161,10 @@ public final class ModeMigrationPolicy {
    */
   public static final long MIGRATION_SPEED_CAP_PER_MILLE = 100L;
 
-  /** 单个家户承载上限（架构 §10：新家户 200 人/户；合并目标同样按它判剩余容量）。 */
-  public static final long MAX_HOUSEHOLD_POPULATION = 200L;
+  // ★★★ R4（D-032 v4 §1.2，2026-10-20 用户原话「把这个人口上限取消掉！」）：
+  //   本类不再声明单户人口上限常量。已有同 key 目标户可接纳任意人口；新建目标户只受
+  //   真实资产/劳动可行性约束（见 ModeMigrationCandidateBook.perMoveNewRoom）。
+  //   MIGRATION_SPEED_CAP_PER_MILLE 仍保留：它是"每轮可转人口比例"的速率上限，不是单户人口上限。
 
   /** 需求簿视界的兜底（没有任何产业模板时）：与真实运行时世界的 120 天周期同值。 */
   /** 一条迁移计划（不可变、保序：按源家户 id、再按目标排序）。 */

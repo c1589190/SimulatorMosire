@@ -1,10 +1,16 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
@@ -254,6 +260,46 @@ public final class LaborQueueBook {
       HouseholdId household,
       ProductionRoleId role,
       EconomySession session) {
+    return offer(
+        unit,
+        industry,
+        market,
+        condition,
+        index,
+        modeId,
+        rankModeKey,
+        household,
+        role,
+        session,
+        null);
+  }
+
+  /**
+   * ★★★ <b>RF2：M6 读"当刻在手投入"的 offer 入口</b>。
+   *
+   * <p>M6 在 M7 现扣之前运行 ⇒ 不能把"本 tick 尚未现扣"的 {@code drawn=0} 当成 {@code NO_INPUT}。传入 {@code
+   * householdOnHand}（M5 消费后的家户实际库存）后，投入通道取值优先级：
+   *
+   * <ol>
+   *   <li>本 tick 已经现扣过（{@link EconomySession#drawnProductionInputsOf} 非空）⇒ 读本日实扣量（legacy 路径同一口径）；
+   *   <li>本周期已有投入（{@code unit.cycleInputUsedMilli()} 非空）⇒ 直接沿用已扣到的量（day2+ 不按户粮再判一次）；
+   *   <li>本周期尚无投入 ⇒ 用 relation 缺省供方（operator 家户）的**在手库存**，并先扣掉一 tick 基础口粮；
+   *   <li>供方无法可靠解析 / 未传 {@code householdOnHand} ⇒ 投入通道记为 {@code awaiting-draw}（不施加投入约束，交给 M7
+   *       按实际扣减）。
+   * </ol>
+   */
+  public static Offer offer(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      MarketTable market,
+      OperatorCondition condition,
+      SettlementIndex index,
+      Optional<ProductionModeId> modeId,
+      String rankModeKey,
+      HouseholdId household,
+      ProductionRoleId role,
+      EconomySession session,
+      Map<HouseholdId, Map<CommodityId, Long>> householdOnHand) {
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(role, "role（D2 §5.6：候选按名册角色分流）");
     Objects.requireNonNull(industry, "industry");
@@ -283,27 +329,78 @@ public final class LaborQueueBook {
 
     long capacityScale =
         ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
+    // ★★★ RF2：投入通道的三档来源（见本重载的方法注）。M6 早于 M7 ⇒ 顺序是：
+    //   ① 本 tick 已现扣 ⇒ 读本日实扣量；② 本周期已有投入（已扣到的 cycle carry）⇒ 直接用它
+    //   （否则 day2 会把粮已经变成种子的户误判回 NO_INPUT）；③ 本周期尚无投入 ⇒ 读 **M5 后的在手库存**
+    //   （粮先扣一 tick 口粮），把"尚未现扣"的 0 与"真没种"区分开。
+    Map<CommodityId, Long> drawnThisTick = session.drawnProductionInputsOf(unit.id());
+    boolean hasDrawnThisTick = !drawnThisTick.isEmpty();
+    Map<CommodityId, Long> cycleCarry = unit.cycleInputUsedMilli();
+    boolean hasCycleCarry = !cycleCarry.isEmpty();
+    List<HouseholdId> inputSuppliers = List.of();
+    boolean awaitingDraw = false;
+    if (!hasDrawnThisTick && !hasCycleCarry) {
+      if (householdOnHand != null) {
+        inputSuppliers =
+            resolveInputSupplierHouseholds(
+                unit, industry, household, householdOnHand, session, index);
+        awaitingDraw = inputSuppliers.isEmpty();
+      } else {
+        // 旧入口没有在手库存可读 ⇒ 视为"S4 待决定"，不得把缺省 0 当 NO_INPUT。
+        awaitingDraw = true;
+      }
+    }
+    boolean hasInputs = !industry.recipe().inputPerUnit().isEmpty();
     long inputScale = Long.MAX_VALUE;
     CommodityId bindingInput = null;
-    long bindingDrawn = 0L;
+    long bindingAvailable = 0L;
     long bindingPerScale = 0L;
-    // ★★★ B8（缺陷 DEF-T2b-2 的同源一处）：投入读数取"本生产日实扣量"的权威视图
-    //   （见 {@link #cycleInputUsedMilliOf}）—— 直接读实例的 {@code cycleInputUsedMilli()} 会读到
-    //   "本 tick 还没扣料"的旧值 ⇒ {@code inputScale = 0} ⇒ 这条 offer 被判 {@code NO_INPUT} ⇒
-    //   该 unit 的既有配额在写回阶段被整条删掉。
-    Map<CommodityId, Long> drawnInputs = cycleInputUsedMilliOf(session, unit);
-    for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
-      long perScale = input.getValue() == null ? 0L : input.getValue();
-      if (perScale <= 0L) {
-        continue;
-      }
-      long drawn = drawnInputs.getOrDefault(input.getKey(), 0L);
-      long scale = drawn / perScale;
-      if (scale < inputScale) {
-        inputScale = scale;
-        bindingInput = input.getKey();
-        bindingDrawn = drawn;
-        bindingPerScale = perScale;
+    String inputChannel =
+        !hasInputs
+            ? "none"
+            : hasDrawnThisTick
+                ? "drawn"
+                : hasCycleCarry
+                    ? "cycle-carry"
+                    : !inputSuppliers.isEmpty()
+                        ? "on-hand"
+                        : awaitingDraw ? "awaiting-draw" : "none";
+    if (hasInputs) {
+      for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
+        long perScale = input.getValue() == null ? 0L : input.getValue();
+        if (perScale <= 0L) {
+          continue;
+        }
+        long available;
+        if (hasDrawnThisTick) {
+          available = drawnThisTick.getOrDefault(input.getKey(), 0L);
+        } else if (hasCycleCarry) {
+          // 本周期已经扣到 unit 上的投入（唯一权威由 production 维护）：day2+ 直接沿用，不按户粮再判一次。
+          available = cycleCarry.getOrDefault(input.getKey(), 0L);
+        } else if (!inputSuppliers.isEmpty()) {
+          // ★ 粮作为种子时，这里已扣掉"一 tick 基础口粮"——与 M7 实际扣减同一把尺。
+          long sum = 0L;
+          for (HouseholdId supplierKey : inputSuppliers) {
+            sum +=
+                ProductionInputSettlement.drawableStockOf(
+                    session.sheet().householdEconomies(),
+                    householdOnHand,
+                    supplierKey,
+                    input.getKey());
+          }
+          available = sum;
+        } else {
+          // awaiting-draw：读不到可靠在手库存 ⇒ 不施加投入约束（交给 M7 按实际可扣量落账）。
+          available = Long.MAX_VALUE;
+        }
+        long scale =
+            available == Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(0L, available) / perScale;
+        if (scale < inputScale) {
+          inputScale = scale;
+          bindingInput = input.getKey();
+          bindingAvailable = available;
+          bindingPerScale = perScale;
+        }
       }
     }
     long absorbableScale = Math.min(capacityScale, inputScale);
@@ -343,8 +440,10 @@ public final class LaborQueueBook {
       reason =
           "NO_INPUT:"
               + (bindingInput == null ? "?" : bindingInput.value())
-              + ":drawn="
-              + bindingDrawn
+              + ":"
+              + inputChannel
+              + "="
+              + bindingAvailable
               + ":perScale="
               + bindingPerScale
               + (market != null && bindingInput != null && market.hasPrice(bindingInput)
@@ -407,7 +506,13 @@ public final class LaborQueueBook {
     long expectedLabor = perScaleLabor;
     long scaled = scaledNetPerLabor(net, expectedLabor);
 
-    String fullReason = joinReasons(reason, priceMissing, inputPriceMissing, market);
+    // ★ RF2：成功走"在手库存"通道时也留一个可 grep 的稳定读数（日志 LABOR_QUEUE_PLAN 的 reason 字段）。
+    String channelNote =
+        reason.isBlank() && hasInputs && !inputSuppliers.isEmpty()
+            ? "INPUT_ON_HAND"
+            : reason.isBlank() && awaitingDraw ? "INPUT_AWAITING_DRAW" : "";
+    String baseReason = reason.isBlank() ? channelNote : reason;
+    String fullReason = joinReasons(baseReason, priceMissing, inputPriceMissing, market);
     return new Offer(
         unit.id(),
         role,
@@ -421,6 +526,48 @@ public final class LaborQueueBook {
         expectedLabor,
         scaled,
         fullReason);
+  }
+
+  /**
+   * ★★ <b>RF2：投入供方账的解析</b> —— 与 M7 的 {@code supplierAccountsOf} 同一条事实（relation.inputSupplier）。
+   *
+   * <p>标准农业/自耕 = {@code ToHousehold(operator)}（真家户）；聚合主体由 {@code supplierAccountsOf} 代理到 unit
+   * 名下的家户账。**只返回当刻有可读账户的供方**；解析不出/账不可读 ⇒ 空表（调用方转 awaiting-draw， 不拿错账施加约束、也不伪 grant）。
+   */
+  private static List<HouseholdId> resolveInputSupplierHouseholds(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      HouseholdId fallback,
+      Map<HouseholdId, Map<CommodityId, Long>> householdOnHand,
+      EconomySession session,
+      SettlementIndex index) {
+    Map<HouseholdId, HouseholdEconomy> economies = session.sheet().householdEconomies();
+    ProductionRules relation = session.sheet().relationsOrBase().get(unit.id());
+    Payee supplier =
+        relation == null ? new Payee.ToActor(unit.operator()) : relation.inputSupplier();
+    List<HouseholdId> resolved =
+        ProductionInputDrawSettlement.supplierAccountsOf(
+            supplier, unit, industry, economies, index.householdByActor(), index);
+    if (!resolved.isEmpty()) {
+      for (HouseholdId key : resolved) {
+        if (!householdOnHand.containsKey(key)) {
+          return List.of();
+        }
+      }
+      return resolved;
+    }
+    // ★ 旧档/缺 relation 的兜底：operator 若是家户且账可读，就用它（标准农业逐值不变）。
+    ActorRef operator = unit.operator();
+    if (operator != null && operator.kind() == ActorKind.HOUSEHOLD) {
+      HouseholdId operatorHousehold = HouseholdActors.householdOf(operator);
+      if (householdOnHand.containsKey(operatorHousehold)) {
+        return List.of(operatorHousehold);
+      }
+    }
+    if (fallback != null && householdOnHand.containsKey(fallback)) {
+      return List.of(fallback);
+    }
+    return List.of();
   }
 
   /**

@@ -31,6 +31,11 @@ final class MarketTradeMath {
    * #chargeAffordableQuantity} 的"保守少买"同一取向）。
    */
   static long chargeAffordableQuantity(MatchContext ctx, BuySlot buy, RouteContext route) {
+    // ★★★ D-032 C7b2：活动运输计划路径允许运费赊账，故本上界不再按运费现金折回；真实税费现金约束由
+    //   {@link #exactTaxAffordableUpTo} 在逐笔成交前精确判。
+    if (ctx.transportRoundPlan != null) {
+      return Long.MAX_VALUE;
+    }
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit());
     if (unitFreight < 0L) {
       return 0L;
@@ -50,9 +55,16 @@ final class MarketTradeMath {
    *
    * <p>★★ <b>W2 改义</b>：它不再回答"买得起多少货"（那个概念已随"未付价款进债务"消失），只回答 <b>这一笔能拿出多少现金</b>（现金腿 = 运费 + 税
    * 从这里扣，货款优先用它、不足的部分进债务）。
+   *
+   * <p>★★ <b>D-032 RF1：价格接受者需求没有预算门</b>（{@link
+   * io.mosire.simos.economy.api.market.BuyOrder#maxLandedPrice()} 为 empty）——
+   * 现金腿只取<b>当刻实际可花额</b>（{@code spendable + 本槽剩余冻结}），不再被下单当刻的 budget 快照封顶； 商品数量更不由它折回（货款不足进既有普通货币债）。
    */
   static long payableMoneyOf(MatchContext ctx, BuySlot buy) {
     long money = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
+    if (buy.order.maxLandedPrice().isEmpty()) {
+      return money;
+    }
     // ★★ W5.5：预算余额 = 订单预算 + **本槽借到的那一笔**（同 BuySlot#borrowedBudgetTopUpMilli 的注）− 已花。
     long budgetLeft =
         Math.max(
@@ -197,6 +209,65 @@ final class MarketTradeMath {
       return false;
     }
     return outlay <= cashBudget;
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：活动运输计划路径的现金腿判据 —— 只要求税费现金付得起</b>。
+   *
+   * <p>运费现金不足部分按本责任区口径进入普通 0‰ 货币债；因此配给不能因运费不足把成交量折回 0。 货款的现金封顶仍由 {@link #executeTrade}
+   * 的“先税、再运费、最后货款”拆分处理；未付货款继续记卖方债。
+   */
+  static boolean taxesAtMost(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long quantity,
+      long cashBudget,
+      long buyerUnitPrice,
+      RouteContext route) {
+    if (quantity <= 0L) {
+      return true;
+    }
+    long outlay = 0L;
+    try {
+      for (MarketTaxBook.Charge charge :
+          taxesFor(ctx, buy, sell, commodity, quantity, buyerUnitPrice, inTransit(route), false)) {
+        outlay = Math.addExact(outlay, charge.amountMilli());
+      }
+    } catch (ArithmeticException overflow) {
+      return false;
+    }
+    return outlay <= cashBudget;
+  }
+
+  /** C7b2：最大 {@code q} 使税费现金腿 ≤ cashBudget（运费可赊，不参与二分判据）。 */
+  static long exactTaxAffordableUpTo(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long upper,
+      long cashBudget,
+      long unitPrice,
+      RouteContext route) {
+    if (upper <= 0L) {
+      return 0L;
+    }
+    if (taxesAtMost(ctx, buy, sell, commodity, upper, cashBudget, unitPrice, route)) {
+      return upper;
+    }
+    long low = 0L;
+    long high = upper;
+    while (low < high) {
+      long mid = low + (high - low + 1L) / 2L;
+      if (taxesAtMost(ctx, buy, sell, commodity, mid, cashBudget, unitPrice, route)) {
+        low = mid;
+      } else {
+        high = mid - 1L;
+      }
+    }
+    return low;
   }
 
   /**

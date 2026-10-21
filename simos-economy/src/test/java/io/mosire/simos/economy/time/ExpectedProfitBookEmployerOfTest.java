@@ -219,13 +219,35 @@ class ExpectedProfitBookEmployerOfTest {
                     new HouseholdClassMembership(
                         WORKER, wagePosition, wagePosition, Map.of(), 0L, 0L, "test-employer")))
             .withRelations(relations)
-            .withOwnershipStakes(shares)
+            // ★ D-032 RA1b2b：LAND 不再允许出现在 EconomyData.assetShares（唯一权威是
+            //   landArableSupply/landHoldings）。本类测的是 ExpectedProfitBook/assetOccupancyBudget 的
+            //   纯函数口径：`shares` 入参就是 D4 的瞬态投影（LandProductionProjection 的产物形状），
+            //   所以这里只把 LAND 行从**持久状态夹具**里滤掉；显式传给 prospect/assetOccupancyBudget
+            //   的 shares 保持原样，断言强度不变。
+            .withOwnershipStakes(persistentShares(shares))
             .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
     return EconomyFixtures.dayView(
         data,
         ProductionData.empty()
             .withModes(DefaultProductionModes.modes())
             .withIndustries(industries));
+  }
+
+  /**
+   * ★ D-032 RA1b2b：持久状态里只保留非 LAND 份额；LAND 由 {@code landArableSupply/landHoldings} 唯一权威持有。
+   *
+   * <p>本类的 {@code shares} 入参是 D4 瞬态投影（{@code LandProductionProjection} 的产物形状），不是 {@code
+   * EconomyData.assetShares} 的持久行。构造 {@link EconomyData} 时滤掉 LAND 只为通过双权威守卫。
+   */
+  private static Map<AssetShareId, OwnershipStake> persistentShares(
+      Map<AssetShareId, OwnershipStake> shares) {
+    Map<AssetShareId, OwnershipStake> kept = new LinkedHashMap<>();
+    for (Map.Entry<AssetShareId, OwnershipStake> entry : shares.entrySet()) {
+      if (entry.getValue().asset() != AssetKind.LAND) {
+        kept.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return kept;
   }
 
   private static ExpectedProfitBook.Prospect prospect(

@@ -36,7 +36,6 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -59,11 +58,14 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.HexLand;
+import io.mosire.simos.map.LandTypeId;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.ops.LandComponentOperations;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
@@ -74,7 +76,6 @@ import io.mosire.simos.production.contract.AllocationRule;
 import io.mosire.simos.production.contract.ClassSlot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
-import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -850,25 +851,6 @@ class GuiApiTest {
     // ★★ D-032 T1：三个生产实例已按 B2b（裁定六）迁出 economy ⇒ 它们的真值现在住在 **production 切片**
     //   （`definitions()` 里 `.withInstances(productionInstances())`），本处的 `withProcesses(units)` 已删除
     //   （该方法**类型已删**）。operator/progress/实扣投入的读数点不变，只是换了一片。
-    AssetShareId farmLandShareId =
-        OwnershipStake.idOf(
-            farm,
-            AssetKind.LAND,
-            farmOperator,
-            farmOperator,
-            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
-            ProductionLocation.parse(IndustryHexKeys.hexKey(H11.q(), H11.r())),
-            0L);
-    OwnershipStake farmLandShare =
-        new OwnershipStake(
-            farmLandShareId,
-            farm,
-            AssetKind.LAND,
-            farmOperator,
-            farmOperator,
-            1_000_000L,
-            io.mosire.simos.economy.api.asset.AssetRightKind.OWNED,
-            ProductionLocation.parse(IndustryHexKeys.hexKey(H11.q(), H11.r())));
     // ★ P2-A：memberships 已迁 Social（EconomyData 不再持有）⇒ 夹具直接以 classes + allocations 自洽；
     //   LaborSupply 也已删除，配额上限由 HouseholdEconomy.laborMilli 承担（本夹具 H11 行 = 915,000 / H12 行 =
     // 91,500）。
@@ -891,7 +873,6 @@ class GuiApiTest {
                 new MarketZoneId("hex:" + IndustryHexKeys.hexKey(H11.q(), H11.r())),
                 MarketTable.singleHex(
                     EconomySeeder.MARKET_NUMERAIRE, H11, EconomySeeder.MARKET_PRICES_FACTORY)))
-        .withOwnershipStakes(Map.of(farmLandShareId, farmLandShare))
         .withLaborCommitments(laborAllocations())
         .withMeta(
             Optional.of(
@@ -1043,7 +1024,31 @@ class GuiApiTest {
     assertThat(body.get("laborMilli").asLong())
         .as("★ P2-A：laborMilli 的唯一权威 = HouseholdEconomy.laborMilli（夹具 H11 行 = 915,000）")
         .isEqualTo(915_000L);
-    assertThat(body.get("landMilliMu").asLong()).isEqualTo(1_000_000L);
+    // ★★ D-032 L4/RA4a：LAND 的唯一权威 = Map component.owner；本读口的 landMilliMu/landHoldings 是它的聚合视图。
+    //   RA4a 已把标量 LAND 接进 /api/economy/hex：landMilliMu = 本 hex 全部 holdings 之和；并新增 landHoldings 栏。
+    assertThat(body.get("landMilliMu").asLong())
+        .as("★ RA4a：本格 landMilliMu = landHoldings 之和（夹具 = 1,000,000 千分亩）")
+        .isEqualTo(1_000_000L);
+    assertThat(body.get("landHoldings"))
+        .as("★ RA4a：标量持有逐条发出（owner/hex/quantity），不再从 assetShares 伪造 LAND 份额")
+        .hasSize(1);
+    assertThat(body.get("landHoldings").get(0).get("owner").asText())
+        .isEqualTo(H11_HOUSEHOLD.value());
+    assertThat(body.get("landHoldings").get(0).get("quantity").asLong()).isEqualTo(1_000_000L);
+    HexCell landCell = corridorMap().hexes().get(H11);
+    assertThat(landCell.land().totalMilliMu(LandTypeId.ARABLE))
+        .as("★ 新权威：Map arable component 合计 = 1,000,000 千分亩")
+        .isEqualTo(1_000_000L);
+    assertThat(landCell.land().byType().get(LandTypeId.ARABLE).components())
+        .singleElement()
+        .satisfies(
+            component -> {
+              assertThat(component.quantityMilliMu()).isEqualTo(1_000_000L);
+              assertThat(component.attributes())
+                  .containsEntry(
+                      io.mosire.simos.map.LandAttributeKey.OWNER,
+                      io.mosire.simos.map.LandAttributeValue.ofString(H11_HOUSEHOLD.value()));
+            });
     assertThat(body.get("goods").get("grain").asLong()).isEqualTo(498_000L);
     // ★★ H6：**钱的那一栏换口径了**（旧断言是 `money == 12`）。旧栏读的是 `Σ HouseholdEconomy.money()` —— 那是**结构性的 0**
     //   （H1 起行里没有钱，`EconomySeeder` 写下的 `HouseholdEconomy.money` 恒为 0），把这行夹具手填的 12 当成了"这一格的钱"。
@@ -1082,9 +1087,11 @@ class GuiApiTest {
     assertThat(farmUnit.get("progressDays").asLong())
         .as("unit 的周期进度真值（D4：progressDays 不得大于当前世界日 7）")
         .isEqualTo(7L);
-    assertThat(farmUnit.get("assets").get("LAND").asLong())
-        .as("unit 的可用资产来自 OwnershipStake 总账")
-        .isEqualTo(1_000_000L);
+    // ★★ D-032 RA1b2b/RA4a：LAND 已不是 AssetShare ⇒ `unit.assets`（AssetShare 视图）不得再出现 LAND；
+    //   标量 LAND 的权威读数是同格的 `landHoldings` 栏（上面已逐条断言）。
+    assertThat(farmUnit.get("assets").has("LAND"))
+        .as("★ 新架构：unit.assets 是资产份额视图，LAND 不再以份额形式出现（RA4a 走 landHoldings 栏）")
+        .isFalse();
     assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
     assertThat(industry.get("progressDays").asLong()).as("周期进度（unit 聚合）").isEqualTo(7L);
     assertThat(industry.get("allocation").get("meansWeightPerMille").asInt()).isEqualTo(700);
@@ -1095,9 +1102,11 @@ class GuiApiTest {
         .isEqualTo(1_000L);
     // ★★ K3/B.2：`capacity` 兼容栏从 unit（其可用资产来自 OwnershipStake）聚合 —— 行级 `landMilliMu` 已删，
     //   产业模板也不再直接携带产能总量。
-    assertThat(industry.get("capacity").get("LAND").asLong())
-        .as("★★ farm 的 unit 可用资产 LAND == 1,000,000 千分亩（= 1,000 亩；真值在 OwnershipStake）")
-        .isEqualTo(1_000_000L);
+    // ★★ D-032 RA1b2b/RA4a：capacity 由 unit 的**AssetShare** 聚合 ⇒ LAND（标量权威）不参与；
+    //   LAND 总量见同格 `landMilliMu`/`landHoldings`（RA4a），不得从 assetShares 伪造。
+    assertThat(industry.get("capacity").has("LAND"))
+        .as("★ 新架构：capacity 的份额来源已不含 LAND（RA4a 走 landHoldings 栏）")
+        .isFalse();
     assertThat(industry.has("classes"))
         .as("★ H0.2：家户行**挂在格上** ⇒ 产业对象里不再有 classes（旧路径 `industries[].classes[]` 已废）")
         .isFalse();
@@ -1615,7 +1624,13 @@ class GuiApiTest {
   private static GameMap corridorMap() {
     TerrainType desert = TerrainCatalog.of("desert");
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H11, new HexCell(0.5));
+    // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威；/api/economy/hex 的 landMilliMu 从这棵树派生。
+    hexes.put(
+        H11,
+        new HexCell(
+            0.5,
+            LandComponentOperations.setArableOwners(
+                HexLand.empty(), H11, Map.of(H11_HOUSEHOLD.value(), 1_000_000L))));
     hexes.put(H12, new HexCell(0.5));
     hexes.put(H13, new HexCell(0.5));
     hexes.put(H14, new HexCell(0.5)); // 不属任何区域 ⇒ regions 空数组

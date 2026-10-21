@@ -62,6 +62,8 @@ public record ProductionDayRequest(List<Step> steps) {
    * @param grantedScale 本次实际授予的规模（基准规模上限；见 {@link ProductionExecutionRequest}）
    * @param laborContributionsMilli 逐参与户×角色的实际劳动贡献（保序、{@code (household,role)} 唯一、逐项 &gt;0）
    * @param assetOccupancy 资产占用（按种类）；不得为 null、值必须为正（0 不进表）
+   * @param durableCommodityOccupancy ★★ <b>D-032 C5a</b>：耐久商品资本占用（商品 id → 数量，如 {@code
+   *     transport_horse}）； 不得为 null、值必须为正（0 不进表）。★ 只作规模锚、不被扣减；不得从参与户 conditions 聚合。
    * @param finalInputsMilli 本次最终投入的原料（毫单位）；不得为 null、值必须为正（0 不进表）
    * @param attributes 方案级/非家户主体外部属性事实（原样传进 {@link ProductionExecutionRequest#attributes()}）
    * @param participantAttributes 逐参与户外部属性事实（原样传进 {@link
@@ -77,11 +79,40 @@ public record ProductionDayRequest(List<Step> steps) {
       long grantedScale,
       List<ParticipantContribution> laborContributionsMilli,
       Map<AssetKind, Long> assetOccupancy,
+      Map<CommodityId, Long> durableCommodityOccupancy,
       Map<CommodityId, Long> finalInputsMilli,
       ExternalAttributeFacts attributes,
       Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
       Map<HouseholdId, Long> householdLaborBudgetMilli,
       Map<HouseholdId, Long> managementLaborMilli) {
+
+    /**
+     * ★ <b>C5a 之前的 10 参形状</b>（无耐久商品占用）：等价于 {@code durableCommodityOccupancy = Map.of()}；旧调用点逐值不变。
+     */
+    public Step(
+        Optional<ProductionUnitId> instance,
+        Optional<ProductionCreationRequest> creation,
+        long grantedScale,
+        List<ParticipantContribution> laborContributionsMilli,
+        Map<AssetKind, Long> assetOccupancy,
+        Map<CommodityId, Long> finalInputsMilli,
+        ExternalAttributeFacts attributes,
+        Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+        Map<HouseholdId, Long> householdLaborBudgetMilli,
+        Map<HouseholdId, Long> managementLaborMilli) {
+      this(
+          instance,
+          creation,
+          grantedScale,
+          laborContributionsMilli,
+          assetOccupancy,
+          Map.of(),
+          finalInputsMilli,
+          attributes,
+          participantAttributes,
+          householdLaborBudgetMilli,
+          managementLaborMilli);
+    }
 
     public Step {
       if (instance == null) {
@@ -145,6 +176,27 @@ public record ProductionDayRequest(List<Step> steps) {
         assetCopy.put(entry.getKey(), entry.getValue());
       }
       assetOccupancy = Collections.unmodifiableMap(assetCopy); // ★ 冻在赋值处
+
+      if (durableCommodityOccupancy == null) {
+        throw new IllegalArgumentException(
+            "ProductionDayRequest.Step.durableCommodityOccupancy 不得为 null（无占用用空表）");
+      }
+      Map<CommodityId, Long> durableCopy = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> entry : durableCommodityOccupancy.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step.durableCommodityOccupancy 的键与值都不得为 null");
+        }
+        if (entry.getValue() <= 0L) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step.durableCommodityOccupancy 必须为正（0 不进表）: "
+                  + entry.getKey()
+                  + " = "
+                  + entry.getValue());
+        }
+        durableCopy.put(entry.getKey(), entry.getValue());
+      }
+      durableCommodityOccupancy = Collections.unmodifiableMap(durableCopy); // ★ 冻在赋值处
 
       if (finalInputsMilli == null) {
         throw new IllegalArgumentException(
@@ -227,6 +279,7 @@ public record ProductionDayRequest(List<Step> steps) {
           grantedScale,
           laborContributionsMilli,
           assetOccupancy,
+          durableCommodityOccupancy,
           finalInputsMilli,
           attributes,
           participantAttributes,

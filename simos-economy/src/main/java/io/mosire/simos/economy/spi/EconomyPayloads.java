@@ -16,6 +16,7 @@ import static io.mosire.simos.economy.spi.EconomyPayloadSupport.optionalObject;
 import static io.mosire.simos.economy.spi.EconomyPayloadSupport.requireArray;
 import static io.mosire.simos.economy.spi.EconomyPayloadSupport.requireEntryObject;
 import static io.mosire.simos.economy.spi.EconomyPayloadSupport.requireInt;
+import static io.mosire.simos.economy.spi.EconomyPayloadSupport.requireIntegral;
 import static io.mosire.simos.economy.spi.EconomyPayloadSupport.requireText;
 import static io.mosire.simos.economy.spi.EconomyPolicyPayloads.classShares;
 import static io.mosire.simos.economy.spi.EconomyPolicyPayloads.governments;
@@ -62,6 +63,7 @@ import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -295,6 +297,55 @@ final class EconomyPayloads {
   }
 
   /**
+   * ★★★ <b>RF2c：顶层可选 {@code economyPolicies} 对象</b>（声明的世界级政策预设）。
+   *
+   * <pre>{@code
+   * {"economyPolicies":{"SURVIVAL_IDLE_POLICY":0}}
+   * }</pre>
+   *
+   * <ul>
+   *   <li>缺键 / JSON {@code null} ⇒ 空表 ⇒ {@link EconomyMeta} 的缺省语义（旧载荷逐值不变）；
+   *   <li>键必须是 {@link EconomyPolicyKey#name()}（稳定名）—— 未知键 ⇒ 抛（不静默忽略一个写错的旋钮）；
+   *   <li>值必须是整数，且在该键的 {@link EconomyPolicyKey#minValue()} / {@link EconomyPolicyKey#maxValue()}
+   *       范围内 —— 非整数 / 越域 ⇒ 抛（越域不是"调得激进"，是坏数据：与 {@link EconomyMeta} 构造期同一判据）；
+   *   <li>★ 本键只喂 {@link EconomyMeta.economyPolicies()}，不新增持久组件、不改 Codec/ChangeSet。
+   * </ul>
+   */
+  private static Map<EconomyPolicyKey, Long> economyPolicies(JsonNode payload) {
+    JsonNode node = optionalObject(payload, "economyPolicies");
+    Map<EconomyPolicyKey, Long> policies = new LinkedHashMap<>();
+    if (node == null) {
+      return policies;
+    }
+    node.fields()
+        .forEachRemaining(
+            field -> {
+              EconomyPolicyKey key;
+              try {
+                key = EconomyPolicyKey.valueOf(field.getKey());
+              } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                    "economyPolicies 含未知政策键: " + field.getKey() + "（合法键见 EconomyPolicyKey）", e);
+              }
+              long value = requireIntegral(field.getValue(), "economyPolicies." + field.getKey());
+              if (!key.accepts(value)) {
+                throw new IllegalArgumentException(
+                    "economyPolicies."
+                        + key.name()
+                        + " 越域: "
+                        + value
+                        + "（有效域 ["
+                        + key.minValue()
+                        + ", "
+                        + key.maxValue()
+                        + "]）");
+              }
+              policies.put(key, value);
+            });
+    return policies;
+  }
+
+  /**
    * 把载荷整份 materialize 成 {@link EconomyData}（含激活元信息）。
    *
    * @param at 世界当前时刻（{@code activatedDay} 取它的 {@link SimosTimestamp#tick()}）
@@ -365,11 +416,14 @@ final class EconomyPayloads {
     //      持久区表仍优先，显式未知 zone 仍 fail-closed。
     Map<WageAnchorKey, ProductionWageAnchor> wageAnchors =
         productionWageAnchors(payload, definitions, knownMarketZones, markets);
+    // ★★★ D-032 L4：economy 不再持久/解析 landHoldings；Map component.owner 是唯一权威。
+    //   旧 landHoldings / landArableMilliMu 键显式拒绝（Alpha 不兼容旧档，不静默吞）。
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
       int r = requireInt(entry, "r");
       HexCoord hex = new HexCoord(q, r);
+      rejectRetiredLandKeys(hex, entry);
       // ★★ **H0：配额先解析**（下面推默认关系的居住类型要用它 —— 那是"这批人住哪种居住类型"的唯一来源）。
       List<EconomyHouseholdPayloads.RawAllocation> entryLaborCommitments = new ArrayList<>();
       for (JsonNode node : optionalArray(entry, "allocations")) {
@@ -574,8 +628,18 @@ final class EconomyPayloads {
         }
       }
     }
+    // ★★★ RF2c：顶层可选 economyPolicies 对象（缺键/null ⇒ 空表 ⇒ EconomyMeta 缺省语义；未知键/非整数/越域 fail-closed）。
+    //   只喂 EconomyMeta 的政策表 —— 不新增持久组件、不改 Codec/ChangeSet；两个声明表仍取空表缺省。
     EconomyMeta meta =
-        new EconomyMeta(mapId, at.tick(), OptionalLong.empty(), rulesVersion, Optional.empty());
+        new EconomyMeta(
+            mapId,
+            at.tick(),
+            OptionalLong.empty(),
+            rulesVersion,
+            Optional.empty(),
+            economyPolicies(payload),
+            Map.of(),
+            Map.of());
     // ★★ E4c：非空初始债务可以解析（结构/条款/引用校验交给 EconomyData 构造期守卫；不在载荷层重复实现）。
     //   ★ 初始债务的"配套库存/货币/权利"不在这里搬：economy 不自动改 actor 账 —— app 协调器必须在 actor.Seed
     //     里给 debtor/creditor 备好相应余额（见 EconomyPayloads 类注与 EconomySeeder 的说明）。
@@ -640,7 +704,32 @@ final class EconomyPayloads {
         Map.of(),
         Map.of(),
         // ★★★ D-032 P4c3：U20 工资锚（唯一报价权威；空/缺省 = 空表）。
-        wageAnchors);
+        wageAnchors,
+        // ★★★ D-032 RC7：创世载荷不声明家户流动表（空表 = 首个市场轮只建表，不流动）。
+        Map.of(),
+        // ★★★ D-032 C6：创世载荷不声明临时运输能力批次（空表 = 尚无运输生产）。
+        Map.of(),
+        // ★★★ D-032 C7a：创世载荷不声明运输市场区锚价（空表 = 缺锚读 0；首个 S7-END 才建锚）。
+        Map.of());
+  }
+
+  /**
+   * ★★★ <b>D-032 L4：拒绝 economy 载荷里的旧 LAND 持久键</b>。
+   *
+   * <p>{@code landHoldings} / {@code landArableMilliMu} 已从 economy 持久状态退役；Map component 的 {@code
+   * owner} 属性是唯一权威。旧载荷出现这些键 ⇒ 具名拒绝（Alpha 不兼容旧档，不写迁移/键归一）。
+   */
+  private static void rejectRetiredLandKeys(HexCoord hex, JsonNode entry) {
+    if (entry.has("landArableMilliMu")) {
+      throw new IllegalArgumentException(
+          "land-arable-retired: economy.Seed 不再接受持久 landArableMilliMu（Alpha 不兼容旧档；arable 总量由 Map 快照注入）: hex="
+              + hex);
+    }
+    if (entry.has("landHoldings")) {
+      throw new IllegalArgumentException(
+          "land-holdings-retired: economy.Seed 不再接受持久 landHoldings（Alpha 不兼容旧档；LAND 所有权由 map.SeedArableOwnership 写入 Map component.owner）: hex="
+              + hex);
+    }
   }
 
   static ProductionRole productionRole(JsonNode node, String defaultModeId) {

@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -15,6 +17,7 @@ import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionRosters;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
 import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.WageAnchorKey;
@@ -22,6 +25,8 @@ import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -267,14 +272,13 @@ final class LaborSurvivalBook {
       long[] cycle = productionCycleOf(unit, plan, nextTick);
       if (roleDefinition.payment()
           instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage) {
-        // ★ P4c3：工资报价唯一来自 U20 锚；目标只走标准劳动/周期天数的工程默认。
+        // ★ P4c3/RC8b：工资报价唯一来自 U20 锚；目标 = 本 offer 的当前 farm 劳动需求读数（不再用标准角色固定值）。
         io.mosire.simos.economy.EconomyDayView wageView = new WorkingDayView(session.sheet());
         Optional<WageAnchorKey> anchorKey =
             WageQuoteBridge.wageAnchorKeyOf(wageView, unit, offer.role());
         ProductionWageAnchor anchor =
             anchorKey.map(session.sheet().productionWageAnchorsOrBase()::get).orElse(null);
-        long targetLaborMilliPerDay =
-            WageQuoteBridge.wageTargetLaborMilliPerDay(0L, roleDefinition, plan.cycleDays());
+        long targetLaborMilliPerDay = offer.maxAbsorbableLaborMilli();
         if (anchor == null || targetLaborMilliPerDay <= 0L) {
           continue; // 匹配阶段会按 wage-quote-missing/wage-target-missing 具名 skip；不在这里伪造收入。
         }
@@ -316,9 +320,48 @@ final class LaborSurvivalBook {
         }
         ProductionRoster roster = productionRosters.get(unit.id());
         if (roster == null) {
-          throw new SurvivalOutlookException(
-              "survival-income-projection-missing",
-              "产品份额替代缺名册，无法取 D2 cycle prospect: unit=" + unit.id().value());
+          // ★ SURVfix：survival outlook 是只读投影。单角色缺名册时按 C2 单户默认名册派生一份
+          //   **只读投影用**名册（不写入 productionRosters/EconomyData/ChangeSet）；多角色缺名册
+          //   或派生仍为空 ⇒ 记 DEBUG 后跳过该替代，不让单个缺名册杀死整次 advance。
+          if (plan.roles().size() != 1) {
+            logProductShareRosterMissing(unit, household, offer, "multi-role-roster-missing");
+            continue;
+          }
+          long remaining =
+              Math.max(
+                  0L,
+                  Math.min(laborBudgetMilli, offer.maxAbsorbableLaborMilli())
+                      - ProductionRosters.plannedLaborOf(productionRosters, household));
+          roster =
+              ProductionRosters.defaultSingleHouseholdRoster(unit.id(), plan, household, remaining)
+                  .orElse(null);
+          if (roster == null) {
+            logProductShareRosterMissing(unit, household, offer, "default-roster-empty");
+            continue;
+          }
+          long plannedLaborMilli =
+              roster.participant(household, offer.role()).stream()
+                  .mapToLong(
+                      io.mosire.simos.economy.model.ProductionParticipant::plannedLaborMilliPerDay)
+                  .findFirst()
+                  .orElse(0L);
+          if (EconomyLog.population().isDebugEnabled()) {
+            EventLog.channel(EconomyLog.population())
+                .debug(
+                    LogEvent.of(
+                        "SURVIVAL_PRODUCT_SHARE_DEFAULT_ROSTER",
+                        EconomyLogSource.ECONOMY_POPULATION,
+                        "unit",
+                        unit.id().value(),
+                        "household",
+                        household.value(),
+                        "role",
+                        offer.role().value(),
+                        "plannedLabor",
+                        plannedLaborMilli,
+                        "reason",
+                        "single-household-default-roster"));
+          }
         }
         Map<CommodityId, Long> productShare =
             projectedProductShare(
@@ -372,6 +415,27 @@ final class LaborSurvivalBook {
               + "]");
     }
     return new long[] {cycleStart, cycleEnd};
+  }
+
+  /** PRODUCT_SHARE 缺名册的 DEBUG 诊断；只读投影跳过，不抛异常、不补状态。 */
+  private static void logProductShareRosterMissing(
+      ProductionProcess unit, HouseholdId household, LaborQueueBook.Offer offer, String reason) {
+    if (!EconomyLog.population().isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(EconomyLog.population())
+        .debug(
+            LogEvent.of(
+                "SURVIVAL_PRODUCT_SHARE_ROSTER_MISSING",
+                EconomyLogSource.ECONOMY_POPULATION,
+                "unit",
+                unit.id().value(),
+                "role",
+                offer.role().value(),
+                "household",
+                household.value(),
+                "reason",
+                reason));
   }
 
   /**
@@ -437,14 +501,25 @@ final class LaborSurvivalBook {
         return income.productShareMilli();
       }
       if (income.rejection().isPresent()) {
-        throw new SurvivalOutlookException(
-            "survival-income-projection-missing",
-            "产品份额 D2 prospect 拒绝: unit="
-                + unit.id().value()
-                + " household="
-                + household.value()
-                + " reason="
-                + income.rejection().orElseThrow());
+        // ★ SURVfix：产品份额只是生存替代之一。D2 prospect 的具名拒绝（如
+        //   legacy-compensation-rules-present）⇒ 只读投影跳过该替代，不让单条拒绝杀死整次 advance；
+        //   缺账户会话/缺 revision 等真实接线故障仍在上文 fail-closed。
+        if (EconomyLog.population().isDebugEnabled()) {
+          EventLog.channel(EconomyLog.population())
+              .debug(
+                  LogEvent.of(
+                      "SURVIVAL_PRODUCT_SHARE_PROSPECT_SKIPPED",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "unit",
+                      unit.id().value(),
+                      "household",
+                      household.value(),
+                      "reason",
+                      income.rejection().orElseThrow()));
+        }
+        return Map.of();
       }
       return Map.of();
     }

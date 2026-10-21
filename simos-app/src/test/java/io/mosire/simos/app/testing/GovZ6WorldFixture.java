@@ -249,6 +249,16 @@ public final class GovZ6WorldFixture {
               io.mosire.simos.unit.change.UnitChangeSet.apply(
                   (io.mosire.simos.unit.change.UnitChangeSet) changeSet,
                   ((UnitSnapshot) base).state()));
+      // ★★★ D-032 L4：app 收尾会把 MapChangeSet（arable owner/quantity 写回）与
+      //   economy/social/actor/production 放进同一 revision ⇒ 本夹具必须应用 map 分支，
+      //   否则 LAND 写回被静默丢弃、Map owner 与聚合账本会分叉。
+      case "map" ->
+          new io.mosire.simos.map.MapSnapshot(
+              ref(base),
+              at,
+              io.mosire.simos.map.change.MapChangeSet.apply(
+                  (io.mosire.simos.map.change.MapChangeSet) changeSet,
+                  ((io.mosire.simos.map.MapSnapshot) base).map()));
       // ★★★ 裁定四十八（T7）：production 的实例/进度/经验/效率/覆盖变更集也必须应用。
       //   旧稿缺这一支 ⇒ `default -> null` ⇒ StateRunner 把 production ChangeSet **静默丢弃**
       //   （实例 progressDays 永远停在 base 值；N22 假阴性的根源，见 §14.26.3 与 impl B12-§4.2-3）。

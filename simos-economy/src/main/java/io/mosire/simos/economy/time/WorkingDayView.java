@@ -29,6 +29,7 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.economy.model.ProductionWageAnchor;
+import io.mosire.simos.economy.model.TransportPriceAnchor;
 import io.mosire.simos.economy.model.WageAnchorKey;
 import io.mosire.simos.economy.model.WageCarryKey;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
@@ -43,9 +44,9 @@ import java.util.Objects;
  * 检查（<b>引用级，与状态规模无关</b>）。每个 accessor 都是"现场问工作表"：
  *
  * <ul>
- *   <li>有工作副本的组件（家庭行/产业/市场/组织/在途/政府/发行/阶层归属）⇒ 走工作表的 {@code xxxOrBase()} —— <b>已物化读工作副本、未物化直接复用 base
- *       的不可变表</b>，因此读一次当刻值<b>不会</b>顺带拷一份表（零拷贝）；
- *   <li>无工作副本的组件（阶层位置/阶层结构/生产方式/需求/资料规则/市场区）⇒ 读 {@code sheet.base()} 的那张表： 它的写入口只有创世与 GM
+ *   <li>有工作副本的组件（家庭行/产业/市场/组织/在途/政府/发行/阶层归属/需求）⇒ 走工作表的 {@code xxxOrBase()} —— <b>已物化读工作副本、未物化直接复用
+ *       base 的不可变表</b>，因此读一次当刻值<b>不会</b>顺带拷一份表（零拷贝）；
+ *   <li>无工作副本的组件（阶层位置/阶层结构/生产方式/资料规则/市场区）⇒ 读 {@code sheet.base()} 的那张表： 它的写入口只有创世与 GM
  *       命令，<b>段内不变</b> ⇒ "段首表"与"当刻表"是同一份对象，不存在混合视图。
  * </ul>
  *
@@ -118,7 +119,7 @@ final class WorkingDayView implements EconomyDayView {
     return sheet.modeTransitionsOrBase();
   }
 
-  // ── 以下六张表**没有**工作副本（写入口只有创世/命令）⇒ 段内不变，视图即 base 的那一份 ──────────────
+  // ── 以下表按各自写口选择当刻值：有会话工作副本的走 xxxOrBase()，无工作副本的才直读 base ──────────────
   //    ★ 它们仍走本视图（而不是让读者各自去摸 base）：一处拼写"当刻值"，读者只认这一个来源。
 
   @Override
@@ -133,7 +134,7 @@ final class WorkingDayView implements EconomyDayView {
 
   @Override
   public Map<DemandId, HouseholdDemand> demands() {
-    return sheet.base().demands();
+    return sheet.demandsOrBase();
   }
 
   @Override
@@ -164,6 +165,11 @@ final class WorkingDayView implements EconomyDayView {
   @Override
   public Map<WageAnchorKey, ProductionWageAnchor> productionWageAnchors() {
     return sheet.productionWageAnchorsOrBase();
+  }
+
+  @Override
+  public Map<MarketZoneId, TransportPriceAnchor> transportPriceAnchors() {
+    return sheet.transportPriceAnchorsOrBase();
   }
 
   @Override

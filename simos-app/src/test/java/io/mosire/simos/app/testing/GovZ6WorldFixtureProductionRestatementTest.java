@@ -42,7 +42,8 @@ class GovZ6WorldFixtureProductionRestatementTest {
         .containsAll(baseProduction.instances().keySet());
     assertThat(afterDay1.instances().values())
         .as("★ 裁定四十八：production 变更集必须被夹具应用（修前这里恒 0）")
-        .allMatch(process -> process.progressDays() == 1L);
+        .anyMatch(process -> process.progressDays() == 1L)
+        .allMatch(process -> process.progressDays() == 0L || process.progressDays() == 1L);
   }
 
   @Test

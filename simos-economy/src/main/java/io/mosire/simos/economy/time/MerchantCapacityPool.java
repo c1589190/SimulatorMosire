@@ -9,6 +9,9 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.TransportCapacityBatch;
+import io.mosire.simos.economy.model.TransportCapacityBatchKey;
+import io.mosire.simos.economy.model.TransportRoundPlan;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.List;
@@ -261,6 +264,19 @@ public final class MerchantCapacityPool {
   /** 空池（没有跑商家户的世界 / worker 本地副本）。 */
   public static MerchantCapacityPool empty() {
     return EMPTY;
+  }
+
+  /**
+   * ★★★ <b>D-032 C7b2：活动运输池唯一装配入口</b> —— 只从当前 marketRoundId 的 C6 批次构造。
+   *
+   * <p>不再读旧 merchant 角色/haul 服务货/劳动+工具；不一致批次/空 plan 一律安全退化，plan 与批次如何校验由 {@link
+   * MerchantCapacityCore#assembleTransportPlan} 承担。
+   */
+  public static MerchantCapacityPool ofTransportPlan(
+      TransportRoundPlan plan, Map<TransportCapacityBatchKey, TransportCapacityBatch> batches) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(batches, "batches");
+    return new MerchantCapacityPool(MerchantCapacityCore.assembleTransportPlan(plan, batches));
   }
 
   public static MerchantCapacityPool of(
