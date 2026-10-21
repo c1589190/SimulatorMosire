@@ -1,6 +1,8 @@
 # D-032 农村经济目标运行设计（标准文档试写，2026-10-19）
 
 > **状态：已按用户 2026-10-19 确认落地。** 本文是 D-032 的标准文档试写；写作规则已写入根 `AGENTS.md` §五.12、`docs/agents/15-十四-目标运行设计与子设计嵌入.md` 和 `.agents/skills/target-runtime-design/SKILL.md`。
+> **2026-10-19 追加裁定：** 生产轮先于市场轮、经济侧删除 `naturalNeeds`、Social 保留单户温饱线接口、LAND 改为带 hex 的标量商品、取消共享收入池等，见 `docs/superpowers/specs/2026-10-19-d032-rural-production-land-labor-revision.md`；与本文件冲突处以后者为准。
+> **最新架构设计表单（取代本文）：** `docs/superpowers/specs/2026-10-19-d032-standard-agriculture-architecture-design-v2.md`（标准小农业修复 Agent 的唯一入口；与本文冲突处以后者为准）。
 > **适用范围：** D-032 农村土地/劳动/债务/工资/市场重设计的 P0.5–P6。
 > **权威顺序：** 用户原话 > 用户设计原稿 D-032 U1–U23 及 2026-10-18 后续逐字修订 > 本文目标运行序列 > 各子设计 > 当前代码事实。
 > **本文不是什么：** 不是对当前实现的验收，不是新的玩法裁定，不是把所有历史文档重抄一遍。当前实现差异见 §7。

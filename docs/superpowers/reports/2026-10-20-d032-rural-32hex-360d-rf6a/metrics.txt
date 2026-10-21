@@ -1,0 +1,51 @@
+# D-032 32hex 360d RF6a/RF6b metrics
+# source_csv: docs/superpowers/reports/2026-10-20-d032-rural-32hex-360d-rf6a/rural-32hex-360d.csv
+# csv_sha256: e7af3a652ba10b018d0a97d592850af5900460f15811633a7f2d0605949ce7e2
+rows 360
+status {'OK': 360}
+population: first=7101 last=6308 min=6308 max=7108
+households: first=290 last=290 min=290 max=290
+moneyTotalMilli: first=90000 last=91000 min=90000 max=91000
+grainStockMilli: first=71056127 last=2608157928 min=43261234 max=2608157928
+fiberStockMilli: first=595380000 last=1056403879 min=587580000 max=1056403879
+toolStockMilli: first=782000 last=877187 min=766000 max=877187
+landTotalMilliMu: first=99200000 last=99200000 min=99200000 max=99200000
+landPriceMilliPerMu: first=10 last=0 min=0 max=10
+debtPrincipalMilli: first=0 last=32599505 min=0 max=32599505
+debtContractCount: first=0 last=2048 min=0 max=2048
+wageDebtOutstandingMilli: first=0 last=967037 min=0 max=976977
+wageDueMilli: first=3296 last=6294 min=0 max=24019
+wagePaidMilli: first=3296 last=0 min=0 max=7496
+wageArrearsMilli: first=0 last=6294 min=0 max=23840
+unemployedLaborMilli: first=51212528 last=28771406 min=7012791 max=51245680
+births: sum=431
+deaths: sum=1223
+productionGrainMilli: sum=3928032000
+productionFiberMilli: sum=491004000
+seedInputMilli: sum=3365292000
+marketTrades: sum=5896
+marketUnfilled: sum=44825
+landTradedMilliMu: sum=81000
+landDebtTransferredMilliMu: sum=46515182
+wageDueMilli: sum=2381095
+wagePaidMilli: sum=32825
+wageArrearsMilli: sum=2348270
+production_ticks: [('120', '769584000'), ('121', '768000'), ('124', '48000'), ('125', '48000'), ('126', '48000'), ('128', '96000'), ('240', '1463904000'), ('360', '1693536000')]
+land_trade_nonzero_ticks: 10
+last_note: MARKET_FILLS=88;MARKET_UNFILLED=620;WAGE_ARREARS_NEW=3;WAGE_ARREARS_MILLI=6294;PRODUCTION_CLOSED=271;DEBT_CONTRACTS_NEW=23
+--- selected DEBUG run event counts ---
+MARKET_INTENT_BUY: 132076
+MARKET_DEFERRED_PAYMENT: 5149
+MARKET_DEFERRED_PAYMENT_WHY: 5149
+MONEY_MARKET_ROUND: 72
+LAND_TRADE_SETTLED: 81
+LAND_ORDER_REJECTED: 12556
+MERCHANT_CAPACITY_FALLBACK: 4608
+MERCHANT_CAPACITY_LANE_TRUNCATED: 86386
+HAUL_SERVICE_DELIVERY_FAULTS: 72
+HAUL_SERVICE_DELIVERY_FAULT: 10575
+PRODUCTION_DAY_REJECTED: 53
+PRODUCTION_INPUT_SHARED_POOL: 200
+MIGRATION_ORGANIZER_REBIND_UNSUPPORTED: 752
+DEBT_FIRST_M2_LAND_SKIPPED: 14693
+ADVANCE_EXCEPTION: 0

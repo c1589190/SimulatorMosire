@@ -4,6 +4,10 @@
 > **来源**：用户 2026-10-10 原话（§1 逐字）+ 只读调查账本
 > `.superpowers/sdd/2026-10-10-investigate-merchant-isolation/impl-ledger.md`（判定 = **实现走偏，不是设计使然**）。
 > **前置已落**：`2026-10-09-commodity-freight-and-merchant-ladder-design.md` §11–§16（运力池/派生/门槛/主业副业/预留）。
+>
+> **取代者：** `docs/superpowers/specs/2026-10-21-d032-carrier-household-transport-capacity-design.md`（2026-10-21）
+> —— 本文仅作历史留痕，**勿据此开工**。新设计已把 `haul` 普通库存/旧运力池替换为
+> “每 tick 运输生产 + 市场轮临时能力批次 + 市场区运力锚价”。
 
 ---
 

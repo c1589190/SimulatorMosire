@@ -32,7 +32,7 @@
 
 责任区子 Agent 写 `impl-ledger.md`、`progress.md`、`task-N-report.md` 或任何中期设定时，**同样**必须先写：
 
-1. 本责任区嵌在哪个目标运行阶段（引用 `docs/superpowers/specs/2026-10-19-d032-rural-runtime-target-design.md` 的阶段号或该主题的目标运行序列）；
+1. 本责任区嵌在哪个目标运行阶段（引用 `docs/superpowers/specs/2026-10-19-d032-standard-agriculture-architecture-design-v2.md` 的 `S0–S8` 阶段号或该主题的目标运行序列）；
 2. 实际实现的数据流/调用次序与偏离原因；
 3. 对父序列的影响表：顺序、预算/冻结、身份/持久化（Codec/ChangeSet）、失败/回滚、日志、测试；
 4. 未做/未验证/blocker。

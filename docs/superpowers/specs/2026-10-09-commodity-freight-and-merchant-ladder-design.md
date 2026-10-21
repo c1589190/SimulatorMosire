@@ -7,6 +7,10 @@
 > - `docs/superpowers/specs/2026-10-09-household-currency-acceptance-ruling.md`（家户收币裁定 R1–R11 + §6 实测）
 > **本文件冻结**：商品运费系数表（甲）、工坊制品自然需求（布+工具）、商户阶梯（乙：商号行业化 + 利润内生）、
 > 区域禀赋分异（地形 **与** 政策并存）。
+>
+> **局部取代（2026-10-21）：** 本文的运输生产方式、最低价承运、运力池、`CARRIER_FEE` 等运输实现方向，
+> 已由 `docs/superpowers/specs/2026-10-21-d032-carrier-household-transport-capacity-design.md` 取代；
+> 商品运费表、工坊需求、区域禀赋等其他部分仅作历史细节，冲突处以新设计为准。
 
 ---
 
