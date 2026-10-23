@@ -1,5 +1,7 @@
 # AgentLib 0.2.1 对接工作区 · 进度存档（2026-10-17 15:18 更新）
 
+> **状态：历史快照（文档系统重写于 2026-10-23）** · 当前实时状态以 [`docs/agents/STATUS.md`](../../agents/STATUS.md) 为准；本文只作当时事实留痕，勿据此开工。
+
 > **本文件是工作进度保存点，非终态。** 工作树 `.claude/worktrees/agentlib-dock`，分支 `agentlib/dock-0.2.1`（自 `03faf0a3` 开树）。
 > 生产改动保存点：`6547ffa1`（wip，15 文件 +704/−22）；本文件随其后的 docs 补记提交落盘（`git log` 可见）。
 > 下次开工入口：本文件 + `.superpowers/sdd/2026-10-17-single-space-system/impl-ledger.md` + `.superpowers/sdd/2026-10-17-batch-R/impl-ledger.md`（后者不进 git，本机）。

@@ -91,14 +91,14 @@
 先在这个 worktree 工作：
 
 ```text
-/home/cna/SimulatorMosire/.claude/worktrees/parallel-side-module
+/home/cna/SimulatorMosire/worktree/parallel-side-module
 ```
 
 不要碰主树 `/home/cna/SimulatorMosire`。
 
 必读顺序：
 
-1. `AGENTS.md` 与 `docs/agents/00`–`15` **全部读完**（不要只看目录/摘要）
+1. `AGENTS.md`、`docs/AGENTS.md`、`docs/agents/STATUS.md` 与 `docs/agents/AGENTS.md` **全部读完**；旧 `docs/agents/00`–`15` 只按局部索引当历史/参考读
 2. **最新标准小农业架构设计（修复 Agent 唯一入口，内含 S0–S8 目标运行序列）**：`docs/superpowers/specs/2026-10-19-d032-standard-agriculture-architecture-design-v2.md`；并加载 `.agents/skills/target-runtime-design/SKILL.md`
 2b. **用户原话/裁定证据**：`docs/superpowers/specs/2026-10-19-d032-rural-production-land-labor-revision.md`
 2c. **2026-10-19 复核收口与工程默认 E1–E15**：`docs/superpowers/reports/2026-10-19-d032-standard-agriculture-v2-review-closeout.md`

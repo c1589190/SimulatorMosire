@@ -1,5 +1,7 @@
 # D-032 L1 生产资料承载生产状态：进度存档（2026-10-23）
 
+> **状态：历史快照（文档系统重写于 2026-10-23）** · 当前实时状态以 [`docs/agents/STATUS.md`](../../agents/STATUS.md) 为准；本文只作当时事实留痕，勿据此开工。
+
 > 状态：L1a/L1b/L1c 已完成并过门禁；未提交/未推送。
 > 架构入口：`docs/superpowers/specs/2026-10-22-d032-lot-carried-production-architecture-v1.md`。
 > 实施计划：`docs/superpowers/plans/2026-10-22-d032-lot-carried-production-l1-plan.md`。

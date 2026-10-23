@@ -1,0 +1,66 @@
+name: docs-skills
+
+# 文档 / 工程 Skill / 局部 AGENTS 的最小检查闭环。
+# 本工作流不运行 Maven；Java 门禁仍由 tools/gate.sh full 负责。
+
+on:
+  push:
+    paths:
+      - "AGENTS.md"
+      - "README.md"
+      - ".gitignore"
+      - "NEXT_AGENT.md"
+      - "docs/**"
+      - "simos-*/AGENTS.md"
+      - ".agents/**"
+      - ".superpowers/AGENTS.md"
+      - "tools/AGENTS.md"
+      - "tools/check-docs.py"
+      - "tools/skills-lint.py"
+      - ".github/workflows/docs-skills.yml"
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "README.md"
+      - ".gitignore"
+      - "NEXT_AGENT.md"
+      - "docs/**"
+      - "simos-*/AGENTS.md"
+      - ".agents/**"
+      - ".superpowers/AGENTS.md"
+      - "tools/AGENTS.md"
+      - "tools/check-docs.py"
+      - "tools/skills-lint.py"
+      - ".github/workflows/docs-skills.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-skills-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs-skills:
+    name: docs / skills lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python syntax
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/check-docs.py tools/skills-lint.py
+
+      - name: Docs consistency
+        run: python3 tools/check-docs.py
+
+      - name: Skill contract
+        run: python3 tools/skills-lint.py
+
+      - name: Script selftests
+        run: |
+          set -euo pipefail
+          python3 tools/check-docs.py --selftest
+          python3 tools/skills-lint.py --selftest

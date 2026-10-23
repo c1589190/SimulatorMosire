@@ -13,7 +13,10 @@
 | 逐任务报告 | `.superpowers/sdd/<topic>/task-N-report.md` | 该任务的交账（含"我没做 / 没验证的"一节） |
 
 ★★ **`.superpowers/sdd/` 被该目录下 `.gitignore` 的 `*` 忽略 ⇒ 整棵不进 git**：内容只在本机留痕。
-⇒ **要长期留存、跨会话 / 跨设备复用的结论，必须另写进 `docs/superpowers/**`（spec / plan / status）或根 `AGENTS.md` 索引到的长文**；
+⇒ **要长期留存、跨会话 / 跨设备复用的结论必须回写仓库内文档**：
+- 项目设计/代码裁定 → `docs/superpowers/specs/**`；
+- 项目维护/流程/环境/门禁裁定 → `docs/agents/**`；
+- 当前事实 → `docs/agents/STATUS.md`。
 台账与证据**不是交付物**，`docs/**` 才是。引用台账时写明它是**本机留痕、不在版本库里**。
 
 ## 二、`impl-ledger.md` 五要素（实现 Agent 自己写）

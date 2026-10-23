@@ -77,11 +77,12 @@
 #  `1` = 被检查的东西红了（检测到服务 / 构建失败 / 证据不足）。
 #
 # 【子命令】
-#   tools/gate.sh pre                          跑前自检（本仓服务 / .mvn-lock.d / 工作树脏度）
+#   tools/gate.sh pre                          跑前自检（本仓服务 / .mvn-lock.d / 工作树脏度 / 文档与 Skill 结构）
 #   tools/gate.sh full                         ★ 完整验收：`clean verify`（零参数、零 skip）+ `-DskipTests validate`
 #   tools/gate.sh focused <module> [args…]     ★ 聚焦跑；默认 `-am`（上游来自工作树）；去 `-am` 要显式签字
 #   tools/gate.sh guards                       ★ 7 条关键护栏（含真构造组合根）+ 逐条断言「真的跑了」
 #   tools/gate.sh add <path> [path…]           ★ 白名单式 `git add` + 回显即将提交的清单
+#   tools/gate.sh docs                         文档结构 + 工程 Skill 契约检查（不跑 Maven）
 #   tools/gate.sh selftest                     本脚本自己的红/绿对照（不需要 Maven，秒级）
 # =============================================================================
 set -uo pipefail
@@ -660,11 +661,25 @@ cmd_pre() {
     ok "最近 5 分钟没有源文件被改动（没有明显的在飞中间态）"
   fi
   hr
-  if [ "$svc_rc" = 0 ]; then
+  log "④ 文档 / 工程 Skill 结构"
+  local docs_rc=0
+  python3 "$ROOT/tools/check-docs.py" || docs_rc=1
+  python3 "$ROOT/tools/skills-lint.py" || docs_rc=1
+  if [ "$docs_rc" = 0 ]; then
+    ok "文档 / Skill 结构检查通过（tools/gate.sh docs）"
+  else
+    bad "文档 / Skill 结构检查失败：先修 docs 或跑 tools/gate.sh docs 看完整 findings"
+  fi
+  hr
+  if [ "$svc_rc" = 0 ] && [ "$docs_rc" = 0 ]; then
     ok "pre 结论：PASS —— 可以跑 tools/gate.sh full / guards / focused"
     return 0
   fi
-  bad "pre 结论：FAIL —— 先按上面 R5 的「正确用法」处理，再跑 full（full 自己也会再拦一次）"
+  if [ "$svc_rc" != 0 ]; then
+    bad "pre 结论：FAIL —— 先按上面 R5 的「正确用法」处理，再跑 full（full 自己也会再拦一次）"
+  else
+    bad "pre 结论：FAIL —— 文档/Skill 结构未通过；先修文档，不带着坏索引开工"
+  fi
   return 1
 }
 
@@ -902,6 +917,26 @@ cmd_add() {
 }
 
 # ---------------------------------------------------------------------------
+# 子命令：docs（文档结构 + 工程 Skill 契约，不跑 Maven）
+# ---------------------------------------------------------------------------
+cmd_docs() {
+  parse_zero_args docs "$@"
+  hr
+  log "docs —— 文档结构 + 工程 Skill 契约检查（不跑 Maven）"
+  if ! python3 "$ROOT/tools/check-docs.py"; then
+    bad "docs 结论：FAIL —— tools/check-docs.py 有 findings"
+    return 1
+  fi
+  if ! python3 "$ROOT/tools/skills-lint.py"; then
+    bad "docs 结论：FAIL —— tools/skills-lint.py 有 findings"
+    return 1
+  fi
+  hr
+  ok "docs 结论：PASS"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 子命令：selftest（本脚本自己的红/绿对照，不需要 Maven）
 # ---------------------------------------------------------------------------
 cmd_selftest() {
@@ -1115,6 +1150,7 @@ main() {
     focused) shift; cmd_focused "$@";;
     guards) shift; cmd_guards "$@";;
     add) shift; cmd_add "$@";;
+    docs) shift; cmd_docs "$@";;
     selftest) shift; cmd_selftest "$@";;
     ''|-h|--help|help) usage; exit 0;;
     *) usage >&2; exit 2;;

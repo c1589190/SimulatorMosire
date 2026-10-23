@@ -1,5 +1,7 @@
 # D-031 P0 接口先行：实现与验收交接（2026-10-16）
 
+> **状态：历史快照（文档系统重写于 2026-10-23）** · 当前实时状态以 [`docs/agents/STATUS.md`](../../agents/STATUS.md) 为准；本文只作当时事实留痕，勿据此开工。
+
 > **状态：P0 已实现，主树完整门禁通过；未暂存、未提交、未推送。**
 > 本文更新 D-031 的当前状态。设计与原话依据仍为 `docs/superpowers/specs/2026-10-15-d031-interface-first-design.md`、用户设计原稿 D-031；技术补全见 `docs/superpowers/reports/2026-10-16-d031-worktree-coordination.md` §6。
 > 所有生产实现与测试由 `dsh headless` 按责任区顺序完成，控制方负责约束、复核、工作树同步与最终验收。

@@ -1,5 +1,7 @@
 # AgentLib × D-032 侧线集成结果（2026-10-23）
 
+> **状态：历史快照（文档系统重写于 2026-10-23）** · 当前实时状态以 [`docs/agents/STATUS.md`](../../agents/STATUS.md) 为准；本文只作当时事实留痕，勿据此开工。
+
 > **状态：已完成主树快进与最终门禁；未推送 `main`。**
 > 目标分支：`integration/agentlib-side`
 > 计划：`docs/superpowers/plans/2026-10-23-agentlib-side-integration-rewrite-migration-plan.md`

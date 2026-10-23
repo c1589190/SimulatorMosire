@@ -1,5 +1,7 @@
 # 2026-10-17 agentlib-dock 状态恢复 + 待裁定核对
 
+> **状态：历史快照（文档系统重写于 2026-10-23）** · 当前实时状态以 [`docs/agents/STATUS.md`](../../agents/STATUS.md) 为准；本文只作当时事实留痕，勿据此开工。
+
 > **★★ 2026-10-17 后续更正（覆盖本文旧结论）**：本文当时把“下一步”写成“只剩验收/合并时序”，但未审计 AgentLib 0.2.1 的 **`io.mosire.agentlib.decision` 包（22 类）在 Simos 生产代码中零引用**，也未审计 `SuperiorJudgeGate` 等上级判定族。实际迁移面并未闭合，旧结论“只需验收”作废。
 > 覆盖报告：`docs/superpowers/reports/2026-10-17-agentlib-021-migration-coverage-audit.md`（只读审计，未改生产代码）。
 > 本文其余历史事实保留；与报告冲突处，以报告为准。

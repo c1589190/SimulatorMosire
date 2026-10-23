@@ -3,6 +3,8 @@
 
 ## 十二、推演 Skill 文档规则（2026-10-02 用户裁定）
 
+> **状态：历史（2026-10-13 运行期 Skill 取缔）** · 本文只作原话与历史留痕；当前工程 Skill 目录见 `docs/agents/SKILLS.md`，文档系统见 `docs/AGENTS.md`。
+
 - 用户原话：「**由于是第一次进行推演，应当创建Skill文档，在本次推演完成后总结可复用的推演守则，创建并使用Skill文档本身规则应被记进AGENTS.md**」。
 - **执行形态**：
   1. **每轮推演开始**：在 skill 库创建/读取本轮记录。技能库位置见 `simos.skill` 工具说明：`config/skills`（仓种子）或 `world/skills`（store 覆盖，同 id 优先）；本轮记录命名 `world/skills/turn-XXX-*.md`。

@@ -1,79 +1,57 @@
-# `.agents/notes/` —— 决策记录（为什么这么定、被谁取代）
+# `.agents/notes/` —— 决策解释与生命周期
 
-> **本文件是什么**：`.agents/notes/` 这一层的用法（放什么 / 生命周期 / 命名 / 分类 / 形制）。
-> **规则来源**：`docs/AGENTS.md` §一（六层归宿表）与 §三（「取代关系」怎么写）—— 本文件只是把那一层**落到本仓**。
-> **本批（2026-10-13）只建骨架 + 本文件**：`docs/superpowers/plans/` 里**已执行**的计划**不**在本批搬入（下一批按生命周期归位）。
+> **本目录属于项目维护，只解释“为什么这样定、被谁取代”，不冒充设计/维护正本。**
+> 当前状态：`../../docs/agents/STATUS.md`；文档系统：`../../docs/AGENTS.md`；
+> 维护裁定：`../../docs/agents/MAINTENANCE_RULINGS.md`；项目设计裁定：`../../docs/superpowers/`。
 
-## 一、三层生命周期（**生命周期即权威**）
+## 一、生命周期
 
+```text
+.agents/notes/proposed/    ← 提议中：无约束力，不得据此开工
+.agents/notes/implemented/ ← 已落地：代码/设计正本为准，note 解释理由
+.agents/notes/archived/    ← 被取代：只留痕；头部写 `取代者：`
 ```
-.agents/notes/proposed/    ← 提议中：**无约束力**，不得据此开工；可以改、可以撤
-.agents/notes/implemented/ ← 已落地：**代码为准，note 是解释**（解释"为什么这么定"）
-.agents/notes/archived/    ← 被取代：仅作留痕；头部必须写 `取代者：`（见 §五）
-```
 
-- **`proposed/` 无约束力**：它是"我们打算这么定"的记录。**开工依据不是它** —— 用户原话 / 设计原稿 / 最新落盘文档才是（`docs/AGENTS.md` §二）。
-- **`implemented/` 里"代码为准"**：note 解释的是**决策与理由**，**不承诺现状**。代码与 note 冲突 ⇒ **以代码为准**（`docs/agents/05-四-台账与代码核对.md` §四），并另开一条更正或把它移进 `archived/`。
-- **`archived/` 被取代**：**不删**（留痕不改），在**文件头部**写一行 `取代者：`，与 `docs/AGENTS.md` §三 同形制。
-- **升级/降级都是移动文件**（`git mv`，保留历史）：`proposed/` → `implemented/`（落地了）→ `archived/`（被取代）；被否掉的提议也进 `archived/`（头部写"未采纳 + 理由"）。
+- `proposed/` 可改、可撤；开工依据是用户原话 / 设计原稿 / 当前设计或维护裁定，不是 proposed note。
+- `implemented/` 只解释**已发生**的决策；与代码冲突时先回代码核。
+- `archived/` 不删，移动文件保留 git 历史，并在头部写取代者。
+- 状态变化用 `git mv`，不复制成两份。
 
-## 二、目录形制与命名
+## 二、目录与命名
 
-```
+```text
 .agents/notes/<生命周期>/<分类>/YYYY-MM-DD-<slug>.md
 ```
 
-- **分类子目录**（六个；**本批不预建**，用到哪个建哪个）：`architecture` · `feature` · `bug-fix` · `simplification` · `process` · `testing`
-  （六个分类取自 **DSH 自己的仓**的用法：`implemented/` 实测 architecture 284 · feature 183 · bug-fix 33 · simplification 20 · process 6 · testing 2；★ 计数为**转抄，未回核**，仅作量级参考。）
-- **命名** `YYYY-MM-DD-<slug>.md`：日期取**决策当天**；`slug` 用小写英文/数字短横线（如 `roles-declaration-vs-bucket-assembly.md`）。
-- ★ **日期口径**（`docs/AGENTS.md` §五）：**不许用文件名反推日期**；引用用户原话时日期取"用户实际说的那一天"；与 git 提交日期矛盾时**两存并标疑点**。
-- **一份 note 记一个决策**：不要把一批十件事塞进一份；同主题的后续决策**另开一份**并把旧的移进 `archived/`（新的在前列出全部取代者）。
+分类：`architecture` · `feature` · `bug-fix` · `simplification` · `process` · `testing`。
+日期取决策当天；不要用文件名反推日期，用户原话日期以正文为准。
 
-## 三、什么该进 notes（**只收决策**）
+## 三、什么该进 notes
 
-| ✅ 该进 | ❌ 不该进 |
+| ✅ 收 | ❌ 不收 |
 |---|---|
-| **决策**：为什么这么定、当时的约束与取舍 | **流水账**：今天做了什么、跑了哪些命令、逐批进度 |
-| **被谁取代**：决策的失效与接替关系 | **状态快照**：「当前 62 条未完成」这类会立刻过期的盘点 |
-| **偏离与理由**：与设计书不一致且被裁定接受的部分（如"roles() 是声明面、桶是显式装配面"） | **契约正文**：接口/载荷/不变量 —— 那是 spec 的活（`docs/superpowers/specs/`） |
-| **不可协商的裁剪**：用户原话裁定"就按这个来" | **纪律长文**：人读的规矩 → `docs/agents/*.md`；能机器拦的 → `tools/gate.sh` |
+| 决策理由、取舍、被谁取代 | 当前进度、流水账、命令输出 |
+| 与设计书/维护规则的偏离及原因 | 完整接口/载荷/不变量正文（那是 spec） |
+| 用户原话导致的决策背景（附出处） | 纪律长文、机械检查细节（去 docs/tools） |
 
-★ 一句话选层：**"为什么这么定、被谁取代" → 这里**；**"现在是什么状态" → `docs/superpowers/status/`**；**"世界必须长成什么样" → `docs/superpowers/specs/`**。
+**分账**：
+- **项目设计裁定**：权威正文在 `docs/superpowers/specs/**`（用户设计原稿 D-xxx），note 只解释；
+- **项目维护裁定**：权威正文在 `docs/agents/MAINTENANCE_RULINGS.md`，note 只解释。
 
-## 四、状态与未完成项**不在这里**
-
-- 现状/未完成项口径在 `docs/superpowers/status/`（权威：`2026-10-12-known-issues-code-verified.md` = 现状；`2026-10-13-outstanding-work-survey.md` = 未完成项）。
-- 本目录**不写**"当前进度"，只写"决策及其命运"；status 会过期，决策只会被取代。
-
-## 五、头部形制（照抄这一块）
+## 四、头部形制
 
 ```markdown
 # <一句话决策名>
 
-> **状态**：`proposed` / `implemented` / `archived`（<YYYY-MM-DD>）
-> **取代者**：`<路径>`（<YYYY-MM-DD>）      ← 仅 `archived/` 需要；被多次取代时全部列出（新的在前）
-> **本文取代**：`<路径>`（<YYYY-MM-DD>）    ← 仅取代了别的决策时需要
-> **依据**：用户原话（逐字）/ `<spec 路径 §小节>`
+> **状态**：`proposed` / `implemented` / `archived`（YYYY-MM-DD）
+> **取代者**：`<路径>`（YYYY-MM-DD）      ← 仅 archived
+> **本文取代**：`<路径>`（YYYY-MM-DD）    ← 仅取代了旧决策
+> **依据**：用户原话（逐字）/ `<spec 或维护裁定路径>`
 ```
 
-## 六、示范（形制模板，**不是**真实决策记录）
+## 五、当前迁移状态
 
-```markdown
-# roles() 是声明面、桶是显式装配面（不动态派生）
-
-> **状态**：`implemented`（2026-10-12）
-> **依据**：用户目标"工具能被谁用只有一处拼写点"（设计书 §4.4）
-> **决定**：桶**不**从 `roles()` 动态派生，改由装配期 `requireFace`/`requireFaces` 双向钉死。
-> **为什么**：动态派生会牺牲"角色标错 = 启动即红"的防护，且与"`roles()` 不做注册开关"的既有裁定冲突。
-> **代价**：桶与声明面是两份数据，靠装配期 fail-closed 审计保证一致（负向三连已实跑）。
-> **取代者**：（无）
-```
-
-★ 上面这段只是**形制示范**：真实内容要写**已发生**的决策，并给 `file:line` 或提交号作证据（`docs/AGENTS.md` §四）。
-
-## 七、下一批（**本批不做**）
-
-1. `docs/superpowers/plans/` 里**已执行**的计划 ⇒ 按生命周期归入 `implemented/<分类>/`（**内容不重写**，只加状态头）；
-   进行中的计划**留在原处**（`docs/superpowers/plans/`）。
-2. 各 status 台账里"**被裁定接受的偏离**"（如 ga 台账 §9.3 的 D-A~D-E）⇒ 抽成 `implemented/architecture/` 的决策记录。
-3. `proposed/` 收**未定**的设计取舍（如待裁定 13 项里"倾向 A 不倾向 B"的记录），**标明无约束力**。
+- 已实现 note 只有真实落地决策；旧 `docs/superpowers/plans/` 不批量搬入，等需要时按生命周期迁移。
+- 迁移已执行/进行中的计划时，先确认计划状态和引用，不得把历史计划当当前设计。
+- 旧 note 中指向 `docs/superpowers/status` 的“当前状态”口径已失效；状态统一看 `docs/agents/STATUS.md`。
+- 旧 note 中的 `.claude/worktrees/*` 是 2026-10-23 前的工作树历史地址；当前工作树统一在 `worktree/<name>/`。
