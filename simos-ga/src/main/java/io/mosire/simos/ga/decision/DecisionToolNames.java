@@ -27,22 +27,22 @@ public interface DecisionToolNames {
   /** 时间轴节点清单读工具（冻结回合里属"不读世界 revision"的共享读口）。 */
   String timelineRevisions();
 
-  /** 决策包：提议一条（或一次多条）真实工具调用（结构命令的唯一表达）。 */
-  String propose();
+  /** 决策包：纯文本请求（Ask；进本 tick 的同一个包，不产生世界写）。 */
+  String request();
 
-  /** 决策包：改包里的一条 call（与 {@link #propose()} 共用同一段校验）。 */
+  /** 决策包：改包里的一条 call（与 Ask 入包共用同一段预览/目标校验）。 */
   String revise();
 
-  /** 决策包：删包里的一条 call（其余 callIndex 重排连续）。 */
+  /** 决策包：删包里的一条 call（index 留洞）。 */
   String drop();
 
-  /** 决策包：写自然语言决策（**整段覆盖**）。 */
+  /** 决策包：写自然语言意图（**整段覆盖**；不改 PackageState）。 */
   String packetIntent();
 
-  /** 决策包：**确认**本 tick 的全部决策（DRAFT → PENDING；DM 的一次真实动作，运行流不再拦截）。 */
+  /** 决策包：只写领域 confirmedAtRevision（不改 PackageState）。 */
   String confirm();
 
-  /** 决策包：**撤回确认**（PENDING → DRAFT；已裁决 ⇒ 具名拒，不变量 I3）。 */
+  /** 决策包：只清领域 confirmedAtRevision（已裁决 ⇒ 具名拒）。 */
   String reopen();
 
   /** 决策包：查看自己的包。 */
@@ -69,7 +69,7 @@ public interface DecisionToolNames {
    * 当场拒**（而且不会有任何装配期错误提示）。
    */
   default Set<String> packetTools() {
-    return Set.of(propose(), revise(), drop(), packetIntent(), confirm(), reopen(), myPacket());
+    return Set.of(request(), revise(), drop(), packetIntent(), confirm(), reopen(), myPacket());
   }
 
   /** **不读世界 revision、也不写世界的共享读口**（目录/分支列表/阶段列表）：冻结回合里原样放行。 */

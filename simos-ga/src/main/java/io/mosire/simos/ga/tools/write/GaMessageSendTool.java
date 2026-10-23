@@ -330,7 +330,7 @@ public final class GaMessageSendTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**决策人面**（GM 用 GM 侧那条 {@code simos.gm.message.send}）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 

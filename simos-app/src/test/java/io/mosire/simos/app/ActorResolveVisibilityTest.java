@@ -54,7 +54,7 @@ class ActorResolveVisibilityTest {
     // ★ 夹具走**生产的那条创世路径**（`ShellMain.seedGenesisIfEmpty` ⇒ `bootstrapGenesis(RichWorld…)`），
     //   与 Task 9 判活时那次"空库就地初始化"是同一条：actor 切片由 RichWorld 补给（未激活的空切片）。
     //   ⇒ 不自己搓夹具状态：解析器要的"六切片齐全"是装配事实，手搓的夹具证不出它。
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     assertThat(ShellMain.seedGenesisIfEmpty(shell)).as("空库 ⇒ 就地初始化 v17levant 世界").isTrue();
   }
 

@@ -40,7 +40,8 @@ import org.junit.jupiter.api.Test;
  * 目录列举（{@link Files#list}），并逐条自证：
  *
  * <ol>
- *   <li>扫到的文件数 = <b>实测值 14</b>，且含已知样本（{@code ToolResources.java} 等）⇒ 扫描面非空；
+ *   <li>扫到的文件数 = <b>实测值 13</b>（DecisionProposable 随设计 §7.3 退役 ⇒ 14 → 13），且含已知样本（{@code
+ *       ToolResources.java} 等）⇒ 扫描面非空；
  *   <li>同一管线在<b>剥注释前</b>比<b>剥注释后</b>多命中一次 {@code "actor"}（javadoc 里那句 {@code {@code "actor"}}）⇒
  *       既证明"真的读到了内容"，也证明"剥注释真的在剥"；若剥注释失效，两处都是 2，第一条断言当场红；
  *   <li>换字面量（{@code "committed"}）、换形状（{@code implements SimosTool}）各有一个<b>已知命中</b>的样本 ⇒ 后面那些"恰好一次 /
@@ -54,7 +55,7 @@ class SpiSpellingPointScanTest {
       Paths.get("src", "main", "java", "io", "mosire", "simos", "ga", "spi");
 
   /** 扫描面条数（实测值；主源被清空/挪走 ⇒ 本扫描器当场红，不会静默空转）。 */
-  private static final int MAIN_SOURCE_COUNT = 14;
+  private static final int MAIN_SOURCE_COUNT = 13;
 
   /** 唯一拼写点字面量：八个命名空间 + GM_ID + 缺省分支。 */
   private static final List<String> SINGLE_SPELLING_LITERALS =

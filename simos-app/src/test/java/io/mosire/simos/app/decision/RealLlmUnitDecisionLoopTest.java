@@ -288,7 +288,7 @@ class RealLlmUnitDecisionLoopTest {
     copyRepoProviderConfig();
     seedGenesis();
     // ★ 不注入 llm ⇒ 生产路径：按决策人 providerId 经 AgentLib 配置解析真 provider。
-    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0));
     client = newClient();
   }
 

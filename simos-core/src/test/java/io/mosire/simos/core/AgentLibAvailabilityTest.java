@@ -56,10 +56,15 @@ class AgentLibAvailabilityTest {
         "io.mosire.agentlib.llm.LlmRouteLoader",
         "io.mosire.agentlib.event.SqliteEventStore", // 事件持久化
         "io.mosire.agentlib.config.FileConfigStore",
-        // M5 直接消费的三个类（spec §2.2 扩钉；T7 的 MCP 服务与 T6 的审批装配）
+        // M5 直接消费的 MCP 服务（HTTP 审批面已退役，不再把两个已删除类当能力哨兵）
         "io.mosire.agentlib.mcp.AgentToMcpServer", // MCP HTTP 服务（startHttp）
-        "io.mosire.agentlib.approval.ApprovalHttpEndpoint", // 审批 HTTP 端点
-        "io.mosire.agentlib.approval.HttpApprovalChannel", // 审批 HTTP 通道
+        // 0.2.3-SNAPSHOT 决策包五工具契约（U1）：读口 + 纯状态机 + 快照 + DM 队列
+        "io.mosire.agentlib.decision.DecisionPackageReadPort",
+        "io.mosire.agentlib.decision.DecisionPackageTools",
+        "io.mosire.agentlib.decision.DecisionPackageTransitions",
+        "io.mosire.agentlib.decision.DecisionPackageSnapshot",
+        "io.mosire.agentlib.decision.PendingDecisionQueue",
+        "io.mosire.agentlib.decision.DecisionTurnScope",
       })
   void agentLibApiIsLoadable(String fqn) throws Exception {
     assertThat(Class.forName(fqn)).as("agentlib-mosire 应提供 %s", fqn).isNotNull();

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.agentlib.decision.CommitReceipt;
+import io.mosire.agentlib.decision.DecisionPackageSnapshot;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaSnapshot;
@@ -14,6 +16,7 @@ import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -23,6 +26,9 @@ import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import org.slf4j.Logger;
 
@@ -50,18 +56,9 @@ import org.slf4j.Logger;
  * {@code Map} 以它为键）。★ 批 3b-2 的派单书写着"新注册 {@code DecisionMakerId} 与 {@code DecisionInfoId} 两个键读侧"——
  * 后者是**对树形状的误述**（树里没有这个键），本 codec 按实际形状只注册<b>一个</b>，不为不存在的键写凭空注册（该类自 3a 起的既有纪律）。
  *
- * <p>★ <b>值类型里没有嵌套自定义键</b>（{@code DecisionPacket} → {@code FormattedCall} 的 {@code targets} 是
- * {@code List<CommandTarget>}、{@code MergedEffectPlan} → {@code List<MergedEffect>}、{@code
- * Directive} → {@code List<DirectiveCommand>} 与 {@code Set<EffectId>}、{@code Verdict} → 无 {@code
- * Map}、{@code DecisionMaker} → 无 {@code Map}、{@code DecisionInfoEntry} → 无 {@code Map} （{@code
- * tags}/{@code affiliations} 是 {@code Set}）、{@code Effect} → 无 {@code Map}（{@code trigger}/{@code
- * action} 是 sealed 多态，注解钉在类型上），都不含 {@code Map}）⇒ 本 codec <b>只注册这六个键</b>， 不给不存在的键写凭空注册。★ 值类型（{@code
- * DecisionPacket} / {@code MergedEffectPlan} / {@code Directive} / {@code Verdict} / {@code
- * DecisionMaker} / {@code DecisionInfoEntry} / {@code EffectId} 及它们的 id）住在 {@code simos-sd}：它们仍被 sd
- * 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 本模块<b>反向引用</b>它们（既有的 {@code ga → sd} 方向，不新增边）。
- * ★ <b>本批 3b-4 的例外</b>：{@code Effect}/{@code EffectKind}/{@code EffectStatus}/{@code
- * Trigger}/{@code Action} <b>整族搬进 {@code io.mosire.simos.ga.effect}</b>（sd 侧零引用 ⇒ 不产生 {@code sd →
- * ga} 边），见 {@code GaState} 类注。
+ * <p>★ <b>决策包值类型是 {@code DecisionRecord}</b>：其中嵌套 AgentLib {@code DecisionPackageSnapshot}， {@code
+ * PackageItem.args} 是普通 {@code Map<String,Object>}，{@code DecisionRecord.callMeta} 的键是 {@code
+ * Integer} ⇒ 都不需要领域键反序列化器。AgentLib record 上的派生读口由本 codec 的 JsonIgnore mixin 摘出线格式。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）：写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，故<b>只注册读侧</b>（与 {@code GovCodec} 同口径）。
@@ -75,17 +72,24 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
 
   private static final Logger LOG = GaLog.codec();
 
-  /** 本模块唯一的一台 mapper：共享基座 + 本模块的六路键反序列化器。 */
+  /** 本模块唯一的一台 mapper：共享基座 + 六路键反序列化器 + 上游派生读口的 JsonIgnore mixin。 */
   private static final ObjectMapper MAPPER =
-      withChangeSetMixin(SimosObjectMapper.create(keyModule()));
+      withDomainMixins(SimosObjectMapper.create(keyModule()));
 
   /**
    * 把 {@code GaChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code GovCodec} / {@code ActorCodec} 同制）：Jackson
    * 会把 {@code isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。{@code isEmpty} 是派生判断不是状态，
    * <b>不进线格式</b>；领域类型保持零 Jackson 注解。共享基座已有一条同款规则，这里保留更具体的同一句话（改动面最小）。
    */
-  private static ObjectMapper withChangeSetMixin(ObjectMapper mapper) {
+  private static ObjectMapper withDomainMixins(ObjectMapper mapper) {
     mapper.addMixIn(GaChangeSet.class, GaChangeSetMixin.class);
+    // ★ AgentLib 的 record 带有 no-arg 派生读口（DecisionPackageSnapshot#settled、
+    //   CommitReceipt#itemResults）。Jackson 会把它当属性写出，而共享 mapper 保持
+    //   FAIL_ON_UNKNOWN_PROPERTIES=true ⇒ 写出去的快照读不回来。这里只摘掉这两条派生判断；
+    //   不关闭未知字段检查，也不改任何状态字段。
+    mapper.addMixIn(DecisionPackageSnapshot.class, DecisionPackageSnapshotMixin.class);
+    mapper.addMixIn(CommitReceipt.class, CommitReceiptMixin.class);
+    mapper.addMixIn(DecisionRecord.class, DecisionRecordMixin.class);
     return mapper;
   }
 
@@ -94,6 +98,27 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
 
     @JsonIgnore
     abstract boolean isEmpty();
+  }
+
+  /** 只承载注解：{@code view()} 是 DecisionRecord 的只读投影方法，不是持久化字段。 */
+  abstract static class DecisionRecordMixin {
+
+    @JsonIgnore
+    abstract io.mosire.simos.ga.model.DecisionPacket view();
+  }
+
+  /** 只承载注解：{@code settled()} 是 AgentLib 的派生判断，不是快照状态。 */
+  abstract static class DecisionPackageSnapshotMixin {
+
+    @JsonIgnore
+    abstract boolean settled();
+  }
+
+  /** 只承载注解：{@code itemResults()} 是 AgentLib 的派生拉链视图，不是回执状态。 */
+  abstract static class CommitReceiptMixin {
+
+    @JsonIgnore
+    abstract List<?> itemResults();
   }
 
   /**
@@ -118,6 +143,37 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
         return parse.apply(key);
       }
     };
+  }
+
+  /**
+   * 编码一条 {@code ga.ApplyDecisionPackage} 命令载荷。
+   *
+   * <p>必须与 {@link #decodeApplyDecisionPackageRecord(com.fasterxml.jackson.databind.JsonNode)} 用同一台
+   * mapper（含 AgentLib 派生读口的 mixin）；否则工具写出的载荷在 handler 里读不回来。
+   */
+  public static String encodeApplyDecisionPackagePayload(
+      long expectedContentVersion, DecisionRecord record) {
+    if (expectedContentVersion < 0L) {
+      throw new IllegalArgumentException(
+          "expectedContentVersion 必须 ≥ 0: " + expectedContentVersion);
+    }
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("expectedContentVersion", expectedContentVersion);
+    payload.put("record", record);
+    return writeJson(payload);
+  }
+
+  /** 解码 {@code ga.ApplyDecisionPackage} 载荷里的 {@code record} 对象（同一台 mapper）。 */
+  public static DecisionRecord decodeApplyDecisionPackageRecord(
+      com.fasterxml.jackson.databind.JsonNode recordNode) {
+    if (recordNode == null || !recordNode.isObject()) {
+      throw new IllegalArgumentException("ApplyDecisionPackage 载荷缺少 record 对象");
+    }
+    try {
+      return MAPPER.treeToValue(recordNode, DecisionRecord.class);
+    } catch (Exception e) {
+      throw new IllegalArgumentException("ApplyDecisionPackage.record 解码失败: " + e.getMessage(), e);
+    }
   }
 
   /** 同 {@code GovCodec} 的口径：编码失败是契约故障，以 {@link IllegalStateException} 出面。 */

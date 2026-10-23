@@ -107,7 +107,7 @@ class N20ThreeCommandSeedOrderEndToEndTest {
     List<String> reversedOrder =
         List.of(normalOrder.get(1), normalOrder.get(0), normalOrder.get(2));
 
-    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0);
     try (Shell shell = Shell.start(config)) {
       shell.coreSimos().bootstrapGenesis(genesisState());
       // ── ① 颠倒序（economy.Seed 打头）：具名拒 + 零 revision ──────────────────────────

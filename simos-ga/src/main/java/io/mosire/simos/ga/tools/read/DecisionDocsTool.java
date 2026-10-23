@@ -38,7 +38,7 @@ import java.util.Set;
  * sd:doc.<docId>}）不在任何决策人的可达面， 拉资源断言会把全部文档判成不可见；归属由上面那条判据承担。{@code READ_ONLY} 的失效方向是 fail-closed。
  *
  * <p>★ **只在决策人桶**（{@code Role.DECISION_AGENT}）：GM 侧有 GUI 的文档子页（可按任意决策人的视角预览实际可见集合）。本工具与 {@code
- * DecisionCallerFactory} 现算的权限组承担——白名单由决策人桶派生（{@code roles()} 是唯一声明），本工具挂上那个桶就在面上 （漏挂则 {@code
+ * DecisionCallerFactory} 现算的权限组承担——白名单由决策人桶派生（{@code toolRoles()} 是唯一声明），本工具挂上那个桶就在面上 （漏挂则 {@code
  * DecisionToolDefs.requireAll} 当场炸）。
  *
  * <p>★ **正文约定**（{@code DecisionDoc} 的类注）：{@code value} 是**原样的 {@code Object}**——本工具**不解析**它（与
@@ -186,7 +186,7 @@ public final class DecisionDocsTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

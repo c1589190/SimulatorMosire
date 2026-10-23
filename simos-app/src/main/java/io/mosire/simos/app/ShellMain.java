@@ -19,10 +19,8 @@ import java.util.concurrent.CountDownLatch;
  *
  * <ul>
  *   <li>{@code --store <dir>}（命令行缺省值可由配置文件 {@code store} 提供；两处都没有才拒）；
- *   <li>{@code --gui-port N} / {@code --mcp-port N} / {@code --approval-port N}（缺省取 {@link
- *       ShellConfig}，可被配置文件覆盖）；
- *   <li>{@code --bind-address <host>}（GUI / MCP 的绑定地址；★ 审批端点恒回环，见 {@link
- *       ShellConfig#bindAddress()})；
+ *   <li>{@code --gui-port N} / {@code --mcp-port N}（缺省取 {@link ShellConfig}，可被配置文件覆盖）；
+ *   <li>{@code --bind-address <host>}（GUI / MCP 的绑定地址，见 {@link ShellConfig#bindAddress()})；
  *   <li>{@code --world=<worldId>}（同时兼容 {@code --world <worldId>}）：**只在空库首启时**选择哪个世界生成器做 bootstrap，见
  *       {@link ShellConfig#worldId()} 与 {@link WorldRegistry}；
  *   <li>{@code --config <file>}（同时兼容 {@code --config=<file>}）：改指配置文件；缺省 {@value
@@ -68,7 +66,7 @@ public final class ShellMain {
               AppLogSource.SHELL_LIFECYCLE,
               "usage",
               "--store <dir> [--world=<worldId>] [--config <file>] [--gui-port N] [--mcp-port N]"
-                  + " [--approval-port N] [--bind-address <host>] [--opening-snapshot]"));
+                  + " [--bind-address <host>] [--opening-snapshot]"));
       return;
     }
     run(config);
@@ -89,7 +87,6 @@ public final class ShellMain {
     String worldId = null;
     Integer guiPort = null;
     Integer mcpPort = null;
-    Integer approvalPort = null;
     String bindAddress = null;
     Boolean openingSnapshot = null;
 
@@ -110,8 +107,6 @@ public final class ShellMain {
         case "--store" -> store = Path.of(value(args, ++i, "--store"));
         case "--gui-port" -> guiPort = port(value(args, ++i, "--gui-port"), "--gui-port");
         case "--mcp-port" -> mcpPort = port(value(args, ++i, "--mcp-port"), "--mcp-port");
-        case "--approval-port" ->
-            approvalPort = port(value(args, ++i, "--approval-port"), "--approval-port");
         case "--bind-address" -> bindAddress = value(args, ++i, "--bind-address");
         // ★ 兼容 `--world XXX` 与 `--world=XXX` 两种写法（用户 2026-10-09 口径：等号形是主形态）。
         case "--world" -> worldId = value(args, ++i, "--world");
@@ -145,7 +140,6 @@ public final class ShellMain {
         coalesce(guiPort, file.guiPort().orElse(null), ShellConfig.DEFAULT_GUI_PORT),
         coalesce(mcpPort, file.mcpPort().orElse(null), ShellConfig.DEFAULT_MCP_PORT),
         coalesce(file.mcpPath().orElse(null), ShellConfig.DEFAULT_MCP_PATH),
-        coalesce(approvalPort, file.approvalPort().orElse(null), ShellConfig.DEFAULT_APPROVAL_PORT),
         coalesce(file.mcpInitiator().orElse(null), ShellConfig.DEFAULT_MCP_INITIATOR),
         coalesce(file.mapId().orElse(null), ShellConfig.DEFAULT_MAP_ID),
         coalesce(bindAddress, file.bindAddress().orElse(null), ShellConfig.DEFAULT_BIND_ADDRESS),
@@ -195,8 +189,6 @@ public final class ShellMain {
               shell.boundMcpPort(),
               "mcpPath",
               config.mcpPath(),
-              "approvalPort",
-              config.approvalPort(),
               "mapId",
               config.mapId(),
               "worldId",

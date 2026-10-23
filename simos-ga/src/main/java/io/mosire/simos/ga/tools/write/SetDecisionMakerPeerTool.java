@@ -22,7 +22,7 @@ import java.util.Set;
  * ——窄写工具集合 == GM 桶的窄写工具集合（{@code SimosToolsTest}）、catalog 的 type 集合 == 全部 handler 的 {@code
  * type()}。写成常量引用会让扫描器当场判"抽不到"。
  *
- * <p>★ <b>它进的是 GM 桶</b>（{@code roles()={GM}}）：决策人不得给自己开闸。
+ * <p>★ <b>它进的是 GM 桶</b>（{@code toolRoles()={GM}}）：决策人不得给自己开闸。
  */
 public final class SetDecisionMakerPeerTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -74,7 +74,7 @@ public final class SetDecisionMakerPeerTool extends AbstractNarrowWriteTool impl
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

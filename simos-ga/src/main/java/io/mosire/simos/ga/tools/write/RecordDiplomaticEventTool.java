@@ -26,14 +26,14 @@ import java.util.Set;
  * <p>★★ <b>2026-10-15 批 L ②：原来的"两面"合并成一条</b>（设计书 §2 N2「乙 + 合并甲」/ §2.1）。合并前是<b>两个类、两个工具名</b>：
  *
  * <ul>
- *   <li>{@code simos.sd.record-diplomatic-event}（{@code roles()={GM}}，<b>显式点名</b>：participants
+ *   <li>{@code simos.sd.record-diplomatic-event}（{@code toolRoles()={GM}}，<b>显式点名</b>：participants
  *       由载荷直接给）；
- *   <li>{@code gov.RecordDiplomaticEvent}（{@code roles()={DM}}，<b>身份派生</b>：participants 必须含调用者
+ *   <li>{@code gov.RecordDiplomaticEvent}（{@code toolRoles()={DM}}，<b>身份派生</b>：participants 必须含调用者
  *       Nation）。
  * </ul>
  *
- * ⇒ 现在是一条：{@code roles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2 DM_APPROVAL</b>
- * （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
+ * ⇒ 现在是一条：{@code toolRoles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2
+ * DM_APPROVAL</b> （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
  * GovToolSupport.resolveGov}（"身份解得出来就从身份解，否则要求显式点名"）——不造第三套：
  *
  * <ul>
@@ -43,12 +43,11 @@ import java.util.Set;
  * </ul>
  *
  * <p>★ <b>资源声明 = ga 命名空间的自己那一块</b>（同 {@code IssueDirectiveTool}）：{@code decisionWriteResources} +
- * {@code READ_ONLY} 缺省策略（使"未表态 ga"者 fail-closed，失效方向不是放宽）；ToolSpec 敏感 ⇒ **决策人直写**走决策人链路的
- * 既有审批（{@code AutoApproveGate → ConfirmGate → 待批}，需 GM 在审批面点头）。工具名不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}；命令类型本体已注册并登记载荷提示。
+ * {@code READ_ONLY} 缺省策略（使"未表态 ga"者 fail-closed，失效方向不是放宽）；ToolSpec 敏感 + {@code gate=Ask} ⇒ 决策人调用时由
+ * {@code DecisionTurnScope} 自动收进本 tick 决策包，由 GM 通过 AgentLib 五工具裁决/提交， <b>不再走单条
+ * PendingApprovals</b>。
  *
- * <p>★ <b>决策人只有直写这一条路径</b>：本工具不在 {@code ProposalCatalog}（{@code simos.ga.packet.propose} 的可提议清单）里 ⇒
- * 没有"提议零审批"那条路（2026-10-15 回代码核实）。
+ * <p>★ 工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令类型本体已注册并登记载荷提示。
  */
 public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -114,8 +113,8 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
         + "participants ≥2 且不重复；text 自然语言；tick 缺省=世界当前 tick 且不得记在未来；eventId 缺省按 tick 合成。"
         + "★ 目标按调用者身份解析：决策人调用时 participants 必须包含调用者自己的 Nation（不许替别国记名）；"
         + "GM 调用时显式点名，participants 原样生效（可为任意参与国集合记录事件）。"
-        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
-        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
+        + "★ 决策人调用时：本调用作为 Ask 自动进入本 tick 的决策包，由 GM 裁决/提交；"
+        + "它不会在回合内直写世界，也不再走单条审批面。";
   }
 
   @Override
@@ -145,7 +144,7 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

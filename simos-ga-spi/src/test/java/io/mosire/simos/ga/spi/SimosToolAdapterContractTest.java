@@ -76,7 +76,7 @@ class SimosToolAdapterContractTest {
   /**
    * ★★ <b>I1：空角色集 / 缺参 ⇒ 装配期当场抛（报文点名是哪条工具）</b>。
    *
-   * <p>守的坏法：空集静默注册 ⇒ 这条工具<b>谁都看不见</b>（与 {@code SimosTool#roles()} 的契约同口径：空集 = 装配故障），
+   * <p>守的坏法：空集静默注册 ⇒ 这条工具<b>谁都看不见</b>（与 {@code SimosTool#toolRoles()} 的契约同口径：空集 = 装配故障），
    * 表现为"某个功能悄悄消失"，而不是一条错。
    */
   @Test
@@ -112,7 +112,7 @@ class SimosToolAdapterContractTest {
   }
 
   /**
-   * ★★ <b>I1：{@code roles()} 是<b>不可变副本</b>——构造方事后改自己那份集合，不会改出第二处真相</b>。
+   * ★★ <b>I1：{@code toolRoles()} 是<b>不可变副本</b>——构造方事后改自己那份集合，不会改出第二处真相</b>。
    *
    * <p>守的坏法：直接持有调用方的集合 ⇒ 装配面（{@code SimosToolSource} 的角色表）与工具自报的角色可以各自
    * 被改一次，桶装配读到的"属于谁"与审计读到的不同，而两边都觉得自己是对的。
@@ -126,13 +126,13 @@ class SimosToolAdapterContractTest {
     declared.clear();
     declared.add(ToolRole.DM);
 
-    assertThat(adapter.roles())
-        .as("★★ 判据 C：roles() 是构造期的快照（外部 clear/add 之后仍然只有 GM）")
+    assertThat(adapter.toolRoles())
+        .as("★★ 判据 C：toolRoles() 是构造期的快照（外部 clear/add 之后仍然只有 GM）")
         .containsExactly(ToolRole.GM);
-    assertThatThrownBy(() -> adapter.roles().add(ToolRole.DM))
-        .as("★★ 判据 C：roles() 必须真不可变（注册面拿着它当规格读）")
+    assertThatThrownBy(() -> adapter.toolRoles().add(ToolRole.DM))
+        .as("★★ 判据 C：toolRoles() 必须真不可变（注册面拿着它当规格读）")
         .isInstanceOf(UnsupportedOperationException.class);
-    assertThatThrownBy(() -> adapter.roles().clear())
+    assertThatThrownBy(() -> adapter.toolRoles().clear())
         .isInstanceOf(UnsupportedOperationException.class);
   }
 

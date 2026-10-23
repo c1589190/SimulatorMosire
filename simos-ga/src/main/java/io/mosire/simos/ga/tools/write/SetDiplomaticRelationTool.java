@@ -27,13 +27,14 @@ import java.util.Set;
  * <p>★★ <b>2026-10-15 批 L ②：原来的"两面"合并成一条</b>（设计书 §2 N2「乙 + 合并甲」/ §2.1）。合并前是<b>两个类、两个工具名</b>：
  *
  * <ul>
- *   <li>{@code simos.sd.set-diplomatic-relation}（{@code roles()={GM}}，<b>显式点名</b>：from/to
+ *   <li>{@code simos.sd.set-diplomatic-relation}（{@code toolRoles()={GM}}，<b>显式点名</b>：from/to
  *       由载荷直接给，不要求"以谁的名义"）；
- *   <li>{@code gov.SetDiplomaticRelation}（{@code roles()={DM}}，<b>身份派生</b>：from 必须等于调用者 Nation）。
+ *   <li>{@code gov.SetDiplomaticRelation}（{@code toolRoles()={DM}}，<b>身份派生</b>：from 必须等于调用者
+ *       Nation）。
  * </ul>
  *
- * ⇒ 现在是一条：{@code roles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2 DM_APPROVAL</b>
- * （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
+ * ⇒ 现在是一条：{@code toolRoles()={DM, GM}} + {@code gate=Ask(SENSITIVE)} ⇒ 设计书 §3.1 的<b>类2
+ * DM_APPROVAL</b> （"DM/GM 混合就是要交给 GM 审核"）；<b>目标解析按调用者身份分支</b>，形制逐条照本仓既有的 {@code
  * GovToolSupport.resolveGov}（"身份解得出来就从身份解，否则要求显式点名"）——不造第三套：
  *
  * <ul>
@@ -46,9 +47,9 @@ import java.util.Set;
  * ga:decision-maker/<自己>}（{@code decisionWriteResources}）；缺省策略取 {@code READ_ONLY} 使"未表态 ga"者
  * fail-closed。
  *
- * <p>★ <b>ToolSpec 敏感 + 既有审批链</b>（基类）：**决策人直写**链路 = {@code AutoApproveGate → ConfirmGate → 待批}，GM
- * 需在审批面点头。工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。★ **决策人只有直写这一条路径**：本工具不在 {@code
- * ProposalCatalog}（{@code simos.ga.packet.propose} 的可提议清单）里 ⇒ 没有"提议零审批"那条路（2026-10-15 回代码核实）。
+ * <p>★ <b>ToolSpec 敏感 + {@code gate=Ask}</b>（基类）：决策人调用时由 {@code DecisionTurnScope} 自动收进本 tick 决策包，由
+ * GM 通过 AgentLib 五工具裁决/提交，<b>不再走单条 PendingApprovals</b>。工具名不是命令类型 ⇒ 不进 catalog / {@code
+ * PAYLOAD_HINTS}。
  */
 public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -115,8 +116,8 @@ public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool imp
         + "（谈判状态记这里）、tick 缺省=世界当前 tick 且不得记在未来；同 (from,to) 再调一次 = 更新该边，不新增第二条。"
         + "★ 目标按调用者身份解析：决策人调用时 from 必须是调用者自己的 Nation（不许冒名）；"
         + "GM 调用时显式点名，可为任意 Nation 对写边。"
-        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
-        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
+        + "★ 决策人调用时：本调用作为 Ask 自动进入本 tick 的决策包，由 GM 裁决/提交；"
+        + "它不会在回合内直写世界，也不再走单条审批面。";
   }
 
   @Override
@@ -146,7 +147,7 @@ public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool imp
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

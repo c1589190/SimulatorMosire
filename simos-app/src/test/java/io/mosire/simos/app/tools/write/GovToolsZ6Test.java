@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
-import io.mosire.agentlib.approval.AskKind;
+import io.mosire.agentlib.decision.DecisionTurnScope;
+import io.mosire.agentlib.decision.PendingDecisionQueue;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.ResourceAuthorizer;
@@ -59,6 +59,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.decision.SimosDecisionClock;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.ToolBuckets;
@@ -111,7 +112,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
@@ -298,9 +298,8 @@ class GovToolsZ6Test {
   //          + 决策人桶/白名单不含 transferTreasury（§8-2、§8-28 的 Z3d 回填）────────────
 
   @Test
-  void decisionMakerSensitiveWriteAsksAndCommitsExactlyOneRevisionAfterGmApproval()
-      throws Exception {
-    try (World world = start(tempDir.resolve("dm-approval"), "dm-approval")) {
+  void decisionMakerSensitiveWriteIsQueuedWithoutExecutingOrUsingRetiredApproval() {
+    try (World world = start(tempDir.resolve("dm-queue"), "dm-queue")) {
       Shell shell = world.shell();
       DecisionCallerFactory factory = dmFactory(shell);
       AgentTool tool = dmTool(shell, GovSetEstablishmentTool.NAME);
@@ -312,55 +311,30 @@ class GovToolsZ6Test {
       args.put("preview", false);
       args.put("expectedRevision", 1L);
 
-      FutureTask<ToolResult> call =
-          new FutureTask<>(
-              () ->
-                  factory.execute(
-                      dmRegistry,
-                      GovSetEstablishmentTool.NAME,
-                      world.dm("dm-central"),
-                      world.state(),
-                      world.mapId(),
-                      args));
-      Thread.ofVirtual().name("z6-dm-approval").start(call);
+      PendingDecisionQueue queue =
+          new PendingDecisionQueue(
+              "dm-central", AccessToken.DEFAULT, SimosDecisionClock.QUEUE_DEADLINE_MILLIS);
+      DecisionTurnScope.bind(queue);
+      ToolResult result;
+      try {
+        result =
+            factory.execute(
+                dmRegistry,
+                GovSetEstablishmentTool.NAME,
+                world.dm("dm-central"),
+                world.state(),
+                world.mapId(),
+                args);
+      } finally {
+        DecisionTurnScope.clear(queue);
+      }
 
-      ApprovalRequest pending = awaitPending(world);
-      assertThat(call.isDone()).as("未审批之前调用必须阻塞（不是'未审即执行'）").isFalse();
-      assertThat(pending.tool()).as("待批项就是编制工具").isEqualTo(GovSetEstablishmentTool.NAME);
-      assertThat(pending.classKey()).isEqualTo(GovSetEstablishmentTool.NAME);
-      assertThat(pending.kind()).as("敏感闸的 Ask 语义").isEqualTo(AskKind.SENSITIVE);
-      assertThat(world.head()).as("待批期间 head 不动").isEqualTo(1L);
-
-      assertThat(
-              shell
-                  .pendingApprovals()
-                  .decide(pending.id(), ApprovalDecision.APPROVE_ONCE, "test:z6"))
-          .as("GM 点头必须成功")
-          .isTrue();
-      ToolResult result = call.get(10, TimeUnit.SECONDS);
       assertThat(result.success()).as(result.message()).isTrue();
-      JsonNode view = JSON.readTree(result.message());
-      assertThat(view.get("submission").get("result").asText()).isEqualTo("committed");
-      assertThat(view.get("submission").get("ref").get("revision").asLong())
-          .as("放行后恰 +1 revision")
-          .isEqualTo(2L);
-      assertThat(world.head()).isEqualTo(2L);
-
-      // ★★ 追加裁定 12（§21.9 D-1）：编制计划的权威 = EconomyData.governments 的政府记录（gov 切片不再承载政策）。
-      GovAdministrationPlan plan =
-          GovZ6WorldFixture.economySlice(world.stateAt(2L))
-              .governmentOrDefault(CENTRAL.value())
-              .administrationPlan();
-      assertThat(plan).as("计划提交后必须有该 GOV 的显式源状态").isNotNull();
-      assertThat(plan.securityPlannedLaborMilli()).isEqualTo(12_345L);
-      assertThat(plan.paperworkPlannedLaborMilli()).isEqualTo(12_345L);
-      assertThat(plan.postTiers())
-          .extracting(GovPostTier::tierId)
-          .containsExactly("tier-1", "tier-2", "tier-3");
-      assertThat(plan.postTiers().get(0).securityWeightPerMille()).isEqualTo(1_000L);
-      assertThat(plan.postTiers().get(0).paperworkWeightPerMille()).isZero();
-      assertThat(plan.supernumerarySqrtCoefficient()).isEqualTo(1L);
-      assertThat(shell.pendingApprovals().pending()).as("决议后不再待批").isEmpty();
+      assertThat(result.message()).contains("已加入决策包");
+      assertThat(queue.size()).as("D1：敏感写 Ask 进入本轮队列").isEqualTo(1);
+      assertThat(queue.snapshot().get(0).toolName()).isEqualTo(GovSetEstablishmentTool.NAME);
+      assertThat(shell.pendingApprovals().pending()).as("H1/H3：不再投 HTTP 时代的单条待批表").isEmpty();
+      assertThat(world.head()).as("D1：未裁决 ⇒ 世界零 revision").isEqualTo(1L);
     }
   }
 
@@ -1570,7 +1544,7 @@ class GovToolsZ6Test {
 
   private static World start(Path storeDir, String label, UnaryOperator<SimulationState> mutate) {
     ShellConfig config =
-        ShellConfig.defaults(storeDir).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
+        ShellConfig.defaults(storeDir).withPorts(0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
     Shell shell = Shell.start(config);
     try {
       SimulationState state = SmallWorld.state(config.mapId());

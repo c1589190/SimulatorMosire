@@ -40,7 +40,6 @@ import java.util.Optional;
  *   "guiPort": 5711,
  *   "mcpPort": 5715,
  *   "mcpPath": "/mcp",
- *   "approvalPort": 5713,
  *   "mcpInitiator": "agent:external-mcp",
  *   "mapId": "Map1",
  *   "bindAddress": "127.0.0.1",
@@ -61,7 +60,6 @@ public record ShellConfigFile(
     Optional<Integer> guiPort,
     Optional<Integer> mcpPort,
     Optional<String> mcpPath,
-    Optional<Integer> approvalPort,
     Optional<String> mcpInitiator,
     Optional<String> mapId,
     Optional<String> bindAddress,
@@ -79,7 +77,6 @@ public record ShellConfigFile(
           "guiPort",
           "mcpPort",
           "mcpPath",
-          "approvalPort",
           "mcpInitiator",
           "mapId",
           "bindAddress",
@@ -102,7 +99,6 @@ public record ShellConfigFile(
     requireOptional(guiPort, "guiPort");
     requireOptional(mcpPort, "mcpPort");
     requireOptional(mcpPath, "mcpPath");
-    requireOptional(approvalPort, "approvalPort");
     requireOptional(mcpInitiator, "mcpInitiator");
     requireOptional(mapId, "mapId");
     requireOptional(bindAddress, "bindAddress");
@@ -149,7 +145,6 @@ public record ShellConfigFile(
   public static ShellConfigFile empty(Path source) {
     return new ShellConfigFile(
         source,
-        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -207,7 +202,6 @@ public record ShellConfigFile(
         integerField(root, "guiPort", source, 0),
         integerField(root, "mcpPort", source, 0),
         requiredText(root, "mcpPath", source),
-        integerField(root, "approvalPort", source, 0),
         requiredText(root, "mcpInitiator", source),
         requiredText(root, "mapId", source),
         requiredText(root, "bindAddress", source),

@@ -166,7 +166,7 @@ class ResetConversationEndToEndTest {
     storeDir = tempDir;
     seedGenesis();
     llm = new RecordingLlmClient();
-    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider);
+    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0), llm::provider);
     client = newClient();
   }
 
@@ -459,8 +459,7 @@ class ResetConversationEndToEndTest {
       shell = null;
     }
     llm = new RecordingLlmClient();
-    shell =
-        Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider, maxLlmCalls);
+    shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0), llm::provider, maxLlmCalls);
     client = newClient();
   }
 

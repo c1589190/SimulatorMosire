@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -72,7 +71,7 @@ import java.util.UUID;
  *
  * <p>★ <b>V2/V3 不做</b>：队列/应募/竞价原语；本工具只做显式选户。
  */
-public final class GovOpenPostsToMarketTool implements SimosTool, DecisionProposable {
+public final class GovOpenPostsToMarketTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.openPostsToMarket}）。 */
   public static final String NAME = "simos.gov.openPostsToMarket";
@@ -435,7 +434,7 @@ public final class GovOpenPostsToMarketTool implements SimosTool, DecisionPropos
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

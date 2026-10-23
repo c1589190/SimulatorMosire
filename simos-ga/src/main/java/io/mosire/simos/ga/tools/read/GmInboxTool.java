@@ -372,7 +372,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**GM 面**（决策人读自己的收件箱走 {@code simos.ga.message.inbox}）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

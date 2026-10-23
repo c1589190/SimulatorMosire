@@ -8,14 +8,14 @@ import java.util.Set;
  * ★★ <b>决策人面的测试侧「金名单」</b>（2026-10-12 B4b）—— 决策人**能被谁用**的那批工具名，逐条手写，是**独立规格**。
  *
  * <p>★ <b>为什么它住在测试里、而不是生产里</b>（设计书 §4.4 / 不变量 I-G3）：工具"能被谁用"**只**写在每条工具自己的 {@code
- * SimosTool.roles()} 里，桶与权限组白名单都从它派生。B4 曾在 {@code DecisionCallerFactory} 里留过一份静态 44 条白名单当"启动期校验过的
- * 副本"，B4b 已删 —— 那种副本仍是**第二处声明**：每加一个决策人工具就得改两个地方，忘了改的那次不会报错，只会静默漂移。
+ * SimosTool.toolRoles()} 里，桶与权限组白名单都从它派生。B4 曾在 {@code DecisionCallerFactory} 里留过一份静态 44
+ * 条白名单当"启动期校验过的 副本"，B4b 已删 —— 那种副本仍是**第二处声明**：每加一个决策人工具就得改两个地方，忘了改的那次不会报错，只会静默漂移。
  * 规格搬进测试后，漂移的代价变成"当场红"，而生产里**一份清单都没有**。
  *
  * <p>★ <b>本表钉在哪</b>：{@code
  * DecisionCallerFactoryTest.theWhitelistIsExactlyTheReadToolsPlusTheTwoDecisionWrites}
  * 拿它比对**真装配派生出来的**决策人面（{@code ToolBuckets.namesOf(shell.toolsFor(Role.DECISION_AGENT))}）——
- * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code roles()} 声明（或没挂桶）⇒ {@code
+ * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code toolRoles()} 声明（或没挂桶）⇒ {@code
  * ToolRoleAudit.requireFaces} 在装配期当场抛。
  *
  * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 54 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
@@ -38,12 +38,12 @@ public final class DecisionFaceGolden {
    * §11.3）：{@code doc_guide} / {@code workspace_info} 两条"能力自述"工具都是纯读 ⇒ {@code {GM, DM}} ⇒ 48 →
    * <b>50</b>；★★ <b>2026-10-14 决策自由化（批 B）</b>：四件套改名 sd → ga（**改名不计增**）+ 净新增 revise / drop / reopen
    * 与 adjudication.ack ⇒ <b>50 → 54</b>；★★ <b>2026-10-15 用户裁定「甲」（批 K ①）</b>：7 条漏打 DM 标签的类1 补 {@code
-   * roles={DM,GM}} ⇒ <b>54 → 61</b>。与 {@code roles()} 声明、两桶装配三处一致。
+   * roles={DM,GM}} ⇒ <b>54 → 61</b>。与 {@code toolRoles()} 声明、两桶装配三处一致。
    *
    * <p>★ <b>50 → 54 的算法（实测，不是照抄设计书）</b>：设计书 §7 只预测"DM 桶 50→51"，真跑读到的是 <b>54</b>。 逐条核过：决策族 4 → 8
    * 条（改名 3 条不计增，净 +4：propose 之外新增 revise / drop / reopen 三条 + adjudication.ack 一条），其余 46 条一字未动 ⇒
-   * 54。★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）{@code roles()}
-   * 只有 GM ⇒ 一条都不进本表。
+   * 54。★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）{@code
+   * toolRoles()} 只有 GM ⇒ 一条都不进本表。
    *
    * <p>★★ <b>54 → 61 的算法（实测，不是照抄设计书）</b>：用户 2026-10-15 裁定「甲」——{@code RaiseUnit} · {@code
    * LevyRegion} · {@code GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} ·
@@ -104,7 +104,7 @@ public final class DecisionFaceGolden {
           "simos.gov.recordDiplomaticEvent",
           "simos.gov.pay",
           // ★★ 2026-10-15 用户裁定「甲」（批 K ①）：这 7 条**原本就在本表里**（它们是决策人的核心动作，D2
-          //   决策包计划第一天就在可提议清单里），只是当年的 roles() **漏打了 DM 标签** ⇒ 本轮补 {roles={DM,GM}}。
+          //   决策包计划第一天就在可提议清单里），只是当年的 toolRoles() **漏打了 DM 标签** ⇒ 本轮补 {roles={DM,GM}}。
           //   ★ 它们**不在 GM 桶之外**：本来就在 GM 桶里（{GM}）⇒ 补标签后成"两桶共享"，GM 桶条数不变（179）。
           //   ★ gate() 一个字未改（本来就是 Ask）⇒ 自动成类2 DM_APPROVAL，与用户口径「DM/GM 混合就是要交给 GM 审核」一致。
           //   逐条：造兵（命令面**没有** unit.RaiseUnit ⇒ 移出名单 = DM 彻底不能造兵）、征税（levyRegion 同样是工具独有）、
@@ -130,13 +130,13 @@ public final class DecisionFaceGolden {
           // ★★ D2（2026-10-22 决策包计划）：决策包四件套。
           // ★★ 2026-10-14 决策自由化（批 B）：四件套**改名** sd → ga，并长成**七件套 + 推演确认**。
           //   改名（**不计增**，旧名一律不留 —— Alpha 不兼容旧档）：
-          //     simos.sd.propose        → simos.ga.packet.propose
+          //     simos.sd.propose        → simos.ga.request
           //     simos.sd.packet.intent  → simos.ga.packet.intent
           //     simos.sd.packet.my      → simos.ga.packet.my
           //     simos.sd.packet.submit  → simos.ga.packet.confirm（"确认本 tick 全部决策"，DRAFT→PENDING）
           //   净新增：revise / drop / reopen（自由改 / 删 / 撤回确认，都只在 DRAFT 上可用）
           //   另加一条推演确认：simos.ga.adjudication.ack（{DM} + gate=ALLOW）。
-          "simos.ga.packet.propose",
+          "simos.ga.request",
           "simos.ga.packet.revise",
           "simos.ga.packet.drop",
           "simos.ga.packet.intent",

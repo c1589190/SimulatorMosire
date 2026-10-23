@@ -9,7 +9,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.id.DecisionPacketId;
-import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -27,16 +27,15 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * {@code simos.gm.packet}（D2 决策包计划 §4）：GM 读单个决策包的全量（intent、逐 call 的参数/目标/预览/拟稿检查/状态）。
+ * {@code simos.gm.packet}（GM 只读领域投影，设计书 §8.3）。
  *
- * <p>★ 定位两选一：{@code packetId}，或 {@code tick + proposerId}（包 id 是 {@code pkt-<proposer>-<tick>}
- * 的确定性形态， 但本工具不替调用方拼——两种都显式收）。
- *
- * <p>★ 只在 GM 桶（{@link GmOnlyRead}），视图与 {@code simos.ga.packet.my} 共用 {@link DecisionPacketViews}。
+ * <p>数据源是 {@link DecisionRecord}：输出旧 {@code DecisionPacket} 视图字段 + 精确 {@code packageState} +
+ * verdicts + intent + 逐 call 的
+ * preview/targets/draftChecks/mergedPlanId/outcomeJson。它<b>只读</b>，不是第二套决策面； 任何裁决/执行必须走 AgentLib
+ * 五工具。
  */
 public final class GmPacketTool implements SimosTool, GmOnlyRead {
 
-  /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.gm.packet";
 
   private static final ResourceManifest GA_READ =
@@ -55,14 +54,10 @@ public final class GmPacketTool implements SimosTool, GmOnlyRead {
 
   @Override
   public String description() {
-    return "GM 读单个决策包全量（只读）：参数 {packetId} 或 {tick + proposerId}，另 {branch?(缺省 "
+    return "GM 读单个决策包（只读领域投影）：参数 {packetId} 或 {tick + proposerId}，另 {branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
-        + "), expectedRevision?(缺省 head)}。返回 {packetId, branch, tick, proposerId, status, intent, "
-        + "calls:[{callIndex, toolName, argsJson, args, targets, previewJson, preview, draftChecks, status, "
-        + "mergedPlanId?}], decidedBy?, decidedAtRevision?, decisionNote?}。"
-        + "★ **PENDING = 该决策人当前的提交**；同一 tick 内它可以提交**很多次**，GM 应**以最后一次为准**"
-        + "（读到的就是最后一次的内容）；已裁决（decidedBy 非空或终态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）"
-        + "之后不能再改。";
+        + "), expectedRevision?(缺省 head)}。返回领域投影 + packageState + verdicts + intent + 逐 call "
+        + "preview/targets/draftChecks/mergedPlanId/outcomeJson。★ 精确状态以 packageState 为准；本工具不改任何状态。";
   }
 
   @Override
@@ -88,12 +83,12 @@ public final class GmPacketTool implements SimosTool, GmOnlyRead {
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
       GaState ga = GaToolReads.ga(state);
       DecisionPacketId packetId = resolvePacketId(args);
-      DecisionPacket packet = ga.decisionPackets().get(packetId);
-      if (packet == null) {
+      DecisionRecord record = ga.decisionPackets().get(packetId);
+      if (record == null) {
         return ToolResult.error("NOT_FOUND", "决策包不存在: " + packetId.value());
       }
-      return ToolResults.ok(DecisionPacketViews.packetView(packet, state));
-    } catch (IllegalArgumentException e) {
+      return ToolResults.ok(DecisionPacketViews.packetView(record, state));
+    } catch (IllegalArgumentException | IllegalStateException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
       throw e;
@@ -119,9 +114,8 @@ public final class GmPacketTool implements SimosTool, GmOnlyRead {
     return DecisionPacketId.parse("pkt-" + DecisionMakerId.parse(proposerId).value() + "-" + tick);
   }
 
-  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

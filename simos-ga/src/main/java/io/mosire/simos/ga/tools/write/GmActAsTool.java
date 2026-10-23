@@ -106,7 +106,7 @@ import java.util.Set;
  * <h2>★ 边界与形状</h2>
  *
  * <ul>
- *   <li>{@code roles()={GM}} ⇒ <b>不进决策人桶</b>（决策人不得替别人代打；装配期 {@code ToolRoleAudit.requireFaces}
+ *   <li>{@code toolRoles()={GM}} ⇒ <b>不进决策人桶</b>（决策人不得替别人代打；装配期 {@code ToolRoleAudit.requireFaces}
  *       双向钉死"桶 ⇔ 声明"，注册进错桶当场抛）；
  *   <li>{@code gate()=Ask}（敏感写，与其余 GM 写同制）：GM 面那条链挂 {@code GmAutoApproveGate}（无脑过，2026-09-24 用户裁定）⇒
  *       实际不拦，但若将来把它挂到别的审批链上，它仍是一条要人裁决的工具；
@@ -236,7 +236,7 @@ public final class GmActAsTool implements SimosTool {
       String decisionMakerId = ToolSchema.requiredText(args, "decisionMakerId");
       String tool = ToolSchema.requiredText(args, "tool");
       // ★ args 的解析复用同包里已有的那一份（ReviseCallTool 也这么用）：缺省 = 空表，"对象参数"的解析不复制第二份。
-      Map<String, Object> innerArgs = ProposeCallTool.optionalMap(args, "args");
+      Map<String, Object> innerArgs = DecisionCallValidator.optionalMap(args, "args");
 
       // ★ 裁定 2：编排族显式具名拒（先判它——它与坐标、与决策人是否存在都无关，且省一次取状态）。
       if (ORCHESTRATION_TOOLS.contains(tool)) {
@@ -318,7 +318,7 @@ public final class GmActAsTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**GM 面**（代打是 GM 的活；决策人不得替别人代打）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

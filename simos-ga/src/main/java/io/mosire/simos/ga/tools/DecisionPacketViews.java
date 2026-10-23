@@ -2,7 +2,9 @@ package io.mosire.simos.ga.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.decision.DecisionItemVerdict;
 import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTarget;
@@ -13,11 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 决策包的工具面视图（D2 决策包计划 §3.2/§4）：{@code simos.ga.packet.my} 与 GM 的 {@code simos.gm.packet} **共用同一份
- * 字段口径**，避免两个读口慢慢漂移（AGENTS §8.3 的"共用同一份视图层"）。
+ * 决策包的只读工具面视图（设计书 §8.3 / §5.4）。
  *
- * <p>★ {@code argsJson}/{@code previewJson} 原始文本保留，同时给解析后的 {@code args}/{@code preview} Map（GM
- * 直接看参数与 预览内容）。
+ * <p>{@code simos.ga.packet.my} 与 GM 的 {@code simos.gm.packet} 共用同一份字段口径。数据源永远是 {@link
+ * DecisionRecord}：{@code DecisionPacket} 只用于展示枚举/字段映射，精确状态由 {@link DecisionRecord#packageState()}
+ * 原样输出。
  */
 public final class DecisionPacketViews {
 
@@ -25,8 +27,9 @@ public final class DecisionPacketViews {
 
   private DecisionPacketViews() {}
 
-  /** 单包全量视图（calls 含 args/preview/targets/draftChecks/status）。 */
-  public static Map<String, Object> packetView(DecisionPacket packet, SimulationState state) {
+  /** 单包全量视图（领域投影 + 精确 packageState + verdicts + 逐 call 扩展）。 */
+  public static Map<String, Object> packetView(DecisionRecord record, SimulationState state) {
+    DecisionPacket packet = record.view();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("packetId", packet.id().value());
     view.put("branch", packet.branch());
@@ -35,13 +38,20 @@ public final class DecisionPacketViews {
     view.put("status", packet.status().name());
     view.put("intent", packet.intent());
     view.put("createdAtRevision", packet.createdAtRevision());
-    packet.decidedBy().ifPresent(value -> view.put("decidedBy", value));
+    record.confirmedAtRevision().ifPresent(value -> view.put("confirmedAtRevision", value));
     if (packet.decidedAtRevision().isPresent()) {
       view.put("decidedAtRevision", packet.decidedAtRevision().getAsLong());
     }
     packet.reasonInfoId().ifPresent(value -> view.put("reasonInfoId", value));
+    packet.decidedBy().ifPresent(value -> view.put("decidedBy", value));
     packet.decisionNote().ifPresent(value -> view.put("decisionNote", value));
     view.put("worldRevision", state.meta().ref().revision().value());
+    view.put("packageState", record.packageState());
+    List<Map<String, Object>> verdicts = new ArrayList<>(record.packageState().verdicts().size());
+    for (DecisionItemVerdict verdict : record.packageState().verdicts()) {
+      verdicts.add(verdictView(verdict));
+    }
+    view.put("verdicts", verdicts);
     List<Map<String, Object>> calls = new ArrayList<>(packet.calls().size());
     for (FormattedCall call : packet.calls()) {
       calls.add(callView(call));
@@ -50,7 +60,7 @@ public final class DecisionPacketViews {
     return view;
   }
 
-  /** 单条 call 的视图。 */
+  /** 单条 call 的视图（字段全部来自只读 {@link FormattedCall} 投影）。 */
   public static Map<String, Object> callView(FormattedCall call) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("callIndex", call.callIndex());
@@ -71,6 +81,15 @@ public final class DecisionPacketViews {
     row.put("status", call.status().name());
     call.mergedPlanId().ifPresent(value -> row.put("mergedPlanId", value));
     call.outcomeJson().ifPresent(value -> row.put("outcomeJson", value));
+    return row;
+  }
+
+  private static Map<String, Object> verdictView(DecisionItemVerdict verdict) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("index", verdict.index());
+    row.put("approved", verdict.approved());
+    row.put("by", verdict.by());
+    row.put("note", verdict.note());
     return row;
   }
 

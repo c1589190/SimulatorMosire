@@ -7,8 +7,6 @@
  *   <li>{@link io.mosire.simos.ga.spi.SimosTool}：工具接口（{@code AgentTool} + 角色声明）；
  *   <li>{@link io.mosire.simos.ga.spi.ToolRole}：角色标签 {@code {GM, DM}}——"这个工具能被谁用"的**唯一拼写点**；
  *   <li>{@link io.mosire.simos.ga.spi.GmOnlyRead}：GM-only 读工具标记（自 app 迁入）；
- *   <li>{@link io.mosire.simos.ga.spi.DecisionProposable}：**可被决策人 propose 的声明**（批 K ①，自 {@code
- *       simos-ga} 迁入） ——**工具自己实现它**即可被提议，"可提议名单"不再手抄（用户 2026-10-15：「为啥额外要张表？」）；
  *   <li>{@link io.mosire.simos.ga.spi.ToolWritePort}：窄写口（替代工具直连 {@code CoreSimos}） 与 {@link
  *       io.mosire.simos.ga.spi.ToolResources} / {@link io.mosire.simos.ga.spi.ToolSchema} 两个纯函数助手（自
  *       app 的 {@code ToolSupport} 拆出）。

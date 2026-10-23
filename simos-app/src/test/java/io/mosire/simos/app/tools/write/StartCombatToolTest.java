@@ -266,7 +266,7 @@ class StartCombatToolTest {
   @Test
   void startCombatIsRegisteredInTheGmBucketOnly() {
     try (Shell shell =
-        Shell.start(ShellConfig.defaults(tempDir.resolve("surface")).withPorts(0, 0, 0))) {
+        Shell.start(ShellConfig.defaults(tempDir.resolve("surface")).withPorts(0, 0))) {
       List<String> gm =
           shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList();
       List<String> decision =

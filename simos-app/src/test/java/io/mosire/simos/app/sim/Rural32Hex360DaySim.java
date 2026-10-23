@@ -210,7 +210,7 @@ public final class Rural32Hex360DaySim {
   }
 
   private static Shell startShell(Path storeDir) {
-    ShellConfig defaults = ShellConfig.defaults(storeDir).withPorts(0, 0, 0);
+    ShellConfig defaults = ShellConfig.defaults(storeDir).withPorts(0, 0);
     ShellConfig config =
         new ShellConfig(
             storeDir,
@@ -220,7 +220,6 @@ public final class Rural32Hex360DaySim {
             defaults.guiPort(),
             defaults.mcpPort(),
             defaults.mcpPath(),
-            defaults.approvalPort(),
             defaults.mcpInitiator(),
             MAP_ID,
             defaults.bindAddress(),

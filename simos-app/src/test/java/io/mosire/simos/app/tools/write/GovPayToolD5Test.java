@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
-import io.mosire.agentlib.approval.AskKind;
+import io.mosire.agentlib.decision.DecisionTurnScope;
+import io.mosire.agentlib.decision.PendingDecisionQueue;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
@@ -57,6 +57,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.decision.SimosDecisionClock;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.gov.GovSnapshot;
@@ -109,7 +110,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -237,48 +237,32 @@ class GovPayToolD5Test {
   // ── 审批链：DM 调用 ⇒ 待批 ⇒ GM 点头 ⇒ 提交 ────────────────────────────────────────────
 
   @Test
-  void decisionMakerCallAsksAndOnlyCommitsAfterGmApproval() throws Exception {
-    World world = startWorld("approval");
+  void decisionMakerCallIsQueuedWithoutExecutingOrUsingTheRetiredApprovalSurface() {
+    World world = startWorld("queue");
     AgentTool tool = world.tool;
-
     ToolContext dm = context(tool, "dm-gov", args(GOV_B, 100L, 0L, 0L, 1L));
     ToolRegistry dmTools = new ToolRegistry();
     dmTools.register(tool);
-    FutureTask<ToolResult> call =
-        new FutureTask<>(() -> world.shell.toolAuthorizer().execute(dmTools, tool.name(), dm));
-    Thread.ofVirtual().name("t2b-govpay-dm").start(call);
+    PendingDecisionQueue queue =
+        new PendingDecisionQueue(
+            "dm-gov", AccessToken.DEFAULT, SimosDecisionClock.QUEUE_DEADLINE_MILLIS);
+    DecisionTurnScope.bind(queue);
+    ToolResult result;
+    try {
+      result = world.shell.toolAuthorizer().execute(dmTools, tool.name(), dm);
+    } finally {
+      DecisionTurnScope.clear(queue);
+    }
 
-    ApprovalRequest pending = awaitPending(world);
-    assertThat(call.isDone()).as("审批未决之前调用必须阻塞（不是'未审即执行'）").isFalse();
-    assertThat(pending.tool()).as("待批项就是支付工具").isEqualTo(GovPayTool.NAME);
-    assertThat(pending.classKey()).isEqualTo(GovPayTool.NAME);
-    assertThat(pending.kind()).as("敏感闸的 Ask 语义（不是无脑过）").isEqualTo(AskKind.SENSITIVE);
-    assertThat(pending.summary()).contains(GOV_B).contains("grain=100");
-    assertThat(world.head()).as("待批期间 head 不动").isEqualTo(1L);
-
-    assertThat(
-            world
-                .shell
-                .pendingApprovals()
-                .decide(pending.id(), ApprovalDecision.APPROVE_ONCE, "test:t2b"))
-        .isTrue();
-    ToolResult result = call.get(10, TimeUnit.SECONDS);
     assertThat(result.success()).as(result.message()).isTrue();
-    JsonNode submission = JSON.readTree(result.message()).get("submission");
-    assertThat(submission.get("result").asText()).isEqualTo("committed");
-    assertThat(world.head()).as("放行后才推 revision").isEqualTo(2L);
-
-    ActorData actors = world.actor(world.stateAt(2L));
-    HouseholdInventory from =
-        actors.accounts().get(new HouseholdAccountKey(GovernmentHouseholds.of(GOV_A)));
-    HouseholdInventory to =
-        actors.accounts().get(new HouseholdAccountKey(GovernmentHouseholds.of(GOV_B)));
-    assertThat(from.balances().getOrDefault(GRAIN, 0L)).as("付款国库 grain 1000 − 100").isEqualTo(900L);
-    assertThat(to.balances().getOrDefault(GRAIN, 0L)).as("收款国库 grain 0 + 100").isEqualTo(100L);
-    assertThat(world.shell.pendingApprovals().pending()).as("决议后不再待批").isEmpty();
+    assertThat(result.message()).as("D1：DM 的 Ask 只入本轮决策包").contains("已加入决策包");
+    assertThat(queue.size()).as("D1：队列恰好收到这一条").isEqualTo(1);
+    assertThat(queue.snapshot().get(0).toolName()).isEqualTo(GovPayTool.NAME);
+    assertThat(world.shell.pendingApprovals().pending())
+        .as("H1/H3：HTTP 退役后，绑定队列的 Ask 不再投旧待批表")
+        .isEmpty();
+    assertThat(world.head()).as("D1：未裁决 ⇒ 支付未执行、零 revision").isEqualTo(1L);
   }
-
-  // ── 工具 / 世界夹具 ─────────────────────────────────────────────────────────────────
 
   private record World(Shell shell, GovPayTool tool, Path storeDir) {
     long head() {
@@ -297,7 +281,7 @@ class GovPayToolD5Test {
   private World startWorld(String label) {
     Path storeDir = tempDir.resolve(label + "-" + worldSeq++);
     seedGenesis(storeDir);
-    ShellConfig base = ShellConfig.defaults(storeDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(storeDir).withPorts(0, 0);
     Shell shell =
         Shell.start(
             new ShellConfig(
@@ -306,7 +290,6 @@ class GovPayToolD5Test {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -347,6 +330,7 @@ class GovPayToolD5Test {
         AgentPermissionSet.builder(AccessToken.DEFAULT)
             .allow(tool.name())
             .sensitiveAllowed(true)
+            .roles(io.mosire.agentlib.permission.RoleSet.of("DM", "GM"))
             .resourceScopes(
                 ResourceScopeMap.of(ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited()))
             .build();

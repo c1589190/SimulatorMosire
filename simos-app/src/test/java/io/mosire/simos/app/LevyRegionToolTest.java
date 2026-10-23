@@ -186,7 +186,7 @@ class LevyRegionToolTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -195,7 +195,6 @@ class LevyRegionToolTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -698,9 +697,10 @@ class LevyRegionToolTest {
    * (roles, gate)} 纯派生 <b>自动落类2 {@code DM_APPROVAL}</b>（用户口径：「DM/GM 混合就是要交给 GM 审核」）。
    *
    * <p>★ <b>本条钉住的四件事</b>（"只在 GM 桶"那条旧判据的新形态，判别力不降）：GM 桶里<b>仍然有</b>它（补标签没搬家）· 决策人桶里
-   * <b>现在有</b>它（旧断言的反面）· {@code roles()} <b>恰好</b> {@code {DM, GM}} · 真装配分区判它类2 且<b>不在</b>类1/类3。
+   * <b>现在有</b>它（旧断言的反面）· {@code toolRoles()} <b>恰好</b> {@code {DM, GM}} · 真装配分区判它类2
+   * 且<b>不在</b>类1/类3。
    *
-   * <p>★ <b>第 4 件为什么不能省</b>：{@code roles()} 含 DM 只说明"DM 够得着"；类2（要 GM 点头）还是类3（DM 随便用）完全由 {@code
+   * <p>★ <b>第 4 件为什么不能省</b>：{@code toolRoles()} 含 DM 只说明"DM 够得着"；类2（要 GM 点头）还是类3（DM 随便用）完全由 {@code
    * gate()} 决定 —— 只看标签会把"要审核"误读成"随便用"。★ {@code levyRegion} 还有一层世界效果（抽走家户粮 / 征银）⇒ 它更不该被误判成免审批。
    */
   @Test
@@ -719,8 +719,8 @@ class LevyRegionToolTest {
             .filter(tool -> LevyRegionTool.NAME.equals(tool.name()))
             .findFirst()
             .orElseThrow();
-    assertThat(((SimosTool) onDecisionFace).roles())
-        .as("★★ 它的 roles() 恰好是 {DM, GM}（漏打的那一半补上了；多一个少一个都不行）")
+    assertThat(((SimosTool) onDecisionFace).toolRoles())
+        .as("★★ 它的 toolRoles() 恰好是 {DM, GM}（漏打的那一半补上了；多一个少一个都不行）")
         .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
     assertThat(onDecisionFace.gate(PROBE))
         .as("★★ 它的 gate() 实得档必须是 Ask（= 类2「交给 GM 审核」）—— 若成 ALLOW 就是「DM 随便用」，与裁定「甲」的口径不符")

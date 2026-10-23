@@ -9,7 +9,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.model.DecisionPacket;
-import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -58,7 +58,7 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
     return "GM 查看决策包摘要列表（只读）：参数 {tick?, status?, proposerId?, tool?, branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。返回 {branch, revision, count, packets:[{id, tick, proposerId, "
-        + "status, callCount, toolNames}]}。"
+        + "status, packageState, callCount, toolNames}]}。"
         + "★ **PENDING = 该决策人当前的提交**；同一 tick 内它可以提交**很多次**，GM 应**以最后一次为准**"
         + "（读到的就是最后一次的内容）；已裁决（decidedBy 非空或终态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）"
         + "之后不能再改。";
@@ -95,20 +95,20 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
       String proposerId = ToolSchema.optionalText(args, "proposerId", null);
       String tool = ToolSchema.optionalText(args, "tool", null);
       List<Map<String, Object>> packets = new ArrayList<>();
-      for (DecisionPacket packet : ga.decisionPackets().values()) {
-        if (tick != null && packet.tick() != tick) {
+      for (DecisionRecord record : ga.decisionPackets().values()) {
+        if (tick != null && record.tick() != tick) {
           continue;
         }
-        if (status != null && !status.equals(packet.status().name())) {
+        if (status != null && !status.equals(record.view().status().name())) {
           continue;
         }
-        if (proposerId != null && !proposerId.equals(packet.proposerId().value())) {
+        if (proposerId != null && !proposerId.equals(record.proposerId().value())) {
           continue;
         }
-        if (tool != null && !containsTool(packet, tool)) {
+        if (tool != null && !containsTool(record, tool)) {
           continue;
         }
-        packets.add(summary(packet));
+        packets.add(summary(record));
       }
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("branch", state.meta().ref().branch().value());
@@ -126,33 +126,29 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
     }
   }
 
-  private static boolean containsTool(DecisionPacket packet, String tool) {
-    for (FormattedCall call : packet.calls()) {
-      if (tool.equals(call.toolName())) {
-        return true;
-      }
-    }
-    return false;
+  private static boolean containsTool(DecisionRecord record, String tool) {
+    return record.packageState().pkg().items().stream()
+        .anyMatch(item -> tool.equals(item.toolName()));
   }
 
-  private static Map<String, Object> summary(DecisionPacket packet) {
+  private static Map<String, Object> summary(DecisionRecord record) {
+    DecisionPacket view = record.view();
     Map<String, Object> row = new LinkedHashMap<>();
-    row.put("id", packet.id().value());
-    row.put("tick", packet.tick());
-    row.put("proposerId", packet.proposerId().value());
-    row.put("status", packet.status().name());
-    row.put("callCount", packet.calls().size());
-    List<String> toolNames = new ArrayList<>(packet.calls().size());
-    for (FormattedCall call : packet.calls()) {
-      toolNames.add(call.toolName());
-    }
+    row.put("id", view.id().value());
+    row.put("tick", view.tick());
+    row.put("proposerId", view.proposerId().value());
+    row.put("status", view.status().name());
+    row.put("packageState", record.packageState().pkg().state().name());
+    row.put("callCount", record.packageState().pkg().items().size());
+    List<String> toolNames =
+        record.packageState().pkg().items().stream().map(item -> item.toolName()).toList();
     row.put("toolNames", toolNames);
     return row;
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 }

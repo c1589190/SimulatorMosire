@@ -224,7 +224,7 @@ class McpCoverageTest {
           "production.ClearRegionDefinitions",
           "ga.CancelEffect",
           "ga.CreateDecisionMaker",
-          "ga.DecideDecisionPacket",
+          "ga.ApplyDecisionPackage",
           "ga.DeleteDecisionMaker",
           "ga.IssueDirective",
           "ga.PutInfo",
@@ -237,9 +237,7 @@ class McpCoverageTest {
           "ga.SetDecisionMakerProvider",
           "ga.SetDirectiveStatus",
           "ga.StartDecision",
-          "ga.SubmitDecisionPacket",
           "ga.SubmitVerdict",
-          "ga.UpsertDecisionPacket",
           "ga.UpsertMergedEffectPlan",
           "gov.AssignDecisionMakerGov",
           "gov.AssignDecisionMakerNation",
@@ -390,10 +388,8 @@ class McpCoverageTest {
           "map.ReassignHexes",
           "map.SeedArableOwnership",
           "map.SplitRegion",
-          "ga.DecideDecisionPacket",
+          "ga.ApplyDecisionPackage",
           "gov.DeleteNation",
-          "ga.SubmitDecisionPacket",
-          "ga.UpsertDecisionPacket",
           "ga.UpsertMergedEffectPlan",
           "social.DeleteCity",
           "social.MoveCity",
@@ -565,16 +561,8 @@ class McpCoverageTest {
           Map.entry(
               "map.SplitRegion",
               "{\"sourceRegionId\": \"r-missing\", \"keepSource\": false, \"parts\": [{\"regionId\": \"r-p1\", \"name\": \"p1\", \"hexes\": [{\"q\": 0, \"r\": 0}]}]}"),
-          Map.entry(
-              "ga.DecideDecisionPacket",
-              "{\"id\": \"pkt-missing\", \"decision\": \"APPROVE\", \"decidedBy\": \"external-mcp\"}"),
+          Map.entry("ga.ApplyDecisionPackage", "{}"),
           Map.entry("gov.DeleteNation", "{\"nationId\": \"n-missing\"}"),
-          Map.entry(
-              "ga.SubmitDecisionPacket",
-              "{\"id\": \"pkt-missing\", \"proposerId\": \"dm-missing\"}"),
-          Map.entry(
-              "ga.UpsertDecisionPacket",
-              "{\"id\": \"\", \"branch\": \"main\", \"tick\": 7, \"proposerId\": \"dm-missing\"}"),
           Map.entry(
               "ga.UpsertMergedEffectPlan",
               "{\"id\": \"\", \"tick\": 7, \"participantIds\": [], \"orderedEffects\": [], \"sources\": []}"),
@@ -1130,7 +1118,7 @@ class McpCoverageTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -1139,7 +1127,6 @@ class McpCoverageTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));

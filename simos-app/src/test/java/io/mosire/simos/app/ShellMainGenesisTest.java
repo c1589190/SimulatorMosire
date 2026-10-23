@@ -36,7 +36,7 @@ class ShellMainGenesisTest {
 
   @Test
   void emptyStoreIsInitializedInPlaceWithoutAnyWorldFlag() {
-    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0);
 
     try (Shell shell = Shell.start(config)) {
       assertThat(shell.coreSimos().branches()).as("开局是空库").isEmpty();
@@ -56,7 +56,7 @@ class ShellMainGenesisTest {
 
   @Test
   void nonEmptyStoreIsNeverReinitializedAndKeepsItsData() {
-    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig config = ShellConfig.defaults(tempDir).withPorts(0, 0);
 
     long headAfterFirst;
     int revisionRowsAfterFirst;

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * 而**两种错位都不报错**。故用例的两条分别是"只有白名单里的工具会被交出去"与"白名单漏一条要响亮失败"。
  *
  * <p>★ 2026-10-12 B4b：期望值改为**本用例自己的局部夹具白名单**（{@link #FIXTURE_FACE}）——生产里那份静态 44 条白名单已删 （"能被谁用"只写在
- * {@code SimosTool.roles()} 里，白名单是决策人桶的纯派生量）。本类只喂**替身工具**，故这里只需几个真名字。
+ * {@code SimosTool.toolRoles()} 里，白名单是决策人桶的纯派生量）。本类只喂**替身工具**，故这里只需几个真名字。
  */
 class DecisionToolDefsTest {
 

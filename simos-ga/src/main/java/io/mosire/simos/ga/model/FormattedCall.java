@@ -17,6 +17,10 @@ import java.util.Optional;
  * 与效果命令同批回写，批提交才落。旧档缺键 ⇒ empty。
  *
  * <p>★ 保序不可变：{@code targets}/{@code draftChecks} 冻在赋值处。
+ *
+ * <p>★ 本类型是 {@link DecisionPacket} 只读视图的一部分：不再提供 {@code
+ * withStatus/withMergedPlanId/withOutcomeJson} 等写方法，所有状态只经 {@link DecisionRecord#packageState()}
+ * 投影。
  */
 public record FormattedCall(
     int callIndex,
@@ -95,53 +99,5 @@ public record FormattedCall(
     if (status == CallStatus.MERGED && mergedPlanId.isEmpty()) {
       throw new IllegalArgumentException("MERGED 的 FormattedCall 必须带 mergedPlanId");
     }
-  }
-
-  /** 仅换裁决状态的那一版（D2 的 APPROVE/DENY 用；不碰其余字段）。 */
-  public FormattedCall withStatus(CallStatus newStatus) {
-    if (newStatus == null) {
-      throw new IllegalArgumentException("newStatus 不得为 null");
-    }
-    return new FormattedCall(
-        callIndex,
-        toolName,
-        argsJson,
-        targets,
-        previewJson,
-        draftChecks,
-        newStatus,
-        mergedPlanId,
-        outcomeJson);
-  }
-
-  /** 仅换合并计划引用的那一版（D3 用）。 */
-  public FormattedCall withMergedPlanId(Optional<String> newMergedPlanId) {
-    if (newMergedPlanId == null) {
-      throw new IllegalArgumentException("newMergedPlanId 不得为 null");
-    }
-    return new FormattedCall(
-        callIndex,
-        toolName,
-        argsJson,
-        targets,
-        previewJson,
-        draftChecks,
-        status,
-        newMergedPlanId,
-        outcomeJson);
-  }
-
-  /** 仅换执行/批结果摘要的那一版（D3 执行器回写；{@code null} ⇒ empty）。 */
-  public FormattedCall withOutcomeJson(Optional<String> newOutcomeJson) {
-    return new FormattedCall(
-        callIndex,
-        toolName,
-        argsJson,
-        targets,
-        previewJson,
-        draftChecks,
-        status,
-        mergedPlanId,
-        newOutcomeJson == null ? Optional.empty() : newOutcomeJson);
   }
 }

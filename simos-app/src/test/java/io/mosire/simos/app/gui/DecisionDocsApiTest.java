@@ -52,7 +52,7 @@ class DecisionDocsApiTest {
 
   @BeforeEach
   void startShell() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     // ★ 空库不播种：与 CLI 路径同源地种一次 genesis（{@code ShellMain.seedGenesisIfEmpty} 用的是同一个
     //   {@code RichWorld}）。本用例只需要国家/决策人/文档，都经真命令建。
     shell.coreSimos().bootstrapGenesis(RichWorld.state(shell.config().mapId()));

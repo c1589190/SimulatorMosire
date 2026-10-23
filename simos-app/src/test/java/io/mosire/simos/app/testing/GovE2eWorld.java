@@ -155,7 +155,6 @@ public final class GovE2eWorld implements AutoCloseable {
                 0,
                 0,
                 "/mcp",
-                0,
                 INITIATOR,
                 CompactThreeNationsWorld.MAP_ID,
                 "127.0.0.1",

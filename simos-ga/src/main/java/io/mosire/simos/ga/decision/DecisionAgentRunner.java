@@ -1,19 +1,40 @@
 package io.mosire.simos.ga.decision;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.agent.AgentConfig;
+import io.mosire.agentlib.context.ContextComposer;
+import io.mosire.agentlib.context.ContextWindow;
+import io.mosire.agentlib.decision.DecisionPackages;
+import io.mosire.agentlib.decision.DecisionTurnScope;
+import io.mosire.agentlib.decision.PackageState;
+import io.mosire.agentlib.decision.PendingDecisionQueue;
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmClient;
+import io.mosire.agentlib.llm.LlmException;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
 import io.mosire.agentlib.llm.ToolDef;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.runtime.AgentLoop;
+import io.mosire.agentlib.runtime.LoopState;
+import io.mosire.agentlib.runtime.StopPolicy;
+import io.mosire.agentlib.runtime.StopReason;
+import io.mosire.agentlib.runtime.StopSignal;
+import io.mosire.agentlib.runtime.TurnListener;
+import io.mosire.agentlib.runtime.TurnResult;
 import io.mosire.agentlib.store.ConversationStore;
+import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.ga.llm.LlmToolNames;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
 import io.mosire.simos.ga.spi.GaSnapshots;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -27,6 +48,7 @@ import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,10 +64,14 @@ import java.util.Set;
  * JSON（{@code DecisionAdjudicator.adjudicate}），**既无工具调用、也无跨 tick 上下文**。用户 2026-09-22
  * 原话「要决策人自己调工具、带上下文」指的就是这里。
  *
- * <p>★ **为什么不改 AgentLib**（spec §2.3）：AgentLib 提供全部原料（{@code LlmClient} / {@code ToolDef} / {@code
- * ConversationStore} / {@code ToolCallAuthorizer}），**只有循环本身没有**——而隔壁 Brain 的 {@code AgentPipeline}
- * 依赖的是 Brain 自己的类（{@code AgentConfig}/{@code ContextAssembler}/{@code Compactor}…）， 搬不动；AgentLib
- * 的定位本就是设施库、运行流属应用层。故这里自建一个**精简**循环（不做子 agent、技能、压缩档位、bash 工具）。
+ * <p>★★ **2026-10-17：自建循环已退役，改为复用 AgentLib 0.2.1 的标准结构**（分支 {@code agentlib/dock-0.2.1}，用户原话
+ * 「agentlib更新了许多可以复用的标准化Agent结构，你应该把目前ga模块的相关Agent实现，秉持着lib里能复用就复用的原则来进行重写和对接」）： 循环结构 = 库侧 {@link
+ * AgentLoop}（九步顺序是它的契约）、窗口 = {@link ContextWindow}、请求 = {@link ContextComposer}、 往返与写回 = 库侧 {@code
+ * LlmRoundTrip}（由骨架调用）、Agent 描述符 = {@link AgentConfig}。本类只保留**宿主策略**：{@link StopPolicy}
+ * （何时停）、{@link TurnListener}（记账/事件/落盘/进度）、{@link
+ * io.mosire.agentlib.runtime.ToolCallDispatcher}（工具执行：权限链/冻结改写/线名翻译）。 ★ 旧注释里"AgentLib
+ * 只有原料、没有循环"的说法自 0.2.1 起**不再成立**（Brain 的 {@code AgentPipeline} 是第一个宿主，本类是第二个）。 行为逐字不变的判据见 {@code
+ * docs/superpowers/specs/2026-10-17-agentlib-021-ga-agent-rewrite-design.md} §4（I1–I9）。
  *
  * <p>★★ **权限在这一层强制，且只能在这一层**：每次工具调用都经 {@link DecisionToolCaller#execute} → AgentLib {@code
  * ToolCallAuthorizer}（判定链五段全走），上下文由调用方的 {@code callerFor} **每次现算**（世界变了范围就变）。 直接 {@code
@@ -166,9 +192,8 @@ public final class DecisionAgentRunner {
   /**
    * ★★ <b>写进开场消息与每轮提醒的"工具调用次数"预算口径</b>（2026-10-14 本批新增）：<b>{@value #TOOL_CALL_BUDGET} 次 工具调用</b>。
    *
-   * <p>★★ <b>这个数管的是"工具调用次数"，不是"决策条数"</b>（用户 2026-10-14 原话：「决策人一轮运行产生多个工具决策是很正常的」）： 一次 {@code
-   * propose{calls:[…]}} 可以带多条决策，占用的仍然只是**一次**工具调用。旧口径写的是"本回合最多做 4–6 次工具调用"， 读起来却像"最多 4–6 条决策"，把
-   * {@code propose} 逼成一条一条提——那正是缺口 G9 的现场。
+   * <p>★★ <b>这个数管的是"工具调用次数"，不是"决策条数"</b>（用户 2026-10-14 原话：「决策人一轮运行产生多个工具决策是很正常的」）： 每一次 Ask
+   * 自动成为包内一条，调用次数与决策条数在迁移后是同一量纲；预算只限制模型反复试工具，不限制 GM 可裁决的条目内容。
    *
    * <p>★ <b>它是提示词里的口头预算，不是硬闸门</b>：真正的硬闸门是 {@link #DEFAULT_MAX_LLM_CALLS}（撞上 ⇒ {@link
    * TurnBudgetExceeded}）。这里取值只为"给模型一个收口的数"，比 4–6 宽（一轮写几条决策 + 改几条 + 读几次包， 24 次足够），又远小于那个兜底值。★
@@ -265,6 +290,15 @@ public final class DecisionAgentRunner {
 
   /** **送给模型的那一份工具面**（名字是线格式；描述与 schema 逐字来自真工具）。 */
   private final List<ToolDef> toolDefs;
+
+  /**
+   * **同一份工具面的可执行视图**（{@link AgentTool} 实例，按 {@link #toolDefs} 的名字/顺序取）。
+   *
+   * <p>★ 为什么要有两份：线格式（{@link ToolDef}）是**发给模型**的形状，而库侧 {@link AgentLoop} 的 {@code runTurn} 要的是
+   * {@code List<AgentTool>}（它只把这个 List 原样交给宿主 composer，骨架自己不解释）。两份**同源、同序**：都在构造期从注册表 + 白名单一次建成，
+   * 不存在"发给模型的"与"能执行的"各一份真相（那正是 spec §2.3 要点 1 要防的）。
+   */
+  private final List<AgentTool> toolFace;
 
   /** 线名 ↔ 真实名（装配期建好：碰撞或转义不合文法就**在这里**炸，而不是发一份坏请求出去换一个 400）。 */
   private final LlmToolNames wireNames;
@@ -586,13 +620,23 @@ public final class DecisionAgentRunner {
     }
     this.frozenToolKinds = kinds;
     this.toolDefs = wireNames.wireDefs(exposed);
+    // ★ 可执行视图与线格式**同源同序**（见 toolFace 的类注）：按 exposed 的名字回注册表取真工具。
+    //   取不到 = 装配故障（face 本来就从同一注册表派生），当场响亮失败，不带病发请求。
+    List<AgentTool> faceTools = new ArrayList<>(exposed.size());
+    for (ToolDef def : exposed) {
+      faceTools.add(
+          registry
+              .find(def.name())
+              .orElseThrow(() -> new IllegalStateException("工具面装配故障：注册表中找不到 " + def.name())));
+    }
+    this.toolFace = List.copyOf(faceTools);
   }
 
   /**
    * 冻结回合分类（只认 schema 里的坐标字段，不靠命名约定）：
    *
    * <ul>
-   *   <li>决策包**七件套**（{@code packetTools()}：propose / revise / drop / intent / confirm / reopen /
+   *   <li>决策包**七件套**（{@code packetTools()}：request / revise / drop / intent / confirm / reopen /
    *       my） ⇒ {@link FrozenToolKind#PACKET_WRITE}；
    *   <li>schema 有 {@code revision} ⇒ {@link FrozenToolKind#WORLD_READ}（runner 会强制覆盖成冻结坐标）；
    *   <li>schema 有 {@code expectedRevision} 且**不在七件套里** ⇒ {@code null}（旧世界写/自指写，冻结回合直接移除） ——★
@@ -652,8 +696,8 @@ public final class DecisionAgentRunner {
    *
    * <ul>
    *   <li>世界读工具：runner 强制把 {@code branch/revision} 覆盖成冻结坐标，模型自己填什么都不生效；
-   *   <li>决策包读/写工具（{@code simos.ga.packet.propose} / {@code .revise} / {@code .drop} / {@code
-   *       .intent} / {@code .confirm} / {@code .reopen} / {@code .my}）：强制到冻结 branch，且剥掉 {@code
+   *   <li>决策包读/写工具（{@code simos.ga.request} / {@code .revise} / {@code .drop} / {@code .intent} /
+   *       {@code .confirm} / {@code .reopen} / {@code .my}）：强制到冻结 branch，且剥掉 {@code
    *       expectedRevision}（让工具自己取当下 head）—— 于是每个决策人只写自己的 packet 前缀，不碰世界， 也不会被前一个决策人的 packet 写版本顶掉；
    *   <li>{@code packetWriteLock}：并发跑轮时所有 packet 写共用同一把锁，把"读快照并发、写包串行"钉死。
    * </ul>
@@ -821,7 +865,7 @@ public final class DecisionAgentRunner {
     String catalog = LlmToolNames.wireNameOf(toolNames.catalog());
     String branches = LlmToolNames.wireNameOf(toolNames.branches());
     String intentTool = LlmToolNames.wireNameOf(toolNames.packetIntent());
-    String proposeTool = LlmToolNames.wireNameOf(toolNames.propose());
+    String requestTool = LlmToolNames.wireNameOf(toolNames.request());
     String reviseTool = LlmToolNames.wireNameOf(toolNames.revise());
     String dropTool = LlmToolNames.wireNameOf(toolNames.drop());
     String confirmTool = LlmToolNames.wireNameOf(toolNames.confirm());
@@ -833,7 +877,7 @@ public final class DecisionAgentRunner {
     boolean canCatalog = toolReach.reachable(dm, toolNames.catalog());
     boolean canBranches = toolReach.reachable(dm, toolNames.branches());
     boolean canIntent = toolReach.reachable(dm, toolNames.packetIntent());
-    boolean canPropose = toolReach.reachable(dm, toolNames.propose());
+    boolean canRequest = toolReach.reachable(dm, toolNames.request());
     boolean canRevise = toolReach.reachable(dm, toolNames.revise());
     boolean canDrop = toolReach.reachable(dm, toolNames.drop());
     boolean canConfirm = toolReach.reachable(dm, toolNames.confirm());
@@ -848,7 +892,7 @@ public final class DecisionAgentRunner {
         canCatalog
             && canBranches
             && canIntent
-            && canPropose
+            && canRequest
             && canRevise
             && canDrop
             && canConfirm
@@ -893,44 +937,40 @@ public final class DecisionAgentRunner {
       text.append("★ 本消息里点到名的工具，凡不在你**这次收到的工具清单**里的，就是你看不到的能力——不要换别的工具、别的名字去够它（见上面的止损）。\n");
     }
     text.append("\n")
-        .append("【决策的两种表达】\n")
-        .append("1) 自然语言决策：用 ")
+        .append("【决策如何进入包】\n")
+        .append("1) **每一个需要 GM 判决的工具调用（Ask）都会自动进入本 tick 的同一个决策包**：")
+        .append("你不会在本回合拿到执行结果，也不会被阻塞等待审批；调用后继续安排别的决策即可。\n")
+        .append("2) 纯自然语言请求用 ")
+        .append(requestTool)
+        .append(" 提交 text；它同样进入本 tick 的包，不产生世界写。\n")
+        .append("3) 自然语言意图可用 ")
         .append(intentTool)
-        .append(" 写 text（**整段覆盖**，可反复改）；或者在你结束本回合时，用最后一段自然语言陈述表达。\n")
-        .append("2) 结构命令：用 ")
-        .append(proposeTool)
-        .append(" 提议真实工具调用。★ **一轮可以提多条决策**：一次 ")
-        .append(proposeTool)
-        .append(" 的 calls 数组里放多条 [{tool, args, intent}, …]（单条形态仍可直接给 tool/args）。\n")
-        .append("★ 决策条数**不设限**（一次可带多条）；能改、能删：用 ")
+        .append(" 写 text（**整段覆盖**）；或者在你结束本回合时，用最后一段自然语言陈述表达。\n")
+        .append("★ 结构命令可在入包后用 ")
         .append(reviseTool)
-        .append(" 改包里第 callIndex 条（tool/args 缺省 = 沿用原值），用 ")
+        .append(" 改第 callIndex 条（tool/args 缺省 = 沿用原值），用 ")
         .append(dropTool)
-        .append(" 删掉第 callIndex 条（其余序号自动重排）。\n")
-        .append("★ 定稿：用 ")
+        .append(" 删掉第 callIndex 条（index 留洞）。\n")
+        .append("★ ")
         .append(confirmTool)
-        .append(" 把本 tick 的全部决策（所有 call + 自然语言）一次性确认交给 GM。")
-        .append("确认之后要再改，先用 ")
+        .append(" 只写领域确认标记（不改 PackageState）；GM 可以在未 confirm 时裁决。")
+        .append("要撤回确认用 ")
         .append(reopenTool)
-        .append(" 撤回（回到拟稿）；**GM 一旦裁决就改不了了**。用 ")
+        .append("；**GM 一旦裁决，内容就冻结、改不了**。用 ")
         .append(myPacketTool)
         .append(" 查看自己的包（改/删要的 callIndex 与状态都在里面）。\n")
         .append("\n")
-        .append(
-            "【本轮可 propose 的工具】simos.unit.raiseUnit / simos.gov.recruit / simos.gov.retireStaff / ")
-        .append(
-            "simos.social.household.members / simos.unit.levyRegion / simos.gov.selectExaminees / ")
-        .append("simos.gov.dispatchTeam（以你实际 allowedTools 为准；清单外不要在 propose 里试，试一次拒一次）。\n")
+        .append("【哪些调用会入包】以你实际 allowedTools 与权限链为准：需要 GM 确认的调用直接调用即可，")
+        .append("系统会自动收进本 tick 的包；清单外的调用试一次拒一次。\n")
         .append("【工具预算与写法】本回合最多做 ")
         .append(TOOL_CALL_BUDGET)
-        .append(" 次工具调用——★ 这个数管的是**工具调用次数**，不是决策条数（一次 ")
-        .append(proposeTool)
-        .append(" 可带多条决策）：");
+        .append(" 次工具调用——★ 这个数管的是**工具调用次数**，不是决策条数：")
+        .append("每一个 Ask 都会成为包里的一条条目：");
     if (canCatalog) {
       // ★ 够不着就不点它的名（点名 = 叫它去用；见本方法的类注）。
-      text.append("先看一次 ").append(catalog).append(" 选可 propose 的工具，");
+      text.append("先看一次 ").append(catalog).append(" 选可调用的工具，");
     }
-    text.append("写 intent + propose + confirm 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
+    text.append("写完自然语言与需要的结构调用后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
         .append("缺字段就省略。\n")
         .append("\n")
         .append("【GM 会和你来回问答（重要）】你的 ")
@@ -942,15 +982,13 @@ public final class DecisionAgentRunner {
         .append("等 GM 答完再跑你一轮。\n")
         .append("\n")
         .append("【系统如何结算你的回合（重要）】\n")
+        .append("- 本回合命中的每个 Ask 都已进入本 tick 的同一个决策包；回合末系统把包追加进世界状态（一条 revision）。\n")
         .append("- ")
         .append(confirmTool)
-        .append(" 是**你自己**的动作：调用它 ⇒ 本 tick 的决策立刻定稿（PENDING）交给 GM；系统不再替你自动提交。\n")
-        .append("- 如果你没调用 ")
-        .append(confirmTool)
-        .append("、又没有未答提问，就停止说话：本回合写进包里的所有自然语言与结构命令，加上你整轮最后一段自然语言，")
-        .append("会被自动一起交给 GM（**不静默丢决策**）；但如果你已经显式写过 intent（")
+        .append(" 只记录领域确认标记，**不改变** AgentLib PackageState；GM 可随时按包 id 读/裁决/提交。\n")
+        .append("- 如果你显式写过 intent（")
         .append(intentTool)
-        .append("），就不会再往它后面附加你的收尾文本。\n")
+        .append("），系统不会再往它后面附加你的收尾文本；没有显式 intent 时最后一段非空文本会兜底入包。\n")
         .append("- GM 收到包后决定批准/拒绝/合并执行；你不需要自己执行世界效果。\n")
         .append("\n");
     if (frozen == null) {
@@ -1000,23 +1038,23 @@ public final class DecisionAgentRunner {
         .append(dm.id().value())
         .append("」：自然语言决策用 ")
         .append(LlmToolNames.wireNameOf(toolNames.packetIntent()))
-        .append(" 或最后一段文本表达；结构命令用 ")
-        .append(LlmToolNames.wireNameOf(toolNames.propose()))
-        .append("（一次可带**多条**决策：calls 数组），可改（")
+        .append(" 或最后一段文本表达；纯文本请求用 ")
+        .append(LlmToolNames.wireNameOf(toolNames.request()))
+        .append("。需要 GM 判决的 Ask 会自动组成/追加到本 tick 的同一个包；入包后可改（")
         .append(LlmToolNames.wireNameOf(toolNames.revise()))
         .append("）、可删（")
         .append(LlmToolNames.wireNameOf(toolNames.drop()))
-        .append("）；定稿用 ")
+        .append("）。")
         .append(LlmToolNames.wireNameOf(toolNames.confirm()))
-        .append(" 确认本 tick 的全部决策，确认后要再改先 ")
+        .append(" 只写领域确认标记（不改 PackageState），要撤回标记用 ")
         .append(LlmToolNames.wireNameOf(toolNames.reopen()))
-        .append(" 撤回（GM 已裁决就改不了了）。")
+        .append("（GM 已裁决就撤不了）。")
         .append("没确认也没结束提问就停止说话 ⇒ 系统会把整轮最后一段文本自动作为 NL 决策交 GM（不静默丢决策）；")
         .append("已显式写过 intent ⇒ 收尾文本不再附加（你的表达原样保留）。")
         .append("★ 预算：最多 ")
         .append(TOOL_CALL_BUDGET)
-        .append(" 次**工具调用**（★ 管的是调用次数，**不是决策条数**：一次 propose 可带多条）；")
-        .append("只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
+        .append(" 次**工具调用**（★ 管的是调用次数，**不是决策条数**）；")
+        .append("只调用工具面列出的工具，args 里不要写 null，缺字段就省略。");
     // ★★ 信件口径（2026-10-14）：一句话说清"能发几条 / 答复会自动出现 / 去哪复查"。★ 工具名走线格式
     //   （模型收到的工具清单里就是这个名字，写真实名会让它照着一个调不到的名字去点）。
     text.append("★ 信件：本 tick 你已收发 ")
@@ -1188,17 +1226,22 @@ public final class DecisionAgentRunner {
   }
 
   /**
-   * ★ 发给 provider 的 messages：system 角色必须存在（用户 2026-10-22 裁定：不传会报错），但内容固定为一个空格； 历史里旧的 system
-   * 消息全部过滤掉，身份与规范走 user 消息。这样新老会话都不会再向 provider 发送非空 system。
+   * ★ 发给 provider 的 messages：{@code [system] + 窗口(非 system，逐条原样) + 本轮输入}。
+   *
+   * <p>★ system 角色必须存在（用户 2026-10-22 裁定：不传会报错），内容由 {@link AgentConfig#systemPrompt()} 给（本类给的固定是一个空格
+   * ——身份与规范走 user 消息）；历史里旧的 system 消息全部过滤掉。★ 其余窗口内容**逐条原样、顺序不变**地回灌——这是 prompt-cache 的前提，也是库侧
+   * {@link ContextComposer} 的硬契约；唯一的"改写"是过滤旧 system，它是既有会话的兼容口径（设计书 §3.1 / §7 已记）。
    */
-  private static List<LlmMessage> requestMessages(List<LlmMessage> history) {
-    List<LlmMessage> out = new ArrayList<>(history.size() + 1);
-    out.add(LlmMessage.system(" "));
-    for (LlmMessage message : history) {
+  private static List<LlmMessage> requestMessages(
+      String systemPrompt, List<LlmMessage> windowMessages, List<LlmMessage> turnInput) {
+    List<LlmMessage> out = new ArrayList<>(windowMessages.size() + turnInput.size() + 1);
+    out.add(LlmMessage.system(systemPrompt));
+    for (LlmMessage message : windowMessages) {
       if (!LlmMessage.ROLE_SYSTEM.equals(message.role())) {
         out.add(message);
       }
     }
+    out.addAll(turnInput);
     return List.copyOf(out);
   }
 
@@ -1224,14 +1267,38 @@ public final class DecisionAgentRunner {
    *
    * <p>★ **状态是入参、不是字段**：范围每次现算要的是"此刻的世界"，把它挂在字段上就会变成"这个 runner 绑在某个时刻上"。
    *
+   * <p>★★ 2026-10-17（AgentLib 0.2.1 对接）：本方法里**不再有自建的 {@code while} 循环**——循环结构由库侧 {@link AgentLoop}
+   * 承载（组请求 → 一轮往返 → 工具分发 → 终止判定），本类只注入三个宿主策略：{@link StopPolicy}（何时停：只有 LLM 调用次数预算）、 {@link
+   * TurnListener}（记账/事件/落盘/进度）、{@link
+   * io.mosire.agentlib.runtime.ToolCallDispatcher}（工具执行，权限链/冻结改写/线名翻译 一行不改）。窗口 = {@link
+   * ContextWindow}，请求 = {@link ContextComposer}，Agent 描述符 = {@link AgentConfig}。
+   *
+   * <p>★ 两处**有意保留**的旧行为（设计书 §4）：①每轮提醒**不落盘**（作为第 1 轮 {@code turnInput}，只写回内存窗口）；②预算中止仍抛 {@link
+   * TurnBudgetExceeded}（在 {@code onStop} 里先 WARN 再抛，保留可判别类型）。
+   *
    * @param dm 这一轮的决策人（会话 id 由它派生）
    * @param state 此刻的世界状态（范围函数与工具读的都是它）
    * @return 本轮的账（调了几次模型、真的执行了哪些工具、最后一句文本）
-   * @throws TurnBudgetExceeded 撞上回合预算（{@link IllegalStateException} 的子类，便于调用方**按类型**报"是否因预算中止"）
+   * @throws TurnBudgetExceeded 撞上回合预算（{@link IllegalStateException} 的子类，便于调用方**按类型**报"是否因预算中止"；
+   *     异常实现 {@link PendingDecisionCarrier}，携带本回合已登记队列）
+   * @throws DecisionTurnAbortedException 其它运行时异常且本回合已有登记的 Ask：原异常作 cause，队列随载体交回； 队列为空时保持原异常类型不变
    */
+  /** 兼容旧读取点的别名；唯一拼写点已收口到 {@link SimosDecisionClock}（设计书 §6.4）。 */
+  @Deprecated
+  public static final long DECISION_QUEUE_DEADLINE_MILLIS =
+      SimosDecisionClock.QUEUE_DEADLINE_MILLIS;
+
+  @SuppressFBWarnings(
+      value = "THROWS_METHOD_THROWS_RUNTIMEEXCEPTION",
+      justification =
+          "abort 路径必须保持原异常实例/类型上抛：调用方按 TurnBudgetExceeded 等运行时类型分流。队列为空时原样抛；队列非空时改抛 DecisionTurnAbortedException（带队列），两者都是有意语义")
   public DecisionTurn run(DecisionMaker dm, SimulationState state) {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
+    // ★★ 设计书 §9 I6 / §10.1 D6：回合启动前先判当前 tick 的包是否仍可编辑。
+    //   必须在 conversationId 派生、会话 load/append 与 PendingDecisionQueue 创建之前 fail-closed：
+    //   否则 LLM 会白跑一整轮，回合末才由 finalizer 发现 PACKAGE_CONTENT_FROZEN。
+    requireCurrentDecisionPackageEditable(dm, state);
     String conversationId = conversationIdOf(dm);
     DECISION.info(
         LogEvent.of(
@@ -1243,120 +1310,401 @@ public final class DecisionAgentRunner {
             state.meta().timestamp().tick(),
             "conversation",
             conversationId));
-    // ★ 工具面与权限组**同一份数据**（spec §2.3 要点 1）：两者若各有一张表，错位不会有任何症状。
-    //   （那份面在构造期已建好、名字已转义成线格式——见构造器与 LlmToolNames 的类注。）
-    List<LlmMessage> history = new ArrayList<>(conversations.load(conversationId));
+    // ★ 窗口 = 本回合的**内存工作集**：初值来自会话库（窗口 id = 会话 id）。
+    //   落盘点仍是**显式**的（与旧实现逐字同序）；库的 unsavedTail/markSaved 本批**不用**——
+    //   它会把"不在库里的全部"落库，而每轮提醒恰恰是"在窗口里但不该落库"的那一条（见 turnInput 的注释）。
+    ContextWindow window = new ContextWindow(conversationId, conversations.load(conversationId));
     // ★★ 空会话 ⇒ 先注入身份（**并落盘**），再发第一个请求：不注入的话首轮请求的 messages 是空的，真供应商
     //   直接 400（`field messages is required`），一次都跑不成（现场实测）。落盘是这件事的要害——只往内存里塞
     //   的"修法"在**换进程/换 store 实例**之后又回到空会话，缺陷原样复现（见 openingUserMessage 的类注）。
     //   ★ 只在**空会话**上注入（"有没有历史"是纯函数，不看世界）：第二轮 `load` 里已经有它，故不会重复追加。
-    if (history.isEmpty()) {
+    if (window.size() == 0) {
       LlmMessage opening =
           openingUserMessage(
               dm, affiliationTextOf(affiliations, dm, state), frozen, toolNames, toolReach);
       conversations.append(conversationId, opening);
-      history.add(opening);
+      window.append(opening);
       // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；
       //   而且这条只在**空会话**注入一次（与身份同一条判据），第二轮起就在历史里了。
       Optional<LlmMessage> snapshot = openingSnapshotMessage(dm, state);
       if (snapshot.isPresent()) {
         conversations.append(conversationId, snapshot.get());
-        history.add(snapshot.get());
+        window.append(snapshot.get());
       }
     }
     // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.4，缺口 G6）：**新信件在每轮开始时自动注入、且落盘**。
     //   ★ 为什么必须由运行流注入、而不是指望 DM 自己去调收件箱：DM 不会主动去捞（缺口 G6 的原话："DM 不调 inbox
     //     就永远看不到答复"）⇒ GM 的答复到不了 DM = 问答断链。
-    //   ★ 位置有意：开场消息/开场快照**之后**（先有"你是谁、你在哪"，再有"有人给你回信了"）、`decisionRoundNotice`
-    //     之前（那条每轮提醒里要报"本 tick 你已收发 N 条信件"）。
-    //   ★ **只在有"新"信件时注入**：一条都没有 ⇒ 一个字节都不写会话（不许每轮塞一条空消息——那会污染会话，
-    //     也是"每轮现插"与"落盘"混用的错误形态）。
-    Optional<LlmMessage> newLetters = newLettersMessage(dm, state, history);
+    //   ★ 位置有意：开场消息/开场快照**之后**、`decisionRoundNotice` 之前（那条每轮提醒里要报"本 tick 你已收发 N 条信件"）。
+    //   ★ **只在有"新"信件时注入**：一条都没有 ⇒ 一个字节都不写会话（不许每轮塞一条空消息——那会污染会话）。
+    Optional<LlmMessage> newLetters = newLettersMessage(dm, state, window.messages());
     if (newLetters.isPresent()) {
       conversations.append(conversationId, newLetters.get());
-      history.add(newLetters.get());
+      window.append(newLetters.get());
     }
     // ★ 回合规范提醒**不落盘**、每轮现插：老会话（首轮身份消息里没有新口径）也必须被本轮规则覆盖。
-    history.add(decisionRoundNotice(dm, frozen, toolNames, lettersThisTick(dm, state)));
-    List<ToolInvocation> invocations = new ArrayList<>();
-    // ★ 整轮最后一段非空助手文本的累积处（本批删掉 DecisionTurnSignals 后剩下的唯一回合信号）。
-    Optional<String> lastText = Optional.empty();
-    int llmCalls = 0;
-    while (true) {
-      if (llmCalls >= maxLlmCalls) {
-        // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
-        DECISION.warn(
-            LogEvent.of(
-                "DECISION_RUN_BUDGET_EXCEEDED",
-                GaLogSource.GA_DECISION_TURN,
-                "dm",
-                dm.id().value(),
-                "day",
-                state.meta().timestamp().tick(),
-                "llmCalls",
-                llmCalls,
-                "tools",
-                invocations.size()));
-        throw new TurnBudgetExceeded(
-            "决策人 "
-                + dm.id().value()
-                + " 在 "
-                + maxLlmCalls
-                + " 次 LLM 调用内仍持续请求工具（会话 "
-                + conversationId
-                + "）——疑似跑飞，本轮中止；历史已逐条落盘，下一 tick 可续",
-            maxLlmCalls);
+    //   ★★ 它是第 1 轮的 `turnInput`：库的 LlmRoundTrip 会把它写回**内存窗口**（第 1 轮请求里
+    //   它紧跟在历史之后，与旧实现 `history.add(notice)` 后直接组请求**逐字同形**）；它不进 conversations ⇒ 不落库。
+    List<LlmMessage> turnInput =
+        List.of(decisionRoundNotice(dm, frozen, toolNames, lettersThisTick(dm, state)));
+    // ★ AgentConfig = 本回合这个 Agent 的**唯一描述符**（库宿主侧结构，0.2.1 起复用）。
+    //   ★★ 10 个组件全部显式给值——**绝不吃** AgentConfig.Builder 的默认值（114514 轮 / 30 次工具 /
+    //   10min 墙钟都会静默改行为）。timeBudget / quotaMaxTokens 本批**只填不判**（用户 2026-10-17「先不开」）。
+    AgentConfig config = agentConfigFor(dm);
+    // ★ 设计书 §7.1：本回合所有 ToolGate.Ask 先进入局部 PendingDecisionQueue，由
+    //   ToolCallAuthorizer 优先读 DecisionTurnScope 并返回 DECISION_QUEUED（不执行、不投 PendingApprovals）。
+    //   正常路径随 DecisionTurn 交回；异常路径随异常载体交回，队列对象始终不被复制。
+    PendingDecisionQueue pendingDecisions =
+        new PendingDecisionQueue(
+            dm.id().value(), AccessToken.DEFAULT, SimosDecisionClock.QUEUE_DEADLINE_MILLIS);
+    TurnRuntime turn = new TurnRuntime(conversationId, window, dm, state, config, pendingDecisions);
+    AgentLoop loop =
+        AgentLoop.builder()
+            .window(window)
+            .composer(new SimosComposer(config))
+            .llm(llmClient)
+            .dispatcher(turn::dispatch)
+            .stopPolicy(turn)
+            .listener(turn)
+            .maxToolCallsPerResponse(config.maxToolCallsPerTurn())
+            .build();
+    DecisionTurnScope.bind(pendingDecisions);
+    try {
+      TurnResult result = loop.runTurn(turnInput, toolFace);
+      // ★ 只有 FINISHED 能走到这里（其余出口都在回调里抛异常/中止）；DECISION_RUN_END 已由 onFinished 落。
+      return new DecisionTurn(
+          conversationId,
+          result.turns(),
+          turn.invocations(),
+          turn.lastRoundText(),
+          turn.lastText(),
+          pendingDecisions);
+    } catch (RuntimeException e) {
+      // ★ G1：预算异常自身已是 carrier；其它异常只有在确实登记过 Ask 时才包装（空队列保持原异常类型）。
+      if (e instanceof PendingDecisionCarrier || pendingDecisions.isEmpty()) {
+        throw e;
       }
-      LlmResponse response = llmClient.chat(new LlmRequest(requestMessages(history), toolDefs));
-      llmCalls++;
-      LlmMessage assistant = response.assistantMessage();
-      // ★ 整轮最后一段非空文本（唯一要留的回合信号，见 lastAssistantText 的类注）：空文本不覆盖已有值。
+      throw new DecisionTurnAbortedException(
+          "决策回合运行时中止，已登记 Ask 队列随异常交回：原异常=" + e.getClass().getName(), pendingDecisions, e);
+    } finally {
+      // ★ ThreadLocal 只清作用域，不消费/复制队列对象。
+      DecisionTurnScope.clear(pendingDecisions);
+    }
+  }
+
+  /**
+   * 回合启动守卫：当前 tick 的包若已存在，只允许 {@code PROPOSED + verdicts 为空}。
+   *
+   * <p>不建 queue、不读会话、不调 LLM。无包 = 本回合可正常创建；包可编辑 = 可继续 append/intent。 具体拒绝码使用 AgentLib 的协议常量，不创建
+   * {@code DecisionPackages} 实例。
+   */
+  private static void requireCurrentDecisionPackageEditable(
+      DecisionMaker dm, SimulationState state) {
+    long tick = state.meta().timestamp().tick();
+    DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + dm.id().value() + "-" + tick);
+    DecisionRecord record = GaSnapshots.state(state).decisionPackets().get(packetId);
+    if (record == null) {
+      return;
+    }
+    PackageState packageState = record.packageState().pkg().state();
+    if (packageState == PackageState.PROPOSED && record.packageState().verdicts().isEmpty()) {
+      return;
+    }
+    String reason =
+        DecisionPackages.PACKAGE_CONTENT_FROZEN
+            + "：当前 tick 决策包已冻结，拒绝启动 DM 回合（"
+            + packetId.value()
+            + " state="
+            + packageState
+            + " verdicts="
+            + record.packageState().verdicts().size()
+            + "）；本回合未调用 LLM、未写会话、未创建待裁决队列";
+    DECISION.info(
+        LogEvent.of(
+            "DECISION_RUN_REJECTED_PACKAGE_CONTENT_FROZEN",
+            GaLogSource.GA_DECISION_TURN,
+            "dm",
+            dm.id().value(),
+            "tick",
+            tick,
+            "packet",
+            packetId.value(),
+            "packageState",
+            packageState,
+            "verdicts",
+            record.packageState().verdicts().size()));
+    throw new DecisionPackages.RejectionException(DecisionPackages.PACKAGE_CONTENT_FROZEN, reason);
+  }
+
+  // ================== 本回合的宿主策略与描述符（库 AgentLoop 的四个注入点） ==================
+
+  /**
+   * **单响应工具调用硬顶的"不限"哨兵**：旧实现是 {@code AgentLoop.Builder} 上限 0（不限），而 {@link AgentConfig} 契约要求 {@code
+   * maxToolCallsPerTurn} 为正 ⇒ 用"物理上到不了"的 {@link Integer#MAX_VALUE} 表达（设计书 §3.4）。
+   */
+  private static final int UNLIMITED_TOOL_CALLS_PER_TURN = Integer.MAX_VALUE;
+
+  /**
+   * **回合时间预算的"无预算"哨兵**：Simos 今天没有回合墙钟语义，用户 2026-10-17 裁定「先不开」⇒ 本批**只填不判**（{@link AgentConfig} 要求非
+   * null，故给一个 100 年的 Duration，不接任何 StopPolicy 判定）。
+   */
+  private static final Duration NO_TIME_BUDGET = Duration.ofDays(365L * 100L);
+
+  /**
+   * 本回合的 Agent 描述符（库侧 {@link AgentConfig}）：**逐字段显式给值**，不吃 Builder 默认值（设计书 §3.4 / I9）。
+   *
+   * @param dm 本回合的决策人（描述符的 id = 决策人身份；会话 id 仍由 {@link #conversationIdOf} 纯函数派生）
+   */
+  private AgentConfig agentConfigFor(DecisionMaker dm) {
+    return AgentConfig.builder(dm.id().value())
+        .description("")
+        // ★ 单空格 system 硬约束（用户 2026-10-17）：唯一生产来源 SystemPromptPolicy（别处不再写 " " 字面量）。
+        .systemPrompt(SystemPromptPolicy.SINGLE_SPACE)
+        .model(llmClient.model())
+        .allowedTools(toolWhitelist)
+        .deniedTools(Set.of())
+        .maxTurns(maxLlmCalls)
+        .maxToolCallsPerTurn(UNLIMITED_TOOL_CALLS_PER_TURN)
+        .timeBudget(NO_TIME_BUDGET)
+        .quotaMaxTokens(AgentConfig.NO_QUOTA)
+        .build();
+  }
+
+  /**
+   * 本回合的请求编排器（库侧 {@link ContextComposer}）：{@code [system] + 窗口(非 system 原样) + 本轮输入}。
+   *
+   * <p>★ 工具面用**装配期预计算**的线格式定义（{@link #toolDefs}）：名字转义/碰撞检查/顺序都在构造期一次定死；若在这里从 {@code tools}
+   * 参数重推，就多出第二份推导（旧实现也是直接复用那份预计算列表）。所以 {@code tools} 参数在本实现里只用于契约对账（骨架原样传来，本类不解释）。
+   */
+  private final class SimosComposer implements ContextComposer {
+
+    private final AgentConfig config;
+
+    private SimosComposer(AgentConfig config) {
+      this.config = config;
+    }
+
+    @Override
+    public LlmRequest compose(
+        List<LlmMessage> windowMessages, List<LlmMessage> turnInput, List<AgentTool> tools) {
+      return new LlmRequest(
+          requestMessages(config.systemPrompt(), windowMessages, turnInput), toolDefs);
+    }
+  }
+
+  /**
+   * 本回合的宿主运行时：同时实现库侧 {@link StopPolicy} 与 {@link TurnListener}（外加 dispatcher 的入口 {@link
+   * #dispatch}）。
+   *
+   * <p>★ 为什么一个对象兼两个 SPI：它们是**同一个回合**的两面（同一份 invocations / lastText / batch
+   * 状态），拆成两个对象就要互相引用，反而多一层"两份状态"的漂移面。
+   *
+   * <p>★ 三个"顺序是契约"的点（改这里之前先读设计书 §3.1 / §4）：
+   *
+   * <ol>
+   *   <li>往返成功后**先落盘 assistant 再判工具**（旧实现同序：模型说了什么都要记）；
+   *   <li>工具批内**不判预算**（{@link #checkToolCallBoundary} 恒空）——旧实现只在 while 顶部判，批中途终止会留下悬空 {@code
+   *       tool_call}；
+   *   <li>图片消息在本批**最后一条 tool 之后**才落盘（真网关硬约束，见 {@link #flushImages()}）。
+   * </ol>
+   */
+  private final class TurnRuntime implements StopPolicy, TurnListener {
+
+    private final String conversationId;
+    private final ContextWindow window;
+    private final DecisionMaker dm;
+    private final SimulationState world;
+
+    /** 本回合的 Agent 描述符：预算/头部等旋钮的**唯一来源**（设计书 §3.4）。 */
+    private final AgentConfig config;
+
+    /** G1：预算中止异常必须携带本回合已登记队列；正常路径不消费它。 */
+    private final PendingDecisionQueue pendingDecisions;
+
+    private final List<ToolInvocation> invocations = new ArrayList<>();
+    private Optional<String> lastText = Optional.empty();
+    private Optional<String> lastRoundText = Optional.empty();
+    private final List<LlmMessage> imageBuffer = new ArrayList<>();
+    private int batchRemaining;
+
+    private TurnRuntime(
+        String conversationId,
+        ContextWindow window,
+        DecisionMaker dm,
+        SimulationState world,
+        AgentConfig config,
+        PendingDecisionQueue pendingDecisions) {
+      this.conversationId = conversationId;
+      this.window = window;
+      this.dm = dm;
+      this.world = world;
+      this.config = config;
+      this.pendingDecisions = Objects.requireNonNull(pendingDecisions, "pendingDecisions");
+    }
+
+    // ---------- StopPolicy：只判 LLM 调用次数预算（旧行为：唯一终止判定） ----------
+
+    @Override
+    public Optional<StopSignal> check(LoopState state) {
+      // ★ 预算的唯一来源是本回合的 AgentConfig（不是构造器字段再读一遍）：改描述符就该改行为，
+      //   这也是 I9 的判据——否则"config.maxTurns 少给一项"这种漏改测不出来（变异 M3 实测）。
+      if (state.rounds() >= config.maxTurns()) {
+        return Optional.of(new StopSignal(StopReason.TURN_LIMIT, ""));
+      }
+      return Optional.empty();
+    }
+
+    @Override
+    public Optional<StopSignal> checkToolCallBoundary(LoopState state) {
+      // ★ 旧实现工具批内不判任何东西（预算只在 while 顶部判）；这里若接上 check，批中途终止会留下悬空
+      //   tool_call（下一轮请求可能被供应商拒收）⇒ 明确恒"继续"，与旧行为逐字一致。
+      return Optional.empty();
+    }
+
+    // ---------- TurnListener：记账 / 事件 / 落盘 / 进度 ----------
+
+    @Override
+    public Optional<StopSignal> onRoundTrip(LlmResponse response, long latencyMs, LoopState state) {
+      // ★ 先落盘再判（旧实现同序：响应之后立即 append）：LlmRoundTrip 已把本轮输入与答复写回窗口，
+      //   落库只落**答复**这一条（本轮输入=提醒，按旧口径不落库）。
+      conversations.append(conversationId, response.assistantMessage());
+      // ★ 整轮最后一段非空文本 + 最后一条响应文本（与旧实现 lastText / finalText 同源）。
+      lastRoundText = response.textPart();
       Optional<String> textPart = lastAssistantText(response.textPart());
       if (textPart.isPresent()) {
         lastText = textPart;
       }
-      // ★ 先落盘再判：模型说了什么都要记（非工具轮同样是这一轮的产出）。
-      conversations.append(conversationId, assistant);
-      history.add(assistant);
       // ★ 进度点 ①：本轮 LLM 已结束（工具调用还没跑）——GUI 的"第 N 轮"就是这个数。
-      progressListener.progress(llmCalls, List.copyOf(invocations));
-      List<ContentPart.ToolCall> requested = toolCallsOf(assistant);
-      if (requested.isEmpty()) {
-        DECISION.info(
-            LogEvent.of(
-                "DECISION_RUN_END",
-                GaLogSource.GA_DECISION_TURN,
-                "dm",
-                dm.id().value(),
-                "day",
-                state.meta().timestamp().tick(),
-                "llmCalls",
-                llmCalls,
-                "tools",
-                invocations.size()));
-        return new DecisionTurn(
-            conversationId, llmCalls, invocations, response.textPart(), lastText);
+      progressListener.progress(state.rounds(), List.copyOf(invocations));
+      // 本批工具条数：dispatcher 在最后一条之后 flush 图片消息（位置约束见 flushImages）。
+      batchRemaining = toolCallsOf(response.assistantMessage()).size();
+      return Optional.empty();
+    }
+
+    @Override
+    public void onFinished(String finalText, LoopState state) {
+      DECISION.info(
+          LogEvent.of(
+              "DECISION_RUN_END",
+              GaLogSource.GA_DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "day",
+              world.meta().timestamp().tick(),
+              "llmCalls",
+              state.rounds(),
+              "tools",
+              invocations.size()));
+    }
+
+    @Override
+    public void onToolCallLimit(List<ContentPart.ToolCall> calls, LoopState state) {
+      // ★ 不可达：maxToolCallsPerResponse = Integer.MAX_VALUE（等价旧实现的"不限"）。若真到这里，
+      //   说明装配被改坏——按 Brain 同口径补占位失败结果（不留无应答的 tool_call）并响亮 WARN，不静默丢。
+      DECISION.warn(
+          LogEvent.of(
+              "DECISION_TOOL_CALL_LIMIT_REACHED",
+              GaLogSource.GA_DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "day",
+              world.meta().timestamp().tick(),
+              "calls",
+              calls.size(),
+              "max",
+              UNLIMITED_TOOL_CALLS_PER_TURN));
+      for (ContentPart.ToolCall call : calls) {
+        LlmMessage placeholder =
+            LlmMessage.tool(
+                new ContentPart.ToolResult(call.id(), call.name(), null, "回合因单次响应工具调用数超限中止"));
+        conversations.append(conversationId, placeholder);
+        window.append(placeholder);
       }
-      List<LlmMessage> imageMessages = new ArrayList<>();
-      for (ContentPart.ToolCall call : requested) {
-        // ★ 一次工具调用产出两条消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
-        ToolExecution execution = execute(dm, state, call, invocations);
-        conversations.append(conversationId, execution.toolMessage());
-        history.add(execution.toolMessage());
-        execution.imageMessage().ifPresent(imageMessages::add);
-        // ★ 进度点 ②：一次工具调用已结束（末条 = 刚跑完的那一个）——GUI 的"正在调 X / 调了什么"。
-        progressListener.progress(llmCalls, List.copyOf(invocations));
+    }
+
+    @Override
+    public void onStop(StopSignal signal, LoopState state) {
+      // ★ 本实现只装配了一个停止来源（LLM 调用次数预算）⇒ TURN_LIMIT 就是预算中止：保留旧实现的
+      //   可判别类型 + WARN 事件（用户 2026-10-23：不接受降级）。其它原因 = 未装配出口 ⇒ 响亮失败。
+      if (signal.reason() != StopReason.TURN_LIMIT) {
+        throw new IllegalStateException("未装配的终止出口: " + signal.reason());
       }
-      // ★★ **图片消息一律排在本回合所有 tool 消息之后**（真网关实测的硬约束，2026-09-24）：
-      //   OpenAI 兼容线要求"assistant(tool_calls) 后面必须紧跟回应**每一个** tool_call_id 的 tool 消息"，
-      //   中间插一条 user 就是 `HTTP 400: An assistant message with 'tool_calls' must be followed by tool
-      //   messages responding to each 'tool_call_id'`。★ 一个回合里模型**一次要多个工具**是常态
-      //   （实测那轮一次要了 5 个：map_render + map_hex×4），所以"图紧跟它那条 tool 消息"是错的形态，
-      //   而**回放式的假客户端看不见这个约束**（它不校验协议）——只有真网关会拒。
-      for (LlmMessage imageMessage : imageMessages) {
+      DECISION.warn(
+          LogEvent.of(
+              "DECISION_RUN_BUDGET_EXCEEDED",
+              GaLogSource.GA_DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "day",
+              world.meta().timestamp().tick(),
+              "llmCalls",
+              state.rounds(),
+              "tools",
+              invocations.size()));
+      throw new TurnBudgetExceeded(
+          "决策人 "
+              + dm.id().value()
+              + " 在 "
+              + config.maxTurns()
+              + " 次 LLM 调用内仍持续请求工具（会话 "
+              + conversationId
+              + "）——疑似跑飞，本轮中止；历史已逐条落盘，下一 tick 可续",
+          config.maxTurns(),
+          pendingDecisions);
+    }
+
+    @Override
+    public void onLlmError(LlmException error, List<LlmMessage> roundInput, LoopState state) {
+      // ★ 旧行为：llmClient.chat 的异常**原样穿透**（调用方 catch RuntimeException 后抢救已写 packet）。
+      //   库把 LlmException 接住又交回宿主，是为了让宿主决定去留；本宿主的去留 = 原实例重抛。
+      //   ★ 不走库的 LLM_ERROR 优雅出口：那是**另一个语义**（回合正常收尾），要改得单独裁定。
+      throw error;
+    }
+
+    // ---------- ToolCallDispatcher 的入口：执行 + 落盘 + 进度 + 图片批后置 ----------
+
+    /**
+     * 执行一条工具调用（旧 {@code run} 的循环体逐字搬过来）：tool 消息落盘 → 进度 → 本批最后一条后 flush 图片。
+     *
+     * <p>★★ **图片为什么在批末 flush**（旧实现同一条硬约束，2026-09-24 真网关实测）：OpenAI 兼容线要求 {@code
+     * assistant(tool_calls)} 后面必须**紧跟**回应每个 {@code tool_call_id} 的 tool 消息；中间插一条 user（图片）就是 {@code
+     * HTTP 400}。所以图片只能等本批 tool 消息全部落完。
+     */
+    private void dispatch(ContentPart.ToolCall call, LoopState state) {
+      ToolExecution execution = execute(dm, world, call, invocations);
+      conversations.append(conversationId, execution.toolMessage());
+      window.append(execution.toolMessage());
+      execution.imageMessage().ifPresent(imageBuffer::add);
+      // ★ 进度点 ②：一次工具调用已结束（末条 = 刚跑完的那一个）——GUI 的"正在调 X / 调了什么"。
+      progressListener.progress(state.rounds(), List.copyOf(invocations));
+      batchRemaining--;
+      if (batchRemaining <= 0) {
+        flushImages();
+      }
+    }
+
+    /** 把本批缓冲的图片消息落盘（位置：本批所有 tool 消息之后；落过即清空）。 */
+    private void flushImages() {
+      for (LlmMessage imageMessage : imageBuffer) {
         conversations.append(conversationId, imageMessage);
-        history.add(imageMessage);
+        window.append(imageMessage);
       }
+      imageBuffer.clear();
+    }
+
+    /** 本轮账：真的执行过的工具调用（不可变）。 */
+    private List<ToolInvocation> invocations() {
+      return List.copyOf(invocations);
+    }
+
+    /** 本轮最后一段非空助手文本。 */
+    private Optional<String> lastText() {
+      return lastText;
+    }
+
+    /** 最后一条响应的文本。 */
+    private Optional<String> lastRoundText() {
+      return lastRoundText;
     }
   }
 
@@ -1401,9 +1749,10 @@ public final class DecisionAgentRunner {
                     + frozen.revision().value()
                     + " 不允许工具 "
                     + toolName
-                    + "：决策期只允许读同一世界快照与写自己的决策包；要改世界请用 "
-                    + toolNames.propose()
-                    + " 写成 call，由 GM 在所有包收齐后合并成一条 revision 执行。");
+                    + "：决策期只允许读同一世界快照与写自己的决策包；世界改动要作为需要 GM 判决的 Ask 调用提交，"
+                    + "由 GM 在所有包收齐后合并成一条 revision 执行；纯文本用 "
+                    + toolNames.request()
+                    + "。");
         return recordResult(dm, toolName, call, blocked, invocations);
       }
       switch (kind) {
@@ -1578,7 +1927,8 @@ public final class DecisionAgentRunner {
    * IllegalStateException}——装配故障）。 子类仍然满足"响亮失败"的原判据（{@code IllegalStateException} 的 {@code
    * isInstanceOf} 断言照旧成立）。
    */
-  public static final class TurnBudgetExceeded extends IllegalStateException {
+  public static final class TurnBudgetExceeded extends IllegalStateException
+      implements PendingDecisionCarrier {
 
     private static final long serialVersionUID = 1L;
 
@@ -1591,14 +1941,39 @@ public final class DecisionAgentRunner {
      */
     private final int llmCalls;
 
+    /**
+     * G1：本轮已登记的 Ask 队列（随预算中止异常交回；不参与 Java 序列化，理由同 {@link
+     * DecisionTurnAbortedException#pendingDecisions()}）。
+     */
+    @SuppressFBWarnings(
+        value = "SE_TRANSIENT_FIELD_NOT_RESTORED",
+        justification =
+            "PendingDecisionQueue 是 AgentLib 的进程内运行态对象且不实现 Serializable；异常只用于同一进程内交回队列，不做落盘/反序列化")
+    private final transient PendingDecisionQueue pendingDecisions;
+
+    /** 兼容旧测试构造点：没有运行中队列时携带一个空队列（生产路径总是走三参构造器）。 */
     TurnBudgetExceeded(String message, int llmCalls) {
+      this(
+          message,
+          llmCalls,
+          new PendingDecisionQueue(
+              "unbound-budget", AccessToken.DEFAULT, SimosDecisionClock.QUEUE_DEADLINE_MILLIS));
+    }
+
+    TurnBudgetExceeded(String message, int llmCalls, PendingDecisionQueue pendingDecisions) {
       super(message);
       this.llmCalls = llmCalls;
+      this.pendingDecisions = Objects.requireNonNull(pendingDecisions, "pendingDecisions");
     }
 
     /** 本轮用掉的 LLM 调用次数（如实报给调用方的那一项）。 */
     public int llmCalls() {
       return llmCalls;
+    }
+
+    @Override
+    public PendingDecisionQueue pendingDecisions() {
+      return pendingDecisions;
     }
   }
 
@@ -1623,12 +1998,34 @@ public final class DecisionAgentRunner {
       int llmCalls,
       List<ToolInvocation> toolInvocations,
       Optional<String> finalText,
-      Optional<String> lastAssistantText) {
+      Optional<String> lastAssistantText,
+      PendingDecisionQueue pendingDecisions) {
 
     public DecisionTurn {
       toolInvocations = List.copyOf(toolInvocations);
       Objects.requireNonNull(finalText, "finalText");
       Objects.requireNonNull(lastAssistantText, "lastAssistantText");
+      Objects.requireNonNull(pendingDecisions, "pendingDecisions");
+    }
+
+    /**
+     * 兼容旧调用点的五参形态（例如 app 侧 {@code finalizeAborted}）：不携带本回合可用的待裁决队列。 新生产路径必须用规范构造器并消费 {@link
+     * #pendingDecisions()}。
+     */
+    public DecisionTurn(
+        String conversationId,
+        int llmCalls,
+        List<ToolInvocation> toolInvocations,
+        Optional<String> finalText,
+        Optional<String> lastAssistantText) {
+      this(
+          conversationId,
+          llmCalls,
+          toolInvocations,
+          finalText,
+          lastAssistantText,
+          new PendingDecisionQueue(
+              "unbound-turn", AccessToken.DEFAULT, SimosDecisionClock.QUEUE_DEADLINE_MILLIS));
     }
 
     /** 这一轮有没有用过工具（J11 的"不是被动收简报"就落在这一位上）。 */

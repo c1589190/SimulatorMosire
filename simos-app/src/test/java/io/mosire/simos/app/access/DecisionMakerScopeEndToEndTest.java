@@ -16,6 +16,7 @@ import io.mosire.agentlib.permission.CommandMode;
 import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.agentlib.permission.RoleSet;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
@@ -157,7 +158,7 @@ class DecisionMakerScopeEndToEndTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -166,7 +167,6 @@ class DecisionMakerScopeEndToEndTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -463,6 +463,7 @@ class DecisionMakerScopeEndToEndTest {
     return AgentPermissionSet.builder(base.grantedToken())
         .allow(base.allowedTools().toArray(String[]::new))
         .sensitiveAllowed(true)
+        .roles(base.roles())
         .resourceScopes(
             base.resourceScopes()
                 .withNamespace(ToolSupport.GA_NAMESPACE, ResourceScope.of(decisionDomain)))
@@ -484,6 +485,9 @@ class DecisionMakerScopeEndToEndTest {
     DecisionCallerFactory factory = factoryWithExtraTools("unit.RenameUnit");
     long headBefore = head();
     ToolContext scoped = factory.callerFor(DM_FRA, state(), MAP_ID);
+    // 角色门先于资源门：这个用例考的是资源声明，给调用者补上工具声明的那一维角色（GM），
+    // 让判定落到真正的资源前置闸/工具内断言上。
+    AgentPermissionSet scopedPermissions = scoped.permissions().withRoles(RoleSet.of("DM", "GM"));
 
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("payloadJson", "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}");
@@ -495,7 +499,7 @@ class DecisionMakerScopeEndToEndTest {
             shell.toolRegistry(),
             "unit.RenameUnit",
             new ToolContext(
-                scoped.caller(), scoped.permissions(), scoped.config(), args, scoped.identity()));
+                scoped.caller(), scopedPermissions, scoped.config(), args, scoped.identity()));
 
     assertThat(result.success()).as("粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒").isFalse();
     assertThat(result.code()).isEqualTo(ToolCallAuthorizer.RESOURCE_DENIED);
@@ -541,6 +545,7 @@ class DecisionMakerScopeEndToEndTest {
         AgentPermissionSet.builder(AccessToken.DEFAULT)
             .allow(decisionFaceNames().toArray(String[]::new))
             .sensitiveAllowed(true)
+            .roles(RoleSet.of("DM"))
             .build();
     ToolContext bare =
         ToolContext.of(
@@ -570,6 +575,7 @@ class DecisionMakerScopeEndToEndTest {
     DecisionCallerFactory factory = factoryWithExtraTools("simos.command.submit");
     long headBefore = head();
     ToolContext scoped = factory.callerFor(DM_FRA, state(), MAP_ID);
+    AgentPermissionSet scopedPermissions = scoped.permissions().withRoles(RoleSet.of("DM", "GM"));
 
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("type", "unit.RenameUnit");
@@ -582,7 +588,7 @@ class DecisionMakerScopeEndToEndTest {
             shell.toolRegistry(),
             "simos.command.submit",
             new ToolContext(
-                scoped.caller(), scoped.permissions(), scoped.config(), args, scoped.identity()));
+                scoped.caller(), scopedPermissions, scoped.config(), args, scoped.identity()));
 
     assertThat(result.success()).as("粗断言（map:Map1）撞细围栏（区域级前缀）⇒ 整调被拒").isFalse();
     assertThat(result.code()).isEqualTo(ToolCallAuthorizer.RESOURCE_DENIED);

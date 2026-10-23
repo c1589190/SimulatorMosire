@@ -159,7 +159,7 @@
 ## 4. 外部契约与不变量（不可破坏）
 
 1. **工具面只减不增**：GM 桶 **161 → 160**、决策人桶 **43 → 42**，且**减掉的那一条恰好是 `simos.skill`**。
-2. **`SimosTool.roles()` 仍是"谁能用"的唯一拼写点**：装配期 `ToolRoleAudit.requireFaces` 双向比对，
+2. **`SimosTool.toolRoles()` 仍是"谁能用"的唯一拼写点**：装配期 `ToolRoleAudit.requireFaces` 双向比对，
    桶与白名单**不一致当场抛** ⇒ 删工具时必须同时删两处声明（工具类 + 金名单），**不许只删一处**。
 3. **`DecisionToolNames` 的"一处声明、三处派生"口径不变**：删 `skill()` 之后，
    `statelessReads()` 必须仍由**访问器**派生（不许改成写死字面量）。

@@ -3,6 +3,7 @@ package io.mosire.simos.ga.adjudication;
 import io.mosire.agentlib.llm.LlmException;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.AdjudicationBreakpoint;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -30,6 +31,10 @@ import java.util.Objects;
  * 交出去**——真模型无从知道要产出哪些字段，只能猜，于是"真 LLM 判决" 必然被 schema 判成非法。本类现在把四分量**全部**送进 user 提示词（两段都是 {@code
  * AdjudicationRequest} 本来就携带的、 给模型看的文本），不改任何判据；"字段是否齐"的最终裁决仍在 {@link
  * AdjudicationSchemas#validate}。★ **schema 缺失时 该请求不可裁决**（构造期已保证它非空），不在这里兜底编一个假 schema。
+ *
+ * <p>★ **2026-10-17 单空格 system 硬约束**（用户原话见 {@link SystemPromptPolicy}）：交给客户端的两条消息是 system（恰一个 ASCII
+ * 空格）+ user（全部裁决指令与上下文）。原先写在 system 里的裁决器身份、断点、按 schema/合法选项裁决、不发明新规则、只输出 JSON 等指令已**原样迁入** {@link
+ * #userPrompt(AdjudicationRequest, AdjudicationBreakpoint)}，不再生成非空格的 system 提示。
  *
  * <p>★ key / 重试 / 超时在 app 的 LLM 客户端实现里（AgentLib 侧）；本类只做"请求 → 判决"。★ <b>日志纪律</b>：绝不打印 LLM 原文 / 提示词 /
  * 裁决 payload（{@code Judgement.Accepted(raw)} 的 {@code raw} 不进日志，只记 result 档位）。
@@ -64,7 +69,8 @@ public final class LlmDecisionAdjudicator implements DecisionAdjudicator {
     try {
       raw =
           client.complete(
-              new LlmRequest(breakpoint, systemPrompt(breakpoint), userPrompt(request)));
+              new LlmRequest(
+                  breakpoint, SystemPromptPolicy.SINGLE_SPACE, userPrompt(request, breakpoint)));
     } catch (LlmException e) {
       if (!e.degradable()) {
         EventLog.channel(GaLog.decision())
@@ -141,20 +147,21 @@ public final class LlmDecisionAdjudicator implements DecisionAdjudicator {
     }
   }
 
-  private static String systemPrompt(AdjudicationBreakpoint breakpoint) {
-    return "你是 simos 的裁决器，断点 "
-        + breakpoint.value()
-        + "。只按给定 schema 在合法选项里选择并写理由，不发明新规则；只输出一个 JSON 对象，不要 markdown、不要多余文字。";
-  }
-
   /**
-   * 交给模型的 user 提示词：**已脱敏简报 + 输出 schema + 命令白名单 + 输出纪律**（四分量全给，见类注的取代说明）。
+   * 交给模型的 user 提示词：**裁决器身份 + 断点 + 裁决纪律 + 已脱敏简报 + 输出 schema + 命令白名单 + 弃权约定**。
+   *
+   * <p>★ **2026-10-17 单空格 system 硬约束**（用户原话见 {@link SystemPromptPolicy}）：system 只允许一个 ASCII 空格，故原先
+   * {@code systemPrompt(breakpoint)} 的全部有效指令（断点身份、按 schema/合法选项裁决并写理由、不发明新规则、只输出一个 JSON 对象、不要
+   * markdown/多余文字）**原样迁入**本方法；原简报 / schema / 命令白名单 / 弃权约定**逐字保留**（不能靠删指令来缩短 system）。
    *
    * <p>★ 若无法裁决，要求模型显式输出 {@code {"abstain":true,"reason":"…"}}——这是 {@link AdjudicationSchemas} 认的
    * 合法弃权，而不是让它编一个假判决。
    */
-  private static String userPrompt(AdjudicationRequest request) {
-    return "已脱敏简报："
+  private static String userPrompt(AdjudicationRequest request, AdjudicationBreakpoint breakpoint) {
+    return "你是 simos 的裁决器，断点 "
+        + breakpoint.value()
+        + "。只按给定 schema 在合法选项里选择并写理由，不发明新规则；只输出一个 JSON 对象，不要 markdown、不要多余文字。"
+        + "\n已脱敏简报："
         + request.redactedBriefJson()
         + "\n输出 schema（必须满足，JSON 对象）："
         + request.outputSchemaJson()

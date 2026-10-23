@@ -9,8 +9,8 @@ import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
-import io.mosire.simos.ga.tools.write.ProposeCallTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.RequestTool;
 import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
@@ -48,8 +48,8 @@ public final class AppDecisionToolNames implements DecisionToolNames {
   }
 
   @Override
-  public String propose() {
-    return ProposeCallTool.NAME;
+  public String request() {
+    return RequestTool.NAME;
   }
 
   @Override

@@ -155,7 +155,7 @@ class McpServerTest {
           "simos.army.assignGov",
           "simos.army.combat",
           "simos.army.combats",
-          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（roles() 只有 GM）
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（toolRoles() 只有 GM）
           "simos.army.contactWatch",
           "simos.army.formatUnit",
           "simos.army.recordCombat",
@@ -167,7 +167,8 @@ class McpServerTest {
           "simos.calendar.info",
           "simos.command.catalog",
           "simos.command.submit",
-          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；roles()={GM} ⇒ 只在 GM 面）。
+          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；toolRoles()={GM} ⇒ 只在 GM
+          // 面）。
           //   ★ 不登记 ⇒ 本条真跑红在「unexpected elements: ["simos.command.submitBatch"]」（批 U 台账 §1）。
           "simos.command.submitBatch",
           "simos.economy.adjust",
@@ -196,9 +197,12 @@ class McpServerTest {
           "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
-          "simos.gm.approvals",
-          "simos.gm.approve",
-          // ★★ 2026-10-14 批 G（GM 代打）：写，非窄写（只 implements SimosTool）；roles()={GM} ⇒ 只在 GM 面
+          "decision_package_list",
+          "decision_package_get",
+          "decision_package_decide",
+          "decision_package_decide_item",
+          "decision_package_commit",
+          // ★★ 2026-10-14 批 G（GM 代打）：写，非窄写（只 implements SimosTool）；toolRoles()={GM} ⇒ 只在 GM 面
           "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           "simos.gm.mergedPlan.apply",
@@ -208,8 +212,6 @@ class McpServerTest {
           // ★★ 2026-10-14 GM⇄DM 信件批：GM 发信（写，非窄写；gate=Ask 走 GM 链无脑过）
           "simos.gm.message.send",
           "simos.gm.packet",
-          "simos.gm.packet.decide",
-          "simos.gm.packet.execute",
           "simos.gm.packets",
           "simos.gm.periodicAdjustment",
           // ★★ 2026-10-14 推演确认（设计书 §3.5）：GM 看板（只读；逐 DM 一行的 packetStatus /
@@ -338,7 +340,7 @@ class McpServerTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -347,7 +349,6 @@ class McpServerTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));

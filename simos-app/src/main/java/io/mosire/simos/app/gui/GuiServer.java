@@ -34,6 +34,7 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.ga.adjudication.Judgement;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionRunRegistry;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.GmToolUsage;
@@ -72,11 +73,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.net.URLDecoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -105,10 +102,6 @@ import java.util.function.Predicate;
  * <p>★ **canonical 地址由 Address AST 构造**（T3 的硬接缝，spec §5.2 + 台账裁定 58）：facet 只服务 canonical {@code
  * map:<mapId>:hex.<q>_<r>}，且 {@code QueryService.facets} **不改写**转交的地址 ⇒ 本类的两个 hex 端点用 {@link
  * #canonicalHex(int, int)} 先造 canonical 主体再查 facet。
- *
- * <p>★ **审批代理（T6）**：{@code GET /api/approvals} 与 {@code POST /api/approvals/{id}} **原样透传**给
- * AgentLib 的 {@code ApprovalHttpEndpoint}（方法/路径/体照转，状态码/体/头照回；不可达 ⇒ 502）。**本类不实现审批语义**——id
- * 幂等、{@code APPROVE_SESSION} 的收窄、404/405/409 的判定全在 AgentLib 端点里；未配置 base URL ⇒ 503（仅直接构造时会遇到）。
  *
  * <p>★ **零 CORS 头**（spec §〇.4）：同源，无预检面。静态资源带 {@code Cache-Control: no-store}。
  */
@@ -197,9 +190,6 @@ public final class GuiServer implements AutoCloseable {
    * 的 runDecision 状态行就是为这条写的）。
    */
   private static final String RUN_DECISION_PATH = "/api/ga/run-decision";
-
-  /** 审批代理路径：{@code /api/approvals} 或 {@code /api/approvals/{id}}（原样转给 AgentLib 端点）。 */
-  private static final String APPROVAL_PATH = "/api/approvals";
 
   /** GM MCP 工具使用只读面（T8，spec §七.4 C22）：{@code GET /api/gm/tool-usage}。 */
   private static final String GM_TOOL_USAGE_PATH = "/api/gm/tool-usage";
@@ -368,9 +358,6 @@ public final class GuiServer implements AutoCloseable {
   /** GM 口工具使用记录（T8）：{@code GET /api/gm/tool-usage} 的唯一数据源；由 {@code Shell} 注入。 */
   private final GmToolUsage gmToolUsage;
 
-  /** 审批面 base URL（T6 由 Shell 注入为 AgentLib 端点地址）；null / 空白 = 未配置（端点回 503）。 */
-  private final String approvalBaseUrl;
-
   /** LLM provider 配置门面（M11′）：读写 AgentLib 的 {@code ConfigStore}；null = 未接入（provider 面回 503）。 */
   private final AgentLibLlmConfig llmConfig;
 
@@ -390,9 +377,6 @@ public final class GuiServer implements AutoCloseable {
    */
   private final DecisionRunRegistry decisionRunRegistry = new DecisionRunRegistry();
 
-  /** 审批透传用（T6）：只转发，不解释语义。 */
-  private final HttpClient approvalClient;
-
   private final ExecutorService executor;
   private final StaticHandler staticHandler;
 
@@ -403,20 +387,10 @@ public final class GuiServer implements AutoCloseable {
    * @param queryService 只读门面
    * @param core 唯一写入口
    * @param mapId 本世界的 map 称谓（构造 canonical hex 地址用）
-   * @param approvalBaseUrl 审批面 base URL；{@code null} = T6 未接入
    */
-  public GuiServer(
-      QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
+  public GuiServer(QueryService queryService, CoreSimos core, String mapId) {
     this(
-        queryService,
-        core,
-        mapId,
-        approvalBaseUrl,
-        new GmToolUsage(),
-        null,
-        null,
-        null,
-        CalendarService.defaults());
+        queryService, core, mapId, new GmToolUsage(), null, null, null, CalendarService.defaults());
   }
 
   /**
@@ -425,21 +399,8 @@ public final class GuiServer implements AutoCloseable {
    * @param gmToolUsage GM 口工具使用记录（由 {@code Shell} 与工具源装饰器共用同一实例）
    */
   public GuiServer(
-      QueryService queryService,
-      CoreSimos core,
-      String mapId,
-      String approvalBaseUrl,
-      GmToolUsage gmToolUsage) {
-    this(
-        queryService,
-        core,
-        mapId,
-        approvalBaseUrl,
-        gmToolUsage,
-        null,
-        null,
-        null,
-        CalendarService.defaults());
+      QueryService queryService, CoreSimos core, String mapId, GmToolUsage gmToolUsage) {
+    this(queryService, core, mapId, gmToolUsage, null, null, null, CalendarService.defaults());
   }
 
   /**
@@ -452,7 +413,6 @@ public final class GuiServer implements AutoCloseable {
       QueryService queryService,
       CoreSimos core,
       String mapId,
-      String approvalBaseUrl,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService) {
@@ -460,7 +420,6 @@ public final class GuiServer implements AutoCloseable {
         queryService,
         core,
         mapId,
-        approvalBaseUrl,
         gmToolUsage,
         llmConfig,
         decisionAdjudicationService,
@@ -480,7 +439,6 @@ public final class GuiServer implements AutoCloseable {
       QueryService queryService,
       CoreSimos core,
       String mapId,
-      String approvalBaseUrl,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
@@ -489,7 +447,6 @@ public final class GuiServer implements AutoCloseable {
         queryService,
         core,
         mapId,
-        approvalBaseUrl,
         gmToolUsage,
         llmConfig,
         decisionAdjudicationService,
@@ -510,7 +467,6 @@ public final class GuiServer implements AutoCloseable {
       QueryService queryService,
       CoreSimos core,
       String mapId,
-      String approvalBaseUrl,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
@@ -528,8 +484,6 @@ public final class GuiServer implements AutoCloseable {
             queryService, DecisionScopeFunctions.defaults(), mapId, calendarService);
     this.sdQueryService = new DecisionQueryService(queryService);
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
-    this.approvalBaseUrl = approvalBaseUrl;
-    this.approvalClient = HttpClient.newHttpClient();
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -602,7 +556,6 @@ public final class GuiServer implements AutoCloseable {
       current.stop(0);
       server = null;
     }
-    approvalClient.close();
     executor.shutdownNow();
   }
 
@@ -612,9 +565,7 @@ public final class GuiServer implements AutoCloseable {
     long startedNanos = System.nanoTime();
     try {
       String path = exchange.getRequestURI().getPath();
-      if (isApprovalPath(path)) {
-        proxyApproval(exchange, path);
-      } else if (path.equals("/api") || path.startsWith("/api/")) {
+      if (path.equals("/api") || path.startsWith("/api/")) {
         writeReply(exchange, handleApi(exchange, exchange.getRequestMethod(), path));
       } else if (!staticHandler.tryServe(exchange, path)) {
         writeReply(exchange, Reply.of(404, notFound(path)));
@@ -1072,11 +1023,6 @@ public final class GuiServer implements AutoCloseable {
   private static String decisionMakerIdOfSuffixedPath(String path, String suffix) {
     return urlDecode(
         path.substring(DECISION_MAKER_DETAIL_PREFIX.length(), path.length() - suffix.length()));
-  }
-
-  /** 审批代理路径：{@code /api/approvals}（列表/GET）与 {@code /api/approvals/{id}}（决议/POST）。 */
-  private static boolean isApprovalPath(String path) {
-    return path.equals(APPROVAL_PATH) || path.startsWith(APPROVAL_PATH + "/");
   }
 
   // ── 读端点 ──────────────────────────────────────────────────────────────────────────
@@ -2196,7 +2142,11 @@ public final class GuiServer implements AutoCloseable {
       io.mosire.agentlib.llm.LlmResponse response =
           client.chat(
               new io.mosire.agentlib.llm.LlmRequest(
-                  List.of(io.mosire.agentlib.llm.LlmMessage.user("只回复一个 JSON 对象，表示连接正常。"))));
+                  List.of(
+                      // ★ 单空格 system 硬约束（用户 2026-10-17）：连接自检也是本项目发出的 LLM 请求，
+                      //   同样恰有一条 system 消息、内容取唯一生产来源 SystemPromptPolicy.SINGLE_SPACE。
+                      io.mosire.agentlib.llm.LlmMessage.system(SystemPromptPolicy.SINGLE_SPACE),
+                      io.mosire.agentlib.llm.LlmMessage.user("只回复一个 JSON 对象，表示连接正常。"))));
       body.put("ok", true);
       body.put("detail", "连接成功（model=" + response.model() + "）");
     } catch (RuntimeException e) {
@@ -2212,56 +2162,6 @@ public final class GuiServer implements AutoCloseable {
       case CommandResult.Conflict conflict -> Reply.of(409, ApiViews.conflict(conflict.current()));
       case CommandResult.Rejected rejected -> Reply.of(422, ApiViews.rejected(rejected.reason()));
     };
-  }
-
-  /**
-   * 审批透传（T6，spec §8.2）：把方法与路径原样转给 AgentLib 的 {@code ApprovalHttpEndpoint}，状态码/体/头原样回。
-   *
-   * <p>★ **不解释语义**：404/405/409/400 全部由 AgentLib 端点判定；本方法只做"转发 + 照回"。不可达 ⇒ 502。未配置 base URL ⇒ 503。
-   */
-  private void proxyApproval(HttpExchange exchange, String path) throws IOException {
-    if (approvalBaseUrl == null || approvalBaseUrl.isBlank()) {
-      writeReply(exchange, Reply.of(503, Map.of("error", "approval endpoint 未配置")));
-      return;
-    }
-    String query = exchange.getRequestURI().getRawQuery();
-    String target = approvalBaseUrl + path + (query == null || query.isEmpty() ? "" : "?" + query);
-    byte[] requestBody = exchange.getRequestBody().readAllBytes();
-    HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(target));
-    String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
-    if (contentType != null) {
-      builder.header("Content-Type", contentType);
-    }
-    builder.method(
-        exchange.getRequestMethod(),
-        requestBody.length == 0
-            ? HttpRequest.BodyPublishers.noBody()
-            : HttpRequest.BodyPublishers.ofByteArray(requestBody));
-    HttpResponse<byte[]> response;
-    try {
-      response = approvalClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      writeReply(exchange, Reply.of(502, Map.of("error", "审批端点不可达")));
-      return;
-    } catch (IOException e) {
-      writeReply(exchange, Reply.of(502, Map.of("error", "审批端点不可达")));
-      return;
-    }
-    Headers headers = exchange.getResponseHeaders();
-    String responseType = response.headers().firstValue("Content-Type").orElse(null);
-    headers.set(
-        "Content-Type", responseType == null ? "application/json; charset=utf-8" : responseType);
-    response.headers().firstValue("Allow").ifPresent(allow -> headers.set("Allow", allow));
-    byte[] body = response.body();
-    if (body.length == 0) {
-      exchange.sendResponseHeaders(response.statusCode(), -1);
-    } else {
-      exchange.sendResponseHeaders(response.statusCode(), body.length);
-      try (OutputStream out = exchange.getResponseBody()) {
-        out.write(body);
-      }
-    }
   }
 
   // ── 请求工具 ────────────────────────────────────────────────────────────────────────

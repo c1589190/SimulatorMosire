@@ -422,7 +422,6 @@ public final class EconomyCycleHealthSim {
             0,
             0,
             ShellConfig.DEFAULT_MCP_PATH,
-            0,
             ShellConfig.DEFAULT_MCP_INITIATOR,
             MAP_ID,
             ShellConfig.DEFAULT_BIND_ADDRESS,

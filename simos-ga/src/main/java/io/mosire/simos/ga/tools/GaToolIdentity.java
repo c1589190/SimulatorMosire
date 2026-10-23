@@ -42,7 +42,7 @@ public interface GaToolIdentity {
    *
    * @param actor 调用者决策人
    * @param state 目标坐标上的完整状态（范围函数要用它算可见集）
-   * @param targets 本次提议要触达的目标（{@code ProposalCatalog.targets(...)} 的产物）
+   * @param targets 本次提议要触达的目标（{@code DecisionCallPreviewer.targets(...)} 的产物）
    * @param mapId 地图称谓（资源路径要用它）
    * @return 无越界 ⇒ 空
    */

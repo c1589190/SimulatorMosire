@@ -5,19 +5,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.model.AccessLimit;
-import io.mosire.simos.ga.model.CallStatus;
 import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.DisclosurePolicy;
-import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.MergedEffect;
 import io.mosire.simos.ga.model.MergedEffectPlan;
-import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.log.LogOrigin;
-import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.Set;
 import org.slf4j.Logger;
 
@@ -47,11 +42,9 @@ import org.slf4j.Logger;
  * {@code simos-ga}，同一条理由（线格式一处拼写）。
  *
  * <p>★ 可见性只放宽必须的那几个：{@code parse} / {@code requireText} / {@code optionalText} / {@code
- * requireLong} / {@code optionalLongValue} / {@code requirePacketStatus} / {@code
- * optionalFormattedCalls} / {@code requireMergedEffectPlan} / {@code logRejected}（{@code
- * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）/ {@code requireAddress} / {@code
- * optionalAddress} / {@code optionalTextSet} / {@code optionalDirectiveCommands}。★ 本类随 {@code
- * simos-sd} 在批次 3e 退役。
+ * requireLong} / {@code requireMergedEffectPlan} / {@code logRejected}（{@code logRejected} 的 logger
+ * 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）/ {@code requireAddress} / {@code optionalAddress} /
+ * {@code optionalTextSet} / {@code optionalDirectiveCommands}。★ 本类随 {@code simos-sd} 在批次 3e 退役。
  *
  * <p>★★ <b>2026-10-12 批次 3d-2：本类删掉 8 个只服务旧战斗族的解析器（如实记）</b>——{@code requireHex} / {@code
  * optionalUnitIdSet} / {@code optionalTriggers} / {@code requireStage} / {@code
@@ -335,102 +328,6 @@ public final class GaPayloads {
       throw new IllegalArgumentException(
           "adjudicationDisclosure 非法（FULL|PERCEPTION_ONLY|WITHHELD）: " + text.get());
     }
-  }
-
-  // ── D2 决策包 / FormattedCall（扁平载荷，避免嵌套大对象解析）──────────────────────────
-
-  /**
-   * 读 {@code calls} 数组（一条扁平 {@code FormattedCall} 一个小对象）。
-   *
-   * <p>★ 键缺席/为 null ⇒ 空表（拟稿期"还没有 call"是合法形态）；给了就必须是对象数组。目标 {@code targets} 用 {@link CommandTarget}
-   * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}； {@code
-   * outcomeJson} 缺省 = {@link Optional#empty()}（D3 旧档兼容口径）。
-   */
-  public static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return List.of();
-    }
-    if (!value.isArray()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是调用数组: " + payload);
-    }
-    List<FormattedCall> out = new ArrayList<>();
-    for (JsonNode element : value) {
-      if (!element.isObject()) {
-        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
-      }
-      int callIndex = requireInt(element, "callIndex");
-      String toolName = requireText(element, "toolName");
-      String argsJson = optionalText(element, "argsJson").orElse("{}");
-      List<CommandTarget> targets = requireCommandTargets(element, "targets");
-      String previewJson = optionalText(element, "previewJson").orElse("{}");
-      List<String> draftChecks = optionalTextList(element, "draftChecks");
-      CallStatus status = parseCallStatus(requireText(element, "status"));
-      Optional<String> mergedPlanId = optionalText(element, "mergedPlanId");
-      Optional<String> outcomeJson = optionalText(element, "outcomeJson");
-      out.add(
-          new FormattedCall(
-              callIndex,
-              toolName,
-              argsJson,
-              targets,
-              previewJson,
-              draftChecks,
-              status,
-              mergedPlanId,
-              outcomeJson));
-    }
-    return List.copyOf(out);
-  }
-
-  /** 读跨命名空间目标数组 {@code [{"namespace":"map","path":"Map1/hex/1_2"}…]}。 */
-  static List<CommandTarget> requireCommandTargets(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isArray()) {
-      throw new IllegalArgumentException(
-          "字段 " + field + " 必须是 [{\"namespace\":…,\"path\":…}…] 数组: " + payload);
-    }
-    List<CommandTarget> out = new ArrayList<>();
-    for (JsonNode element : value) {
-      if (!element.isObject()) {
-        throw new IllegalArgumentException(
-            "字段 " + field + " 的元素必须是 {namespace,path} 对象: " + element);
-      }
-      out.add(new CommandTarget(requireText(element, "namespace"), requireText(element, "path")));
-    }
-    return List.copyOf(out);
-  }
-
-  /** 读包状态（只收枚举名，不收自由字符串）。 */
-  public static PacketStatus requirePacketStatus(JsonNode payload, String field) {
-    String text = requireText(payload, field);
-    try {
-      return PacketStatus.valueOf(text.trim());
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          field + " 非法（DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED）: " + text);
-    }
-  }
-
-  /** 读 call 状态（只收枚举名）。 */
-  static CallStatus parseCallStatus(String text) {
-    try {
-      return CallStatus.valueOf(text.trim());
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("status 非法（PENDING|APPROVED|REJECTED|MERGED）: " + text);
-    }
-  }
-
-  /** 可空整数（键缺席/为 null ⇒ {@link OptionalLong#empty()}；给了必须是整数）。 */
-  public static OptionalLong optionalLongValue(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return OptionalLong.empty();
-    }
-    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
-    }
-    return OptionalLong.of(value.asLong());
   }
 
   /** 可选字符串数组（键缺席/为 null ⇒ 空表；元素必须是非空白文本）。 */

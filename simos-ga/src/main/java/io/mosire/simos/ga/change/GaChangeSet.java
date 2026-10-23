@@ -10,7 +10,7 @@ import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.ga.model.Verdict;
@@ -44,7 +44,7 @@ import java.util.function.Function;
  * ref} / {@code timestamp} 装上去（模块状态类型本身不带坐标）。
  */
 public record GaChangeSet(
-    FieldDelta<DecisionPacket> decisionPackets,
+    FieldDelta<DecisionRecord> decisionPackets,
     FieldDelta<MergedEffectPlan> mergedEffectPlans,
     FieldDelta<Directive> directives,
     FieldDelta<Verdict> verdicts,
@@ -75,6 +75,36 @@ public record GaChangeSet(
     if (effects == null) {
       effects = new FieldDelta.Unchanged<>();
     }
+    requireDecisionRecordDelta(decisionPackets);
+  }
+
+  /** 决策包 delta 的键必须是 {@code DecisionRecord.id.value()}（与 {@link GaState} 的表键不变式同源）。 */
+  private static void requireDecisionRecordDelta(FieldDelta<DecisionRecord> delta) {
+    if (!delta.changed()) {
+      return;
+    }
+    if (delta instanceof FieldDelta.Upsert<?> upsert) {
+      requireDecisionRecordEntries(upsert.entries());
+      return;
+    }
+    if (delta instanceof FieldDelta.Patch<?> patch) {
+      requireDecisionRecordEntries(patch.upserts().entries());
+      return;
+    }
+    // Remove 只带旧 key，不承载新值；重建时仍由 GaState 校验。
+  }
+
+  private static void requireDecisionRecordEntries(Map<String, ?> entries) {
+    for (Map.Entry<String, ?> entry : entries.entrySet()) {
+      if (!(entry.getValue() instanceof DecisionRecord record)
+          || !entry.getKey().equals(record.id().value())) {
+        throw new IllegalArgumentException(
+            "GaChangeSet.decisionPackets 的 delta 键必须等于 DecisionRecord.id.value(): key="
+                + entry.getKey()
+                + " value="
+                + entry.getValue());
+      }
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -95,7 +125,7 @@ public record GaChangeSet(
   public static GaState apply(GaChangeSet cs, GaState base) {
     Objects.requireNonNull(cs, "cs");
     Objects.requireNonNull(base, "base");
-    Map<DecisionPacketId, DecisionPacket> decisionPackets =
+    Map<DecisionPacketId, DecisionRecord> decisionPackets =
         FieldDelta.rebuild(base.decisionPackets(), cs.decisionPackets(), DecisionPacketId::parse);
     Map<MergedEffectPlanId, MergedEffectPlan> mergedEffectPlans =
         FieldDelta.rebuild(

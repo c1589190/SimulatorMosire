@@ -33,8 +33,8 @@ import java.util.function.Function;
  *       READ_MANIFEST} / {@code WRITE_MANIFEST}），我们的权限判定靠它。
  *   <li><b>I4 —— {@code gate()} 不得静默丢弃</b>：审批策略由装配方**注入**（{@link Function}）。本类**不给缺省值**
  *       ——"缺省放行"就是绕过审批链；注入方必须逐条给策略（构造器 fail-closed）。
- *   <li><b>I1 —— {@code roles()} 是唯一拼写点</b>：角色由构造注入的**不可变**集合承载；空集当场抛（空集 = 谁都看不见 = 装配故障，与 {@link
- *       SimosTool#roles()} 的契约同口径）。
+ *   <li><b>I1 —— {@code toolRoles()} 是唯一拼写点</b>：角色由构造注入的**不可变**集合承载；空集当场抛（空集 = 谁都看不见 = 装配故障，与
+ *       {@link SimosTool#toolRoles()} 的契约同口径）。
  * </ol>
  *
  * <p>★ <b>为什么不在这里声明"哪条工具给谁"</b>：那会让本类认识具体的工具名 ⇒ 契约层反过来依赖组合根的知识。角色表在装配处 （{@code
@@ -115,9 +115,9 @@ public final class SimosToolAdapter implements SimosTool {
 
   // ── 两条**我们**的语义（外来工具面没有）：角色与审批 ──────────────────────────
 
-  /** I1：`roles()` 是"这个工具能被谁用"的唯一拼写点（不可变副本）。 */
+  /** I1：`toolRoles()` 是"这个工具能被谁用"的唯一拼写点（不可变副本）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return roles;
   }
 

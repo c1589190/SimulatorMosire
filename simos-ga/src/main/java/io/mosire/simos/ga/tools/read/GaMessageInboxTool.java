@@ -257,7 +257,7 @@ public final class GaMessageInboxTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**决策人面**（GM 不是决策人，它读 info 全量、不需要这个收件箱）。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM);
   }
 }

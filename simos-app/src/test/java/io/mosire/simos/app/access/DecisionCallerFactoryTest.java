@@ -33,8 +33,8 @@ import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
-import io.mosire.simos.ga.tools.write.ProposeCallTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.RequestTool;
 import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.hex.HexCoord;
@@ -201,7 +201,7 @@ class DecisionCallerFactoryTest {
 
   @Test
   void decisionMakerCannotCallUnitDomainWrites() {
-    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0))) {
       ToolRegistry registry = new ToolRegistry();
       // ★★ 2026-10-12 B3 收尾（C3）：两条 unit 窄写已下放到 simos-unit（io.mosire.simos.unit.tools.write）
       //   ⇒ 构造器改吃注入的窄写口，与生产装配（SimosToolSource:717+）同源。★ 本用例的断言（决策人**不能**
@@ -233,13 +233,13 @@ class DecisionCallerFactoryTest {
    * 面上的其他写工具一个都不许在**。
    *
    * <p>★★ 2026-10-12 B4b：判别力的载体换成了**测试侧金名单**（{@link DecisionFaceGolden#ALL}）——生产里那份静态 44 条白名单已删
-   * （"能被谁用"只写在 {@code SimosTool.roles()} 里，白名单是决策人桶的纯派生量）。本用例现在把**真装配派生出来的**决策人面钉在
-   * 金名单上：往决策人桶加/删任何一条工具而不同步规格 ⇒ 当场红；改了规格而没改 {@code roles()} / 没挂桶 ⇒ 装配期 {@code
+   * （"能被谁用"只写在 {@code SimosTool.toolRoles()} 里，白名单是决策人桶的纯派生量）。本用例现在把**真装配派生出来的**决策人面钉在
+   * 金名单上：往决策人桶加/删任何一条工具而不同步规格 ⇒ 当场红；改了规格而没改 {@code toolRoles()} / 没挂桶 ⇒ 装配期 {@code
    * ToolRoleAudit.requireFaces} 当场抛。
    */
   @Test
   void theWhitelistIsExactlyTheReadToolsPlusTheTwoDecisionWrites() {
-    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0))) {
       List<String> gmFace =
           shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList();
       // ★ 派生方式与生产路径**同一个纯函数**（Shell 就是这么算出权限组白名单的）。
@@ -292,10 +292,10 @@ class DecisionCallerFactoryTest {
       //     冻结回合里"七个决策包工具都能用"（设计书 §3.2/§4 I2）就靠它 + DecisionAgentRunnerTest 的冻结面用例两侧钉住。
       assertThat(whitelist)
           .as(
-              "★ 决策包七件套（propose/revise/drop/intent/my/confirm/reopen）+ 推演确认（adjudication.ack）"
+              "★ 决策包七件套（request/revise/drop/intent/my/confirm/reopen）+ 推演确认（adjudication.ack）"
                   + "必须在决策人白名单里 —— 它们全是类3 DM_FREE（gate=ALLOW、零世界效果）")
           .contains(
-              ProposeCallTool.NAME,
+              RequestTool.NAME,
               ReviseCallTool.NAME,
               DropCallTool.NAME,
               PacketIntentTool.NAME,

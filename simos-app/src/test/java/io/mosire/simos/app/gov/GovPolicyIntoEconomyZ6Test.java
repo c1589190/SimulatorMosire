@@ -385,7 +385,7 @@ class GovPolicyIntoEconomyZ6Test {
   // ── 夹具与助手 ──────────────────────────────────────────────────────────────────────
 
   private static ShellConfig configFor(Path store) {
-    return ShellConfig.defaults(store).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
+    return ShellConfig.defaults(store).withPorts(0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
   }
 
   /**

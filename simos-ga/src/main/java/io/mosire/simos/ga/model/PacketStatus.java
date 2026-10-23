@@ -1,20 +1,18 @@
 package io.mosire.simos.ga.model;
 
 /**
- * 决策包状态（D2 决策包计划 §1）：一决策人 × 一 tick 一个 packet 的生命周期。
+ * 决策包<b>只读展示状态</b>（设计书 §5.4）。
  *
- * <p>取值语义：
+ * <p>精确状态只在 AgentLib {@code PackageState} / {@code DecisionRecord.packageState()}；本枚举不得作为写状态。
  *
  * <ul>
- *   <li>{@link #DRAFT}——拟稿中（propose/intent 可追加/改写）；
- *   <li>{@link #PENDING}——已提交待 GM 裁决；
- *   <li>{@link #APPROVED}——整包批准（逐 call 以各自状态为准）；
- *   <li>{@link #REJECTED}——整包拒绝；
- *   <li>{@link #PARTIALLY_APPROVED}——部分 call 批准（D2 的 GM 可给 {@code callIndexes}）；
- *   <li>{@link #MERGED}——走合并效果集（D3）。
+ *   <li>{@link #DRAFT}——旧测试/旧线格式留痕；新的 {@code PROPOSED} 包视图统一显示 {@link #PENDING}；
+ *   <li>{@link #PENDING}——{@code PROPOSED} 或 {@code DECIDING}；
+ *   <li>{@link #APPROVED}——被批子集覆盖全部条目；
+ *   <li>{@link #PARTIALLY_APPROVED}——只批了部分条目；
+ *   <li>{@link #REJECTED}——全驳 / {@code CONFLICTED} / {@code EXPIRED} 的展示口径；
+ *   <li>{@link #MERGED}——领域 {@code mergedPlanId} 存在。
  * </ul>
- *
- * <p>★ 逐 call 的真值在 {@link CallStatus}；包级状态是**汇总口径**（无 callIndexes 的全部批准 ⇒ {@code APPROVED}）。
  */
 public enum PacketStatus {
   DRAFT,

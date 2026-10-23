@@ -53,7 +53,7 @@ import java.util.UUID;
  * 取注入值（发起者属于装配面，不吃工具载荷）。
  *
  * <p>★ <b>敏感写</b>：{@code spec().sensitive()=true} + {@link ToolGate.Ask}（classKey = 工具名，summary
- * 只含条数/分支/期望 revision）；{@code roles()={GM}} 与 {@code simos.command.submit} 同档（GM 面的通用写，走 GM
+ * 只含条数/分支/期望 revision）；{@code toolRoles()={GM}} 与 {@code simos.command.submit} 同档（GM 面的通用写，走 GM
  * 的自动放行链）。
  */
 public final class CommandSubmitBatchTool implements SimosTool {
@@ -154,7 +154,7 @@ public final class CommandSubmitBatchTool implements SimosTool {
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）：与 {@code simos.command.submit} 同档。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.GM);
   }
 

@@ -7,10 +7,9 @@
  * <p><b>包内类型分两半</b>：
  *
  * <ul>
- *   <li><b>运行流本体</b>：{@code DecisionAgentRunner}（回合循环）、{@code DecisionRunRegistry}（进度留痕）、 {@code
- *       DecisionToolDefs}（工具面 → {@code ToolDef}）；★ 「可被 propose」的声明（{@code
- *       io.mosire.simos.ga.spi.DecisionProposable}）**已搬去 {@code ga-spi}**（批 K ① —— 实现者是**工具自己**，
- *       而工具住各域模块 {@code unit}/{@code social}/{@code gov}，只有契约层能被它们实现）；
+ *   <li><b>运行流本体</b>：{@code DecisionAgentRunner}（回合循环 + DecisionTurnScope/PendingDecisionQueue 绑定）、
+ *       {@code DecisionRunRegistry}（进度留痕）、{@code DecisionToolDefs}（工具面 → {@code ToolDef}）； ★ 旧的
+ *       {@code DecisionProposable} 已退役：能否入包由 {@code ToolGate.Ask} 与权限链决定；
  *   <li><b>宿主注入面</b>（本模块定接口、{@code simos-app} 给实现，设计书 §4.5 I-G2）： {@link
  *       io.mosire.simos.ga.decision.DecisionToolCaller}（权限链执行 + 全局白名单）、 {@link
  *       io.mosire.simos.ga.decision.DecisionToolNames}（工具名声明）、 {@link
@@ -20,7 +19,8 @@
  *
  * <p>★ <b>不在这里的东西</b>（按设计书 §4.5 明确留 {@code simos-app}）：权限范围函数（{@code GovScope} / {@code
  * NationScope} / {@code ArmyScope} / {@code DecisionScopeFunctions}）——它们要看辖区 + 单位 + 外交，
- * 属"装配"而不是"运行"；以及持有域工具实例的 {@code ProposalCatalog}、读世界的 {@code NationOpeningSnapshot}。
+ * 属"装配"而不是"运行"；以及持有域工具实例的 {@code DecisionCallPreviewer}（S2 由 ProposalCatalog 收窄）、读世界的 {@code
+ * NationOpeningSnapshot}。
  *
  * <p>★ <b>本包不认识 {@code simos-app}</b>：那是 {@code app → ga → app} 环，Maven 建图期直接拒。
  */

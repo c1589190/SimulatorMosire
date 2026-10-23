@@ -719,7 +719,7 @@ class DmMessagingEndToEndTest {
   }
 
   private Shell startShell(Path store) {
-    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0);
     return Shell.start(
         new ShellConfig(
             base.storeDir(),
@@ -727,7 +727,6 @@ class DmMessagingEndToEndTest {
             base.guiPort(),
             base.mcpPort(),
             base.mcpPath(),
-            base.approvalPort(),
             "agent:dm-messaging-test",
             base.mapId(),
             base.bindAddress()));

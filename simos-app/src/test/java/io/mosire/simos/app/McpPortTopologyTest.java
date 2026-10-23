@@ -54,7 +54,6 @@ class McpPortTopologyTest {
           "simos.command.catalog",
           "simos.economy.hex",
           "simos.economy.ownership",
-          "simos.gm.approvals",
           // ★★ 2026-10-14 GM⇄DM 信件批：GM 侧收件箱（只读，GmOnlyRead）
           "simos.gm.inbox",
           "simos.gm.packet",
@@ -105,7 +104,7 @@ class McpPortTopologyTest {
           "simos.army.startCombat",
           "simos.calendar.configure",
           "simos.command.submit",
-          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；非窄写；roles()={GM}）。
+          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；非窄写；toolRoles()={GM}）。
           "simos.command.submitBatch",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
@@ -114,16 +113,18 @@ class McpPortTopologyTest {
           "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
-          "simos.gm.approve",
-          // ★★ 2026-10-14 批 G（GM 代打）：写；非窄写（不继承 AbstractNarrowWriteTool）；roles()={GM} ⇒ 只在 GM 面
+          // ★★ 2026-10-14 批 G（GM 代打）：写；非窄写（不继承 AbstractNarrowWriteTool）；toolRoles()={GM} ⇒ 只在 GM 面
           "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           // ★★ 2026-10-14 GM⇄DM 信件批：GM 发信（写；非窄写 —— 不继承 AbstractNarrowWriteTool）
           "simos.gm.message.send",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
-          "simos.gm.packet.decide",
-          "simos.gm.packet.execute",
+          "decision_package_list",
+          "decision_package_get",
+          "decision_package_decide",
+          "decision_package_decide_item",
+          "decision_package_commit",
           "simos.gm.periodicAdjustment",
           "simos.gm.vitalRates",
           "simos.gov.absorbUnit",
@@ -311,7 +312,7 @@ class McpPortTopologyTest {
 
   @BeforeEach
   void startShell() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
   }
 
   @AfterEach

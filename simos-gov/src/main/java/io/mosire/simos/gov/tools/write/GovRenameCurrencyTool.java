@@ -13,7 +13,6 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -49,7 +48,7 @@ import java.util.Set;
  * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 逐字引用该报文的**首句**；正文其后还有「★
  * 键位按工具分叉」一段）。
  */
-public final class GovRenameCurrencyTool implements SimosTool, DecisionProposable {
+public final class GovRenameCurrencyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.renameCurrency";
@@ -268,7 +267,7 @@ public final class GovRenameCurrencyTool implements SimosTool, DecisionProposabl
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
-  public Set<ToolRole> roles() {
+  public Set<ToolRole> toolRoles() {
     return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

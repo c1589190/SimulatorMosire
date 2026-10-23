@@ -3,112 +3,106 @@ package io.mosire.simos.ga.model;
 import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * 一个决策包（D2 决策包计划 §1）：一决策人 × 一 tick 恰好一个包，内含拟稿期追加的 {@link FormattedCall} 列表。
+ * 决策包的<b>只读领域视图</b>（设计书 §5.4）。
  *
- * <p>★ {@code intent} 是自然语言轨道（可为空字符串，不参与 true/false 机械执行）；{@code reasonInfoId} 预留 D4 的 INFO
- * 引用；{@code decidedBy}/{@code decidedAtRevision}/{@code decisionNote} 是 GM 裁决留痕。
+ * <p>它不是世界状态：{@link io.mosire.simos.ga.GaState} 只持久化 {@link DecisionRecord}，精确状态只在 {@link
+ * DecisionRecord#packageState()}。本类型保留给既有 GUI / 读工具迁移，只能经 {@link DecisionRecord#view()}
+ * 从记录现场投影；构造器对 {@code model} 包外不可见，且刻意<b>没有</b> {@code withStatus/withDecision/withCalls} 之类写方法。
  *
- * <p>★ {@code calls} 保序不可变、{@code callIndex} **严格递增不重复**（构造期校验）——执行顺序 = 列表顺序。
- *
- * <p>★ {@code createdAtRevision} 是**建包时**的 revision；后续重写保留原值（谁最早建的看得出）。
+ * <p>{@link PacketStatus}/{@link CallStatus} 只描述展示口径；任何裁决/执行状态判断都必须读 AgentLib 快照。
  */
-public record DecisionPacket(
-    DecisionPacketId id,
-    String branch,
-    long tick,
-    DecisionMakerId proposerId,
-    PacketStatus status,
-    String intent,
-    List<FormattedCall> calls,
-    long createdAtRevision,
-    Optional<String> decidedBy,
-    OptionalLong decidedAtRevision,
-    Optional<String> reasonInfoId,
-    Optional<String> decisionNote) {
+public final class DecisionPacket {
 
-  public DecisionPacket {
-    if (id == null) {
-      throw new IllegalArgumentException("DecisionPacket.id 不得为 null");
-    }
+  private final DecisionPacketId id;
+  private final String branch;
+  private final long tick;
+  private final DecisionMakerId proposerId;
+  private final PacketStatus status;
+  private final String intent;
+  private final List<FormattedCall> calls;
+  private final long createdAtRevision;
+  private final Optional<String> decidedBy;
+  private final OptionalLong decidedAtRevision;
+  private final Optional<String> reasonInfoId;
+  private final Optional<String> decisionNote;
+
+  private DecisionPacket(
+      DecisionPacketId id,
+      String branch,
+      long tick,
+      DecisionMakerId proposerId,
+      PacketStatus status,
+      String intent,
+      List<FormattedCall> calls,
+      long createdAtRevision,
+      Optional<String> decidedBy,
+      OptionalLong decidedAtRevision,
+      Optional<String> reasonInfoId,
+      Optional<String> decisionNote) {
+    this.id = Objects.requireNonNull(id, "id");
     if (branch == null || branch.isBlank()) {
       throw new IllegalArgumentException("DecisionPacket.branch 不得为空白");
     }
-    if (tick < 0) {
+    this.branch = branch;
+    if (tick < 0L) {
       throw new IllegalArgumentException("DecisionPacket.tick 必须 ≥ 0: " + tick);
     }
-    if (proposerId == null) {
-      throw new IllegalArgumentException("DecisionPacket.proposerId 不得为 null");
-    }
-    if (status == null) {
-      throw new IllegalArgumentException("DecisionPacket.status 不得为 null");
-    }
-    if (intent == null) {
-      throw new IllegalArgumentException("DecisionPacket.intent 不得为 null（无 NL 意图用空字符串）");
-    }
-    if (calls == null) {
-      throw new IllegalArgumentException("DecisionPacket.calls 不得为 null（无调用用空表）");
-    }
-    if (createdAtRevision < 0) {
-      throw new IllegalArgumentException(
-          "DecisionPacket.createdAtRevision 必须 ≥ 0: " + createdAtRevision);
-    }
-    if (decidedBy == null) {
-      throw new IllegalArgumentException(
-          "DecisionPacket.decidedBy 不得为 null（未裁决用 Optional.empty()）");
-    }
-    if (decidedAtRevision == null) {
-      throw new IllegalArgumentException(
-          "DecisionPacket.decidedAtRevision 不得为 null（未裁决用 OptionalLong.empty()）");
-    }
-    if (reasonInfoId == null) {
-      throw new IllegalArgumentException(
-          "DecisionPacket.reasonInfoId 不得为 null（无引用用 Optional.empty()）");
-    }
-    if (decisionNote == null) {
-      throw new IllegalArgumentException(
-          "DecisionPacket.decisionNote 不得为 null（无注记用 Optional.empty()）");
-    }
+    this.tick = tick;
+    this.proposerId = Objects.requireNonNull(proposerId, "proposerId");
+    this.status = Objects.requireNonNull(status, "status");
+    this.intent = Objects.requireNonNull(intent, "intent");
+    Objects.requireNonNull(calls, "calls");
+    List<FormattedCall> callCopy = new ArrayList<>(calls.size());
     int previous = Integer.MIN_VALUE;
     for (FormattedCall call : calls) {
-      if (call == null) {
-        throw new IllegalArgumentException("DecisionPacket.calls 不得含 null");
-      }
+      Objects.requireNonNull(call, "calls 不得含 null");
       if (call.callIndex() <= previous) {
         throw new IllegalArgumentException(
             "DecisionPacket.calls 的 callIndex 必须严格递增且不重复: " + call.callIndex());
       }
       previous = call.callIndex();
+      callCopy.add(call);
     }
-    calls = List.copyOf(calls); // ★ 冻在赋值处
-  }
-
-  /** 仅换 calls 的那一版（propose 追加一条）。 */
-  public DecisionPacket withCalls(List<FormattedCall> newCalls) {
-    return copy(newCalls, status, decidedBy, decidedAtRevision, reasonInfoId, decisionNote);
-  }
-
-  /** 仅换状态的那一版（submit 置 PENDING）。 */
-  public DecisionPacket withStatus(PacketStatus newStatus) {
-    if (newStatus == null) {
-      throw new IllegalArgumentException("newStatus 不得为 null");
+    this.calls = Collections.unmodifiableList(callCopy);
+    if (createdAtRevision < 0L) {
+      throw new IllegalArgumentException(
+          "DecisionPacket.createdAtRevision 必须 ≥ 0: " + createdAtRevision);
     }
-    return copy(calls, newStatus, decidedBy, decidedAtRevision, reasonInfoId, decisionNote);
+    this.createdAtRevision = createdAtRevision;
+    this.decidedBy = Objects.requireNonNull(decidedBy, "decidedBy");
+    this.decidedAtRevision = Objects.requireNonNull(decidedAtRevision, "decidedAtRevision");
+    this.reasonInfoId = Objects.requireNonNull(reasonInfoId, "reasonInfoId");
+    this.decisionNote = Objects.requireNonNull(decisionNote, "decisionNote");
   }
 
-  /** 仅换 NL 意图的那一版（intent 工具）。 */
-  public DecisionPacket withIntent(String newIntent) {
+  /** 只供 {@link DecisionRecord#view()} 在同一个 {@code model} 包内构造视图。 */
+  static DecisionPacket of(
+      DecisionPacketId id,
+      String branch,
+      long tick,
+      DecisionMakerId proposerId,
+      PacketStatus status,
+      String intent,
+      List<FormattedCall> calls,
+      long createdAtRevision,
+      Optional<String> decidedBy,
+      OptionalLong decidedAtRevision,
+      Optional<String> reasonInfoId,
+      Optional<String> decisionNote) {
     return new DecisionPacket(
         id,
         branch,
         tick,
         proposerId,
         status,
-        newIntent,
+        intent,
         calls,
         createdAtRevision,
         decidedBy,
@@ -117,40 +111,120 @@ public record DecisionPacket(
         decisionNote);
   }
 
-  /** 裁决的那一版（D2 的 GM APPROVE/DENY）：逐 call 状态 + 包状态 + 裁决留痕一起换。 */
-  public DecisionPacket withDecision(
-      PacketStatus newStatus,
-      List<FormattedCall> newCalls,
-      Optional<String> newDecidedBy,
-      OptionalLong newDecidedAtRevision,
-      Optional<String> newDecisionNote) {
-    if (newStatus == null) {
-      throw new IllegalArgumentException("newStatus 不得为 null");
-    }
-    return copy(
-        newCalls, newStatus, newDecidedBy, newDecidedAtRevision, reasonInfoId, newDecisionNote);
+  public DecisionPacketId id() {
+    return id;
   }
 
-  /** 逐字段照抄的**唯一**拷贝点：record 没有 wither，helper 多了以后加字段会漏，故只允许一处展开。 */
-  private DecisionPacket copy(
-      List<FormattedCall> newCalls,
-      PacketStatus newStatus,
-      Optional<String> newDecidedBy,
-      OptionalLong newDecidedAtRevision,
-      Optional<String> newReasonInfoId,
-      Optional<String> newDecisionNote) {
-    return new DecisionPacket(
+  public String branch() {
+    return branch;
+  }
+
+  public long tick() {
+    return tick;
+  }
+
+  public DecisionMakerId proposerId() {
+    return proposerId;
+  }
+
+  public PacketStatus status() {
+    return status;
+  }
+
+  public String intent() {
+    return intent;
+  }
+
+  public List<FormattedCall> calls() {
+    return calls;
+  }
+
+  public long createdAtRevision() {
+    return createdAtRevision;
+  }
+
+  public Optional<String> decidedBy() {
+    return decidedBy;
+  }
+
+  public OptionalLong decidedAtRevision() {
+    return decidedAtRevision;
+  }
+
+  public Optional<String> reasonInfoId() {
+    return reasonInfoId;
+  }
+
+  public Optional<String> decisionNote() {
+    return decisionNote;
+  }
+
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return true;
+    }
+    if (!(other instanceof DecisionPacket that)) {
+      return false;
+    }
+    return tick == that.tick
+        && createdAtRevision == that.createdAtRevision
+        && id.equals(that.id)
+        && branch.equals(that.branch)
+        && proposerId.equals(that.proposerId)
+        && status == that.status
+        && intent.equals(that.intent)
+        && calls.equals(that.calls)
+        && decidedBy.equals(that.decidedBy)
+        && decidedAtRevision.equals(that.decidedAtRevision)
+        && reasonInfoId.equals(that.reasonInfoId)
+        && decisionNote.equals(that.decisionNote);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
         id,
         branch,
         tick,
         proposerId,
-        newStatus,
+        status,
         intent,
-        new ArrayList<>(newCalls),
+        calls,
         createdAtRevision,
-        newDecidedBy,
-        newDecidedAtRevision,
-        newReasonInfoId,
-        newDecisionNote);
+        decidedBy,
+        decidedAtRevision,
+        reasonInfoId,
+        decisionNote);
+  }
+
+  @Override
+  public String toString() {
+    return "DecisionPacket["
+        + "id="
+        + id
+        + ", branch="
+        + branch
+        + ", tick="
+        + tick
+        + ", proposerId="
+        + proposerId
+        + ", status="
+        + status
+        + ", intent="
+        + intent
+        + ", calls="
+        + calls
+        + ", createdAtRevision="
+        + createdAtRevision
+        + ", decidedBy="
+        + decidedBy
+        + ", decidedAtRevision="
+        + decidedAtRevision
+        + ", reasonInfoId="
+        + reasonInfoId
+        + ", decisionNote="
+        + decisionNote
+        + "]";
   }
 }

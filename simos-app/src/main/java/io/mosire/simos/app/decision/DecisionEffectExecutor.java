@@ -2,6 +2,11 @@ package io.mosire.simos.app.decision;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.decision.CommitReceipt;
+import io.mosire.agentlib.decision.DecisionCommitPlan;
+import io.mosire.agentlib.decision.DecisionPackageSnapshot;
+import io.mosire.agentlib.decision.DecisionPackageTransitions;
+import io.mosire.agentlib.decision.ResolvedCall;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
@@ -17,13 +22,14 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.id.DecisionPacketId;
-import io.mosire.simos.ga.model.DecisionPacket;
-import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.DecisionCallMeta;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.model.MergedEffect;
 import io.mosire.simos.ga.model.MergedEffectPlan;
+import io.mosire.simos.ga.spi.ApplyDecisionPackageHandler;
 import io.mosire.simos.ga.spi.PutInfoHandler;
-import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -38,35 +44,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
- * ★★ D3 决策效果执行器（契约 §6/§7）：把一个 tick 的**已批准 call / 合并计划**在**一条 revision**里执行掉。
+ * 决策效果执行器：把被批 call / 合并计划的命令、callMeta outcome、最终 {@link DecisionRecord} 与审计 放进同一条 revision。
  *
- * <p>★★ <b>为什么需要它</b>：决策人只 propose（写 packet），GM 裁决后真正落盘的是"目标工具的命令批"。目标工具的 {@code preview=false}
- * 路径直接 {@code submitBatch}——若执行器也走那条路，N 条 call 会落 N 条 revision，且不可能把 outcome 与效果写进同一批。故目标工具新增内部参数
- * {@code planOnly=true}：走与 {@code preview=false} **完全相同**的纯推导与组批，但在提交前把命令批返回给本执行器。执行器收齐后拼成**一个**
- * {@link CommandEnvelope} 列表（同 branch/expectedRevision、同 batchId、逐条新 commandId），并把 outcome
- * 回写命令追加在批尾，最后一次 {@link CoreSimos#submitBatch} 落一条 revision。
- *
- * <p>★★ <b>执行者身份</b>：目标工具调用一律用系统上下文（{@link AccessToken#SYSTEM} + {@link
- * AgentPermissionSet#unrestricted} + {@link ResourceAuthorizer#of} 目标工具自己的 {@code
- * resources()}）；{@code initiator} 由调用方给（GM）。proposer 留在 packet / outcome 里，不冒充执行者。
- *
- * <p>★★ <b>失败语义</b>：任意一条 call 规划失败、任一 sourceCallRef 悬空、批被拒 / 冲突 ⇒ **整批零 revision**，具名返回； 不静默剔
- * call、不部分执行、不写 outcome。{@code call} 产出 0 条命令是合法退化（outcome 记 {@code empty}）。
- *
- * <p>★ <b>稳定序</b>：由调用方保证——{@code gm.packet.execute} 按 packetId 字符串序 → callIndex 升序； {@code
- * gm.mergedPlan.apply} 按 plan.orderedEffects 顺序。
- *
- * <p>★ <b>outcome 回写</b>（同批）：涉及的每个 packet 追加一条 {@code ga.UpsertDecisionPacket}（执行到的 call 写 {@code
- * outcomeJson}，其余字段原样）；合并计划追加一条 {@code ga.UpsertMergedEffectPlan}（{@code outcome} = 同一摘要 JSON
- * 字符串）；最后追加一条 {@code ga.PutInfo}（地址 {@code ga:execution.<batchId>}，key={@code result}， value=同一摘要
- * JSON 字符串）作为可读审计。合并计划的 sourceCallRefs 会反向把 outcome 写到来源 call 上。
+ * <p>规划失败在提交前收口（零命令）；批被拒/冲突时 core 整批不落（零 revision）。成功路径才由 {@link
+ * DecisionPackageTransitions#completeCommit} 生成最终快照，并追加 {@code
+ * ga.ApplyDecisionPackage}，保证效果与包状态同批原子。
  */
 public final class DecisionEffectExecutor {
 
-  /** 一次执行的结局档位。 */
   public enum Status {
     COMMITTED,
     REJECTED,
@@ -79,7 +68,7 @@ public final class DecisionEffectExecutor {
    *
    * @param packetId 来源 packet id（合并计划效果没有单一来源时 = null；来源由 {@code sourceCallRefs} 表达）
    * @param callIndex packet 内 callIndex；合并计划效果用 orderedEffects 下标
-   * @param toolName ProposalCatalog 清单里的真实工具名
+   * @param toolName 可执行决策面里的真实工具名
    * @param argsJson 目标工具参数 JSON 对象文本
    * @param sourceCallRefs 来源 call 稳定引用（{@code <packetId>:<callIndex>}），保序
    */
@@ -111,27 +100,24 @@ public final class DecisionEffectExecutor {
       sourceCallRefs = List.copyOf(sourceCallRefs);
     }
 
-    /** 从一条已批准 call 构造（gm.packet.execute）。 */
-    public static EffectCall forPacketCall(DecisionPacketId packetId, FormattedCall call) {
+    /** 从 AgentLib 提交计划的一条被批 call 构造（args 明文转 JSON 对象文本）。 */
+    public static EffectCall forResolvedCall(DecisionPacketId packetId, ResolvedCall call) {
+      Objects.requireNonNull(packetId, "packetId");
+      Objects.requireNonNull(call, "call");
       return new EffectCall(
-          packetId.value(), call.callIndex(), call.toolName(), call.argsJson(), List.of());
+          packetId.value(),
+          call.index(),
+          call.toolName(),
+          ToolSupport.json(call.args()),
+          List.of());
     }
 
-    /** 从合并计划的一条 orderedEffect 构造（效果下标 = 顺序位；来源由 sourceCallRefs 表达）。 */
     public static EffectCall forMergedEffect(MergedEffect effect, int effectIndex) {
       return new EffectCall(
           null, effectIndex, effect.toolName(), effect.argsJson(), effect.sourceCallRefs());
     }
   }
 
-  /**
-   * 一条 call/effect 的执行结局。
-   *
-   * @param result {@code committed}（有命令）或 {@code empty}（0 条命令的合法退化）
-   * @param outcomeJson 预构造的 outcome 摘要字符串（批提交成功才生效）
-   * @param commandFrom 批内命令区间起点（0-based；empty 时 = -1）
-   * @param commandTo 批内命令区间终点（0-based；empty 时 = -1）
-   */
   public record CallOutcome(
       EffectCall call, String result, String outcomeJson, int commandFrom, int commandTo) {
 
@@ -140,18 +126,6 @@ public final class DecisionEffectExecutor {
     }
   }
 
-  /**
-   * 一次执行的结果。
-   *
-   * @param batchId 批 id（= 所有信封的 correlationId；被拒/冲突时也返回，便于审计对齐）
-   * @param status 四档结局
-   * @param ref {@code COMMITTED} = 新坐标；{@code CONFLICT} = 真实 head；其余 null
-   * @param failureCode 失败时的具名 code（{@code BAD_REQUEST}/{@code FORBIDDEN}/{@code TOOL_ERROR}/{@code
-   *     REJECTED}/{@code CONFLICT}）；成功 null
-   * @param reason 失败原因（给人看；成功 null）
-   * @param summaryJson 成功时的批摘要 JSON 字符串（= plan.outcome = PutInfo value）
-   * @param outcomes 成功时逐 call/effect 结局；失败 = 空表（零写入，不伪造 outcome）
-   */
   public record ExecutionResult(
       String batchId,
       Status status,
@@ -170,24 +144,30 @@ public final class DecisionEffectExecutor {
     }
   }
 
+  /** 直接提交决策包的结果。失败时 {@code record/receipt} 为 null，表示世界零变化、包保持原快照。 */
+  public record DecisionCommitExecution(
+      ExecutionResult execution, DecisionRecord record, CommitReceipt receipt) {
+
+    public DecisionCommitExecution {
+      Objects.requireNonNull(execution, "execution");
+    }
+
+    public boolean committed() {
+      return execution.committed() && record != null && receipt != null;
+    }
+  }
+
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
   private final CoreSimos core;
-  private final ProposalCatalog catalog;
+  private final DecisionCallPreviewer previewer;
 
-  public DecisionEffectExecutor(CoreSimos core, ProposalCatalog catalog) {
+  public DecisionEffectExecutor(CoreSimos core, DecisionCallPreviewer previewer) {
     this.core = Objects.requireNonNull(core, "core");
-    this.catalog = Objects.requireNonNull(catalog, "catalog");
+    this.previewer = Objects.requireNonNull(previewer, "previewer");
   }
 
-  /**
-   * 执行一批效果。
-   *
-   * @param base 执行读/写的 base 坐标（branch/expectedRevision/tick 都取它）
-   * @param initiator 落盘发起者（GM；proposer 留在 packet/outcome，不冒充执行者）
-   * @param calls 按稳定序排好的效果（非空；空表 ⇒ 调用方应直接拒）
-   * @param mergedPlan 合并计划 apply 时给出（执行器负责把 outcome 写回 plan）；packet.execute 传 empty
-   */
+  /** 合并计划执行路径：规划效果命令、同批回写来源 {@link DecisionRecord#callMeta()} outcome，并落计划 outcome。 */
   public ExecutionResult execute(
       SimulationState base,
       String initiator,
@@ -205,7 +185,140 @@ public final class DecisionEffectExecutor {
     long tick = base.meta().timestamp().tick();
     String batchId = UUID.randomUUID().toString();
 
-    // ① 逐条规划：走目标工具与 preview=false 相同的纯推导/组批，但 planOnly=true ⇒ 不提交。
+    PlanOutcome plan = planAll(calls, base);
+    if (!plan.ok()) {
+      return failure(batchId, Status.PLANNING_FAILED, plan.failureCode(), plan.failureReason());
+    }
+
+    List<CommandEnvelope> batch = new ArrayList<>();
+    List<CallOutcome> callOutcomes =
+        effectCommandsAndOutcomes(
+            batch, calls, plan.planned(), batchId, initiator, branch, expectedRevision);
+    String summaryJson = summaryJson(batchId, tick, mergedPlan, callOutcomes);
+
+    GaState ga = ToolSupport.gaState(base);
+    if (mergedPlan.isPresent() && mergedPlan.get().outcome().isPresent()) {
+      return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", "合并计划已有 outcome，拒绝重复 apply");
+    }
+    Map<String, Map<Integer, String>> packetOutcomes;
+    try {
+      packetOutcomes = collectPacketOutcomes(ga, callOutcomes);
+    } catch (IllegalArgumentException e) {
+      return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", e.getMessage());
+    }
+    for (String packetId : sortedKeys(packetOutcomes)) {
+      DecisionRecord record = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
+      DecisionRecord updated = withCallOutcomes(record, packetOutcomes.get(packetId));
+      batch.add(
+          new CommandEnvelope(
+              UUID.randomUUID().toString(),
+              batchId,
+              initiator,
+              branch,
+              expectedRevision,
+              ApplyDecisionPackageHandler.TYPE,
+              GaCodec.encodeApplyDecisionPackagePayload(
+                  record.packageState().contentVersion(), updated)));
+    }
+    if (mergedPlan.isPresent()) {
+      MergedEffectPlan updated = mergedPlan.get().withOutcome(Optional.of(summaryJson));
+      batch.add(
+          new CommandEnvelope(
+              UUID.randomUUID().toString(),
+              batchId,
+              initiator,
+              branch,
+              expectedRevision,
+              UpsertMergedEffectPlanHandler.TYPE,
+              DecisionPacketPayloads.mergedPlan(updated)));
+    }
+    appendAudit(batch, batchId, initiator, branch, expectedRevision, tick, summaryJson);
+
+    BatchResult result = core.submitBatch(batch);
+    return adaptResult(result, batchId, summaryJson, callOutcomes, batch);
+  }
+
+  /**
+   * 决策包 commit 路径：效果命令 + outcome/callMeta + 最终快照（含 receipt）同一批。
+   *
+   * <p>规划失败时一条命令都不提交。成功前预构造 {@code COMMITTED} receipt 并放进批尾的 {@code
+   * ga.ApplyDecisionPackage}；若任一效果被拒，整批（含最终快照）回滚。
+   */
+  public DecisionCommitExecution executeDecisionPackage(
+      SimulationState base, String initiator, DecisionRecord record, DecisionCommitPlan plan) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(initiator, "initiator");
+    Objects.requireNonNull(record, "record");
+    Objects.requireNonNull(plan, "plan");
+    BranchId branch = base.meta().ref().branch();
+    RevisionId expectedRevision = base.meta().ref().revision();
+    long tick = base.meta().timestamp().tick();
+    String batchId = UUID.randomUUID().toString();
+    long committedRevision = expectedRevision.value() + 1L;
+
+    List<EffectCall> calls = new ArrayList<>(plan.calls().size());
+    for (ResolvedCall call : plan.calls()) {
+      calls.add(EffectCall.forResolvedCall(record.id(), call));
+    }
+    PlanOutcome planned = planAll(calls, base);
+    if (!planned.ok()) {
+      return new DecisionCommitExecution(
+          failure(batchId, Status.PLANNING_FAILED, planned.failureCode(), planned.failureReason()),
+          null,
+          null);
+    }
+
+    List<CommandEnvelope> batch = new ArrayList<>();
+    List<CallOutcome> callOutcomes =
+        effectCommandsAndOutcomes(
+            batch, calls, planned.planned(), batchId, initiator, branch, expectedRevision);
+    List<CommitReceipt.ItemOutcome> itemOutcomes = new ArrayList<>(callOutcomes.size());
+    for (int i = 0; i < callOutcomes.size(); i++) {
+      itemOutcomes.add(CommitReceipt.ItemOutcome.COMMITTED);
+    }
+    CommitReceipt receipt =
+        new CommitReceipt(
+            CommitReceipt.Status.COMMITTED, String.valueOf(committedRevision), itemOutcomes, "");
+    DecisionPackageSnapshot afterSnapshot;
+    try {
+      afterSnapshot = DecisionPackageTransitions.completeCommit(plan, receipt);
+    } catch (RuntimeException e) {
+      return new DecisionCommitExecution(
+          failure(batchId, Status.PLANNING_FAILED, "COMMIT_FAILED", e.getMessage()), null, null);
+    }
+
+    Map<Integer, String> outcomesByIndex = outcomesByIndex(callOutcomes);
+    DecisionRecord afterRecord =
+        withSnapshotAndOutcomes(record, afterSnapshot, outcomesByIndex, committedRevision);
+    batch.add(
+        new CommandEnvelope(
+            UUID.randomUUID().toString(),
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            ApplyDecisionPackageHandler.TYPE,
+            GaCodec.encodeApplyDecisionPackagePayload(
+                record.packageState().contentVersion(), afterRecord)));
+    String summaryJson = summaryJson(batchId, tick, Optional.empty(), callOutcomes);
+    appendAudit(batch, batchId, initiator, branch, expectedRevision, tick, summaryJson);
+
+    BatchResult result = core.submitBatch(batch);
+    ExecutionResult execution = adaptResult(result, batchId, summaryJson, callOutcomes, batch);
+    if (!execution.committed()) {
+      return new DecisionCommitExecution(execution, null, null);
+    }
+    if (execution.ref().revision().value() != committedRevision) {
+      throw new IllegalStateException(
+          "决策包 commit 已提交但 revision 对账失败：base="
+              + expectedRevision.value()
+              + " actual="
+              + execution.ref().revision().value());
+    }
+    return new DecisionCommitExecution(execution, afterRecord, receipt);
+  }
+
+  private PlanOutcome planAll(List<EffectCall> calls, SimulationState base) {
     List<List<PlannedCommand>> planned = new ArrayList<>(calls.size());
     for (int i = 0; i < calls.size(); i++) {
       EffectCall call = calls.get(i);
@@ -213,12 +326,9 @@ public final class DecisionEffectExecutor {
       try {
         step = planCall(call, base);
       } catch (IllegalArgumentException e) {
-        return failure(
-            batchId, Status.PLANNING_FAILED, "BAD_REQUEST", callLabel(i, call, e.getMessage()));
+        return PlanOutcome.fail("BAD_REQUEST", callLabel(i, call, e.getMessage()));
       } catch (RuntimeException e) {
-        return failure(
-            batchId,
-            Status.PLANNING_FAILED,
+        return PlanOutcome.fail(
             "TOOL_ERROR",
             callLabel(
                 i,
@@ -226,18 +336,22 @@ public final class DecisionEffectExecutor {
                 e.getClass().getSimpleName() + ": " + Objects.toString(e.getMessage(), "")));
       }
       if (!step.ok()) {
-        return failure(
-            batchId,
-            Status.PLANNING_FAILED,
-            step.failureCode(),
-            callLabel(i, call, step.failureReason()));
+        return PlanOutcome.fail(step.failureCode(), callLabel(i, call, step.failureReason()));
       }
       planned.add(step.commands());
     }
+    return PlanOutcome.ok(List.copyOf(planned));
+  }
 
-    // ② 汇总成同 branch/expectedRevision、同 batchId、逐条新 commandId 的效果命令。
-    List<CommandEnvelope> batch = new ArrayList<>();
-    List<CallOutcome> callOutcomes = new ArrayList<>(calls.size());
+  private static List<CallOutcome> effectCommandsAndOutcomes(
+      List<CommandEnvelope> batch,
+      List<EffectCall> calls,
+      List<List<PlannedCommand>> planned,
+      String batchId,
+      String initiator,
+      BranchId branch,
+      RevisionId expectedRevision) {
+    List<CallOutcome> outcomes = new ArrayList<>(calls.size());
     for (int i = 0; i < calls.size(); i++) {
       EffectCall call = calls.get(i);
       int from = batch.size();
@@ -253,70 +367,22 @@ public final class DecisionEffectExecutor {
                 command.payloadJson()));
       }
       if (planned.get(i).isEmpty()) {
-        callOutcomes.add(new CallOutcome(call, "empty", emptyOutcomeJson(batchId), -1, -1));
+        outcomes.add(new CallOutcome(call, "empty", emptyOutcomeJson(batchId), -1, -1));
       } else {
         int to = batch.size() - 1;
-        callOutcomes.add(
+        outcomes.add(
             new CallOutcome(call, "committed", committedOutcomeJson(batchId, from, to), from, to));
       }
     }
+    return outcomes;
+  }
 
-    // ③ 预构造摘要（成功才生效）：plan.outcome / PutInfo value / 调用方 view 共用同一份字符串。
-    String summaryJson = summaryJson(batchId, tick, mergedPlan, callOutcomes);
-
-    // ④ 追加 outcome 回写命令（同批）。先校验目标 packet/call 存在且无旧 outcome（fail-closed，绝不静默覆盖/剔除）。
-    GaState ga = ToolSupport.gaState(base);
-    Map<String, Map<Integer, String>> packetOutcomes;
-    try {
-      packetOutcomes = collectPacketOutcomes(ga, callOutcomes);
-    } catch (IllegalArgumentException e) {
-      return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", e.getMessage());
-    }
-    if (mergedPlan.isPresent() && mergedPlan.get().outcome().isPresent()) {
-      return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", "合并计划已有 outcome，拒绝重复 apply");
-    }
-    for (String packetId : sortedKeys(packetOutcomes)) {
-      DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
-      DecisionPacket updated = withOutcomes(packet, packetOutcomes.get(packetId));
-      batch.add(
-          new CommandEnvelope(
-              UUID.randomUUID().toString(),
-              batchId,
-              initiator,
-              branch,
-              expectedRevision,
-              UpsertDecisionPacketHandler.TYPE,
-              DecisionPacketPayloads.upsert(updated)));
-    }
-    if (mergedPlan.isPresent()) {
-      MergedEffectPlan updated = mergedPlan.get().withOutcome(Optional.of(summaryJson));
-      batch.add(
-          new CommandEnvelope(
-              UUID.randomUUID().toString(),
-              batchId,
-              initiator,
-              branch,
-              expectedRevision,
-              UpsertMergedEffectPlanHandler.TYPE,
-              DecisionPacketPayloads.mergedPlan(updated)));
-    }
-    Map<String, Object> infoPayload = new LinkedHashMap<>();
-    infoPayload.put("address", "ga:execution." + batchId);
-    infoPayload.put("key", "result");
-    infoPayload.put("value", summaryJson);
-    infoPayload.put("tick", tick);
-    batch.add(
-        new CommandEnvelope(
-            UUID.randomUUID().toString(),
-            batchId,
-            initiator,
-            branch,
-            expectedRevision,
-            PutInfoHandler.TYPE,
-            ToolSupport.json(infoPayload)));
-
-    // ⑤ 一条 revision：效果命令 + outcome 回写命令整批原子。
-    BatchResult result = core.submitBatch(batch);
+  private ExecutionResult adaptResult(
+      BatchResult result,
+      String batchId,
+      String summaryJson,
+      List<CallOutcome> callOutcomes,
+      List<CommandEnvelope> batch) {
     if (result instanceof BatchResult.Committed committed) {
       return new ExecutionResult(
           batchId,
@@ -332,21 +398,39 @@ public final class DecisionEffectExecutor {
           batchId,
           Status.CONFLICT,
           "CONFLICT",
-          "提交冲突：base="
-              + expectedRevision.value()
-              + "，当前 head="
-              + conflict.current().revision().value(),
+          "提交冲突：当前 head=" + conflict.current().revision().value(),
           conflict.current());
     }
     BatchResult.Rejected rejected = (BatchResult.Rejected) result;
     return failure(batchId, Status.REJECTED, "REJECTED", rejectionReason(rejected, batch));
   }
 
-  // ── 规划 ────────────────────────────────────────────────────────────────────────────
+  private void appendAudit(
+      List<CommandEnvelope> batch,
+      String batchId,
+      String initiator,
+      BranchId branch,
+      RevisionId expectedRevision,
+      long tick,
+      String summaryJson) {
+    Map<String, Object> infoPayload = new LinkedHashMap<>();
+    infoPayload.put("address", "ga:execution." + batchId);
+    infoPayload.put("key", "result");
+    infoPayload.put("value", summaryJson);
+    infoPayload.put("tick", tick);
+    batch.add(
+        new CommandEnvelope(
+            UUID.randomUUID().toString(),
+            batchId,
+            initiator,
+            branch,
+            expectedRevision,
+            PutInfoHandler.TYPE,
+            ToolSupport.json(infoPayload)));
+  }
 
-  /** 用系统上下文把一条效果跑成"命令批文本"（planOnly=true；绝不提交）。 */
   private PlanStep planCall(EffectCall call, SimulationState base) {
-    AgentTool tool = catalog.requireTool(call.toolName());
+    AgentTool tool = previewer.requireTool(call.toolName());
     Map<String, Object> args = new LinkedHashMap<>(parseJsonObject(call.argsJson(), "argsJson"));
     args.put("preview", false);
     args.put("planOnly", true);
@@ -412,12 +496,6 @@ public final class DecisionEffectExecutor {
     }
   }
 
-  // ── outcome 回写构造 ────────────────────────────────────────────────────────────────
-
-  /**
-   * 汇总 packet → callIndex → outcomeJson：直接 call（packetId 非空）按自己的区间；合并计划效果按 {@code sourceCallRefs}
-   * 反向映射到来源 call。
-   */
   private static Map<String, Map<Integer, String>> collectPacketOutcomes(
       GaState ga, List<CallOutcome> outcomes) {
     Map<String, Map<Integer, String>> byPacket = new LinkedHashMap<>();
@@ -440,15 +518,15 @@ public final class DecisionEffectExecutor {
       String packetId,
       int callIndex,
       CallOutcome outcome) {
-    DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
-    if (packet == null) {
+    DecisionRecord record = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
+    if (record == null) {
       throw new IllegalArgumentException("outcome 回写目标决策包不存在: " + packetId);
     }
-    FormattedCall call = findCall(packet, callIndex);
-    if (call == null) {
+    DecisionCallMeta meta = record.callMeta().get(callIndex);
+    if (meta == null) {
       throw new IllegalArgumentException("outcome 回写目标 call 不存在: " + packetId + ":" + callIndex);
     }
-    if (call.outcomeJson().isPresent()) {
+    if (meta.outcomeJson().isPresent()) {
       throw new IllegalArgumentException(
           "call 已有 outcome，拒绝重复执行/覆盖: " + packetId + ":" + callIndex);
     }
@@ -457,25 +535,83 @@ public final class DecisionEffectExecutor {
         .put(callIndex, outcome.outcomeJson());
   }
 
-  private static FormattedCall findCall(DecisionPacket packet, int callIndex) {
-    for (FormattedCall call : packet.calls()) {
-      if (call.callIndex() == callIndex) {
-        return call;
-      }
+  private static DecisionRecord withCallOutcomes(
+      DecisionRecord record, Map<Integer, String> outcomes) {
+    Map<Integer, DecisionCallMeta> meta = new LinkedHashMap<>();
+    for (Map.Entry<Integer, DecisionCallMeta> entry : record.callMeta().entrySet()) {
+      String outcome = outcomes.get(entry.getKey());
+      DecisionCallMeta value = entry.getValue();
+      meta.put(
+          entry.getKey(),
+          outcome == null
+              ? value
+              : new DecisionCallMeta(
+                  value.targets(),
+                  value.previewJson(),
+                  value.draftChecks(),
+                  value.mergedPlanId(),
+                  Optional.of(outcome)));
     }
-    return null;
+    return new DecisionRecord(
+        record.id(),
+        record.branch(),
+        record.tick(),
+        record.proposerId(),
+        record.intent(),
+        record.createdAtRevision(),
+        record.confirmedAtRevision(),
+        record.reasonInfoId(),
+        record.decidedAtRevision(),
+        meta,
+        record.packageState());
   }
 
-  private static DecisionPacket withOutcomes(DecisionPacket packet, Map<Integer, String> outcomes) {
-    List<FormattedCall> calls = new ArrayList<>(packet.calls().size());
-    for (FormattedCall call : packet.calls()) {
-      String outcomeJson = outcomes.get(call.callIndex());
-      calls.add(outcomeJson == null ? call : call.withOutcomeJson(Optional.of(outcomeJson)));
+  private static DecisionRecord withSnapshotAndOutcomes(
+      DecisionRecord record,
+      DecisionPackageSnapshot packageState,
+      Map<Integer, String> outcomes,
+      long committedRevision) {
+    Map<Integer, DecisionCallMeta> meta = new LinkedHashMap<>();
+    for (Map.Entry<Integer, DecisionCallMeta> entry : record.callMeta().entrySet()) {
+      String outcome = outcomes.get(entry.getKey());
+      DecisionCallMeta value = entry.getValue();
+      meta.put(
+          entry.getKey(),
+          outcome == null
+              ? value
+              : new DecisionCallMeta(
+                  value.targets(),
+                  value.previewJson(),
+                  value.draftChecks(),
+                  value.mergedPlanId(),
+                  Optional.of(outcome)));
     }
-    return packet.withCalls(calls);
+    OptionalLong decidedAtRevision = record.decidedAtRevision();
+    if (decidedAtRevision.isEmpty() && packageState.pkg().decision() != null) {
+      // DECIDING 由 prepareCommit 在本次提交里终结：裁决落盘 revision 就是本批新 revision。
+      decidedAtRevision = OptionalLong.of(committedRevision);
+    }
+    return new DecisionRecord(
+        record.id(),
+        record.branch(),
+        record.tick(),
+        record.proposerId(),
+        record.intent(),
+        record.createdAtRevision(),
+        record.confirmedAtRevision(),
+        record.reasonInfoId(),
+        decidedAtRevision,
+        meta,
+        packageState);
   }
 
-  // ── 摘要 JSON（全部经 ToolSupport.json，不手拼）───────────────────────────────────────
+  private static Map<Integer, String> outcomesByIndex(List<CallOutcome> outcomes) {
+    Map<Integer, String> byIndex = new LinkedHashMap<>();
+    for (CallOutcome outcome : outcomes) {
+      byIndex.put(outcome.call().callIndex(), outcome.outcomeJson());
+    }
+    return byIndex;
+  }
 
   private static String summaryJson(
       String batchId,
@@ -521,9 +657,6 @@ public final class DecisionEffectExecutor {
     return ToolSupport.json(summary);
   }
 
-  /**
-   * 单条 call 的 outcome 摘要：{@code {"result":"committed","batchId":…,"commandFrom":i,"commandTo":j}}。
-   */
   private static String committedOutcomeJson(String batchId, int from, int to) {
     Map<String, Object> outcome = new LinkedHashMap<>();
     outcome.put("result", "committed");
@@ -533,15 +666,12 @@ public final class DecisionEffectExecutor {
     return ToolSupport.json(outcome);
   }
 
-  /** 0 条命令的合法退化：{@code {"result":"empty","batchId":…}}。 */
   private static String emptyOutcomeJson(String batchId) {
     Map<String, Object> outcome = new LinkedHashMap<>();
     outcome.put("result", "empty");
     outcome.put("batchId", batchId);
     return ToolSupport.json(outcome);
   }
-
-  // ── 失败收口 ────────────────────────────────────────────────────────────────────────
 
   private static ExecutionResult failure(
       String batchId, Status status, String code, String reason) {
@@ -609,13 +739,27 @@ public final class DecisionEffectExecutor {
   private record PlannedCommand(String type, String payloadJson) {}
 
   private record PlanStep(List<PlannedCommand> commands, String failureCode, String failureReason) {
-
     private static PlanStep ok(List<PlannedCommand> commands) {
       return new PlanStep(commands, null, null);
     }
 
     private static PlanStep fail(String code, String reason) {
       return new PlanStep(List.of(), code, reason);
+    }
+
+    private boolean ok() {
+      return failureReason == null;
+    }
+  }
+
+  private record PlanOutcome(
+      List<List<PlannedCommand>> planned, String failureCode, String failureReason) {
+    private static PlanOutcome ok(List<List<PlannedCommand>> planned) {
+      return new PlanOutcome(planned, null, null);
+    }
+
+    private static PlanOutcome fail(String code, String reason) {
+      return new PlanOutcome(List.of(), code, reason);
     }
 
     private boolean ok() {

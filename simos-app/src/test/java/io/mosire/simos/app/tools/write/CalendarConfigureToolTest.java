@@ -378,7 +378,7 @@ class CalendarConfigureToolTest {
     try (CoreSimos seed = new CoreSimos(new CoreConfig(storeDir, 100, new ObjectMapper()))) {
       seed.bootstrapGenesis(emptyGenesis());
     }
-    try (Shell shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0))) {
       assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
           .contains(CalendarConfigureTool.NAME);
       assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))

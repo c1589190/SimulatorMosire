@@ -104,7 +104,7 @@ class D031CommandSurfaceE2ETest {
     assertThat(catalog.roles())
         .as("catalog 是共享只读工具（DM+GM 都能看），命令的 GM-only 由 handler 契约面钉住")
         .containsExactlyInAnyOrder(
-            io.mosire.simos.ga.spi.ToolRole.DM, io.mosire.simos.ga.spi.ToolRole.GM);
+            io.mosire.simos.ga.spi.ToolRole.DM.name(), io.mosire.simos.ga.spi.ToolRole.GM.name());
     // ★ 构造期强制：该 type 缺载荷提示 ⇒ 构造器当场抛（本行不抛即证明它在 PAYLOAD_HINTS 里）。
     assertThat(catalog.name()).isEqualTo(CatalogTool.NAME);
 

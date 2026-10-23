@@ -81,7 +81,7 @@ class GmPermissionGroupTest {
     ToolContext caller = Shell.gmCaller();
     AgentPermissionSet permissions = caller.permissions();
 
-    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0))) {
       List<String> gmFace =
           shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList();
       assertThat(gmFace).as("GM 面非空（扫到 0 条是『扫描器静默』陷阱）").isNotEmpty();

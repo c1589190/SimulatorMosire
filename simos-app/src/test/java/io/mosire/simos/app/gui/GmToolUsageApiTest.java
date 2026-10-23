@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.permission.RoleSet;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
@@ -49,7 +50,7 @@ class GmToolUsageApiTest {
 
   @BeforeEach
   void startShell() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     port = shell.boundGuiPort();
     client = HttpClient.newHttpClient();
   }
@@ -139,7 +140,7 @@ class GmToolUsageApiTest {
   private static ToolContext context(Map<String, Object> args) {
     return new ToolContext(
         AccessToken.DEFAULT,
-        AgentPermissionSet.unrestricted(AccessToken.DEFAULT),
+        AgentPermissionSet.unrestricted(AccessToken.DEFAULT).withRoles(RoleSet.of("GM")),
         Map.of(),
         args,
         AgentIdentity.external());
