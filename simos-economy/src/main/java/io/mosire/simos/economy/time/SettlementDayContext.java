@@ -34,6 +34,7 @@ import io.mosire.simos.economy.time.EconomySettlement.MoneyIssuanceJournal;
 import io.mosire.simos.economy.time.ProductionRunSettlement.HarvestWork;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ProductionOpportunityBook;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -156,6 +157,14 @@ final class SettlementDayContext {
   ActualProductionPlan actualProductionPlan;
 
   /**
+   * ★★★ <b>D-032 L1c：本 tick 的只读生产机会簿</b>（瞬态；缺省 = 空簿）。
+   *
+   * <p>由 S3 之前的 {@code EconomyDayPipeline} 从 {@code session.inventoryLotView()} + {@code
+   * ctx.industries} + 市场价函数纯派生；只赋值、只读，不进 {@code EconomyData}、变更集或 Codec。L1c 暂不消费（不改 S3/S4/S5 输入输出）。
+   */
+  ProductionOpportunityBook productionOpportunityBook = new ProductionOpportunityBook(List.of());
+
+  /**
    * ★★★ <b>RC8c：M6 实际编排选中的位置事实（瞬态；不落盘、不进 ChangeSet/Codec）。</b>
    *
    * <p>账单的 {@code PRODUCTION_INPUT} 行取 {@link
@@ -179,6 +188,11 @@ final class SettlementDayContext {
       throw new IllegalArgumentException("dailyDemandBill 的家户不得为 null");
     }
     return dailyDemandBills.computeIfAbsent(household, key -> DailyDemandBill.create(day, key));
+  }
+
+  /** ★★★ D-032 L1c：本 tick 的只读生产机会簿（缺省空簿；L1c 暂不消费）。 */
+  ProductionOpportunityBook productionOpportunityBook() {
+    return productionOpportunityBook;
   }
 
   /** ★★★ P3.0：prepare 阶段算好的纯商号集合；execute 只消费，不再现算。 */

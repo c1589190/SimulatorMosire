@@ -72,6 +72,8 @@ import java.util.Optional;
  * @param cycleContributions 本周期逐 (家户×角色) 实际贡献台账（键 = 家户×角色）；不得为 null、逐值不得为 null、
  *     键必须与值内的家户/角色一致（无出工用空表）
  * @param cycleInputUsedMilli 本周期实际扣到的投入（毫单位，按商品）；不得为 null、逐值不得为负
+ * @param stageState ★ <b>D-032 U4b1 新增</b>：多阶段生产的当前阶段状态；legacy 单周期为 {@link Optional#empty()}。 有
+ *     stages 的方案由引擎在推进时初始化/更新；{@code withCycleState(0, ...)} 关账路径清空它。不得为 null。
  */
 public record ProductionProcess(
     ProductionUnitId id,
@@ -81,7 +83,8 @@ public record ProductionProcess(
     String modeKey,
     long progressDays,
     Map<ProductionParticipantKey, CycleContribution> cycleContributions,
-    Map<CommodityId, Long> cycleInputUsedMilli) {
+    Map<CommodityId, Long> cycleInputUsedMilli,
+    Optional<ProductionStageState> stageState) {
 
   public ProductionProcess {
     Objects.requireNonNull(id, "ProductionProcess.id 不得为 null");
@@ -138,6 +141,33 @@ public record ProductionProcess(
       copy.put(entry.getKey(), entry.getValue());
     }
     cycleInputUsedMilli = Collections.unmodifiableMap(copy); // ★ 冻在赋值处
+
+    if (stageState == null) {
+      throw new IllegalArgumentException(
+          "ProductionProcess.stageState 不得为 null（legacy 单周期请给 Optional.empty()）");
+    }
+  }
+
+  /** ★ <b>U4b1 之前的 8 参形状</b>（无阶段状态）：等价于 {@code stageState = Optional.empty()}；旧调用点逐值不变。 */
+  public ProductionProcess(
+      ProductionUnitId id,
+      IndustryId plan,
+      ProductionLocation location,
+      ActorRef operator,
+      String modeKey,
+      long progressDays,
+      Map<ProductionParticipantKey, CycleContribution> cycleContributions,
+      Map<CommodityId, Long> cycleInputUsedMilli) {
+    this(
+        id,
+        plan,
+        location,
+        operator,
+        modeKey,
+        progressDays,
+        cycleContributions,
+        cycleInputUsedMilli,
+        Optional.empty());
   }
 
   /**
@@ -237,7 +267,7 @@ public record ProductionProcess(
                 household, role, deltaLaborMilli, deltaEfficiencyWeightedLaborMilli)
             : current.plus(deltaLaborMilli, deltaEfficiencyWeightedLaborMilli));
     return new ProductionProcess(
-        id, plan, location, operator, modeKey, progressDays, next, cycleInputUsedMilli);
+        id, plan, location, operator, modeKey, progressDays, next, cycleInputUsedMilli, stageState);
   }
 
   /**
@@ -263,7 +293,8 @@ public record ProductionProcess(
         nextModeKey,
         progressDays,
         cycleContributions,
-        cycleInputUsedMilli);
+        cycleInputUsedMilli,
+        stageState);
   }
 
   /**
@@ -284,10 +315,16 @@ public record ProductionProcess(
         modeKey,
         progressDays,
         nextContributions,
-        cycleInputUsedMilli);
+        cycleInputUsedMilli,
+        stageState);
   }
 
-  /** 换本周期状态（进度 / 累计投入），身份、地点、经营者与贡献台账逐字带过。 */
+  /**
+   * 换本周期状态（进度 / 累计投入），身份、地点、经营者与贡献台账逐字带过。
+   *
+   * <p>★ {@code nextProgressDays == 0} 是关账回零路径 ⇒ 同时清空 {@code stageState}，下一周期由引擎重新初始化第一段；
+   * 非零进度保留当前阶段状态，阶段内部的更新由 {@link #withStageState(ProductionStageState)} 落到同一实例。
+   */
   public ProductionProcess withCycleState(
       long nextProgressDays, Map<CommodityId, Long> nextInputUsedMilli) {
     return new ProductionProcess(
@@ -298,10 +335,15 @@ public record ProductionProcess(
         modeKey,
         nextProgressDays,
         cycleContributions,
-        nextInputUsedMilli);
+        nextInputUsedMilli,
+        nextProgressDays == 0L ? Optional.empty() : stageState);
   }
 
-  /** 换本周期状态（进度 / 贡献台账 / 累计投入）：关账时用（台账清空 = 一次实际劳动只计一次）。 */
+  /**
+   * 换本周期状态（进度 / 贡献台账 / 累计投入）：关账时用（台账清空 = 一次实际劳动只计一次）。
+   *
+   * <p>★ 与两参重载同口径：{@code nextProgressDays == 0} 同时清空 {@code stageState}。
+   */
   public ProductionProcess withCycleState(
       long nextProgressDays,
       Map<ProductionParticipantKey, CycleContribution> nextContributions,
@@ -314,6 +356,37 @@ public record ProductionProcess(
         modeKey,
         nextProgressDays,
         nextContributions,
-        nextInputUsedMilli);
+        nextInputUsedMilli,
+        nextProgressDays == 0L ? Optional.empty() : stageState);
+  }
+
+  /** 换当前阶段状态；身份、地点、经营者、进度、贡献台账与累计投入逐字带过。 */
+  public ProductionProcess withStageState(ProductionStageState nextStageState) {
+    Objects.requireNonNull(
+        nextStageState, "ProductionProcess.withStageState 的 nextStageState 不得为 null");
+    return new ProductionProcess(
+        id,
+        plan,
+        location,
+        operator,
+        modeKey,
+        progressDays,
+        cycleContributions,
+        cycleInputUsedMilli,
+        Optional.of(nextStageState));
+  }
+
+  /** 清空当前阶段状态（回到 legacy/未初始化的单周期形态）；其余字段逐字带过。 */
+  public ProductionProcess clearStageState() {
+    return new ProductionProcess(
+        id,
+        plan,
+        location,
+        operator,
+        modeKey,
+        progressDays,
+        cycleContributions,
+        cycleInputUsedMilli,
+        Optional.empty());
   }
 }

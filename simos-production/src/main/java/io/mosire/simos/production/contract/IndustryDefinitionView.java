@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -71,6 +72,10 @@ import java.util.Set;
  * @param durableCommodityCapacityPerUnit ★★ <b>D-032 C5a 新增</b>：每 1 单位规模需要的耐久商品资本（容量锚，不消耗）； 键 =
  *     {@link CommodityId}、值必须 &gt; 0；空表 = 没有这一路。它与 {@code capacityPerUnit} 至少一边非空， 并与消耗性投入（{@code
  *     cycleInputPerUnit}）<b>完全分离</b>。
+ * @param stages ★★ <b>D-032 U4a 新增</b>：多阶段生产定义（保序不可变）；空表 = legacy 单周期（现有行为不变）。 非空时 {@code
+ *     cycleDays} 必须等于各阶段 {@code durationDays} 之和，最后一项必须是 {@link ProductionStageEndAction#HARVEST}，且
+ *     legacy {@code cycleInputPerUnit}/{@code dailyInputPerUnit}/{@code outputPerUnit}
+ *     必须为空（避免两套真相）。阶段级 <b>没有</b> capacity/labor：v1 沿用产业级字段。
  */
 public record IndustryDefinitionView(
     IndustryId id,
@@ -95,7 +100,8 @@ public record IndustryDefinitionView(
     RoleShareRemainder roleShareRemainderRule,
     List<IndustryId> upgradesTo,
     Optional<ProductionModeId> mode,
-    Map<CommodityId, Long> durableCommodityCapacityPerUnit) {
+    Map<CommodityId, Long> durableCommodityCapacityPerUnit,
+    List<ProductionStageDefinition> stages) {
 
   /**
    * ★★ <b>单户默认 operator 便利构造器</b>（C0 下游机械收口；不是第二定义权威）。
@@ -207,6 +213,62 @@ public record IndustryDefinitionView(
         upgradesTo,
         mode,
         Map.of());
+  }
+
+  /**
+   * ★ <b>U4a 之前的 canonical 23 参形状</b>（无多阶段定义）：等价于 {@code stages = List.of()}；旧调用点逐值不变。
+   *
+   * <p>★ 需要显式多阶段定义的调用方改用 canonical 24 参构造器（末位传 {@code List<ProductionStageDefinition>}）。
+   */
+  public IndustryDefinitionView(
+      IndustryId id,
+      String name,
+      RegimeId regime,
+      Optional<ProductionSkillKey> skill,
+      long cycleDays,
+      long buildDays,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
+      long dailyLaborPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
+      List<ClassSlot> slots,
+      AllocationRule allocation,
+      MoneyOutput moneyOutputPerUnit,
+      ProductionExperienceUse experience,
+      List<ProductionAvailabilityCondition> availability,
+      Set<AssetRightKind> acceptedRightKinds,
+      List<ProductionRoleDefinition> roles,
+      RoleShareRemainder roleShareRemainderRule,
+      List<IndustryId> upgradesTo,
+      Optional<ProductionModeId> mode,
+      Map<CommodityId, Long> durableCommodityCapacityPerUnit) {
+    this(
+        id,
+        name,
+        regime,
+        skill,
+        cycleDays,
+        buildDays,
+        capacityPerUnit,
+        dailyInputPerUnit,
+        dailyLaborPerUnit,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        slots,
+        allocation,
+        moneyOutputPerUnit,
+        experience,
+        availability,
+        acceptedRightKinds,
+        roles,
+        roleShareRemainderRule,
+        upgradesTo,
+        mode,
+        durableCommodityCapacityPerUnit,
+        List.of());
   }
 
   public IndustryDefinitionView {
@@ -434,19 +496,96 @@ public record IndustryDefinitionView(
       throw new IllegalArgumentException("IndustryDefinitionView.slots 不得为空");
     }
     slots = Collections.unmodifiableList(slotsCopy);
+
+    // ★★ U4a：多阶段定义（保序不可变；空表 = legacy 单周期，现有行为不变）。
+    //   ★ 阶段级没有 capacity/labor 字段：v1 沿用上面的产业级 capacityPerUnit/laborPerUnit，不在这里拆阶段。
+    if (stages == null) {
+      throw new IllegalArgumentException(
+          "IndustryDefinitionView.stages 不得为 null（legacy 单周期请给空 list）");
+    }
+    List<ProductionStageDefinition> stagesCopy = new ArrayList<>();
+    Set<String> stageIds = new LinkedHashSet<>();
+    long stageDaysTotal = 0L;
+    for (ProductionStageDefinition stage : stages) {
+      if (stage == null) {
+        throw new IllegalArgumentException("IndustryDefinitionView.stages 不得含 null");
+      }
+      if (!stageIds.add(stage.stageId())) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.stages 的 stageId 不得重复: " + stage.stageId());
+      }
+      try {
+        stageDaysTotal = Math.addExact(stageDaysTotal, stage.durationDays());
+      } catch (ArithmeticException e) {
+        // ★ fail-closed：合计溢出不是“接近上限”，直接具名拒绝。
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.stages 的 durationDays 合计溢出（long）: " + stage.stageId(), e);
+      }
+      stagesCopy.add(stage);
+    }
+    if (!stagesCopy.isEmpty()) {
+      if (cycleDays != stageDaysTotal) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.cycleDays 必须等于各阶段 durationDays 之和: cycleDays="
+                + cycleDays
+                + ", ΣdurationDays="
+                + stageDaysTotal);
+      }
+      for (int index = 0; index < stagesCopy.size(); index++) {
+        ProductionStageDefinition stage = stagesCopy.get(index);
+        boolean last = index == stagesCopy.size() - 1;
+        if (last) {
+          if (stage.endAction() != ProductionStageEndAction.HARVEST) {
+            throw new IllegalArgumentException(
+                "IndustryDefinitionView.stages 最后一项 endAction 必须是 HARVEST: "
+                    + stage.stageId()
+                    + " = "
+                    + stage.endAction());
+          }
+        } else {
+          if (stage.endAction() == ProductionStageEndAction.HARVEST) {
+            throw new IllegalArgumentException(
+                "IndustryDefinitionView.stages 的 HARVEST 只能出现在最后一项: " + stage.stageId());
+          }
+          if (stage.endAction() != ProductionStageEndAction.NEXT_STAGE) {
+            throw new IllegalArgumentException(
+                "IndustryDefinitionView.stages 的非最后一项 endAction 必须是 NEXT_STAGE: "
+                    + stage.stageId()
+                    + " = "
+                    + stage.endAction());
+          }
+        }
+      }
+      // ★ 两套真相禁止：有 stages 时 legacy 配方必须为空，避免“阶段投入”与“周期投入”同时存在。
+      if (!cycleInputPerUnit.isEmpty()) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.stages 非空时 cycleInputPerUnit 必须为空（避免两套真相）");
+      }
+      if (!dailyInputPerUnit.isEmpty()) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.stages 非空时 dailyInputPerUnit 必须为空（避免两套真相）");
+      }
+      if (!outputPerUnit.isEmpty()) {
+        throw new IllegalArgumentException(
+            "IndustryDefinitionView.stages 非空时 outputPerUnit 必须为空（避免两套真相）");
+      }
+    }
+    stages = Collections.unmodifiableList(stagesCopy);
   }
 
   /**
    * ★★ <b>通用生产配方</b>（V7；四个分量 + 铸币一路）：把本记录里散着的四段打成一个视图。
    *
-   * <p>★ <b>纯派生</b>（{@code inputPerUnit} 由 {@link #cycleInputPerUnit()} 合计而来）⇒ 不存在第二份手写的数。
+   * <p>★ <b>纯派生</b>：{@code inputPerUnit} 与 {@code outputPerUnit} 在 legacy（{@code stages} 为空）时逐值取自
+   * {@link #inputPerUnit()} / {@link #outputPerUnit()}；staged 时分别取 {@link #effectiveInputPerUnit()}
+   * / {@link #effectiveOutputPerUnit()}。⇒ 不写回第二套真相，也不改变 legacy 的配方结果。
    */
   public ProductionRecipe recipe() {
     return new ProductionRecipe(
         capacityPerUnit,
-        inputPerUnit(),
+        effectiveInputPerUnit(),
         laborPerUnit,
-        outputPerUnit,
+        effectiveOutputPerUnit(),
         moneyOutputPerUnit,
         durableCommodityCapacityPerUnit);
   }
@@ -460,6 +599,170 @@ public record IndustryDefinitionView(
       }
     }
     return Collections.unmodifiableMap(merged);
+  }
+
+  /**
+   * ★★ <b>阶段有效周期投入</b>（每 1 单位规模）：{@code Σ_stage(startInput + tickInput × durationDays)}。
+   *
+   * <p>★ legacy（{@code stages} 为空）⇒ 逐值返回 {@link #inputPerUnit()}。staged ⇒ 只从阶段定义派生，<b>不</b>写回
+   * {@code cycleInputPerUnit}/{@code dailyInputPerUnit}。同商品跨阶段按键求和；键序取首次出现序，返回保序不可变 map。
+   *
+   * <p>★ 乘法与加法都走 {@code Math.multiplyExact}/{@code Math.addExact}：溢出是定义数据不可表示，fail-closed。
+   */
+  public Map<CommodityId, Long> effectiveInputPerUnit() {
+    if (stages.isEmpty()) {
+      return inputPerUnit();
+    }
+    Map<CommodityId, Long> effective = new LinkedHashMap<>();
+    for (ProductionStageDefinition stage : stages) {
+      long durationDays = stage.durationDays();
+      for (Map.Entry<CommodityId, Long> start : stage.startInputPerUnit().entrySet()) {
+        long tick = stage.tickInputPerUnit().getOrDefault(start.getKey(), 0L);
+        long stageInput = Math.addExact(start.getValue(), Math.multiplyExact(tick, durationDays));
+        effective.merge(start.getKey(), stageInput, Math::addExact);
+      }
+      for (Map.Entry<CommodityId, Long> tick : stage.tickInputPerUnit().entrySet()) {
+        if (stage.startInputPerUnit().containsKey(tick.getKey())) {
+          continue;
+        }
+        long stageInput = Math.multiplyExact(tick.getValue(), durationDays);
+        effective.merge(tick.getKey(), stageInput, Math::addExact);
+      }
+    }
+    return Collections.unmodifiableMap(effective);
+  }
+
+  /**
+   * ★★ <b>阶段有效计划产出</b>（每 1 单位规模）：最后一个 {@link ProductionStageEndAction#HARVEST} 阶段的 {@code
+   * outputPerUnit}。{@code NEXT_STAGE} 的中间产出 v1 不计入计划产出。
+   *
+   * <p>★ legacy（{@code stages} 为空）⇒ 逐值返回 {@link #outputPerUnit()}。staged ⇒ 只读阶段定义，返回保序不可变 map；
+   * 构造期已保证最后一个阶段必须是 HARVEST。
+   */
+  public Map<CommodityId, Long> effectiveOutputPerUnit() {
+    if (stages.isEmpty()) {
+      return outputPerUnit();
+    }
+    for (int index = stages.size() - 1; index >= 0; index--) {
+      ProductionStageDefinition stage = stages.get(index);
+      if (stage.endAction() == ProductionStageEndAction.HARVEST) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(stage.outputPerUnit()));
+      }
+    }
+    throw new IllegalStateException(
+        "IndustryDefinitionView.stages 非空但没有 HARVEST 阶段: " + id.value());
+  }
+
+  /**
+   * ★★ <b>当前阶段投入需求（唯一拼写点）</b>：从 {@link ProductionProcess#stageState()} 取当前阶段，按 {@code startDue} 决定本
+   * tick 的每单位规模需求。
+   *
+   * <p>规则（U4b2b）：
+   *
+   * <ul>
+   *   <li>{@code stages} 为空 ⇒ 本 helper 不服务 legacy 路径（直接拒绝调用；legacy 仍读 {@link #inputPerUnit()}）。
+   *   <li>{@code stageState} 为空 ⇒ 第一段；非空时 {@code stageId} 必须存在于 {@link #stages()}，否则抛 {@link
+   *       ProductionContractFault}。
+   *   <li>{@code startDue = stageState 为空 || (stageProgressDays == 0 && stageStartInputsUsedMilli
+   *       为空)}。
+   *   <li>{@code perScale = startDue ? startInputPerUnit + tickInputPerUnit :
+   *       tickInputPerUnit}；同商品相加， 保序不可变。
+   * </ul>
+   *
+   * <p>★ 这是 economy S4 调查/扣料、DailyDemandBill、{@code inputShortfallOf} 与 production 引擎共用的 同一份 stage
+   * 字段读口；不得在调用点再拼一套 stageId/start/tick 选择逻辑。
+   */
+  public CurrentStageInput currentStageInput(ProductionProcess process) {
+    Objects.requireNonNull(process, "IndustryDefinitionView.currentStageInput 的 process 不得为 null");
+    if (stages.isEmpty()) {
+      throw new IllegalStateException(
+          "IndustryDefinitionView.currentStageInput 不服务 legacy（stages 为空）: " + id.value());
+    }
+    ProductionStageState state = process.stageState().orElse(null);
+    int stageIndex = 0;
+    if (state != null) {
+      stageIndex = -1;
+      for (int index = 0; index < stages.size(); index++) {
+        if (stages.get(index).stageId().equals(state.stageId())) {
+          stageIndex = index;
+          break;
+        }
+      }
+      if (stageIndex < 0) {
+        throw new ProductionContractFault(
+            "stage-state-unknown-stage",
+            "实例 "
+                + process.id().value()
+                + " 的当前阶段 "
+                + state.stageId()
+                + " 不在方案 "
+                + id.value()
+                + " 的 stages 中");
+      }
+    }
+    ProductionStageDefinition stage = stages.get(stageIndex);
+    boolean startDue =
+        state == null
+            || (state.stageProgressDays() == 0L && state.stageStartInputsUsedMilli().isEmpty());
+    Map<CommodityId, Long> perScale = new LinkedHashMap<>();
+    if (startDue) {
+      mergeStageInputs(perScale, stage.startInputPerUnit());
+    }
+    mergeStageInputs(perScale, stage.tickInputPerUnit());
+    return new CurrentStageInput(stage, stageIndex, startDue, perScale);
+  }
+
+  /** 同商品跨 start/tick 相加；保持首次出现序，并用 {@code Math.addExact} fail-closed。 */
+  private static void mergeStageInputs(Map<CommodityId, Long> target, Map<CommodityId, Long> line) {
+    for (Map.Entry<CommodityId, Long> entry : line.entrySet()) {
+      target.merge(entry.getKey(), entry.getValue(), Math::addExact);
+    }
+  }
+
+  /**
+   * ★ <b>当前阶段投入的只读投影</b>：阶段本体、它在 {@link #stages()} 中的位置、本 tick 是否处于开始投入日， 以及本 tick 的每单位规模需求（保序不可变）。
+   *
+   * @param stage 当前阶段定义
+   * @param stageIndex 当前阶段在 {@link IndustryDefinitionView#stages()} 中的下标
+   * @param startDue 本 tick 是否要叠加 {@link ProductionStageDefinition#startInputPerUnit()}
+   * @param inputPerUnit 本 tick 每单位规模需求（startDue 时已把 start 与 tick 同商品相加）
+   */
+  public record CurrentStageInput(
+      ProductionStageDefinition stage,
+      int stageIndex,
+      boolean startDue,
+      Map<CommodityId, Long> inputPerUnit) {
+
+    public CurrentStageInput {
+      Objects.requireNonNull(stage, "CurrentStageInput.stage 不得为 null");
+      if (stageIndex < 0) {
+        throw new IllegalArgumentException("CurrentStageInput.stageIndex 不得为负: " + stageIndex);
+      }
+      Objects.requireNonNull(inputPerUnit, "CurrentStageInput.inputPerUnit 不得为 null");
+      Map<CommodityId, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> entry : inputPerUnit.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "CurrentStageInput.inputPerUnit 的键与值都不得为 null: " + entry.getKey());
+        }
+        if (entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "CurrentStageInput.inputPerUnit 不得为负：" + entry.getKey() + " = " + entry.getValue());
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      inputPerUnit = Collections.unmodifiableMap(copy);
+    }
+
+    /** 本 tick 是否存在正数投入需求；全 0/空表 ⇒ 不构成“有需求”。 */
+    public boolean hasPositiveDemand() {
+      for (long value : inputPerUnit.values()) {
+        if (value > 0L) {
+          return true;
+        }
+      }
+      return false;
+    }
   }
 
   /**

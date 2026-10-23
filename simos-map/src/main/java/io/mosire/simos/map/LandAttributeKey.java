@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 土地 component 的抽象属性键。内置 owner/progress/crop/fertility；其余键开放。
+ * 土地 component 的抽象属性键。内置 owner/progress/stage/cycle_progress/start_input_paid/crop/fertility；
+ * 其余键开放。
  *
  * <p>{@code owner} 只是不透明字符串（Map 不 import Social/Economy 领域类型）。
  *
@@ -12,11 +13,20 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public record LandAttributeKey(String wireValue) {
 
-  /** 所有权（不透明的家户/主体引用）。 */
+  /** 所有权（不透明的家户/主体引用；只能由土地转移口改写）。 */
   public static final LandAttributeKey OWNER = new LandAttributeKey("owner");
 
-  /** 独立耕地进度（量纲由生产域后续定义）。 */
+  /** 当前阶段已过天数（LONG，单位：天；只计当前阶段，不含此前阶段）。 */
   public static final LandAttributeKey PROGRESS = new LandAttributeKey("progress");
+
+  /** 当前阶段 id（STRING，不透明；阶段词表由生产域解释）。 */
+  public static final LandAttributeKey STAGE = new LandAttributeKey("stage");
+
+  /** 整个生产周期已过天数（LONG，单位：天；与 {@link #PROGRESS} 分账，不得混用）。 */
+  public static final LandAttributeKey CYCLE_PROGRESS = new LandAttributeKey("cycle_progress");
+
+  /** 阶段开始投入是否已支付（BOOLEAN）。 */
+  public static final LandAttributeKey START_INPUT_PAID = new LandAttributeKey("start_input_paid");
 
   /** 作物/生产方案引用。 */
   public static final LandAttributeKey CROP = new LandAttributeKey("crop");

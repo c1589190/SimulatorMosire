@@ -151,7 +151,7 @@ final class OperatorSettlement {
         IndustryDefinitionView industry = unit == null ? null : industries.get(unit.industry());
         if (unit == null
             || industry == null
-            || !industry.outputPerUnit().containsKey(fill.commodity())) {
+            || !industry.recipe().outputPerUnit().containsKey(fill.commodity())) {
           continue;
         }
         // ★★ P-T4：货款按**实付币**分别累加（改前是一个 long，把各种钱 1:1 加总）—— 零额腿不落键，
@@ -253,7 +253,7 @@ final class OperatorSettlement {
         IndustryDefinitionView industry = unit == null ? null : industries.get(unit.industry());
         if (unit != null
             && industry != null
-            && industry.outputPerUnit().containsKey(HaulService.HAUL_COMMODITY)) {
+            && industry.recipe().outputPerUnit().containsKey(HaulService.HAUL_COMMODITY)) {
           haulUnits.add(id);
         }
       }
@@ -658,7 +658,7 @@ final class OperatorSettlement {
     if (!outcome.actor().equals(unit.operator())) {
       return false;
     }
-    if (!industry.outputPerUnit().containsKey(outcome.commodity())) {
+    if (!industry.recipe().outputPerUnit().containsKey(outcome.commodity())) {
       return false;
     }
     return outcome.unitId().map(unit.id()::equals).orElse(true);
@@ -907,7 +907,7 @@ final class OperatorSettlement {
       return false; // 没有可用资产 ⇒ 没有"下一周期生产"可谈（不是"投入需求为零所以已覆盖"）
     }
     long required = 0L;
-    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+    for (Map.Entry<CommodityId, Long> entry : industry.recipe().inputPerUnit().entrySet()) {
       if (entry.getValue() <= 0L) {
         continue;
       }
@@ -929,7 +929,7 @@ final class OperatorSettlement {
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);
     long sum = 0L;
-    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+    for (Map.Entry<CommodityId, Long> entry : industry.recipe().inputPerUnit().entrySet()) {
       if (entry.getValue() <= 0L) {
         continue;
       }

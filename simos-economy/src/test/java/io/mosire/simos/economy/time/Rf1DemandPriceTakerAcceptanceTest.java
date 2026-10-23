@@ -199,7 +199,9 @@ class Rf1DemandPriceTakerAcceptanceTest {
             SILVER,
             0,
             Optional.empty());
-    round.round().addInjectedMarketIntent(clothBuy);
+    // ★ D-032 U2b：注入面只剩统一 MarketOrder —— 用唯一 bridge 把原 M3 意向包成统一订单再注入，
+    //   原测试意图（cloth BUY 价格接受者、不写限价）逐字保留。
+    round.round().addInjectedMarketOrder(MarketOrderBridge.fromIntent(clothBuy));
 
     String traderKey = "HOUSEHOLD:" + HouseholdActors.idOf(TRADER);
     try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MARKET_LOGGER_NAME)) {

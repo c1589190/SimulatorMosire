@@ -19,6 +19,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IndustryDefinitionView.CurrentStageInput;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -256,7 +257,7 @@ final class ProductionInputSettlement {
     /** 本格（unit.industry 解析出来的那一格；"同格争用"的分组键）。★ 产业 id 里没有格键 ⇒ null（它不属于任何一格 ⇒ 不参与争用）。 */
     final HexCoord hex;
 
-    /** 逐单位规模要的商品（= {@code industry.inputPerUnit()}；只读）。 */
+    /** 逐单位规模要的商品（legacy = {@code industry.inputPerUnit()}；staged = 当前阶段本 tick 需求；只读）。 */
     final Map<CommodityId, Long> perScale;
 
     /** 产业模板（S-11 的 INFO 日志要报它；只读）。 */
@@ -382,6 +383,7 @@ final class ProductionInputSettlement {
     List<InputPlan> plans = new ArrayList<>();
     long cycleStartUnits = 0L;
     long firstSowUnits = 0L;
+    long stagedTickUnits = 0L;
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
       if (producingUnits != null && !producingUnits.contains(id)) {
         continue; // ★★ RF2：未入选/无实际劳动的 unit 不预扣整周期种子。
@@ -394,32 +396,44 @@ final class ProductionInputSettlement {
       if (index.assetRejectionOf(id).isPresent()) {
         continue; // ★★★ D4：预算具名拒绝的 unit 在执行前不扣任何周期投入（本日不半推进）。
       }
-      // ★★★ RF2e：周期门 = 周期第一天，或**周期中途才第一次实际入选**且本周期尚未扣过任何投入。
-      //   后者修的是实测病：tick125 才重新选中的 62 个 farm 已 progressDays=4 且 cycleInputUsedMilli 为空，
-      //   若仍只认 progressDays==0，它们本周期永远补不到种子 ⇒ 关账 finalScale=0。
-      //   ★ producingUnits==null 是 legacy 路径 ⇒ firstSowInCycle 恒 false，逐值不变。
-      //   ★ 已扣过（cycleInputUsedMilli 非空）⇒ 不重复扣；未入选/无实际劳动在上一道门槛已被排除。
-      boolean cycleStart = unit.progressDays() == 0L;
-      boolean firstSowInCycle =
-          unit.progressDays() > 0L
-              && unit.cycleInputUsedMilli().isEmpty()
-              && producingUnits != null
-              && producingUnits.contains(id);
-      if (!cycleStart && !firstSowInCycle) {
-        continue;
-      }
-      if (cycleStart) {
-        cycleStartUnits++;
+      Map<CommodityId, Long> perScale;
+      if (!industry.stages().isEmpty()) {
+        // ★★ U4b2b：staged unit 每个生产 tick 都进入调查/扣料；本 tick 的需求 = 当前阶段的
+        //   start（仅阶段第一天）+ tick。阶段选择/合表只在 IndustryDefinitionView.currentStageInput 一处。
+        CurrentStageInput currentStageInput = industry.currentStageInput(unit);
+        perScale = currentStageInput.inputPerUnit();
+        stagedTickUnits++;
       } else {
-        firstSowUnits++;
+        // ★★★ RF2e：周期门 = 周期第一天，或**周期中途才第一次实际入选**且本周期尚未扣过任何投入。
+        //   后者修的是实测病：tick125 才重新选中的 62 个 farm 已 progressDays=4 且 cycleInputUsedMilli 为空，
+        //   若仍只认 progressDays==0，它们本周期永远补不到种子 ⇒ 关账 finalScale=0。
+        //   ★ producingUnits==null 是 legacy 路径 ⇒ firstSowInCycle 恒 false，逐值不变。
+        //   ★ 已扣过（cycleInputUsedMilli 非空）⇒ 不重复扣；未入选/无实际劳动在上一道门槛已被排除。
+        boolean cycleStart = unit.progressDays() == 0L;
+        boolean firstSowInCycle =
+            unit.progressDays() > 0L
+                && unit.cycleInputUsedMilli().isEmpty()
+                && producingUnits != null
+                && producingUnits.contains(id);
+        if (!cycleStart && !firstSowInCycle) {
+          continue;
+        }
+        if (cycleStart) {
+          cycleStartUnits++;
+        } else {
+          firstSowUnits++;
+        }
+        perScale = industry.inputPerUnit();
       }
-      Map<CommodityId, Long> perScale = industry.inputPerUnit();
       if (perScale.isEmpty()) {
         continue; // ★ 空表与"缺键"同义：不扣、不缩规模 ⇒ 未配投入的 unit 行为与 V2 一字不差
       }
+      Map<CommodityId, Long> durableCommodityOccupancy =
+          ProductionProcessBook.durableCommodityOccupancyOf(
+              unit, industry, householdEconomies, householdGoods, index);
       long plannedScale =
           ProductionProcessBook.plannedCapacityScaleOf(
-              unit, industry, index, operatorConditions.get(id));
+              unit, industry, index, operatorConditions.get(id), durableCommodityOccupancy);
       if (plannedScale <= 0L) {
         continue; // 本格没有产能 / 已缩到 0 ⇒ 它不产出、也不要料（"地荒着"）
       }
@@ -455,8 +469,10 @@ final class ProductionInputSettlement {
               ownKeys,
               available));
     }
-    if (TRACE.isDebugEnabled() && (cycleStartUnits > 0L || firstSowUnits > 0L)) {
+    if (TRACE.isDebugEnabled()
+        && (cycleStartUnits > 0L || firstSowUnits > 0L || stagedTickUnits > 0L)) {
       // ★ RF2e 读数：本分区本次调查里，周期第一天 vs 周期中途首次入选（补扣）各多少 unit。
+      //   staged 读数单列：它每 tick 都进入调查，不能混进 legacy 的两个周期门读数。
       //   DEBUG 而非 INFO：本方法按分区调用，INFO 会变成每分区一条；数量只服务根因追踪。
       EventLog.channel(TRACE)
           .debug(
@@ -467,6 +483,8 @@ final class ProductionInputSettlement {
                   cycleStartUnits,
                   "firstSowUnits",
                   firstSowUnits,
+                  "stagedTickUnits",
+                  stagedTickUnits,
                   "producingUnits",
                   producingUnits == null ? "legacy" : producingUnits.size(),
                   "reason",
@@ -882,7 +900,11 @@ final class ProductionInputSettlement {
     if (planned <= 0L) {
       return false;
     }
-    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+    Map<CommodityId, Long> perScale =
+        industry.stages().isEmpty()
+            ? industry.inputPerUnit()
+            : industry.currentStageInput(unit).inputPerUnit();
+    for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
       if (entry.getValue() <= 0L) {
         continue;
       }

@@ -18,6 +18,7 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketMandateId;
+import io.mosire.simos.economy.api.market.MarketOrder;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.economy.api.market.SellOrder;
@@ -494,9 +495,9 @@ final class MarketSettlement {
     return java.util.List.copyOf(round.injectedSellOrders);
   }
 
-  /** ★★★ P3.0：本轮注入的原始意向只读视图（priority 等字段留给 P3c；P3.0 不据此排序）。 */
-  static java.util.List<MarketIntent> injectedMarketIntents(MarketRound round) {
-    return java.util.List.copyOf(round.injectedMarketIntents);
+  /** ★★★ D-032 U2b：本轮注入的统一市场订单只读视图（唯一注入订单列表）。 */
+  static java.util.List<MarketOrder> injectedMarketOrders(MarketRound round) {
+    return java.util.List.copyOf(round.injectedMarketOrders);
   }
 
   static PlannedOrders planOrders(

@@ -41,7 +41,6 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -503,7 +502,7 @@ final class ProductionRunSettlement {
       // ★★★ D-032 C9：耐久商品资本占用只从 operator 户的唯一商品库存读取；缺 operator/负库存 fail-closed。
       //   它只进 production 的规模计算，不扣减、不进入 ordinary input，也不生成 OwnershipStake。
       Map<CommodityId, Long> durableCommodityOccupancy =
-          durableCommodityOccupancyOf(
+          ProductionProcessBook.durableCommodityOccupancyOf(
               unit, industry, householdEconomies, householdGoods, settlementIndex);
       // ★★ 计划级属性主体 = organizer（D2 §6.2）：有属性桥读数才填，读不到时仍传 EMPTY 作为
       //   `attributes`（production 的计划级条件会因缺属性 fail-closed）；participantAttributes 只装权威读数。
@@ -711,19 +710,18 @@ final class ProductionRunSettlement {
     Map<CommodityId, Long> grossByCommodity = new LinkedHashMap<>();
     Map<CommodityId, Long> netByCommodity = new LinkedHashMap<>();
     // ★★★ D-032 C6：非库存服务产出（只认 CaravanTransportTemplate.SERVICE_OUTPUT）在**任何普通产出写账之前**分流。
-    //   capacityWorkMilli = scale × SERVICE_MILLI_PER_SCALE_UNIT（SERVICE_MILLI_PER_SCALE_UNIT
-    // 是唯一工程常量）；
+    //   ★ U4b2c：capacityWorkMilli = scale × 该服务键的每单位产出（与普通商品同一 scale/单位口径；GM 覆盖同款生效）。
+    //   legacy 配方该键的值就是 1000，故逐值同旧；staged HARVEST 的可变 output 现在真正生效。
     //   服务键不进入 grossByCommodity/netByCommodity、不参与 ProductionOutputNetting、不进入 RoleDistribution /
     //   HouseholdGoods / income / ProductionSettlement 关系结算，只通过 sink 交给 economy 批次。
     long serviceCapacityWorkMilli = 0L;
     for (Map.Entry<CommodityId, Long> output : recipe.outputPerUnit().entrySet()) {
       CommodityId commodity = output.getKey();
+      long quantityPerUnit = outputQuantityOverrides.getOrDefault(commodity, output.getValue());
       if (CaravanTransportTemplate.isServiceOutput(commodity)) {
         try {
           serviceCapacityWorkMilli =
-              Math.addExact(
-                  serviceCapacityWorkMilli,
-                  Math.multiplyExact(scale, CaravanTransportTemplate.SERVICE_MILLI_PER_SCALE_UNIT));
+              Math.addExact(serviceCapacityWorkMilli, Math.multiplyExact(scale, quantityPerUnit));
         } catch (ArithmeticException overflow) {
           throw new IllegalStateException(
               "transport-capacity-output-overflow: unit=" + unit.id().value() + " scale=" + scale,
@@ -731,7 +729,6 @@ final class ProductionRunSettlement {
         }
         continue;
       }
-      long quantityPerUnit = outputQuantityOverrides.getOrDefault(commodity, output.getValue());
       long gross = scale * quantityPerUnit * MILLI_PER_GRAIN; // 毫单位（毛产出）
       if (gross <= 0L) {
         continue;
@@ -831,7 +828,8 @@ final class ProductionRunSettlement {
                 // ★★★ D-032 B3（I9）：投入与"谁出了多少工"一律取**回执**的实际事实（同源、同一次关账）。
                 cycleInputUsed,
                 cycleLaborByHousehold,
-                industry.outputPerUnit(),
+                // ★★★ U4b2c：关系规则的 E14 产出守卫读 staged 有效配方（最终 HARVEST）；legacy 逐值同旧。
+                recipe.outputPerUnit(),
                 // ★★ 货币档的付款上限 = **账户主体家户们的可花货币合计**（逐币种）；解析不到主体 ⇒ 空表（实付 0、
                 //   欠额进读数 —— 如实报，不是静默付 0）。
                 availableMoneyOf(subject, householdMoney),
@@ -893,56 +891,6 @@ final class ProductionRunSettlement {
    * <p>解析顺序：unit.operator 本身是 HOUSEHOLD ⇒ 直接取；否则取该 unit 的 ProductionEnterprise.organizer； 最后才回落到既有
    * EconomicHouseholdResolver 的单一家户结果。**不**回落到劳动配额集合（那会把 hired_driver 分进产品份额）。
    */
-  /**
-   * C9：把 operator 户当刻库存中本方案 durable 商品键的余额交给 production（只读，不写账）。
-   *
-   * <p>非 durable 方案恒返回空表。durable 方案缺 operator 家户 / 负库存 ⇒ 具名 fail-closed；余额 0 时不放键 （production 的缺项语义
-   * = 该通道规模 0，不是“无上限”）。
-   */
-  private static Map<CommodityId, Long> durableCommodityOccupancyOf(
-      ProductionProcess unit,
-      IndustryDefinitionView industry,
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      SettlementIndex index) {
-    if (industry.durableCommodityCapacityPerUnit().isEmpty()) {
-      return Map.of();
-    }
-    Optional<HouseholdId> operator =
-        HouseholdRouting.householdOfActorOrNull(unit.operator(), householdEconomies);
-    if (operator.isEmpty()) {
-      Optional<HouseholdId> economic = index.economicHouseholdOf(unit.id());
-      operator = economic.filter(householdEconomies::containsKey);
-    }
-    if (operator.isEmpty()) {
-      throw new IllegalStateException(
-          "durable-commodity-operator-household-unresolved: unit="
-              + unit.id().value()
-              + " operator="
-              + unit.operator());
-    }
-    Map<CommodityId, Long> balances = householdGoods.getOrDefault(operator.get(), Map.of());
-    Map<CommodityId, Long> occupancy = new LinkedHashMap<>();
-    for (CommodityId commodity : industry.durableCommodityCapacityPerUnit().keySet()) {
-      long quantity = balances.getOrDefault(commodity, 0L);
-      if (quantity < 0L) {
-        throw new IllegalStateException(
-            "durable-commodity-occupancy-negative: unit="
-                + unit.id().value()
-                + " household="
-                + operator.get().value()
-                + " commodity="
-                + commodity.value()
-                + " quantity="
-                + quantity);
-      }
-      if (quantity > 0L) {
-        occupancy.put(commodity, quantity);
-      }
-    }
-    return Collections.unmodifiableMap(occupancy);
-  }
-
   private static HouseholdId requireTransportOperatorHousehold(
       ProductionProcess unit,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,

@@ -292,8 +292,14 @@ final class ProductionProspectBook {
           household, modeId, position.id(), hex, industry.id(), wageEstimate.rejection().get());
     }
 
-    // ★ 资产那道闸（与改前同一判据：min_k ⌊可用_k ÷ capacityPerUnit_k⌋ < 1 ⇒ NO_ASSET:<industry>）。
-    long assetScale = assetScaleOf(industry, occupancy);
+    // ★★ durable 商品占用：候选与 existing 都读本评估户（household）的库存快照。
+    //   若 existingUnit.operator 不是本户，仍保留这个“以候选家户为评估主体”的明确口径：
+    //   本方法是预计/排序入口，不能借用别的 operator 的库存把本户候选算成可生产。
+    Map<CommodityId, Long> durableOccupancy =
+        ProductionProbeInputs.durableCommodityOccupancyOf(
+            accounts.householdGoods().get(household), industry);
+    // ★ 资产那道闸：同时遍历 capacityPerUnit 与 durableCommodityCapacityPerUnit。
+    long assetScale = assetScaleOf(industry, occupancy, durableOccupancy);
     if (assetScale < 1L) {
       return infeasible(
           household,
@@ -318,7 +324,12 @@ final class ProductionProspectBook {
     ProductionProbeResult probe =
         runtime.probe(
             new ProductionProbeRequest(
-                industry.id(), conditions, occupancy, carry, ExternalAttributeFacts.EMPTY));
+                industry.id(),
+                conditions,
+                occupancy,
+                durableOccupancy,
+                carry,
+                ExternalAttributeFacts.EMPTY));
     if (!probe.feasible()) {
       return infeasible(
           household,
@@ -507,11 +518,35 @@ final class ProductionProspectBook {
    * 非资产规模派生，不是运行时可用资产回退。
    */
   static long assetScaleOf(IndustryDefinitionView industry, Map<AssetKind, Long> availableAssets) {
+    return assetScaleOf(industry, availableAssets, Map.of());
+  }
+
+  /**
+   * 资产表 + durable 商品占用表的产能规模（唯一算式）。
+   *
+   * <p>同时遍历 {@code capacityPerUnit} 与 {@code durableCommodityCapacityPerUnit}；缺项按 0，两表都空 ⇒ 0。
+   * 旧调用等价于 durable 空表，逐值不变。
+   */
+  static long assetScaleOf(
+      IndustryDefinitionView industry,
+      Map<AssetKind, Long> availableAssets,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
+    Objects.requireNonNull(industry, "industry");
+    Objects.requireNonNull(availableAssets, "availableAssets");
+    Objects.requireNonNull(
+        durableCommodityOccupancy, "durableCommodityOccupancy 不得为 null（无 durable 通道用空表）");
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> required : industry.capacityPerUnit().entrySet()) {
       scale =
           Math.min(
               scale, availableAssets.getOrDefault(required.getKey(), 0L) / required.getValue());
+    }
+    for (Map.Entry<CommodityId, Long> required :
+        industry.durableCommodityCapacityPerUnit().entrySet()) {
+      scale =
+          Math.min(
+              scale,
+              durableCommodityOccupancy.getOrDefault(required.getKey(), 0L) / required.getValue());
     }
     return scale == Long.MAX_VALUE ? 0L : scale;
   }

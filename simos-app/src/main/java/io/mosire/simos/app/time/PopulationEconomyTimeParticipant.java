@@ -17,6 +17,7 @@ import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdSatietyBridge;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.household.MigrationSocialBridge;
+import io.mosire.simos.app.inventory.InventoryLotViewBuilder;
 import io.mosire.simos.app.production.AppProductionLookups;
 import io.mosire.simos.app.world.ArableSupplySnapshots;
 import io.mosire.simos.calendar.CalendarClock;
@@ -28,6 +29,7 @@ import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.inventory.InventoryLotView;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
 import io.mosire.simos.economy.model.FlowRow;
@@ -623,6 +625,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ★★★ D-032 L4：Map component.owner 是 LAND 唯一权威 —— 从同一 Map 构造瞬态组件账本并显式注入。
       var landLedger =
           ArableSupplySnapshots.landLedgerFrom(state, "PopulationEconomyTimeParticipant");
+      // ★★★ D-032 L1c：S1 装配点 —— 从当刻 actor 库存 + economy 家户位置 + map LAND component 派生只读 lot 视图。
+      //   map 切片缺失 ⇒ 空视图（不伪造 lot，保持旧世界路径不变）。
+      InventoryLotView inventoryLotView =
+          map == null
+              ? new InventoryLotView(List.of())
+              : InventoryLotViewBuilder.build(actor, economy, map);
       EconomyDayStepper stepper =
           new EconomyDayStepper(
               economy,
@@ -638,6 +646,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               AppProductionLookups.expectedRevision(state),
               cultureLookupOf(state),
               landLedger);
+      // ★★★ D-032 L1c：视图装配到 stepper 会话；不改变 tick/S3/S4/S5 行为（仅作本 tick 只读派生输入）。
+      stepper.updateInventoryLotView(inventoryLotView);
       WorldTimeProposal proposal;
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。

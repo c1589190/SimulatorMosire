@@ -46,7 +46,10 @@ import io.mosire.simos.economy.api.land.LandArableSupply;
 import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.BuyOrder;
+import io.mosire.simos.economy.api.market.MarketItemRef;
 import io.mosire.simos.economy.api.market.MarketMandateId;
+import io.mosire.simos.economy.api.market.MarketOrder;
+import io.mosire.simos.economy.api.market.MarketOrderSide;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.SellOrder;
@@ -842,28 +845,26 @@ final class MarketRoundRunner {
   }
 
   /**
-   * ★★★ <b>D-032 P3c3 / RF1：用 M3 的 {@link MarketIntent} 按<b>同键</b>替换 planner 自动商品订单。</b>
+   * ★★★ <b>D-032 U2b / P3c3 / RF1：用统一 {@link MarketOrder} 按<b>同键</b>替换 planner 自动商品订单。</b>
    *
    * <p>替换键 = {@code (actor, commodity, side)}（商品）—— M3 有 cloth BUY 时只移除该 actor 的 cloth BUY 自动槽， 同
-   * actor 的 grain BUY/SELL、cloth SELL 等自动腿逐值保留；随后 {@link #appendInjectedCommodityOrders} 再把 M3
-   * 订单加入同一轮。缺方向的订单就是没有订单：不恢复反向自动腿。
+   * actor 的 grain BUY/SELL、cloth SELL 等自动腿逐值保留；随后 {@link #appendInjectedCommodityOrders} 再把 typed
+   * 商品订单加入同一轮。缺方向的订单就是没有订单：不恢复反向自动腿。
    *
-   * <p>★ 土地的自动腿只来自 M3 本身（{@link MarketLandIntentBook} 已按 {@code (actor, LAND, hex, side)} 合并），
-   * 本入口不存在需要替换的自动土地腿；本方法只处理商品槽，绝不按 actor 级整删。
+   * <p>★ 本方法只读统一注入订单里的 {@link MarketItemRef.Commodity}；LAND 统一订单没有 planner 自动手腿，因此不在这里处理。
    */
   private static void replaceAutoCommodityOrdersForIntentActors(
       MatchContext ctx, MarketRound round) {
     Set<String> buyKeys = new LinkedHashSet<>();
     Set<String> sellKeys = new LinkedHashSet<>();
     Set<ActorRef> intentActors = new LinkedHashSet<>();
-    for (MarketIntent intent : round.injectedMarketIntents) {
-      if (intent.kind() != MarketIntentKind.COMMODITY) {
+    for (MarketOrder order : round.injectedMarketOrders) {
+      if (!(order.item() instanceof MarketItemRef.Commodity commodity)) {
         continue;
       }
-      intentActors.add(intent.actor());
-      String key =
-          commodityAutoOrderKey(intent.actor(), intent.commodity().orElseThrow(), intent.side());
-      if (intent.side() == MarketIntentSide.BUY) {
+      intentActors.add(order.actor());
+      String key = commodityAutoOrderKey(order.actor(), commodity.commodityId(), order.side());
+      if (order.side() == MarketOrderSide.BUY) {
         buyKeys.add(key);
       } else {
         sellKeys.add(key);
@@ -879,7 +880,7 @@ final class MarketRoundRunner {
         slot -> {
           String key =
               commodityAutoOrderKey(
-                  slot.order.requester(), slot.order.commodity(), MarketIntentSide.BUY);
+                  slot.order.requester(), slot.order.commodity(), MarketOrderSide.BUY);
           if (buyKeys.contains(key)) {
             removedKeys.add(key);
             return true;
@@ -890,7 +891,7 @@ final class MarketRoundRunner {
         slot -> {
           String key =
               commodityAutoOrderKey(
-                  slot.order.supplier(), slot.order.commodity(), MarketIntentSide.SELL);
+                  slot.order.supplier(), slot.order.commodity(), MarketOrderSide.SELL);
           if (sellKeys.contains(key)) {
             removedKeys.add(key);
             return true;
@@ -904,14 +905,14 @@ final class MarketRoundRunner {
       if (intentActors.contains(buy.order.requester())) {
         retainedKeys.add(
             commodityAutoOrderKey(
-                buy.order.requester(), buy.order.commodity(), MarketIntentSide.BUY));
+                buy.order.requester(), buy.order.commodity(), MarketOrderSide.BUY));
       }
     }
     for (SellSlot sell : ctx.sells) {
       if (intentActors.contains(sell.order.supplier())) {
         retainedKeys.add(
             commodityAutoOrderKey(
-                sell.order.supplier(), sell.order.commodity(), MarketIntentSide.SELL));
+                sell.order.supplier(), sell.order.commodity(), MarketOrderSide.SELL));
       }
     }
     if (MARKET.isInfoEnabled()) {
@@ -943,7 +944,7 @@ final class MarketRoundRunner {
 
   /** 自动商品订单的同键 canonical 串：{@code (actor, commodity, side)}（只用于替换/日志，不是身份类型）。 */
   private static String commodityAutoOrderKey(
-      ActorRef actor, CommodityId commodity, MarketIntentSide side) {
+      ActorRef actor, CommodityId commodity, MarketOrderSide side) {
     return actor.kind() + ":" + actor.id() + "|" + commodity.value() + "|" + side.name();
   }
 

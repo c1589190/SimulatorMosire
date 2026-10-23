@@ -81,8 +81,10 @@ class ArableSupplySnapshotsTest {
         .containsExactly("hh-a", "hh-b");
     assertThat(
             written.hexes().get(H0).land().byType().get(LandTypeId.ARABLE).nextComponentOrdinal())
-        .as("已有 owner 复用 id；拆分出的买方 component 用下一个序号")
-        .isEqualTo(2L);
+        .as(
+            "已有 owner 复用 id（买方合并后取字典序最小 id）；部分转移先分配 ordinal 2 生成买方 component，"
+                + "normalize 合并同 owner 同属性 component 后不回收 ordinal，故下一个序号为 3")
+        .isEqualTo(3L);
   }
 
   @Test

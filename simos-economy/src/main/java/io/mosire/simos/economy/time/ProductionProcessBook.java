@@ -2,22 +2,27 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.model.AssetOccupancyGrant;
 import io.mosire.simos.economy.model.AssetOccupancyGrantId;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRoster;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -70,14 +75,52 @@ public final class ProductionProcessBook {
     return capacityScaleOf(allocationOf(unit, index), industry);
   }
 
-  /** 产能规模的唯一算式（各重载共用）。 */
+  /** D4 分配 + durable 商品占用口径的产能规模。 */
+  public static long capacityScaleOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      AssetOccupancyBudget budget,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
+    return capacityScaleOf(allocationOf(unit, budget), industry, durableCommodityOccupancy);
+  }
+
+  /** 索引 D4 分配 + durable 商品占用口径的产能规模。 */
+  public static long capacityScaleOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      SettlementIndex index,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
+    return capacityScaleOf(allocationOf(unit, index), industry, durableCommodityOccupancy);
+  }
+
+  /** 产能规模的唯一算式（各重载共用；旧口径等价于 durable 空表）。 */
   public static long capacityScaleOf(
       Map<AssetKind, Long> allocation, IndustryDefinitionView industry) {
+    return capacityScaleOf(allocation, industry, Map.of());
+  }
+
+  /**
+   * 产能规模的唯一算式：同时遍历 {@code capacityPerUnit} 与 {@code durableCommodityCapacityPerUnit}。
+   *
+   * <p>缺项按 0；两表都空 ⇒ 0（与旧口径一致）。
+   */
+  public static long capacityScaleOf(
+      Map<AssetKind, Long> allocation,
+      IndustryDefinitionView industry,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
     Objects.requireNonNull(allocation, "allocation");
     Objects.requireNonNull(industry, "industry");
+    Objects.requireNonNull(
+        durableCommodityOccupancy, "durableCommodityOccupancy 不得为 null（无 durable 通道用空表）");
     long scale = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       scale = Math.min(scale, allocation.getOrDefault(entry.getKey(), 0L) / entry.getValue());
+    }
+    for (Map.Entry<CommodityId, Long> entry :
+        industry.durableCommodityCapacityPerUnit().entrySet()) {
+      scale =
+          Math.min(
+              scale, durableCommodityOccupancy.getOrDefault(entry.getKey(), 0L) / entry.getValue());
     }
     return scale == Long.MAX_VALUE ? 0L : scale;
   }
@@ -92,10 +135,7 @@ public final class ProductionProcessBook {
       IndustryDefinitionView industry,
       AssetOccupancyBudget budget,
       OperatorCondition condition) {
-    return capacityScaleOf(unit, industry, budget)
-        * StressPolicy.plannedScalePerMille(
-            condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
-        / 1_000L;
+    return plannedCapacityScaleOf(unit, industry, budget, condition, Map.of());
   }
 
   /** 索引口径的计划规模（产能规模查 D4 预算；计划系数的算式不变）。 */
@@ -104,10 +144,83 @@ public final class ProductionProcessBook {
       IndustryDefinitionView industry,
       SettlementIndex index,
       OperatorCondition condition) {
-    return capacityScaleOf(unit, industry, index)
+    return plannedCapacityScaleOf(unit, industry, index, condition, Map.of());
+  }
+
+  /** D4 分配 + durable 商品占用口径的计划规模。 */
+  public static long plannedCapacityScaleOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      AssetOccupancyBudget budget,
+      OperatorCondition condition,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
+    return capacityScaleOf(unit, industry, budget, durableCommodityOccupancy)
         * StressPolicy.plannedScalePerMille(
             condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
         / 1_000L;
+  }
+
+  /** 索引 D4 分配 + durable 商品占用口径的计划规模。 */
+  public static long plannedCapacityScaleOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      SettlementIndex index,
+      OperatorCondition condition,
+      Map<CommodityId, Long> durableCommodityOccupancy) {
+    return capacityScaleOf(unit, industry, index, durableCommodityOccupancy)
+        * StressPolicy.plannedScalePerMille(
+            condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())
+        / 1_000L;
+  }
+
+  /**
+   * C9：把 operator 户当刻库存中本方案 durable 商品键的余额转成 production 的 durable 占用读数。
+   *
+   * <p>非 durable 方案恒返回空表。durable 方案缺 operator 家户 / 负库存 ⇒ 具名 fail-closed；余额 0 时不放键（production 的缺项语义
+   * = 该通道规模 0，不是“无上限”）。这是唯一拼写点；economy 其他调用方必须复用本方法。
+   */
+  public static Map<CommodityId, Long> durableCommodityOccupancyOf(
+      ProductionProcess unit,
+      IndustryDefinitionView industry,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      SettlementIndex index) {
+    if (industry.durableCommodityCapacityPerUnit().isEmpty()) {
+      return Map.of();
+    }
+    Optional<HouseholdId> operator =
+        HouseholdRouting.householdOfActorOrNull(unit.operator(), householdEconomies);
+    if (operator.isEmpty()) {
+      Optional<HouseholdId> economic = index.economicHouseholdOf(unit.id());
+      operator = economic.filter(householdEconomies::containsKey);
+    }
+    if (operator.isEmpty()) {
+      throw new IllegalStateException(
+          "durable-commodity-operator-household-unresolved: unit="
+              + unit.id().value()
+              + " operator="
+              + unit.operator());
+    }
+    Map<CommodityId, Long> balances = householdGoods.getOrDefault(operator.get(), Map.of());
+    Map<CommodityId, Long> occupancy = new LinkedHashMap<>();
+    for (CommodityId commodity : industry.durableCommodityCapacityPerUnit().keySet()) {
+      long quantity = balances.getOrDefault(commodity, 0L);
+      if (quantity < 0L) {
+        throw new IllegalStateException(
+            "durable-commodity-occupancy-negative: unit="
+                + unit.id().value()
+                + " household="
+                + operator.get().value()
+                + " commodity="
+                + commodity.value()
+                + " quantity="
+                + quantity);
+      }
+      if (quantity > 0L) {
+        occupancy.put(commodity, quantity);
+      }
+    }
+    return Collections.unmodifiableMap(occupancy);
   }
 
   /**

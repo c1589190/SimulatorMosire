@@ -4,6 +4,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.culture.HouseholdCultureKey;
 import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
+import io.mosire.simos.economy.api.inventory.InventoryLotView;
 import io.mosire.simos.economy.api.land.LandArableSupply;
 import io.mosire.simos.economy.land.LandComponentLedger;
 import io.mosire.simos.economy.model.FlowRow;
@@ -64,6 +65,18 @@ public final class EconomySession {
    * java.util.Optional#empty()} ⇒ 名册执行路径具名 {@code asset-occupancy-unavailable}。
    */
   private final java.util.Optional<io.mosire.simos.util.state.RevisionId> expectedRevision;
+
+  /**
+   * ★★★ <b>D-032 L1c：本 tick 的库存 lot 只读视图</b>（瞬态；缺省 = 空视图）。
+   *
+   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：它只是 S1 从 actor / economy / map 合成的<b>当
+   * tick 只读投影</b>，权威仍在各切片（actor 余额、economy 家户位置、map LAND component）。S3 之前由 {@code
+   * EconomyDayPipeline} 从它派生本 tick 的 {@code ProductionOpportunityBook}；本字段本身不写任何状态。
+   *
+   * <p>★ 生命周期 = 本会话；每次 {@code EconomyDayStepper.updateInventoryLotView(...)} 整体替换。{@link
+   * InventoryLotView} 的构造器已冻结保序列表，故外部不可再改视图内容。
+   */
+  private InventoryLotView inventoryLotView = new InventoryLotView(List.of());
 
   /**
    * ★★ <b>P5：本会话的死亡按人口比例删债累加器</b>（瞬态；键 = 债务人，值 = Σ 逐笔 {@code forgive} 的本金差）。
@@ -371,6 +384,22 @@ public final class EconomySession {
   /** ★★★ D-032 L4：本会话的瞬态 LAND 组件账本（轮末由组合根写回 Map）。 */
   public LandComponentLedger landLedger() {
     return sheet.landLedger();
+  }
+
+  /** ★★★ D-032 L1c：本 tick 的库存 lot 只读视图（缺省 = 空视图；不进状态/变更集/Codec）。 */
+  public InventoryLotView inventoryLotView() {
+    return inventoryLotView;
+  }
+
+  /**
+   * ★★★ D-032 L1c：整体替换本 tick 的库存 lot 只读视图。
+   *
+   * <p>★ 防御性 null 校验：没有视图时调用方必须传 {@code new InventoryLotView(List.of())}，不得传 null（不把“未知”
+   * 冒充“空”）。视图本身由 {@link InventoryLotView} 构造器冻结为只读。
+   */
+  public void updateInventoryLotView(InventoryLotView next) {
+    this.inventoryLotView =
+        Objects.requireNonNull(next, "inventoryLotView（空视图请用 new InventoryLotView(List.of())）");
   }
 
   /** 本期流水累加器（**就地更新**；一次推进会话内跨日累计，{@link #build()} 时挂上）。 */

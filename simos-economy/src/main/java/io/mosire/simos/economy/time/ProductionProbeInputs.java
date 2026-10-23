@@ -118,17 +118,47 @@ final class ProductionProbeInputs {
   }
 
   /**
-   * ★ 本户可投入的原料（按方案 {@code inputPerUnit} 的键集）：缺账户/缺键 ⇒ 0；负存量按 0 计（"拿不出来"，不是"负投入"）。
+   * ★ <b>durable 商品占用读数</b>：按方案 {@code durableCommodityCapacityPerUnit} 的键集从家户库存取正余额。
    *
-   * <p>★ <b>键集为什么取方案投入表</b>：{@code probe} 的原料通道只按 {@code plan.inputPerUnit()} 逐项读 {@code
-   * inputs}，把整张家户库存表搬进来只会让每个候选多拷一份无关商品（性能），读数逐值不变。
+   * <p>缺账户 / 缺键 = 0（该通道不构成约束）；负库存 fail-closed；键序取方案 durable 表的首次出现序。 与服务键/普通投入不同：本表只作规模锚，不进入 {@link
+   * #inputsOf} 的原料表。
+   */
+  static Map<CommodityId, Long> durableCommodityOccupancyOf(
+      Map<CommodityId, Long> householdGoods, IndustryDefinitionView plan) {
+    Objects.requireNonNull(plan, "plan");
+    Map<CommodityId, Long> goods = householdGoods == null ? Map.of() : householdGoods;
+    Map<CommodityId, Long> durableOccupancy = new LinkedHashMap<>();
+    for (CommodityId commodity : plan.durableCommodityCapacityPerUnit().keySet()) {
+      long quantity = goods.getOrDefault(commodity, 0L);
+      if (quantity < 0L) {
+        throw new IllegalStateException(
+            "durable-commodity-occupancy-negative: plan="
+                + plan.id().value()
+                + " commodity="
+                + commodity.value()
+                + " quantity="
+                + quantity);
+      }
+      if (quantity > 0L) {
+        durableOccupancy.put(commodity, quantity);
+      }
+    }
+    return durableOccupancy;
+  }
+
+  /**
+   * ★ 本户可投入的原料（按方案有效配方的 {@code inputPerUnit} 键集）：缺账户/缺键 ⇒ 0；负存量按 0 计（"拿不出来"，不是"负投入"）。
+   *
+   * <p>★ <b>键集为什么取 {@code plan.recipe().inputPerUnit()}</b>：{@code probe} 的原料通道按有效周期投入逐项读 {@code
+   * inputs}。staged 方案的 legacy {@code plan.inputPerUnit()} 为空，只有 {@code recipe()} 会投影出 {@code
+   * Σ_stage(startInput + tickInput × durationDays)}；把整张家户库存表搬进来只会让每个候选多拷一份无关商品（性能）， 读数逐值不变。
    */
   static Map<CommodityId, Long> inputsOf(
       Map<CommodityId, Long> householdGoods, IndustryDefinitionView plan) {
     Objects.requireNonNull(plan, "plan");
     Map<CommodityId, Long> goods = householdGoods == null ? Map.of() : householdGoods;
     Map<CommodityId, Long> inputs = new LinkedHashMap<>();
-    for (CommodityId commodity : plan.inputPerUnit().keySet()) {
+    for (CommodityId commodity : plan.recipe().inputPerUnit().keySet()) {
       inputs.put(commodity, Math.max(0L, goods.getOrDefault(commodity, 0L)));
     }
     return inputs;

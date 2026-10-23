@@ -98,7 +98,8 @@ final class EntryCandidateBook {
    */
   static List<CommodityId> outputCommodities(IndustryDefinitionView plan) {
     List<CommodityId> out = new ArrayList<>();
-    for (Map.Entry<CommodityId, Long> entry : plan.outputPerUnit().entrySet()) {
+    // ★ U4b2c：读 staged 有效配方（最终 HARVEST）；legacy recipe.outputPerUnit() 逐值同旧。
+    for (Map.Entry<CommodityId, Long> entry : plan.recipe().outputPerUnit().entrySet()) {
       if (entry.getValue() != null && entry.getValue() > 0L) {
         out.add(entry.getKey());
       }
@@ -153,7 +154,8 @@ final class EntryCandidateBook {
       experience.put(track.get(), context.runtime.experienceOf(household, track.get()));
     }
     Map<CommodityId, Long> inputs = new LinkedHashMap<>();
-    for (CommodityId commodity : plan.inputPerUnit().keySet()) {
+    // ★ U4b2c：staged 方案的有效投入是跨阶段求和；legacy recipe.inputPerUnit() 逐值同旧。
+    for (CommodityId commodity : plan.recipe().inputPerUnit().keySet()) {
       inputs.put(commodity, stockOf(context.householdGoods, household, commodity));
     }
     HouseholdEconomy householdEconomy = context.householdEconomies.get(household);

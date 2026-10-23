@@ -1,5 +1,15 @@
 package io.mosire.simos.app.time;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.change.ActorChangeSet;
+import io.mosire.simos.app.world.LandProductionCycle;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -14,6 +24,7 @@ import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -44,7 +55,11 @@ public final class PopulationUnitTimeParticipant implements TimeParticipant {
 
   private static final String POPULATION = "population";
   private static final String UNIT = "unit";
+  private static final String ACTOR = "actor";
+  private static final String MAP = "map";
+  private static final String ECONOMY = "economy";
 
+  private final String mapId;
   private final PopulationEconomyTimeParticipant population;
   private final UnitTimeParticipant unit;
 
@@ -56,6 +71,7 @@ public final class PopulationUnitTimeParticipant implements TimeParticipant {
   /** 完整入口：{@code economyWorkerCount} 转交人口—经济参与者（≥ 1）。 */
   public PopulationUnitTimeParticipant(String mapId, int economyWorkerCount) {
     String id = Objects.requireNonNull(mapId, "mapId");
+    this.mapId = id;
     this.population = new PopulationEconomyTimeParticipant(id, economyWorkerCount);
     this.unit = new UnitTimeParticipant(TerrainMovementCost.INSTANCE, id);
   }
@@ -74,9 +90,13 @@ public final class PopulationUnitTimeParticipant implements TimeParticipant {
   public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
+    // ★★ D-032 L2b2b：population 之前先跑一次 LAND continuation day。
+    //   一次 Advance 只跑一个 land day；多 tick 逐日留给后续（本入口按 1 tick Advance）。
+    SimulationState landState = LandProductionCycle.run(state, range.from().tick());
     // ① 人口—经济（含 Z7d-2 逃亡驱动/执行；摘除请求留在 outbox）。
-    WorldTimeProposal populationProposal = population.simulateWorld(state, range);
-    // ② unit 移动/回归（既有逻辑，原样调用）。
+    //   ★ population 看到 land 扣料/产出后的 actor、写回后的 map 与运输能力批次后的 economy。
+    WorldTimeProposal populationProposal = population.simulateWorld(landState, range);
+    // ② unit 移动/回归（既有逻辑，原样调用；仍基于原 state）。
     WorldTimeProposal unitProposal = unit.simulateWorld(state, range);
 
     UnitState baseUnits =
@@ -104,6 +124,11 @@ public final class PopulationUnitTimeParticipant implements TimeParticipant {
     reads.addAll(unitProposal.reads());
     Set<String> writes = new LinkedHashSet<>(populationProposal.writes());
     writes.addAll(unitProposal.writes());
+    if (landState != state) {
+      // ★★ land cycle 已改过 actor/map/economy：population 的对应变更集只是相对 land 的增量，
+      //   必须重新从 base -> final 派生，才能在同一个 revision 里正确落账。
+      mergeLandChangedSlices(state, landState, populationProposal, mergedChanges, writes);
+    }
     for (GovernmentServiceDesertionBridge.Eviction eviction : evictions) {
       String address = unitAddress(eviction.gov());
       reads.add(address);
@@ -112,8 +137,107 @@ public final class PopulationUnitTimeParticipant implements TimeParticipant {
     return new WorldTimeProposal(POPULATION, mergedChanges, reads, writes);
   }
 
+  /**
+   * land cycle 改变 actor/map/economy 时，把 population 的对应增量应用到 land 切片，再从 base 到 final 重新派生变更集。
+   *
+   * <p>population 变更集若类型不是 {@link ActorChangeSet} / {@link MapChangeSet} / {@link EconomyChangeSet}
+   * 或缺席，则保持 land 值（不伪造）。
+   */
+  private void mergeLandChangedSlices(
+      SimulationState baseState,
+      SimulationState landState,
+      WorldTimeProposal populationProposal,
+      Map<String, ChangeSet> mergedChanges,
+      Set<String> writes) {
+    ActorData baseActor = actorOf(baseState);
+    ActorData landActor = actorOf(landState);
+    ActorData finalActor = landActor;
+    ChangeSet populationActorChanges = populationProposal.moduleChanges().get(ACTOR);
+    if (populationActorChanges instanceof ActorChangeSet actorChanges) {
+      finalActor = ActorChangeSet.apply(actorChanges, landActor);
+    }
+
+    GameMap baseMap = mapOf(baseState);
+    GameMap landMap = mapOf(landState);
+    GameMap finalMap = landMap;
+    ChangeSet populationMapChanges = populationProposal.moduleChanges().get(MAP);
+    if (populationMapChanges instanceof MapChangeSet mapChanges) {
+      finalMap = MapChangeSet.apply(mapChanges, landMap);
+    }
+
+    EconomyData baseEconomy = economyOf(baseState);
+    EconomyData landEconomy = economyOf(landState);
+    EconomyData finalEconomy = landEconomy;
+    ChangeSet populationEconomyChanges = populationProposal.moduleChanges().get(ECONOMY);
+    if (populationEconomyChanges instanceof EconomyChangeSet economyChanges) {
+      finalEconomy = EconomyChangeSet.apply(economyChanges, landEconomy);
+    }
+
+    mergedChanges.put(ACTOR, ActorChangeSet.between(baseActor, finalActor));
+    mergedChanges.put(MAP, MapChangeSet.between(baseMap, finalMap));
+    mergedChanges.put(ECONOMY, EconomyChangeSet.between(baseEconomy, finalEconomy));
+    writes.add(actorAddressRoot());
+    writes.add(mapAddressRoot());
+    writes.add(economyAddressRoot());
+  }
+
   /** {@code unit:<id>} 的 canonical 地址（与 {@code UnitTimeParticipant} 的同一 AST 构造法）。 */
   private static String unitAddress(UnitId id) {
     return new Address(List.of(new Namespace("unit"), Entity.of(id.value()))).canonical();
+  }
+
+  /** {@code actor:<mapId>} 根地址（形制照人口—经济参与者的 {@code actorAddressRoot}）。 */
+  private String actorAddressRoot() {
+    return new Address(List.of(new Namespace(ACTOR), Entity.of(mapId))).canonical();
+  }
+
+  /** {@code map:<mapId>} 根地址（形制照人口—经济参与者的 {@code mapAddressRoot}）。 */
+  private String mapAddressRoot() {
+    return new Address(List.of(new Namespace(MAP), Entity.of(mapId))).canonical();
+  }
+
+  /** {@code economy:<mapId>} 根地址（形制照人口—经济参与者的 {@code economyAddressRoot}）。 */
+  private String economyAddressRoot() {
+    return new Address(List.of(new Namespace(ECONOMY), Entity.of(mapId))).canonical();
+  }
+
+  /** actor 切片只能从 actor 模块拿（铁律 3/4）；缺席或类型不对都是装配故障。 */
+  private static ActorData actorOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(ACTOR)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 actor 切片（land cycle 装配故障）"));
+    if (!(snapshot instanceof ActorSnapshot actorSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 actor 切片不是 ActorSnapshot: " + snapshot.getClass().getName());
+    }
+    return actorSnapshot.data();
+  }
+
+  /** economy 切片只能从 economy 模块拿；缺席或类型不对都是 land 合并的装配故障。 */
+  private static EconomyData economyOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(ECONOMY)
+            .orElseThrow(
+                () -> new IllegalStateException("state 里没有 economy 切片（land cycle 合并装配故障）"));
+    if (!(snapshot instanceof EconomySnapshot economySnapshot)) {
+      throw new IllegalStateException(
+          "state 的 economy 切片不是 EconomySnapshot: " + snapshot.getClass().getName());
+    }
+    return economySnapshot.data();
+  }
+
+  /** map 切片只能从 map 模块拿；缺席或类型不对都是装配故障。 */
+  private static GameMap mapOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(MAP)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 map 切片（land cycle 装配故障）"));
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 map 切片不是 MapSnapshot: " + snapshot.getClass().getName());
+    }
+    return mapSnapshot.map();
   }
 }

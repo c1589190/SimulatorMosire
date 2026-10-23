@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.BuyOrder;
+import io.mosire.simos.economy.api.market.MarketOrder;
 import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -219,12 +220,13 @@ class MarketRoundCore {
   }
 
   /**
-   * ★★★ <b>P3.0：本轮注入的原始 {@link MarketIntent} 列表</b>（保序只读保存）。
+   * ★★★ <b>D-032 U2b：本轮注入的统一 {@link MarketOrder} 唯一列表</b>（保序只读保存）。
    *
-   * <p>★ 转换后的订单已经进入 {@link #injectedBuyOrders}/{@link #injectedSellOrders}；本表保留原始 {@code priority}
-   * 等字段，供 P3c 接入共享预算优先级与替换策略。P3.0 不读它排序、不改变任何撮合判据。
+   * <p>★ 生产侧 {@link MarketIntent} 经 {@code MarketOrderBridge.fromIntent} 包装后只进入本表；typed matcher 输入
+   * {@link #injectedBuyOrders}/{@link #injectedSellOrders}/{@link #landOrders} 是提交前的派生暂存，不是第二份注入语义。
+   * {@code priority} 等字段随统一订单一起保存，供替换策略与日志使用。
    */
-  final List<MarketIntent> injectedMarketIntents = new ArrayList<>();
+  final List<MarketOrder> injectedMarketOrders = new ArrayList<>();
 
   /**
    * ★★ <b>旧整块土地取得标记（历史兼容；RA1b2c2 起市场与债务都不再写它）</b>。
@@ -765,9 +767,14 @@ class MarketRoundCore {
     injectedSellOrders.add(Objects.requireNonNull(order, "injectedSellOrder 不得为 null"));
   }
 
-  /** ★★★ P3.0：保存一条原始 MarketIntent（priority 等字段留给 P3c，不改本轮排序）。 */
-  void addInjectedMarketIntent(MarketIntent intent) {
-    injectedMarketIntents.add(Objects.requireNonNull(intent, "injectedMarketIntent 不得为 null"));
+  /** ★★★ D-032 U2b：追加一张统一市场订单到本轮注入订单唯一列表（不清空 planner 自动订单）。 */
+  void addInjectedMarketOrder(MarketOrder order) {
+    injectedMarketOrders.add(Objects.requireNonNull(order, "injectedMarketOrder 不得为 null"));
+  }
+
+  /** ★★★ D-032 U2b：本轮注入统一订单的只读视图。 */
+  List<MarketOrder> injectedMarketOrders() {
+    return Collections.unmodifiableList(injectedMarketOrders);
   }
 
   /** ★★ P2f：本轮新取得土地块（只读视图；P3 的 M3/M6/M7 消费）。 */
@@ -859,8 +866,8 @@ class MarketRoundCore {
     planningBuyOrders = source.planningBuyOrders;
     planningSellOrders = source.planningSellOrders;
     planningOrdersCaptured = source.planningOrdersCaptured;
-    injectedMarketIntents.clear();
-    injectedMarketIntents.addAll(source.injectedMarketIntents);
+    injectedMarketOrders.clear();
+    injectedMarketOrders.addAll(source.injectedMarketOrders);
     billCoveredCommodities.clear();
     for (Map.Entry<HouseholdId, Set<CommodityId>> entry :
         source.billCoveredCommodities.entrySet()) {

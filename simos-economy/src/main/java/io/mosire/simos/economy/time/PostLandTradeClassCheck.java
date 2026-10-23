@@ -644,8 +644,8 @@ final class PostLandTradeClassCheck {
           "post-land-grain-industry-definition-missing",
           "hex=" + hex + " buyer=" + buyer.value() + " reason=no-land-based-industry-at-hex");
     }
-    Long outputPerUnit = industry.outputPerUnit().get(EconomySettlement.GRAIN);
-    Long inputPerUnit = industry.inputPerUnit().get(EconomySettlement.GRAIN);
+    Long outputPerUnit = industry.recipe().outputPerUnit().get(EconomySettlement.GRAIN);
+    Long inputPerUnit = industry.recipe().inputPerUnit().get(EconomySettlement.GRAIN);
     if (outputPerUnit == null || outputPerUnit <= 0L) {
       throw fail(
           "post-land-grain-output-definition-missing",
@@ -762,7 +762,7 @@ final class PostLandTradeClassCheck {
       if (firstLandBased == null) {
         firstLandBased = industry;
       }
-      if (industry.outputPerUnit().containsKey(EconomySettlement.GRAIN)) {
+      if (industry.recipe().outputPerUnit().containsKey(EconomySettlement.GRAIN)) {
         return industry;
       }
     }

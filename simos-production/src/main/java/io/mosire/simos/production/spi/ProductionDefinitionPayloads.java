@@ -26,6 +26,8 @@ import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionSkillKey;
+import io.mosire.simos.production.contract.ProductionStageDefinition;
+import io.mosire.simos.production.contract.ProductionStageEndAction;
 import io.mosire.simos.production.contract.RestrictedExpression;
 import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.production.contract.RoleShareRemainder;
@@ -65,6 +67,20 @@ final class ProductionDefinitionPayloads {
   private static final Set<String> EXPERIENCE_GROWTH_FIELDS =
       Set.of("track", "basis", "coefficientPerMille", "maxPerTickValue", "countsManagement");
   private static final Set<String> PAYMENT_FIELDS = Set.of("kind", "currency");
+
+  /**
+   * ★★ U4a：阶段节点白名单。{@code name} 是可选展示名（U4a 不消费，留给 U4b/读口）；其余键就是 {@link ProductionStageDefinition}
+   * 的字段。新配置节点不静默吞未知键。
+   */
+  private static final Set<String> STAGE_FIELDS =
+      Set.of(
+          "stageId",
+          "name",
+          "durationDays",
+          "startInputPerUnit",
+          "tickInputPerUnit",
+          "endAction",
+          "outputPerUnit");
 
   private ProductionDefinitionPayloads() {}
 
@@ -150,6 +166,8 @@ final class ProductionDefinitionPayloads {
         roleShareRemainder(node.get("roleShareRemainderRule"));
     List<IndustryId> upgradesTo = upgradesTo(node.get("upgradesTo"));
     Optional<ProductionModeId> mode = optionalText(node, "mode").map(ProductionModeId::parse);
+    // ★★ U4a：可选 stages[]；缺键/JSON null ⇒ 空表 = legacy 单周期，现有行为不变。
+    List<ProductionStageDefinition> stages = stages(node.get("stages"));
     return new IndustryDefinitionView(
         id,
         name,
@@ -173,7 +191,61 @@ final class ProductionDefinitionPayloads {
         roleShareRemainderRule,
         upgradesTo,
         mode,
-        durableCommodityCapacityPerUnit);
+        durableCommodityCapacityPerUnit,
+        stages);
+  }
+
+  /**
+   * ★★ <b>U4a：{@code stages} 数组 → 多阶段定义表</b>。
+   *
+   * <p>缺键 / JSON null ⇒ <b>空表</b>（legacy 单周期）。给数组则逐项解析；{@code durationDays < 1}、缺 {@code stageId}、
+   * 未知 {@code endAction}、未知键都由本方法或 {@link ProductionStageDefinition} / {@link
+   * ProductionStageEndAction#parse(String)} 具名拒绝。跨阶段不变量（cycleDays 求和、stageId 唯一、末项 HARVEST、 legacy
+   * 配方为空）留给 {@link IndustryDefinitionView} 构造期守。
+   */
+  private static List<ProductionStageDefinition> stages(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return List.of();
+    }
+    if (!node.isArray()) {
+      throw new IllegalArgumentException("字段 stages 必须是数组: " + node);
+    }
+    List<ProductionStageDefinition> stages = new ArrayList<>();
+    for (JsonNode item : node) {
+      stages.add(stage(item));
+    }
+    return stages;
+  }
+
+  /** 单个阶段节点：字段名/缺省按 plan §7.1（start/tick/output 缺省 = 空表；endAction 必填）。 */
+  private static ProductionStageDefinition stage(JsonNode node) {
+    requireObject(node, "stages[]");
+    requireKnownFields(node, STAGE_FIELDS, "stages[]");
+    String stageId = requireText(node, "stageId");
+    // ★ name? 可选展示名；U4a 只校验其形状，不进入 ProductionStageDefinition。
+    optionalText(node, "name");
+    long durationDays = requireLong(node, "durationDays");
+    if (durationDays < 1L) {
+      throw new IllegalArgumentException("字段 stages[].durationDays 必须 ≥ 1: " + durationDays);
+    }
+    Map<CommodityId, Long> startInputPerUnit =
+        commodityMap(optionalObject(node, "startInputPerUnit"), "stages[].startInputPerUnit");
+    Map<CommodityId, Long> tickInputPerUnit =
+        commodityMap(optionalObject(node, "tickInputPerUnit"), "stages[].tickInputPerUnit");
+    ProductionStageEndAction endAction = stageEndAction(requireText(node, "endAction"));
+    Map<CommodityId, Long> outputPerUnit =
+        commodityMap(optionalObject(node, "outputPerUnit"), "stages[].outputPerUnit");
+    return new ProductionStageDefinition(
+        stageId, durationDays, startInputPerUnit, tickInputPerUnit, endAction, outputPerUnit);
+  }
+
+  /** 未知 endAction 具名拒绝（parse 是词表唯一拼写点；这里只补字段上下文）。 */
+  private static ProductionStageEndAction stageEndAction(String text) {
+    try {
+      return ProductionStageEndAction.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 stages[].endAction: " + e.getMessage(), e);
+    }
   }
 
   /**

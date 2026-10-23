@@ -16,9 +16,10 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.land.LandHolding;
 import io.mosire.simos.economy.api.land.LandHoldingKey;
 import io.mosire.simos.economy.api.market.Budget;
-import io.mosire.simos.economy.api.market.BuyOrder;
+import io.mosire.simos.economy.api.market.MarketItemRef;
+import io.mosire.simos.economy.api.market.MarketOrder;
+import io.mosire.simos.economy.api.market.MarketOrderSide;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
-import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.MarketRoundStats;
 import io.mosire.simos.economy.model.MarketTable;
@@ -28,11 +29,11 @@ import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -354,22 +355,26 @@ final class SettlementDayMarketPipeline {
       SettlementDayContext ctx, List<MarketIntent> intents) {
     Objects.requireNonNull(intents, "MarketIntent 列表不得为 null（没有意向请传 List.of()）");
     MarketSettlement.MarketRound round = prepareMarketRound(ctx);
+    List<MarketOrder> marketOrders = new ArrayList<>(intents.size());
     for (MarketIntent intent : intents) {
-      appendMarketIntent(ctx, round, intent);
+      Objects.requireNonNull(intent, "MarketIntent 列表不得含 null");
+      MarketOrder order = MarketOrderBridge.fromIntent(intent);
+      marketOrders.add(order);
+      appendMarketOrder(ctx, round, intent, order);
     }
-    if (!intents.isEmpty() && MANDATE.isInfoEnabled()) {
+    if (!marketOrders.isEmpty() && MANDATE.isInfoEnabled()) {
       int commodityBuys = 0;
       int commoditySells = 0;
       int landBuys = 0;
       int landSells = 0;
-      for (MarketIntent intent : intents) {
-        if (intent.kind() == MarketIntentKind.COMMODITY) {
-          if (intent.side() == MarketIntentSide.BUY) {
+      for (MarketOrder order : marketOrders) {
+        if (order.item() instanceof MarketItemRef.Commodity) {
+          if (order.side() == MarketOrderSide.BUY) {
             commodityBuys++;
           } else {
             commoditySells++;
           }
-        } else if (intent.side() == MarketIntentSide.BUY) {
+        } else if (order.side() == MarketOrderSide.BUY) {
           landBuys++;
         } else {
           landSells++;
@@ -382,8 +387,8 @@ final class SettlementDayMarketPipeline {
                   EconomyLogSource.ECONOMY_MARKET,
                   "day",
                   ctx.day,
-                  "intents",
-                  intents.size(),
+                  "unifiedOrders",
+                  marketOrders.size(),
                   "commodityBuys",
                   commodityBuys,
                   "commoditySells",
@@ -393,7 +398,7 @@ final class SettlementDayMarketPipeline {
                   "landSells",
                   landSells,
                   "reason",
-                  "m3-intents-appended-to-the-same-market-round-without-replacing-planner-orders"));
+                  "m3-intents-converted-to-unified-market-orders-without-replacing-planner-orders"));
     }
     return round;
   }
@@ -427,109 +432,76 @@ final class SettlementDayMarketPipeline {
     }
   }
 
-  /** 把一条冻结形状的 {@link MarketIntent} 转成现有订单或整块土地订单；只追加，不撮合、不落账。 */
-  private static void appendMarketIntent(
-      SettlementDayContext ctx, MarketSettlement.MarketRound round, MarketIntent intent) {
-    Objects.requireNonNull(intent, "MarketIntent 列表不得含 null");
+  /**
+   * 把一条统一 {@link MarketOrder} 追加进本轮注入订单唯一列表，并立即转成现有 typed matcher 输入；只追加，不撮合、不落账。
+   *
+   * <p>★ 角色过滤（国库户只按授权下单、单位户只买不卖）只看统一订单的 item/side/actor；预算仍由外部 {@code cashBudgetMilliOf} 计算，bridge
+   * 不重算钱。
+   */
+  private static void appendMarketOrder(
+      SettlementDayContext ctx,
+      MarketSettlement.MarketRound round,
+      MarketIntent intent,
+      MarketOrder order) {
+    Objects.requireNonNull(order, "MarketOrder 不得为 null");
     // ★★★ RC8c：账单派生的商品意向仍服从市场角色：国库户只按授权下单、单位户只买不卖（与 planner 自动路径同一判据）。
-    if (!ctx.dailyDemandBills.isEmpty() && intent.kind() == MarketIntentKind.COMMODITY) {
-      HouseholdId intentHousehold = ctx.householdOfActor.get(intent.actor());
+    if (!ctx.dailyDemandBills.isEmpty() && order.item() instanceof MarketItemRef.Commodity) {
+      HouseholdId intentHousehold = ctx.householdOfActor.get(order.actor());
       if (intentHousehold != null) {
         MarketSettlement.HouseholdMarketRole role = round.householdMarketRole(intentHousehold);
         if (role == MarketSettlement.HouseholdMarketRole.AUTHORIZATION_ONLY) {
           return;
         }
         if (role == MarketSettlement.HouseholdMarketRole.BUY_ONLY
-            && intent.side() == MarketIntentSide.SELL) {
+            && order.side() == MarketOrderSide.SELL) {
           return;
         }
       }
     }
-    round.addInjectedMarketIntent(intent);
-    switch (intent.kind()) {
-      case COMMODITY -> {
-        CommodityId commodity =
-            intent
-                .commodity()
-                .orElseThrow(
-                    () -> new IllegalArgumentException("COMMODITY MarketIntent 必须带 commodity"));
-        switch (intent.side()) {
-          case BUY -> {
-            // ★★★ D-032 RF1：家户需求 = 数量型价格接受者。BuyOrder 的价格位写 empty（撮合与读数都不得用它过滤）；
-            //   Budget 只作本单现金预留读数，支付腿在成交时读当刻实际可花额，不足走既有普通货币债。
-            long budgetMilli = cashBudgetMilliOf(ctx, round, intent);
-            MarketSettlement.putCommodityBuyOrder(
-                round,
-                new BuyOrder(
-                    intent.actor(),
-                    intent.location(),
-                    commodity,
-                    intent.quantity(),
-                    OptionalLong.empty(),
-                    ctx.day,
-                    new Budget(budgetMilli, intent.payWith()),
-                    intent.payWith()));
-            logInjectedCommodityBuy(ctx, intent, commodity, budgetMilli);
-          }
-          case SELL ->
-              MarketSettlement.putCommoditySellOrder(
-                  round,
-                  new SellOrder(
-                      intent.actor(),
-                      intent.location(),
-                      commodity,
-                      intent.quantity(),
-                      // ★ SELL 侧最低价是 intent 的必填字段（构造期已校验 present）。
-                      intent
-                          .limitPrice()
-                          .orElseThrow(
-                              () ->
-                                  new IllegalStateException(
-                                      "SELL MarketIntent 缺少最低价（形状校验应在构造期已拒）: "
-                                          + intent.actor().id())),
-                      ctx.day,
-                      intent.payWith()));
+    round.addInjectedMarketOrder(order);
+    if (order.item() instanceof MarketItemRef.Commodity commodity) {
+      switch (order.side()) {
+        case BUY -> {
+          // ★★★ D-032 RF1：家户需求 = 数量型价格接受者。BuyOrder 的价格位写 empty（撮合与读数都不得用它过滤）；
+          //   Budget 只作本单现金预留读数，支付腿在成交时读当刻实际可花额，不足走既有普通货币债。
+          long budgetMilli = cashBudgetMilliOf(ctx, round, order);
+          MarketSettlement.putCommodityBuyOrder(
+              round, MarketOrderBridge.toBuyOrder(order, budgetMilli, ctx.day));
+          logInjectedCommodityBuy(ctx, intent, order, commodity.commodityId(), budgetMilli);
         }
+        case SELL ->
+            MarketSettlement.putCommoditySellOrder(
+                round, MarketOrderBridge.toSellOrder(order, ctx.day));
       }
-      case LAND -> {
-        // ★ RA1b2c2：LAND 意向已标量化 —— location 就是 hex，quantity 就是千分亩，limitPrice 就是每亩限价。
-        MarketSettlement.putLandOrder(
-            round,
-            new LandOrder(
-                intent.side() == MarketIntentSide.BUY ? LandOrder.Side.BUY : LandOrder.Side.SELL,
-                intent.actor(),
-                intent.location(),
-                intent.quantity(),
-                // ★ BUY = 价格接受者（empty）；SELL = 最低保护价（present）。形状校验在 LandOrder 构造期。
-                intent.limitPrice(),
-                intent.payWith()));
-        if (intent.side() == MarketIntentSide.BUY && EconomyLog.market().isDebugEnabled()) {
-          EventLog.channel(EconomyLog.market())
-              .debug(
-                  LogEvent.of(
-                      "MARKET_INTENT_BUY",
-                      EconomyLogSource.ECONOMY_MARKET,
-                      "day",
-                      ctx.day,
-                      "actor",
-                      intent.actor().id(),
-                      "kind",
-                      "LAND",
-                      "commodity",
-                      "-",
-                      "hex",
-                      intent.location().q() + "," + intent.location().r(),
-                      "quantity",
-                      intent.quantity(),
-                      "priceTaker",
-                      true,
-                      "currency",
-                      intent.payWith().value(),
-                      "sourceUnit",
-                      intent.sourceUnit().map(unit -> unit.value()).orElse("-"),
-                      "reason",
-                      "land-buy-intent-converted-to-price-taking-land-order"));
-        }
+    } else {
+      // ★ RA1b2c2：LAND 意向已标量化 —— location 就是 hex，quantity 就是千分亩，limitPrice 就是每亩限价。
+      MarketSettlement.putLandOrder(round, MarketOrderBridge.toLandOrder(order));
+      if (order.side() == MarketOrderSide.BUY && EconomyLog.market().isDebugEnabled()) {
+        EventLog.channel(EconomyLog.market())
+            .debug(
+                LogEvent.of(
+                    "MARKET_INTENT_BUY",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    ctx.day,
+                    "actor",
+                    order.actor().id(),
+                    "kind",
+                    "LAND",
+                    "commodity",
+                    "-",
+                    "hex",
+                    order.location().q() + "," + order.location().r(),
+                    "quantity",
+                    order.quantityMilli(),
+                    "priceTaker",
+                    true,
+                    "currency",
+                    order.payWith().value(),
+                    "sourceUnit",
+                    intent.sourceUnit().map(unit -> unit.value()).orElse("-"),
+                    "reason",
+                    "land-buy-intent-converted-to-price-taking-land-order"));
       }
     }
   }
@@ -541,17 +513,21 @@ final class SettlementDayMarketPipeline {
    * 对价格接受者直接读当刻实际可花额，{@code deferralPossible} 下的货款不足进既有普通货币债。
    */
   private static long cashBudgetMilliOf(
-      SettlementDayContext ctx, MarketSettlement.MarketRound round, MarketIntent intent) {
-    HouseholdId household = round.householdOfActor.get(intent.actor());
+      SettlementDayContext ctx, MarketSettlement.MarketRound round, MarketOrder order) {
+    HouseholdId household = round.householdOfActor.get(order.actor());
     if (household == null) {
       return 0L;
     }
-    return ProductionPlanBridge.moneyOf(ctx, household, intent.payWith());
+    return ProductionPlanBridge.moneyOf(ctx, household, order.payWith());
   }
 
   /** ★ RF1：显式买意向转成买订单后的逐笔证据（actor/commodity/quantity/priceTaker/reason）。 */
   private static void logInjectedCommodityBuy(
-      SettlementDayContext ctx, MarketIntent intent, CommodityId commodity, long budgetMilli) {
+      SettlementDayContext ctx,
+      MarketIntent intent,
+      MarketOrder order,
+      CommodityId commodity,
+      long budgetMilli) {
     if (!MANDATE.isDebugEnabled()) {
       return;
     }
@@ -563,19 +539,19 @@ final class SettlementDayMarketPipeline {
                 "day",
                 ctx.day,
                 "actor",
-                intent.actor().id(),
+                order.actor().id(),
                 "kind",
                 intent.kind(),
                 "commodity",
                 commodity.value(),
                 "hex",
-                intent.location().q() + "," + intent.location().r(),
+                order.location().q() + "," + order.location().r(),
                 "quantity",
-                intent.quantity(),
+                order.quantityMilli(),
                 "priceTaker",
                 true,
                 "currency",
-                intent.payWith().value(),
+                order.payWith().value(),
                 "sourceUnit",
                 intent.sourceUnit().map(unit -> unit.value()).orElse("-"),
                 "budgetReadoutMilli",

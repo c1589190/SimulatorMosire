@@ -19,6 +19,7 @@ import io.mosire.simos.production.contract.GrowthBasis;
 import io.mosire.simos.production.contract.HouseholdExperienceKey;
 import io.mosire.simos.production.contract.HouseholdProductionConditions;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IndustryDefinitionView.CurrentStageInput;
 import io.mosire.simos.production.contract.MoneyOutput;
 import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionAvailabilityCondition;
@@ -46,6 +47,9 @@ import io.mosire.simos.production.contract.ProductionRosterProbeParticipant;
 import io.mosire.simos.production.contract.ProductionRosterProbeRequest;
 import io.mosire.simos.production.contract.ProductionRosterProbeResult;
 import io.mosire.simos.production.contract.ProductionRuntime;
+import io.mosire.simos.production.contract.ProductionStageDefinition;
+import io.mosire.simos.production.contract.ProductionStageEndAction;
+import io.mosire.simos.production.contract.ProductionStageState;
 import io.mosire.simos.production.contract.ProductionTickCondition;
 import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -635,7 +639,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     if (assetsAvailable && assetScaleRaw <= 0L) {
       return ProductionProbeResult.rejected(planId, "asset-short");
     }
-    Map<CommodityId, Long> inputPerUnit = plan.inputPerUnit();
+    Map<CommodityId, Long> inputPerUnit = plan.recipe().inputPerUnit();
     long inputScale = Long.MAX_VALUE;
     CommodityId bindingInput = null;
     for (Map.Entry<CommodityId, Long> entry : inputPerUnit.entrySet()) {
@@ -902,7 +906,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     if (assetsAvailable && assetScaleRaw <= 0L) {
       return ProductionRosterProbeResult.rejected(planId, "asset-short");
     }
-    Map<CommodityId, Long> inputPerUnit = plan.inputPerUnit();
+    Map<CommodityId, Long> inputPerUnit = plan.recipe().inputPerUnit();
     long inputScale = Long.MAX_VALUE;
     CommodityId bindingInput = null;
     for (Map.Entry<CommodityId, Long> entry : inputPerUnit.entrySet()) {
@@ -1297,6 +1301,60 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
         }
       }
     }
+    // ── ★★ U4b2b：staged path 的当前阶段解析与“按实际投入缩规模”入口 ───────────────────────
+    //   ★ 全部在<b>任何写入之前</b>完成：阶段 id 悬空是契约故障；当前阶段有正需求而本 tick 实际投入为 0
+    //     是具名业务拒绝。partial（只满足一部分）允许推进，规模在关账时由整周期实际累计投入约束。
+    //   legacy（plan.stages().isEmpty()）完全不进入此块，逐值走旧路径。
+    boolean staged = !plan.stages().isEmpty();
+    ProductionStageDefinition stagedStage = null;
+    int stagedStageIndex = -1;
+    ProductionStageState stagedStateBefore = null;
+    Map<CommodityId, Long> stagedStartInputsUsed = Map.of();
+    if (staged) {
+      // ★ 阶段选择/startDue/start+tick 合表只在 IndustryDefinitionView.currentStageInput 一处拼写。
+      CurrentStageInput currentStageInput = plan.currentStageInput(instance);
+      stagedStage = currentStageInput.stage();
+      stagedStageIndex = currentStageInput.stageIndex();
+      stagedStateBefore = instance.stageState().orElse(null);
+      if (stagedStateBefore != null
+          && stagedStateBefore.stageProgressDays() > stagedStage.durationDays()) {
+        contractFault(
+            "stage-progress-out-of-range",
+            "实例 "
+                + instance.id().value()
+                + " 的阶段 "
+                + stagedStage.stageId()
+                + " 已推进 "
+                + stagedStateBefore.stageProgressDays()
+                + " 天，超过定义时长 "
+                + stagedStage.durationDays());
+      }
+      if (stagedStateBefore == null) {
+        stagedStateBefore = new ProductionStageState(stagedStage.stageId(), 0L, Map.of());
+      }
+
+      Map<CommodityId, Long> currentInputPerUnit = currentStageInput.inputPerUnit();
+      if (currentStageInput.hasPositiveDemand()
+          && actualInputForDemand(currentInputPerUnit, request.finalInputsMilli()) <= 0L) {
+        // ★ 业务拒绝（INFO）：本阶段确实要料，但本 tick 没有对任何一项需求商品形成实际投入。
+        //   部分满足不拒（那些量已由 economy S4 实际扣出并进入 finalInputsMilli）。
+        return reject(
+            "stage-input-shortfall",
+            "实例 "
+                + instance.id().value()
+                + " 的阶段 "
+                + stagedStage.stageId()
+                + " 本 tick 有投入需求但 finalInputsMilli 对需求商品实际为 0");
+      }
+      // ★ stage-start 标记：把本阶段第一天“实际收到的逐需求商品量”记进 stageStartInputsUsedMilli
+      //   （0 也保留键 ⇒ 有需求时该 map 必然非空）。后续 tick 由 progressDays>0 不再 startDue；
+      //   若阶段恰在第一天结束，引擎切换下一段时显式清空该表。
+      stagedStartInputsUsed =
+          currentStageInput.startDue()
+              ? firstTickInputMarker(currentInputPerUnit, request.finalInputsMilli())
+              : stagedStateBefore.stageStartInputsUsedMilli();
+    }
+
     if (created) {
       current = current.withInstance(instance);
     }
@@ -1408,11 +1466,52 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     for (CycleContribution contribution : cycleContributions.values()) {
       cycleLabor = Math.addExact(cycleLabor, contribution.laborMilli());
     }
-    boolean cycleClosed = progressAfter >= plan.cycleDays();
+    // ── ★★ U4b1：staged path 的当日阶段推进 ──────────────────────────────────────────────
+    //   ★ 阶段切换/关账判定都在这天所有校验与经验累计完成之后；staged 的非关账写回仍只落在同一个
+    //     ProductionProcess：progressDays 只加一次，stageState 由 withStageState 更新。
+    boolean cycleClosed;
+    ProductionProcess advanced = null;
+    if (staged) {
+      long nextStageProgress = Math.addExact(stagedStateBefore.stageProgressDays(), 1L);
+      boolean stageEnds = nextStageProgress >= stagedStage.durationDays();
+      if (stageEnds && stagedStage.endAction() == ProductionStageEndAction.NEXT_STAGE) {
+        int nextIndex = stagedStageIndex + 1;
+        if (nextIndex >= plan.stages().size()) {
+          contractFault(
+              "stage-next-missing",
+              "实例 "
+                  + instance.id().value()
+                  + " 的阶段 "
+                  + stagedStage.stageId()
+                  + " 标记 NEXT_STAGE，但没有下一阶段");
+        }
+        ProductionStageDefinition nextStage = plan.stages().get(nextIndex);
+        advanced =
+            instance
+                .withCycleState(progressAfter, cycleContributions, cycleInputs)
+                .withStageState(new ProductionStageState(nextStage.stageId(), 0L, Map.of()));
+        cycleClosed = false;
+      } else if (stageEnds) {
+        // HARVEST：本周期关账；阶段状态由关账写回的 withCycleState(0, ...) 清空。
+        cycleClosed = true;
+      } else {
+        advanced =
+            instance
+                .withCycleState(progressAfter, cycleContributions, cycleInputs)
+                .withStageState(
+                    new ProductionStageState(
+                        stagedStage.stageId(), nextStageProgress, stagedStartInputsUsed));
+        cycleClosed = false;
+      }
+    } else {
+      // ★ legacy 单周期：逐值保持原有 progressDays >= cycleDays 判据与写回。
+      cycleClosed = progressAfter >= plan.cycleDays();
+      if (!cycleClosed) {
+        advanced = instance.withCycleState(progressAfter, cycleContributions, cycleInputs);
+      }
+    }
 
     if (!cycleClosed) {
-      ProductionProcess advanced =
-          instance.withCycleState(progressAfter, cycleContributions, cycleInputs);
       current = current.withInstance(advanced);
       advancedThisTick.add(advanced.id()); // ★ 同 tick 重复推进的检测台账
       ProductionReceipt receipt =
@@ -1469,6 +1568,10 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     long assetScaleRaw =
         capacityScaleOf(plan, request.assetOccupancy(), request.durableCommodityOccupancy());
     // ★★ 唯一入口（试算/实际/家户利润比较共用）：三通道都不乘 E 求 baseScale，再整体乘一次得 finalScale。
+    // ★★ U4b2b：staged 的原料约束读 U4b2a 的**整周期有效配方**（start + tick×duration 的聚合），
+    //   这样逐 tick 实际累计投入才能约束 baseScale；legacy 继续逐值读 plan.inputPerUnit()。
+    Map<CommodityId, Long> efficiencyInputPerUnit =
+        staged ? plan.recipe().inputPerUnit() : plan.inputPerUnit();
     ProductionEfficiency.Evaluation evaluation =
         ProductionEfficiency.evaluate(
             current.efficiencyOf(instance.id()).orElse(null),
@@ -1477,7 +1580,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
             weightedLaborByHousehold,
             laborByHousehold,
             assetScaleRaw,
-            plan.inputPerUnit(),
+            efficiencyInputPerUnit,
             cycleInputs,
             plan.laborPerUnit(),
             request.grantedScale()); // ★ 统一预算：授予规模是<b>基准规模（投入侧）</b>的硬上限
@@ -1486,7 +1589,8 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
 
     // ★★ A′ 批（§13.8 裁定一）：投入消耗与占用按 baseScale（实际扣到的投入见 cycleInputs），
     //    实毛产与铸币候选按 finalScale —— 同一份投入产出更多。
-    Map<CommodityId, Long> gross = grossOutput(plan, finalScale);
+    Map<CommodityId, Long> gross =
+        staged ? stagedGrossOutput(stagedStage, finalScale) : grossOutput(plan, finalScale);
     Map<CurrencyId, Long> minted = mintCandidates(plan, finalScale);
 
     // ── 写回：进度归零、周期台账清零（一次实际劳动只计一次）、余数行更新 ────────────────────
@@ -1758,7 +1862,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
   private Map<CommodityId, Long> effectiveOutputPerUnit(IndustryDefinitionView plan) {
     Map<CommodityId, Long> overrides = current.outputQuantityOverrideOf(plan.id());
     Map<CommodityId, Long> effective = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> entry : plan.outputPerUnit().entrySet()) {
+    for (Map.Entry<CommodityId, Long> entry : plan.recipe().outputPerUnit().entrySet()) {
       effective.put(entry.getKey(), overrides.getOrDefault(entry.getKey(), entry.getValue()));
     }
     return effective;
@@ -1841,10 +1945,10 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     return required;
   }
 
-  /** ★ 周期关账时的原料需求读数：{@code scale × inputPerUnit}。 */
+  /** ★ probe/roster 的原料需求读数：{@code scale × recipe.inputPerUnit}（staged 时为有效周期投入）。 */
   private static Map<CommodityId, Long> requiredInputs(IndustryDefinitionView plan, long scale) {
     Map<CommodityId, Long> required = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> entry : plan.inputPerUnit().entrySet()) {
+    for (Map.Entry<CommodityId, Long> entry : plan.recipe().inputPerUnit().entrySet()) {
       long amount = Math.multiplyExact(scale, entry.getValue());
       if (amount > 0L) {
         required.put(entry.getKey(), amount);
@@ -2230,6 +2334,61 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
       }
     }
     return null;
+  }
+
+  /** ★ staged 本 tick 对“当前阶段需求商品”的实际投入合计（只读；用于 0 投入的具名拒绝）。 */
+  private static long actualInputForDemand(
+      Map<CommodityId, Long> perScale, Map<CommodityId, Long> actual) {
+    long total = 0L;
+    for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      total = Math.addExact(total, actual.getOrDefault(entry.getKey(), 0L));
+    }
+    return total;
+  }
+
+  /**
+   * ★ staged 阶段第一天的投入台账标记：逐需求商品记录本 tick 实际收到的量（含 0）。
+   *
+   * <p>★ 为什么用实际量而不是按 {@code grantedScale} 算出的“应有量”：economy S4 已按实际可扣量缩规模， request 里的 {@code
+   * finalInputsMilli} 才是本 tick 的真实投入；这里只承担“已进入该阶段开始投入阶段”的 标记与后续 startDue 判据。0 值保留键 ⇒ 有需求时 map 非空，下一
+   * tick（progressDays &gt; 0）不会再次 startDue。
+   */
+  private static Map<CommodityId, Long> firstTickInputMarker(
+      Map<CommodityId, Long> perScale, Map<CommodityId, Long> actual) {
+    Map<CommodityId, Long> marker = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+      if (entry.getValue() <= 0L) {
+        continue;
+      }
+      marker.put(entry.getKey(), actual.getOrDefault(entry.getKey(), 0L));
+    }
+    return marker;
+  }
+
+  /**
+   * ★ 最终 HARVEST 阶段的毛产：{@code stage.outputPerUnit × finalScale × 1000}。
+   *
+   * <p>★ 只读当前 final stage 自己的输出表（不走 legacy {@code plan.outputPerUnit()}；有 stages 时后者构造期
+   * 已要求为空）。{@code transport_capacity_service} 若在此表中就是普通商品键，本单不接 TransportCapacitySink。
+   */
+  private static Map<CommodityId, Long> stagedGrossOutput(
+      ProductionStageDefinition finalStage, long finalScale) {
+    Map<CommodityId, Long> gross = new LinkedHashMap<>();
+    if (finalScale <= 0L) {
+      return gross;
+    }
+    for (Map.Entry<CommodityId, Long> entry : finalStage.outputPerUnit().entrySet()) {
+      long produced =
+          Math.multiplyExact(
+              Math.multiplyExact(finalScale, entry.getValue()), MILLI_PER_COMMODITY_UNIT);
+      if (produced > 0L) {
+        gross.put(entry.getKey(), produced);
+      }
+    }
+    return gross;
   }
 
   /** ★ 业务拒绝（INFO 具名理由；世界照常推进）。 */

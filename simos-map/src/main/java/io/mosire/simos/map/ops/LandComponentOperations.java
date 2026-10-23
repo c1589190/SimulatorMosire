@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 土地组件的纯操作：不碰 GameMap / ChangeSet，只把旧 {@link HexLand} 变成新 {@link HexLand}。
@@ -30,6 +31,13 @@ public final class LandComponentOperations {
 
   /** 旧单 component setter 遇到多 component 时的具名拒绝理由。 */
   public static final String MULTIPLE_COMPONENTS_REASON = "land-type-has-multiple-components";
+
+  /** 状态/拆分口不得写 OWNER；owner 只能经土地转移口改写。 */
+  public static final String OWNER_WRITE_THROUGH_TRANSFER_ONLY_REASON =
+      "land-component-owner-write-through-transfer-only";
+
+  /** 指定的 component 在对应土地类型下不存在。 */
+  public static final String COMPONENT_NOT_FOUND_REASON = "land-component-not-found";
 
   private LandComponentOperations() {}
 
@@ -240,6 +248,234 @@ public final class LandComponentOperations {
   }
 
   /**
+   * 按 component id 从指定 lot 转移数量：整块只改 OWNER（id/quantity/其它属性逐字保留）；部分转移保留源 component 的剩余数量与全部属性，并用该
+   * type 的 next ordinal 生成目标 component，复制除 OWNER 外的全部属性后再设置 {@code toOwner}。最后归一化；同 type 总量守恒。
+   *
+   * <p>失败前置校验 component、source owner、{@code toOwner} 与数量，绝不返回半成品。
+   */
+  public static HexLand transferFromComponent(
+      HexLand land,
+      HexCoord hex,
+      LandTypeId type,
+      LandComponentId sourceComponentId,
+      String toOwner,
+      long quantityMilliMu) {
+    Objects.requireNonNull(land, "land");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(type, "type");
+    Objects.requireNonNull(sourceComponentId, "sourceComponentId");
+    requireOwner(toOwner, "toOwner");
+    if (quantityMilliMu <= 0L) {
+      throw new IllegalArgumentException("转移数量必须大于 0（毫亩）: " + quantityMilliMu);
+    }
+    LandComponent source = requireComponent(land, type, sourceComponentId);
+    String sourceOwner = ownerOf(source);
+    requireOwner(sourceOwner, "source owner");
+    if (sourceOwner.equals(toOwner)) {
+      throw new IllegalArgumentException("toOwner 不得与 source owner 相同: " + toOwner);
+    }
+    if (quantityMilliMu > source.quantityMilliMu()) {
+      throw new IllegalArgumentException(
+          "转移数量超过源 component 面积: component="
+              + sourceComponentId
+              + " 需要="
+              + quantityMilliMu
+              + " 可用="
+              + source.quantityMilliMu());
+    }
+
+    LandTypeArea area = land.byType().get(type);
+    long nextOrdinal = area.nextComponentOrdinal();
+    List<LandComponent> components = new ArrayList<>(area.components().size() + 1);
+    boolean transferred = false;
+    for (LandComponent component : area.components()) {
+      if (!component.id().equals(sourceComponentId)) {
+        components.add(component);
+        continue;
+      }
+      transferred = true;
+      if (quantityMilliMu == component.quantityMilliMu()) {
+        components.add(
+            component.withAttribute(LandAttributeKey.OWNER, LandAttributeValue.ofString(toOwner)));
+      } else {
+        components.add(component.withQuantity(component.quantityMilliMu() - quantityMilliMu));
+        LandComponentId targetId = new LandComponentId(componentId(type, hex, nextOrdinal));
+        nextOrdinal++;
+        components.add(
+            new LandComponent(
+                targetId,
+                quantityMilliMu,
+                replaceAttribute(
+                    component.attributes(),
+                    LandAttributeKey.OWNER,
+                    LandAttributeValue.ofString(toOwner))));
+      }
+    }
+    if (!transferred) {
+      // requireComponent 已保证到不了这里；仍是 fail-closed。
+      throw new IllegalStateException("component 在构造结果时消失: " + sourceComponentId);
+    }
+    LandTypeArea nextArea = new LandTypeArea(type, components, nextOrdinal);
+    return normalize(putArea(land, nextArea), hex, type);
+  }
+
+  /**
+   * 拆分 component 并把 overrides 应用到新件：源保留原属性与减少后的数量；新件复制源全部属性后覆盖 overrides。只允许 {@code 0 <
+   * splitQuantity < source.quantity}；overrides 不得包含 OWNER。最后归一化。
+   *
+   * <p>用于“覆盖部分继续、未覆盖部分重置”；整块重置请走 {@link #setComponentAttributes}。
+   */
+  public static HexLand splitComponentWithOverrides(
+      HexLand land,
+      HexCoord hex,
+      LandTypeId type,
+      LandComponentId sourceComponentId,
+      long splitQuantityMilliMu,
+      Map<LandAttributeKey, LandAttributeValue> overrides) {
+    Objects.requireNonNull(land, "land");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(type, "type");
+    Objects.requireNonNull(sourceComponentId, "sourceComponentId");
+    Objects.requireNonNull(overrides, "overrides");
+    rejectOwnerWrite(overrides, "split overrides");
+    validateAttributes(overrides, "split overrides");
+    LandComponent source = requireComponent(land, type, sourceComponentId);
+    if (splitQuantityMilliMu <= 0L || splitQuantityMilliMu >= source.quantityMilliMu()) {
+      throw new IllegalArgumentException(
+          "拆分数量必须满足 0 < splitQuantity < source.quantity（毫亩）: split="
+              + splitQuantityMilliMu
+              + " source="
+              + source.quantityMilliMu());
+    }
+
+    LandTypeArea area = land.byType().get(type);
+    long nextOrdinal = area.nextComponentOrdinal();
+    List<LandComponent> components = new ArrayList<>(area.components().size() + 1);
+    boolean split = false;
+    for (LandComponent component : area.components()) {
+      if (!component.id().equals(sourceComponentId)) {
+        components.add(component);
+        continue;
+      }
+      split = true;
+      components.add(component.withQuantity(component.quantityMilliMu() - splitQuantityMilliMu));
+      Map<LandAttributeKey, LandAttributeValue> targetAttributes =
+          new LinkedHashMap<>(component.attributes());
+      targetAttributes.putAll(overrides);
+      LandComponentId targetId = new LandComponentId(componentId(type, hex, nextOrdinal));
+      nextOrdinal++;
+      components.add(new LandComponent(targetId, splitQuantityMilliMu, targetAttributes));
+    }
+    if (!split) {
+      // requireComponent 已保证到不了这里；仍是 fail-closed。
+      throw new IllegalStateException("component 在构造结果时消失: " + sourceComponentId);
+    }
+    LandTypeArea nextArea = new LandTypeArea(type, components, nextOrdinal);
+    return normalize(putArea(land, nextArea), hex, type);
+  }
+
+  /**
+   * 只覆盖给定属性键，不清除未给出的键；不得包含 OWNER。空 map 原样返回。最后归一化。
+   *
+   * <p>OWNER 只能经 {@link #transferFromComponent} 改写，具名拒绝 {@link
+   * #OWNER_WRITE_THROUGH_TRANSFER_ONLY_REASON}。
+   */
+  public static HexLand setComponentAttributes(
+      HexLand land,
+      HexCoord hex,
+      LandTypeId type,
+      LandComponentId componentId,
+      Map<LandAttributeKey, LandAttributeValue> attributes) {
+    Objects.requireNonNull(land, "land");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(type, "type");
+    Objects.requireNonNull(componentId, "componentId");
+    Objects.requireNonNull(attributes, "attributes");
+    if (attributes.isEmpty()) {
+      return land;
+    }
+    rejectOwnerWrite(attributes, "attributes");
+    validateAttributes(attributes, "attributes");
+    LandComponent source = requireComponent(land, type, componentId);
+    Map<LandAttributeKey, LandAttributeValue> nextAttributes =
+        new LinkedHashMap<>(source.attributes());
+    nextAttributes.putAll(attributes);
+    LandTypeArea area = land.byType().get(type);
+    List<LandComponent> components = new ArrayList<>(area.components().size());
+    boolean replaced = false;
+    for (LandComponent component : area.components()) {
+      if (component.id().equals(componentId)) {
+        components.add(
+            new LandComponent(component.id(), component.quantityMilliMu(), nextAttributes));
+        replaced = true;
+      } else {
+        components.add(component);
+      }
+    }
+    if (!replaced) {
+      // requireComponent 已保证到不了这里；仍是 fail-closed。
+      throw new IllegalStateException("component 在构造结果时消失: " + componentId);
+    }
+    LandTypeArea nextArea = new LandTypeArea(type, components, area.nextComponentOrdinal());
+    return normalize(putArea(land, nextArea), hex, type);
+  }
+
+  /**
+   * 只删除给定属性键；不得删除 OWNER。空 set 原样返回。最后归一化。
+   *
+   * <p>用于清理 STAGE/PROGRESS/CYCLE_PROGRESS/CROP/START_INPUT_PAID 等生产状态；OWNER 具名拒绝 {@link
+   * #OWNER_WRITE_THROUGH_TRANSFER_ONLY_REASON}。
+   */
+  public static HexLand removeComponentAttributes(
+      HexLand land,
+      HexCoord hex,
+      LandTypeId type,
+      LandComponentId componentId,
+      Set<LandAttributeKey> keys) {
+    Objects.requireNonNull(land, "land");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(type, "type");
+    Objects.requireNonNull(componentId, "componentId");
+    Objects.requireNonNull(keys, "keys");
+    if (keys.isEmpty()) {
+      return land;
+    }
+    if (keys.contains(LandAttributeKey.OWNER)) {
+      throw new IllegalArgumentException(
+          OWNER_WRITE_THROUGH_TRANSFER_ONLY_REASON + ": keys 不得包含 OWNER");
+    }
+    for (LandAttributeKey key : keys) {
+      if (key == null) {
+        throw new IllegalArgumentException("keys 不得包含 null");
+      }
+    }
+    LandComponent source = requireComponent(land, type, componentId);
+    Map<LandAttributeKey, LandAttributeValue> nextAttributes =
+        new LinkedHashMap<>(source.attributes());
+    for (LandAttributeKey key : keys) {
+      nextAttributes.remove(key);
+    }
+    LandTypeArea area = land.byType().get(type);
+    List<LandComponent> components = new ArrayList<>(area.components().size());
+    boolean replaced = false;
+    for (LandComponent component : area.components()) {
+      if (component.id().equals(componentId)) {
+        components.add(
+            new LandComponent(component.id(), component.quantityMilliMu(), nextAttributes));
+        replaced = true;
+      } else {
+        components.add(component);
+      }
+    }
+    if (!replaced) {
+      // requireComponent 已保证到不了这里；仍是 fail-closed。
+      throw new IllegalStateException("component 在构造结果时消失: " + componentId);
+    }
+    LandTypeArea nextArea = new LandTypeArea(type, components, area.nextComponentOrdinal());
+    return normalize(putArea(land, nextArea), hex, type);
+  }
+
+  /**
    * 合并同一 type 下 attributes 逐项完全相等的 component：数量相加、id 取字典序最小。不同 type 不在此方法内处理。
    *
    * <p>不比较 id/quantity；所有属性（owner/progress/crop/fertility/自定义）都参与判等。
@@ -418,6 +654,23 @@ public final class LandComponentOperations {
     return out;
   }
 
+  /** 只读查找指定 type 下的 component；不存在返回 null（不构造任何状态）。 */
+  public static LandComponent componentOf(HexLand land, LandTypeId type, LandComponentId id) {
+    Objects.requireNonNull(land, "land");
+    Objects.requireNonNull(type, "type");
+    Objects.requireNonNull(id, "id");
+    LandTypeArea area = land.byType().get(type);
+    if (area == null) {
+      return null;
+    }
+    for (LandComponent component : area.components()) {
+      if (component.id().equals(id)) {
+        return component;
+      }
+    }
+    return null;
+  }
+
   /** 取 component 的 owner 属性；缺失返回空串（卖方匹配不会命中）。 */
   public static String ownerOf(LandComponent component) {
     Objects.requireNonNull(component, "component");
@@ -444,6 +697,32 @@ public final class LandComponentOperations {
   private static void requireOwner(String owner, String name) {
     if (owner == null || owner.isBlank()) {
       throw new IllegalArgumentException(name + " 不得为空白");
+    }
+  }
+
+  private static LandComponent requireComponent(HexLand land, LandTypeId type, LandComponentId id) {
+    LandComponent component = componentOf(land, type, id);
+    if (component == null) {
+      throw new IllegalArgumentException(
+          COMPONENT_NOT_FOUND_REASON + ": type=" + type + " component=" + id);
+    }
+    return component;
+  }
+
+  private static void rejectOwnerWrite(
+      Map<LandAttributeKey, LandAttributeValue> attributes, String name) {
+    if (attributes.containsKey(LandAttributeKey.OWNER)) {
+      throw new IllegalArgumentException(
+          OWNER_WRITE_THROUGH_TRANSFER_ONLY_REASON + ": " + name + " 不得包含 OWNER");
+    }
+  }
+
+  private static void validateAttributes(
+      Map<LandAttributeKey, LandAttributeValue> attributes, String name) {
+    for (Map.Entry<LandAttributeKey, LandAttributeValue> entry : attributes.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(name + " 的键与值都不得为 null");
+      }
     }
   }
 

@@ -501,7 +501,7 @@ final class MarketRosterBook {
           unit == null ? null : round.industries.get(unit.industry());
       if (unit == null
           || candidate == null
-          || !candidate.outputPerUnit().containsKey(commodity)
+          || !candidate.recipe().outputPerUnit().containsKey(commodity)
           || !seller.actor().equals(unit.operator())) {
         continue;
       }
@@ -516,7 +516,9 @@ final class MarketRosterBook {
       ProductionProcess unit = round.units.get(id);
       IndustryDefinitionView candidate =
           unit == null ? null : round.industries.get(unit.industry());
-      if (unit == null || candidate == null || !candidate.outputPerUnit().containsKey(commodity)) {
+      if (unit == null
+          || candidate == null
+          || !candidate.recipe().outputPerUnit().containsKey(commodity)) {
         continue;
       }
       if (match == null || id.value().compareTo(match.id().value()) < 0) {
@@ -546,7 +548,7 @@ final class MarketRosterBook {
       if (scale <= 0L) {
         continue; // 本格没有产能 / 已缩到 0 ⇒ 不要料（同 drawCycleInputs 的口径）
       }
-      for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
+      for (Map.Entry<CommodityId, Long> entry : industry.recipe().inputPerUnit().entrySet()) {
         if (entry.getValue() <= 0L) {
           continue;
         }

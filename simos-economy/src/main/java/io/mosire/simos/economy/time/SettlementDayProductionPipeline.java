@@ -29,6 +29,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.EconomySettlement.ClosedUnit;
 import io.mosire.simos.economy.time.ProductionRunSettlement.HarvestWork;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.IndustryDefinitionView.CurrentStageInput;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -315,22 +316,22 @@ final class SettlementDayProductionPipeline {
       if (baseScale > 0L) {
         addDailyExtraLines(bill, industry, baseScale);
       }
-      if (productionInputDue(unit, producing)) {
-        Map<CommodityId, Long> required =
-            fact == null ? fallbackInputRequired(ctx, unit, industry) : fact.inputRequired();
-        Map<CommodityId, Long> drawn = ctx.session.drawnProductionInputsOf(unitId);
-        for (Map.Entry<CommodityId, Long> input : required.entrySet()) {
-          long quantity = input.getValue();
-          if (quantity <= 0L) {
+      if (!industry.stages().isEmpty()) {
+        // ★★ U4b2b：staged unit 每个 tick 都有 PRODUCTION_INPUT 行；数量来自当前阶段的
+        //   start+tick（阶段第一天）/ tick（其余日），不把 aggregate cycle 或 legacy dailyInput 当第二套真相。
+        CurrentStageInput currentStageInput = industry.currentStageInput(unit);
+        Map<CommodityId, Long> required = new LinkedHashMap<>();
+        for (Map.Entry<CommodityId, Long> entry : currentStageInput.inputPerUnit().entrySet()) {
+          if (entry.getValue() <= 0L || baseScale <= 0L) {
             continue;
           }
-          bill.addQuantity(input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, quantity);
-          long provided = Math.min(quantity, drawn.getOrDefault(input.getKey(), 0L));
-          if (provided > 0L) {
-            bill.addProvidedFromStock(
-                input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, provided);
-          }
+          required.put(entry.getKey(), Math.multiplyExact(entry.getValue(), baseScale));
         }
+        addProductionInputLines(bill, required, ctx.session.drawnProductionInputsOf(unitId));
+      } else if (productionInputDue(unit, producing)) {
+        Map<CommodityId, Long> required =
+            fact == null ? fallbackInputRequired(ctx, unit, industry) : fact.inputRequired();
+        addProductionInputLines(bill, required, ctx.session.drawnProductionInputsOf(unitId));
       }
     }
     logDailyDemandBill(ctx, producing);
@@ -358,6 +359,23 @@ final class SettlementDayProductionPipeline {
       byUnit.putIfAbsent(fact.position().unit(), fact);
     }
     return byUnit;
+  }
+
+  /** ★ 把一组逐商品“本 tick 毛需求”写进账单，并把 S4 实扣 delta 记成 providedFromStock。 */
+  private static void addProductionInputLines(
+      DailyDemandBill bill, Map<CommodityId, Long> required, Map<CommodityId, Long> drawn) {
+    for (Map.Entry<CommodityId, Long> input : required.entrySet()) {
+      long quantity = input.getValue();
+      if (quantity <= 0L) {
+        continue;
+      }
+      bill.addQuantity(input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, quantity);
+      long provided = Math.min(quantity, drawn.getOrDefault(input.getKey(), 0L));
+      if (provided > 0L) {
+        bill.addProvidedFromStock(
+            input.getKey(), DailyDemandBill.DemandSource.PRODUCTION_INPUT, provided);
+      }
+    }
   }
 
   /** 生产投入门与 {@code ProductionInputSettlement.surveyInputDemands} 同口径：周期第一天，或周期中首次补扣。 */

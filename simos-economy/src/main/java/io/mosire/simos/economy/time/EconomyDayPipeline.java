@@ -2,11 +2,20 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.inventory.InventoryLotView;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.production.contract.ProductionOpportunityBook;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /** 日序门面的执行壳：只按固定阶段顺序调用各阶段，不承载公式。 */
@@ -59,6 +68,8 @@ final class EconomyDayPipeline {
     boolean marketDay = MarketTriggerBook.triggerFor(ctx.day, ctx.markets) != MarketTrigger.NONE;
     // S2b 基础装配：家户/actor 反查、到货、套利收集器、匹配快照、cycleDays。
     SettlementDayProductionPipeline.prepareProductionBase(ctx);
+    // ★★★ D-032 L1c：S3 之前从当前 lot 视图派生本 tick 的只读机会簿；本步不消费它，不改 S3 的任何输入/输出。
+    buildProductionOpportunityBook(ctx);
     // S3：预期生产位置选择（只写瞬态 ExpectedProductionPlan + EmploymentLock + MarketIntent）。
     SettlementDayExpectedProductionPipeline.planExpectedProduction(ctx);
     // ★★★ P3c3/P3e legacy 回退：只有生产 roster 真正为空（旧生产形态）才走旧链。
@@ -131,6 +142,66 @@ final class EconomyDayPipeline {
     logDayOrder(ctx, marketDay, "main");
     // ★ P3e：每 tick 一条全链路 INFO 汇总（legacy 分支末尾同样有一条）。
     SettlementTickChainLog.logTickChain(ctx, marketDay);
+  }
+
+  /**
+   * ★★★ <b>D-032 L1c：S3 之前的只读机会簿装配</b>。
+   *
+   * <p>★ 只从本 tick 的 {@code InventoryLotView} + 产业定义 + 市场价纯派生；结果只写入 {@link
+   * SettlementDayContext#productionOpportunityBook()}，<b>不</b>传给 {@code planExpectedProduction} 或任何
+   * S3/S4/S5 阶段（L1c 暂不消费）。空视图或空产业 ⇒ 空簿、不抛（旧夹具逐值不变）。
+   */
+  private static void buildProductionOpportunityBook(SettlementDayContext ctx) {
+    InventoryLotView view = ctx.session.inventoryLotView();
+    int lotCount = view.lots().size();
+    ProductionOpportunityBook book;
+    if (view.lots().isEmpty() || ctx.industries == null || ctx.industries.isEmpty()) {
+      book = new ProductionOpportunityBook(List.of());
+    } else {
+      book =
+          ProductionOpportunityBook.from(
+              view, ctx.industries, commodity -> firstPricedMarketPrice(ctx, commodity));
+    }
+    ctx.productionOpportunityBook = book;
+    if (EconomyLog.settlement().isInfoEnabled()) {
+      try {
+        EventLog.channel(EconomyLog.settlement())
+            .info(
+                LogEvent.of(
+                    "PRODUCTION_OPPORTUNITY_BOOK_BUILT",
+                    EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                    "day",
+                    ctx.day,
+                    "lots",
+                    lotCount,
+                    "opportunities",
+                    book.opportunities().size()));
+      } catch (RuntimeException ignored) {
+        // ★ 日志失败不影响结算（与 logDayOrder 同制）。
+      }
+    }
+  }
+
+  /**
+   * ★★★ <b>D-032 L1c：稳定序第一个对商品定价的市场价</b>。
+   *
+   * <p>市场按 {@link MarketZoneId#value()} 升序取第一个 {@link MarketTable#hasPrice(CommodityId)} 为 true
+   * 的表；缺价 ⇒ {@link OptionalLong#empty()}（不伪造价格，0 价也是明确定价）。
+   */
+  private static OptionalLong firstPricedMarketPrice(
+      SettlementDayContext ctx, CommodityId commodity) {
+    if (commodity == null || ctx.markets == null || ctx.markets.isEmpty()) {
+      return OptionalLong.empty();
+    }
+    List<MarketZoneId> zones = new ArrayList<>(ctx.markets.keySet());
+    zones.sort(Comparator.comparing(MarketZoneId::value));
+    for (MarketZoneId zone : zones) {
+      MarketTable market = ctx.markets.get(zone);
+      if (market != null && market.hasPrice(commodity)) {
+        return OptionalLong.of(market.priceOf(commodity));
+      }
+    }
+    return OptionalLong.empty();
   }
 
   /**

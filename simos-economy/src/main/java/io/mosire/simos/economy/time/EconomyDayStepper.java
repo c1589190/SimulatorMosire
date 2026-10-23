@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.culture.HouseholdCultureKeyLookup;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.inventory.InventoryLotView;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.land.LandArableSupply;
@@ -436,6 +437,21 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** ★★★ D-032 L4：本会话的瞬态 LAND 组件账本（轮末由组合根写回 Map）。 */
   public LandComponentLedger landLedger() {
     return session.landLedger();
+  }
+
+  /**
+   * ★★★ <b>D-032 L1c：替换本 tick 的库存 lot 只读视图</b>（由 app 组合根在 S1 装配点从 actor / economy / map 现算后注入；与
+   * {@link #updateComposition(Map)} 同一条"只读投影、不进状态"的纪律）。
+   *
+   * <p>★ 本方法只委托 {@link EconomySession}；视图不落盘、不进变更集/Codec，也不改 {@link #step(long)} 的任何行为。
+   */
+  public void updateInventoryLotView(InventoryLotView next) {
+    session.updateInventoryLotView(next);
+  }
+
+  /** ★★★ D-032 L1c：本 tick 的库存 lot 只读视图（缺省 = 空视图）。 */
+  public InventoryLotView inventoryLotView() {
+    return session.inventoryLotView();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
