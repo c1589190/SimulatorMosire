@@ -66,3 +66,23 @@
 - test-compile / verify / package / `tools/gate.sh` / 真实 LLM / 前端：**未跑**
 - 装配审计"真实启动为绿"未实测；决策人/GM 角色判定与 GM 代打内层 `{DM}` 未端到端验证；`requireSingleSpace` 拒绝行为仅代码审查未运行
 - 批 D（timeBudget/quota 判定）：用户裁定"先不开"，本批只填不判
+
+## 六、2026-10-17 后续审计：暂停“直接验收”，迁移面未闭合
+
+- 复核发现 AgentLib 0.2.1 的 `io.mosire.agentlib.decision` 包 **22 个类**在当前 `simos-*` 生产代码中引用数为 **0**；`PendingDecisionQueue` / `DecisionTurnScope` / `DecisionPackages` / `DecisionCommitPort` 均未接。
+- `SuperiorJudgeGate` / `LlmSuperiorJudgement` 等上级判定族也未接；Simos 现有 `LlmDecisionAdjudicator` 是 D1–D8 领域 schema 判决，不是同一机制。
+- 因此原先“下一步只剩 S/R 测试 + clean verify”的口径过窄：**S/R 只能作为局部批次验收，不能作为 ga 的 Agent 实现整体迁移验收**。
+- 详细证据与建议：`docs/superpowers/reports/2026-10-17-agentlib-021-migration-coverage-audit.md`。
+- 当前处置：**不启动 S/R 最终验收/门禁**；先补“统一决策包迁移”的约束设计书，明确包权威、生命周期、提交口与 `DecisionProposable`/`ProposalCatalog` 的去留，再决定下一批。
+
+## 七、2026-10-17 决策包迁移：实现与门禁均完成（未提交）
+
+- 设计书：`docs/superpowers/specs/2026-10-17-dm-gm-agentlib-decision-package-design.md`。
+- 上游增量需求书：`docs/superpowers/plans/2026-10-17-agentlib-decision-package-read-port-needs.md`。
+- 实现结论：**GM 五工具直接复用 AgentLib `DecisionPackageTools`；包状态只由 `DecisionPackageSnapshot`/`DecisionPackageTransitions` 驱动；`DecisionRecord` 随 `GaState` 由 core 持久化；`DecisionPacket` 只读投影。**
+- 上游 `0.2.3-SNAPSHOT`：读端口 + 顶层 `DecisionItemVerdict`；U1b 修正 `DECIDING + decision == null` 的 `DecisionSubmission` 与 itemDecided 回执；AgentLib 聚焦 64/64、全模块 681/681，本机 `~/.m2` 已刷新。
+- Simos 生产已落地：`GaState` 值类型 `DecisionRecord`、`ga.ApplyDecisionPackage`、DM Ask 全量入包、`request`/`intent`/`revise`/`drop`/`confirm`/`reopen`、abort 队列载体、五工具 GM 面、core 读写端口、CONFLICTED 持久化、HTTP 审批面退役。
+- `tools/mvn-lock.sh -q clean verify` → **rc=0**；**3328 tests / 0 failures / 0 errors / 7 skipped**；前端门禁 **412/412**；Spotless/SpotBugs/Shaded guard 全过。
+- `tools/gate.sh guards` → **rc=0**；5 条护栏逐条真跑（Architecture/Ga/Gov/Army roundtrip + ShellAssemblySmoke）全绿，前端门禁随跑 412/412。
+- 定向 16 类 **161 tests / 0**；7 个变异先红后还原并 md5 复核；T 报告：`docs/superpowers/reports/2026-10-17-t-agentlib-decision-package-test-report.md`。
+- 未做：提交/推送/合并；真实 LLM 门未跑；`RealLlmGovScenarioTest` 仍保留旧 propose/DRAFT 提示，开真 LLM 门之前需迁移。主树 D-031、`parallel-side-module`、`ga-opt`、`d031-p1-baseline` 未触碰。
