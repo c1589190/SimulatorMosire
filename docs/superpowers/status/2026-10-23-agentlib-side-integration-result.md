@@ -1,6 +1,6 @@
 # AgentLib × D-032 侧线集成结果（2026-10-23）
 
-> **状态：integration 分支已验证，准备快进到 `main`；未推送 `main`。**
+> **状态：已完成主树快进与最终门禁；未推送 `main`。**
 > 目标分支：`integration/agentlib-side`
 > 计划：`docs/superpowers/plans/2026-10-23-agentlib-side-integration-rewrite-migration-plan.md`
 > AgentLib 规范来源：`agentlib/dock-0.2.1`（已推送 `c8208b76`）
@@ -51,7 +51,7 @@ ToolClassAudit、AdjudicateTick、D031CommandSurface。
 tools/gate.sh full
 ```
 
-结果：**PASS**，耗时 386s。
+结果：integration 树 **PASS**（386s）；`main` 快进后同 tree 再次 **PASS**（394s）。
 
 - 全仓 surefire：**3751 tests / 0 failures / 0 errors / 7 skipped（504 份报告）**；
 - 前端：**412/412**；
@@ -65,7 +65,8 @@ tools/gate.sh full
 SIMOS_MULTITICK_SKIP_BUILD=1 tools/multitick-sim.sh rural-32hex-360d
 ```
 
-结果：**PASS**；77.5s；`MULTITICK_SIM_RESULT=PASS cases=1 failed=0`。
+结果：integration 树 **PASS**（77.5s）；`main` 树再次 **PASS**（75.9s）；
+`MULTITICK_SIM_RESULT=PASS cases=1 failed=0`。
 
 ## 4. 未验 / 边界
 
@@ -74,7 +75,11 @@ SIMOS_MULTITICK_SKIP_BUILD=1 tools/multitick-sim.sh rural-32hex-360d
    既有 legacy staged-empty 方案边界，不冒充“已接自动 IDLE 机会”。
 3. side 文档已列出的 L2 边界继续有效：自动 IDLE 启动、多 tick 逐日折叠、租佃/主导者选择、
    LAND 参与 labor/market 预期、投入不足缩规模、specific-lot matcher 等未在本批补齐。
-4. 当前只完成 integration 分支；`main` 快进与最终 main 树门禁是紧随其后的步骤，未推送主分支。
+4. `main` 已快进到集成结果并通过最终全量门禁；主分支未推送。
+5. 远端 Pages 的 AgentLib 最新发行版是 `0.2.2`，没有 `0.2.3`，也没有
+   `0.2.3-SNAPSHOT`。本次使用的 `0.2.3-SNAPSHOT` 包含决策包读端口，主树独立
+   `.m2-repo` 已同步同一代 `io.mosire` 构件（agentlib / parent / docs / workspace /
+   brain / main / bash-plugin）。跨机复现仍需上游发布固定 `0.2.3` 后把 POM 切到发行版。
 
 ## 5. 备份与工作树
 
