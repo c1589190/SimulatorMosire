@@ -153,3 +153,14 @@ tools/gate.sh full
 3. AgentLib 分支基线只有 15 个业务模块；side 的 production/culture 会改变 codec 数与模块数，旧 8/10 模块锚点都要重新核。
 4. 两边门禁证据都早于合成树；合并后的全量门禁必须重跑。
 5. 合并前快照 `ff41838e` 中旧 D-031 P0 的 aptitude/科技代码只作回退备份，不因“文件存在”重新接回。
+
+## 8. 执行结果（2026-10-23）
+
+- merge commit `5487377f`：双亲为 `f71916ac`（integration 计划）与 `c8208b76`（AgentLib 分支）。
+- 8 个文本冲突已解决；`GmActAsToolTest` 采用 AgentLib 新决策包版本，其余工具面测试按最终真实 registry 重新校准。
+- 旧 `ProposalCatalog` / `ProposalDeclarationAudit` / `DecisionProposable` / 旧 packet handler 在 `src/main` 零存活；旧相关测试随 AgentLib 分支删除。
+- 真实装配读数：`codec=10`、`handler=150`、`tool=182`；磁盘 `*Tool.java` 扫描面 178（含 AgentLib 五决策工具的外来面按具名清单处理）。
+- 定向 14 个测试类 148 tests / 0 failures / 0 errors 全绿。
+- `tools/gate.sh full` PASS：3751 tests / 0 failures / 0 errors / 7 skipped；前端 412/412；shaded jar 29,451,438 B；耗时 386s。
+- `SIMOS_MULTITICK_SKIP_BUILD=1 tools/multitick-sim.sh rural-32hex-360d` PASS：77.5s，`MULTITICK_SIM_RESULT=PASS cases=1 failed=0`。
+- 360 tick 的 `PRODUCTION_OPPORTUNITY_BOOK_BUILT` 仍为 `lots≈327 opportunities=0`：这是 side 已知“legacy staged-empty 方案”边界，不是本集成新回归。
