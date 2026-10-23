@@ -1,6 +1,6 @@
 # SimulatorMosire 当前状态
 
-> **更新时间**：2026-10-23 23:18（Asia/Shanghai）
+> **更新时间**：2026-10-23 23:24（Asia/Shanghai）
 > **本文是唯一实时状态入口。** 其他 `docs/superpowers/status/*` 文件都是某时点的历史快照。
 > 当前事实与设计/维护裁定冲突时：设计/维护裁定优先；本文只记录“现在实际是什么”。
 
@@ -34,8 +34,12 @@
 | `worktree/ga-opt` | `ga/opt` | 3 条改动/未跟踪 |
 | `worktree/integration-agentlib-side` | `integration/agentlib-side` | 干净 |
 | `worktree/parallel-side-module` | `parallel/side-module` | 1 个未跟踪 `extensions.idx` |
+| `worktree/economy-test1` | `test/economy-test1` | 1 个本地 `WORKTREE.md`；性能测试 1 号 |
+| `worktree/economy-test2` | `test/economy-test2` | 1 个本地 `WORKTREE.md`；性能测试 2 号 |
+| `worktree/economy-test3` | `test/economy-test3` | 1 个本地 `WORKTREE.md`；性能测试 3 号 |
 
 迁移使用 `git worktree move`，未手工 `mv`；分支、dirty 状态与未跟踪文件均保留。
+三棵 `economy-test*` 从 `main@ab1cf920` 新建，供三个子 Agent 并行测试经济/生产方式模块。
 
 ## 3. 最近功能门禁（历史基线，不冒充本轮）
 
