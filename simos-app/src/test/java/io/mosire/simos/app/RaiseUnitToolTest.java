@@ -178,7 +178,7 @@ class RaiseUnitToolTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -187,7 +187,6 @@ class RaiseUnitToolTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));

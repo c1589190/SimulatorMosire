@@ -198,7 +198,7 @@ class GuiApiTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     port = shell.boundGuiPort();
     client = HttpClient.newHttpClient();
   }
@@ -1231,18 +1231,13 @@ class GuiApiTest {
   }
 
   @Test
-  void approvalsProxyForwardsToTheLiveAgentLibEndpoint() throws Exception {
-    // Shell 现在恒装配审批端点（T6）⇒ 5711 的 /api/approvals 是真代理，状态码/体透传。
-    JsonNode list = getJson("/api/approvals");
-    assertThat(list.get("pending")).as("无写调用 ⇒ 待裁决表为空").isEmpty();
-
-    assertThat(post("/api/approvals/ap-nope", "{\"decision\":\"deny\"}").statusCode())
-        .as("未知 id ⇒ AgentLib 端点的 404 原样透传")
+  void approvalsRouteIsRetiredAndReturns404() throws Exception {
+    assertThat(get("/api/approvals").statusCode())
+        .as("H2：HTTP 审批代理已退役 ⇒ GET 404（不是代理到不存在的端点）")
         .isEqualTo(404);
-
-    HttpResponse<String> wrongMethod = get("/api/approvals/ap-nope");
-    assertThat(wrongMethod.statusCode()).as("错误方法 ⇒ 405（端点判定）").isEqualTo(405);
-    assertThat(wrongMethod.headers().firstValue("Allow").orElse("")).isEqualTo("POST");
+    assertThat(post("/api/approvals/ap-nope", "{\"decision\":\"deny\"}").statusCode())
+        .as("H2：POST 旧审批面同样 404")
+        .isEqualTo(404);
   }
 
   @Test

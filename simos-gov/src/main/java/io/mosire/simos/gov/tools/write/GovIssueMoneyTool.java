@@ -14,7 +14,6 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -76,7 +75,7 @@ import java.util.UUID;
  * 可达面天然含"自己 + superiorGov 的国库格"（{@link io.mosire.simos.app.access.GovScope}）⇒ 自己那一笔必过、别人的必拒；GM 侧两面都
  * unlimited。
  */
-public final class GovIssueMoneyTool implements SimosTool, DecisionProposable {
+public final class GovIssueMoneyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.issueMoney";

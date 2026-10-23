@@ -31,9 +31,9 @@ import java.util.TreeSet;
  * <p>★★ <b>2026-10-17 批 R：本接口把角色声明派生到库的角色维</b>（{@link #roles()}，计划 §4.1）。0.2.1 升上来时本接口**刻意不**覆写
  * {@code AgentTool.roles()}：库的角色维在**调用者侧**空集 = ⊥ = "谁都不是"（fail-closed），而当时 simos 的调用者权限集还没带角色名 ⇒
  * 单方面把 258 条工具都声明成 {@code {GM}}/{@code {DM}} 会把 GM/DM 的**全部**工具调用拒掉（deny-all，行为变化）。批 R 把四件**同批**
- * 接通：声明派生（{@link #roles()}）→ 调用者权限集挂角色（决策人 C1 / GM C2）→ 记录壳转发 → 装配期两个独立观察面的审计
- * （{@code ToolRoleAudit.requireFacesOnAgentTools} + {@code RoleCatalogAudit}）。★ 唯一拼写点仍是 {@link #toolRoles()}：
- * **任何实现类不得直接覆写 {@link #roles()}**。
+ * 接通：声明派生（{@link #roles()}）→ 调用者权限集挂角色（决策人 C1 / GM C2）→ 记录壳转发 → 装配期两个独立观察面的审计 （{@code
+ * ToolRoleAudit.requireFacesOnAgentTools} + {@code RoleCatalogAudit}）。★ 唯一拼写点仍是 {@link
+ * #toolRoles()}： **任何实现类不得直接覆写 {@link #roles()}**。
  */
 public interface SimosTool extends AgentTool {
 
@@ -51,12 +51,13 @@ public interface SimosTool extends AgentTool {
    * ★★ <b>库的角色维（声明侧）的派生值</b>（2026-10-17 批 R，计划 §4.1 / 审核 §7）：返回 {@link #toolRoles()} 的**枚举名**集合
    * （{@link ToolRole#name()}），不可变。
    *
-   * <p>★ <b>为什么在这里派生而不是让 185 个实现类各写一遍</b>：角色名对 AgentLib 是**不透明字符串标签**（库不认识 {@code
-   * GM}/{@code DM}），而 simos 的角色拼写点只有一个 —— {@link ToolRole}。多写一处 {@code "GM"} 就多一处会漂移的第二真相
-   * （审核 §7：调用者与审计处同样一律从 {@link ToolRole#name()} 派生）。⇒ 实现类**一行不改**，也不得直接覆写本方法。
+   * <p>★ <b>为什么在这里派生而不是让 185 个实现类各写一遍</b>：角色名对 AgentLib 是**不透明字符串标签**（库不认识 {@code GM}/{@code DM}），而
+   * simos 的角色拼写点只有一个 —— {@link ToolRole}。多写一处 {@code "GM"} 就多一处会漂移的第二真相 （审核 §7：调用者与审计处同样一律从 {@link
+   * ToolRole#name()} 派生）。⇒ 实现类**一行不改**，也不得直接覆写本方法。
    *
-   * <p>★ <b>语义与调用者侧相反</b>（库 {@code AgentTool#roles()} 的契约）：本方法非空（{@code toolRoles()} 的契约就是非空）⇒ 参与判定且只收窄；
-   * 记录壳（{@code RecordingToolSource.RecordingTool}）必须原样转发它，否则包装后声明变成空集 = 本维不表态 ⇒ 角色判定被静默跳过。
+   * <p>★ <b>语义与调用者侧相反</b>（库 {@code AgentTool#roles()} 的契约）：本方法非空（{@code toolRoles()} 的契约就是非空）⇒
+   * 参与判定且只收窄； 记录壳（{@code RecordingToolSource.RecordingTool}）必须原样转发它，否则包装后声明变成空集 = 本维不表态 ⇒
+   * 角色判定被静默跳过。
    *
    * @return {@link #toolRoles()} 的枚举名集合（{@code Set.copyOf} 的不可变快照）
    */

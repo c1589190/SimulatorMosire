@@ -8,6 +8,12 @@ import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.agentlib.approval.PendingApprovals;
+import io.mosire.agentlib.decision.DecisionPackageSnapshot;
+import io.mosire.agentlib.decision.DecisionPackageTransitions;
+import io.mosire.agentlib.decision.DecisionPackages;
+import io.mosire.agentlib.decision.DecisionTurnScope;
+import io.mosire.agentlib.decision.PackageItem;
+import io.mosire.agentlib.decision.PendingDecisionQueue;
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.FakeLlmClient;
 import io.mosire.agentlib.llm.LlmClient;
@@ -42,9 +48,12 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.decision.SimosDecisionClock;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.write.RequestTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -84,7 +93,9 @@ import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -92,6 +103,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterEach;
@@ -171,7 +183,7 @@ class DecisionAgentRunnerTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -180,7 +192,6 @@ class DecisionAgentRunnerTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -198,11 +209,118 @@ class DecisionAgentRunnerTest {
     }
   }
 
+  // ── D6：包已冻结时，回合启动前 fail-closed（零 LLM / 零会话 / 零队列） ─────────────
+
+  @Test
+  void frozenPackageRejectsRunBeforeLlmConversationOrQueueCreation() throws Exception {
+    String packetId = "pkt-dm-fra-7";
+    List<PackageItem> items =
+        List.of(
+            DecisionPackageTestSupport.item(0, RequestTool.NAME, Map.of("text", "seed-0")),
+            DecisionPackageTestSupport.item(1, RequestTool.NAME, Map.of("text", "seed-1")));
+    DecisionRecord proposed =
+        DecisionPackageTestSupport.proposedRecord(
+            packetId,
+            DM_FRA.id(),
+            7L,
+            head() + 1L,
+            items,
+            "seed",
+            DecisionPackageTestSupport.metaFor(items));
+    DecisionPackageTestSupport.applyCommitted(shell.coreSimos(), 0L, proposed);
+
+    // 状态一：DECIDING（首条逐条表态后冻结）
+    DecisionRecord current = DecisionPackageTestSupport.record(shell.coreSimos(), packetId);
+    DecisionPackageSnapshot deciding =
+        DecisionPackageTransitions.itemDecided(
+            current.packageState(),
+            current.packageState().contentVersion(),
+            0,
+            true,
+            "gm-test",
+            "",
+            7L);
+    DecisionPackageTestSupport.applyCommitted(
+        shell.coreSimos(),
+        current.packageState().contentVersion(),
+        DecisionPackageTestSupport.withSnapshot(current, deciding, current.decidedAtRevision()));
+    assertFrozenTurnRejectsBeforeSideEffects();
+
+    // 状态二：DECIDED（全部表态后终态）
+    current = DecisionPackageTestSupport.record(shell.coreSimos(), packetId);
+    DecisionPackageSnapshot decided =
+        DecisionPackageTransitions.itemDecided(
+            current.packageState(),
+            current.packageState().contentVersion(),
+            1,
+            true,
+            "gm-test",
+            "",
+            7L);
+    DecisionPackageTestSupport.applyCommitted(
+        shell.coreSimos(),
+        current.packageState().contentVersion(),
+        DecisionPackageTestSupport.withSnapshot(current, decided, OptionalLong.of(head() + 1L)));
+    assertFrozenTurnRejectsBeforeSideEffects();
+
+    // 结构判据：guard 调用必须在 queue 创建之前（行为用例测不到“偷偷建了 queue 但没 bind”）。
+    String runnerSource =
+        Files.readString(
+            Paths.get(
+                "..",
+                "simos-ga",
+                "src",
+                "main",
+                "java",
+                "io",
+                "mosire",
+                "simos",
+                "ga",
+                "decision",
+                "DecisionAgentRunner.java"));
+    int guardIndex = runnerSource.indexOf("requireCurrentDecisionPackageEditable(dm, state);");
+    int queueIndex = runnerSource.indexOf("new PendingDecisionQueue(");
+    assertThat(guardIndex).as("D6：run 里必须有启动守卫").isGreaterThanOrEqualTo(0);
+    assertThat(queueIndex).as("D6：run 里必须创建待裁决队列").isGreaterThanOrEqualTo(0);
+    assertThat(guardIndex)
+        .as("D6：守卫必须在 PendingDecisionQueue 创建之前（冻结时零 queue 创建）")
+        .isLessThan(queueIndex);
+  }
+
+  private void assertFrozenTurnRejectsBeforeSideEffects() {
+    PendingDecisionQueue sentinel =
+        new PendingDecisionQueue(
+            "sentinel",
+            io.mosire.agentlib.permission.AccessToken.DEFAULT,
+            SimosDecisionClock.QUEUE_DEADLINE_MILLIS);
+    DecisionTurnScope.bind(sentinel);
+    try {
+      String conversationId = DecisionAgentRunner.conversationIdOf(DM_FRA);
+      int historyBefore = conversations.load(conversationId).size();
+      long headBefore = head();
+      assertThatThrownBy(
+              () ->
+                  runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS)
+                      .run(DM_FRA, state()))
+          .as("D6：DECIDING/终态包必须在 LLM/会话/queue 之前抛 PACKAGE_CONTENT_FROZEN")
+          .isInstanceOf(DecisionPackages.RejectionException.class)
+          .hasMessageContaining(DecisionPackages.PACKAGE_CONTENT_FROZEN);
+      assertThat(llm.requests()).as("D6：零 LLM 调用").isEmpty();
+      assertThat(conversations.load(conversationId)).as("D6：零会话写入").hasSize(historyBefore);
+      assertThat(DecisionTurnScope.current().orElseThrow())
+          .as("D6：没有创建/绑定新队列（原 sentinel 仍原样在作用域里）")
+          .isSameAs(sentinel);
+      assertThat(head()).as("D6：守卫拒绝零 revision").isEqualTo(headBefore);
+    } finally {
+      DecisionTurnScope.clear(sentinel);
+    }
+  }
+
   // ── 判据 1 + 2：工具真的被执行、两条消息都落了会话 ─────────────────────────────────
 
-  /** ★★ **一轮里"先调两个工具、再收口"**：模型请求 {@code simos.map.hex} 与 {@code sd.IssueDirective}，两者**都真的执行**。 */
+  /** ★★ 一轮里"先调一个 Allow 读、再调一个 Ask 写、再收口"：前者真的执行，后者只入本轮决策包。 */
   @Test
-  void theRunnerReallyExecutesTheToolsTheModelAsksFor() throws Exception {
+  void theRunnerExecutesAllowAndQueuesAskWithoutAWorldWrite() throws Exception {
     long headBefore = head();
     llm.enqueue(
         LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
@@ -222,11 +340,11 @@ class DecisionAgentRunnerTest {
         .allMatch(DecisionAgentRunner.ToolInvocation::success);
     assertThat(turn.finalText()).contains("已按计划出令");
 
-    // ★★ 可观察副作用之一：真 revision 落了盘。这是 runner 自己的账本之外的证据——
-    //   "假装执行了"的实现在这里必然红（head 不会动）。
-    assertThat(head())
-        .as("★ 决策落成真 revision（铁律 2：所有修改走 Command → ChangeSet → Revision）")
-        .isEqualTo(headBefore + 1);
+    // ★★ 设计 §10 D1：Ask 被登记，不在本轮执行 ⇒ head 不动；世界写留在包内等待裁决。
+    assertThat(head()).as("D1：Ask 只入队列，world write 不执行 ⇒ 零 revision").isEqualTo(headBefore);
+    assertThat(turn.pendingDecisions().size())
+        .as("D1：IssuedDirective 的 Ask 已进入本轮 PendingDecisionQueue")
+        .isEqualTo(1);
 
     // ★★ 可观察副作用之二：读工具的结果里带着**真世界**的值。
     List<LlmMessage> history = conversations.load(conversationId());
@@ -239,7 +357,7 @@ class DecisionAgentRunnerTest {
     assertThat(toolResults(history).get(0).content())
         .as("真跑过 map.hex 的正文里带着夹具世界的地形；编出来的结果不会恰是这个值")
         .contains("desert");
-    assertThat(toolResults(history).get(1).content()).as("出令那条真的提交了").contains("committed");
+    assertThat(toolResults(history).get(1).content()).as("D1：出令那条只被告知已加入决策包").contains("已加入决策包");
     assertThat(toolResults(history).get(0).isError()).isFalse();
   }
 
@@ -290,7 +408,7 @@ class DecisionAgentRunnerTest {
         LlmResponse.toolCall("call-world-write", "ga_IssueDirective", directiveArgs(frozenHead)),
         LlmResponse.toolCall(
             "call-packet",
-            "simos_ga_packet_intent",
+            "simos_ga_request",
             Map.of("text", "同时决策：先写包", "branch", "not-main", "expectedRevision", 999L)),
         LlmResponse.text("同时决策回合结束"));
 
@@ -308,7 +426,7 @@ class DecisionAgentRunnerTest {
         //   整族移出冻结回合、DM 在问答期间改不了包，而**没有任何装配期错误提示**。故这里逐条写死七个。
         .contains(
             "simos_map_hex",
-            "simos_ga_packet_propose",
+            "simos_ga_request",
             "simos_ga_packet_revise",
             "simos_ga_packet_drop",
             "simos_ga_packet_intent",
@@ -316,7 +434,7 @@ class DecisionAgentRunnerTest {
             "simos_ga_packet_confirm",
             "simos_ga_packet_reopen")
         .as(
-            "★★ 冻结回合的工具面**恰好 29 条** = 22 共享读 + 七个决策包工具（propose/revise/drop/intent/my/confirm/reopen）"
+            "★★ 冻结回合的工具面**恰好 29 条** = 22 共享读 + 七个决策包工具（request/revise/drop/intent/my/confirm/reopen）"
                 + "——多一条世界写就当场红。★ 旧文案写的『28』是手抄估计值，实测 29 ⇒ 以实测为准"
                 + "（本批真跑红在「Expected size: 28 but was: 29」；29 条逐条列在本轮 surefire 报告里）")
         .hasSize(29);
@@ -332,9 +450,13 @@ class DecisionAgentRunnerTest {
     assertThat(turn.toolInvocations().get(1).code()).isEqualTo("FORBIDDEN");
     assertThat(turn.toolInvocations().get(1).resultSummary()).contains("同时决策回合");
     assertThat(turn.toolInvocations().get(2).success())
-        .as("packet 写允许，且 stale expectedRevision 被剥掉后按当下 head 提交")
+        .as("packet Ask 在冻结回合被受理（stale 坐标由 runner 剥掉/覆盖，不阻断入队）")
         .isTrue();
-    assertThat(head()).as("只有 packet 写落了 revision，世界写零 revision").isEqualTo(frozenHead + 1);
+    assertThat(turn.toolInvocations().get(2).resultSummary()).contains("已加入决策包");
+    assertThat(turn.pendingDecisions().size())
+        .as("request 是 Ask：进入冻结回合的本轮队列，由 finalizer 在回合末落包")
+        .isEqualTo(1);
+    assertThat(head()).as("世界写零 revision；Ask 本身也不当场落盘").isEqualTo(frozenHead);
   }
 
   /**
@@ -829,12 +951,13 @@ class DecisionAgentRunnerTest {
     assertThat(turn.toolInvocations())
         .as("★ 10 次工具调用（11 次 LLM 调用里最后一次是**收口文本**、不带工具）——勘察读 + 两次出令")
         .hasSize(10);
-    assertThat(turn.toolInvocations().get(7).success()).as("★ 自指那条被拒（现场实测的正确行为，本用例不改它）").isFalse();
-    assertThat(turn.toolInvocations().get(7).resultSummary()).contains("自指");
-    assertThat(turn.toolInvocations().get(9).success())
-        .as("★ 按身份消息新补的规则改用领域命令后**真的出令成功**——不只是「预算变大」")
+    assertThat(turn.toolInvocations().get(7).success())
+        .as("新语义：自指出令也是 Ask ⇒ 受理进队列，不再当场执行/当场拒")
         .isTrue();
-    assertThat(head()).as("★ 只落一条 revision：被拒那条不留痕、重试那条留下").isEqualTo(headBefore + 1);
+    assertThat(turn.toolInvocations().get(7).resultSummary()).contains("已加入决策包");
+    assertThat(turn.toolInvocations().get(9).success()).as("重试那一条也只进队列；预算足够跑完全程").isTrue();
+    assertThat(turn.pendingDecisions().size()).as("两笔出令都进同一轮待裁决队列").isEqualTo(2);
+    assertThat(head()).as("Ask 未执行 ⇒ 零 world revision").isEqualTo(headBefore);
   }
 
   /**

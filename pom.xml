@@ -96,7 +96,7 @@
          io.mosire.agentlib.runtime（AgentLoop 等 8 类）/ context（ContextWindow 等 3 类）/
          agent.AgentConfig，并给 AgentTool 加了角色维 roles()——本分支正是为了「ga 的 Agent 实现
          改为复用这些标准件」，详见 docs/superpowers/specs/ 下本分支设计书。 -->
-    <agentlib-mosire.version>0.2.1</agentlib-mosire.version>
+    <agentlib-mosire.version>0.2.3-SNAPSHOT</agentlib-mosire.version>
 
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>

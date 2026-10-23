@@ -485,7 +485,7 @@ class GmDmLettersEndToEndTest {
   }
 
   private Shell startShell(Path store) {
-    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0);
     return Shell.start(
         new ShellConfig(
             base.storeDir(),
@@ -493,7 +493,6 @@ class GmDmLettersEndToEndTest {
             base.guiPort(),
             base.mcpPort(),
             base.mcpPath(),
-            base.approvalPort(),
             "agent:gm-dm-letters-test",
             base.mapId(),
             base.bindAddress()));

@@ -11,7 +11,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -53,7 +52,7 @@ import java.util.Set;
  * {@code economy} ⇒ 取工具缺省策略 = {@code UNRESTRICTED}，而 GM 侧 unlimited）。 ★ 这是"命名空间级"的粗断言，真正的收窄在 ①
  * 身份派生（只能自己的 GOV）② GM 审批链 ③ handler 的守卫。
  */
-public final class GovDefineCurrencyTool implements SimosTool, DecisionProposable {
+public final class GovDefineCurrencyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.defineCurrency";

@@ -290,10 +290,10 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * 装配期那一趟扫不到任何决策人（{@code ShellMain:162-168}）；放在这里 = "它开跑之前一定有地"。fail-soft：补不上不打断回合， 症状是文档工具报
    * {@code WORKSPACE_NOT_FOUND}（他们的"不可见/不存在同码"既有形态）。
    *
-   * <p>★★ <b>2026-10-17 批 R（计划 §4.3 / C1）：调用者身份挂 {@code {DM}}</b>。AgentLib 0.2.1 的角色判定是
-   * {@code 调用者角色 ∩ 工具声明角色 ≠ ∅}；调用者侧的空集是 **⊥ = 谁都不是（fail-closed）**——漏挂这一行 ⇒ 决策人所有
-   * 声明了角色的工具一律 {@code PERMISSION_DENIED}。角色名**只从 `ToolRole.DM.name()` 派生**，不手写 {@code "DM"} 字面量
-   * （声明侧同样由 {@code SimosTool.roles()} 从 {@code toolRoles()} 派生 ⇒ 两侧同源）。
+   * <p>★★ <b>2026-10-17 批 R（计划 §4.3 / C1）：调用者身份挂 {@code {DM}}</b>。AgentLib 0.2.1 的角色判定是 {@code
+   * 调用者角色 ∩ 工具声明角色 ≠ ∅}；调用者侧的空集是 **⊥ = 谁都不是（fail-closed）**——漏挂这一行 ⇒ 决策人所有 声明了角色的工具一律 {@code
+   * PERMISSION_DENIED}。角色名**只从 `ToolRole.DM.name()` 派生**，不手写 {@code "DM"} 字面量 （声明侧同样由 {@code
+   * SimosTool.roles()} 从 {@code toolRoles()} 派生 ⇒ 两侧同源）。
    */
   private static AgentPermissionSet permissionSetOf(
       DecisionScopeFunctions scopeFunctions,

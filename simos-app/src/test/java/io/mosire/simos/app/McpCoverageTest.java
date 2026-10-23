@@ -204,7 +204,7 @@ class McpCoverageTest {
           "economy.UpsertIndustry",
           "ga.CancelEffect",
           "ga.CreateDecisionMaker",
-          "ga.DecideDecisionPacket",
+          "ga.ApplyDecisionPackage",
           "ga.DeleteDecisionMaker",
           "ga.IssueDirective",
           "ga.PutInfo",
@@ -217,9 +217,7 @@ class McpCoverageTest {
           "ga.SetDecisionMakerProvider",
           "ga.SetDirectiveStatus",
           "ga.StartDecision",
-          "ga.SubmitDecisionPacket",
           "ga.SubmitVerdict",
-          "ga.UpsertDecisionPacket",
           "ga.UpsertMergedEffectPlan",
           "gov.AssignDecisionMakerGov",
           "gov.AssignDecisionMakerNation",
@@ -363,10 +361,8 @@ class McpCoverageTest {
           "map.MergeRegions",
           "map.ReassignHexes",
           "map.SplitRegion",
-          "ga.DecideDecisionPacket",
+          "ga.ApplyDecisionPackage",
           "gov.DeleteNation",
-          "ga.SubmitDecisionPacket",
-          "ga.UpsertDecisionPacket",
           "ga.UpsertMergedEffectPlan",
           "social.DeleteCity",
           "social.MoveCity",
@@ -503,16 +499,8 @@ class McpCoverageTest {
           Map.entry(
               "map.SplitRegion",
               "{\"sourceRegionId\": \"r-missing\", \"keepSource\": false, \"parts\": [{\"regionId\": \"r-p1\", \"name\": \"p1\", \"hexes\": [{\"q\": 0, \"r\": 0}]}]}"),
-          Map.entry(
-              "ga.DecideDecisionPacket",
-              "{\"id\": \"pkt-missing\", \"decision\": \"APPROVE\", \"decidedBy\": \"external-mcp\"}"),
+          Map.entry("ga.ApplyDecisionPackage", "{}"),
           Map.entry("gov.DeleteNation", "{\"nationId\": \"n-missing\"}"),
-          Map.entry(
-              "ga.SubmitDecisionPacket",
-              "{\"id\": \"pkt-missing\", \"proposerId\": \"dm-missing\"}"),
-          Map.entry(
-              "ga.UpsertDecisionPacket",
-              "{\"id\": \"\", \"branch\": \"main\", \"tick\": 7, \"proposerId\": \"dm-missing\"}"),
           Map.entry(
               "ga.UpsertMergedEffectPlan",
               "{\"id\": \"\", \"tick\": 7, \"participantIds\": [], \"orderedEffects\": [], \"sources\": []}"),
@@ -1031,7 +1019,7 @@ class McpCoverageTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -1040,7 +1028,6 @@ class McpCoverageTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -1069,7 +1056,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 143 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**）")
+            "catalog 列出的 type 与 Shell 注册的 141 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

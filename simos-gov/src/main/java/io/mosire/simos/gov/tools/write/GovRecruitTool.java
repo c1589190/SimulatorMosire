@@ -11,7 +11,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -76,7 +75,7 @@ import java.util.UUID;
  * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突
  * ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
-public final class GovRecruitTool implements SimosTool, DecisionProposable {
+public final class GovRecruitTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它**不是**一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.recruit";

@@ -4,11 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
-import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
@@ -41,8 +40,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -342,19 +339,18 @@ class AgentLibDocsWiringTest {
    * RunDecisionEndToEndTest}）。
    */
   @Test
-  void p4_approvalSummaryCarriesOnlyThePath() throws Exception {
+  void p4_nonPackageAskFailsClosedInsteadOfOpeningAnHttpApprovalSurface() throws Exception {
     try (Shell shell = startShell(seedStoreWithTwoDecisionMakers())) {
       DecisionMaker dmOne = decisionMaker(shell, dmOneId);
-      // ★ 用真决策人 authorizer（不是 gmToolAuthorizer）—— 本用例测的就是审批链本身
       DecisionCallerFactory factory =
           DecisionCallerFactory.forDecisionFace(
               shell.toolAuthorizer(),
               ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)));
       ToolRegistry dmRegistry = decisionRegistry(shell);
       SimulationState state = headState(shell);
+      long headBefore = state.meta().ref().revision().value();
 
       String path = DM_WORKSPACE + "/" + DOC_RELATIVE;
-      // 参数里塞满"绝不许进 summary"的东西：正文、owner、tags、查询条件
       Map<String, Object> args = new LinkedHashMap<>();
       args.put("mount", path);
       args.put("text", DOC_BODY);
@@ -364,45 +360,22 @@ class AgentLibDocsWiringTest {
       args.put("from", 1);
       args.put("to", 999);
 
-      FutureTask<ToolResult> call =
-          new FutureTask<>(
-              () -> factory.execute(dmRegistry, DocsTools.DOC_CREATE, dmOne, state, mapId(), args));
-      Thread.ofVirtual().name("t12-p4-doc-create").start(call);
+      ToolResult result =
+          factory.execute(dmRegistry, DocsTools.DOC_CREATE, dmOne, state, mapId(), args);
 
-      ApprovalRequest captured = null;
-      long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(APPROVAL_WAIT_MILLIS);
-      while (System.nanoTime() < deadline && captured == null) {
-        for (ApprovalRequest pending : shell.pendingApprovals().pending()) {
-          if (DocsTools.DOC_CREATE.equals(pending.tool())) {
-            captured = pending;
-            shell
-                .pendingApprovals()
-                .decide(pending.id(), ApprovalDecision.APPROVE_ONCE, "test:task-12");
-            break;
-          }
-        }
-        if (captured == null && call.isDone()) {
-          break;
-        }
-        Thread.sleep(10L);
-      }
-
-      assertThat(captured).as("★ 前提：doc_create 是敏感写 ⇒ 必须真的进审批链（进不去 = I4 破了，P4 测不到）").isNotNull();
-      String summary = captured.summary();
-      assertThat(summary).as("★ P4：summary 里必须有路径").contains(path);
-      assertThat(summary)
-          .as("★★ P4：summary 不得出现正文（GM 只能按「路径 + 谁在写」判断 —— 这是用户有意裁定 U3）")
-          .doesNotContain(DOC_BODY);
-      assertThat(summary)
-          .as("★ P4：summary 不得出现 owner / tags / affiliations / 查询条件")
-          .doesNotContain("self", "secret-tag", "secret-affiliation", "from", "to", "999");
-      assertThat(captured.classKey())
-          .as("审批的 classKey = 工具名（按工具名归类的审批链）")
-          .isEqualTo(DocsTools.DOC_CREATE);
-      assertThat(captured.kind()).as("敏感写 ⇒ AskKind.SENSITIVE").isEqualTo(AskKind.SENSITIVE);
-
-      ToolResult result = call.get(APPROVAL_WAIT_MILLIS, TimeUnit.MILLISECONDS);
-      assertThat(result.success()).as("批准后调用应当成功；实得 %s", result.message()).isTrue();
+      assertThat(result.success())
+          .as("H3：没有 DecisionTurnScope 的非包 Ask 必须 fail-closed，不得静默执行")
+          .isFalse();
+      assertThat(result.code()).isEqualTo(ToolCallAuthorizer.APPROVAL_DENIED);
+      assertThat(shell.pendingApprovals().pending())
+          .as("H1/H2：HTTP 审批面退役后，非包 Ask 不得再登记到旧待批表")
+          .isEmpty();
+      assertThat(headState(shell).meta().ref().revision().value())
+          .as("被拒的非包 Ask 零 revision")
+          .isEqualTo(headBefore);
+      assertThat(result.message())
+          .as("P4 的脱敏口径继续成立：拒因不得回显正文/owner/tags/查询条件")
+          .doesNotContain(DOC_BODY, "secret-tag", "secret-affiliation");
     }
   }
 
@@ -525,7 +498,7 @@ class AgentLibDocsWiringTest {
   }
 
   private Shell startShell(Path store) {
-    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(store).withPorts(0, 0);
     return Shell.start(
         new ShellConfig(
             base.storeDir(),
@@ -533,7 +506,6 @@ class AgentLibDocsWiringTest {
             base.guiPort(),
             base.mcpPort(),
             base.mcpPath(),
-            base.approvalPort(),
             "agent:task-12",
             base.mapId(),
             base.bindAddress()));

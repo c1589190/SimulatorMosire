@@ -3,6 +3,18 @@ package io.mosire.simos.ga.change;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.agentlib.decision.CommitReceipt;
+import io.mosire.agentlib.decision.Decision;
+import io.mosire.agentlib.decision.DecisionCommitPlan;
+import io.mosire.agentlib.decision.DecisionItemVerdict;
+import io.mosire.agentlib.decision.DecisionPackage;
+import io.mosire.agentlib.decision.DecisionPackageSnapshot;
+import io.mosire.agentlib.decision.DecisionPackageTransitions;
+import io.mosire.agentlib.decision.DecisionPackages;
+import io.mosire.agentlib.decision.PackageItem;
+import io.mosire.agentlib.decision.PackageState;
+import io.mosire.agentlib.decision.ProposeRequest;
+import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
@@ -20,14 +32,13 @@ import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.AdjudicationBreakpoint;
 import io.mosire.simos.ga.model.AdjudicationStatus;
-import io.mosire.simos.ga.model.CallStatus;
+import io.mosire.simos.ga.model.DecisionCallMeta;
 import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.MergedEffect;
 import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.ga.model.PacketStatus;
@@ -205,7 +216,7 @@ class GaRoundTripTest {
    */
   @Test
   void allNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites() {
-    Map<DecisionPacketId, DecisionPacket> basePackets = new LinkedHashMap<>();
+    Map<DecisionPacketId, DecisionRecord> basePackets = new LinkedHashMap<>();
     basePackets.put(P1, packet(P1, DM1, PacketStatus.DRAFT, 0L, "拟稿 A"));
     basePackets.put(P2, packet(P2, DM2, PacketStatus.PENDING, 0L, "拟稿 B"));
     Map<MergedEffectPlanId, MergedEffectPlan> basePlans = new LinkedHashMap<>();
@@ -238,7 +249,7 @@ class GaRoundTripTest {
 
     // target：P2/M2/DM2/INFO_INTENT_B/E2 从各自的表**删掉**、P1/M1/V1/DM1/INFO_INTENT_A/E1 的值**被覆盖**、
     //   P3/M3/D3/DM3/INFO_DOC_C/E3 是**新增**键。
-    Map<DecisionPacketId, DecisionPacket> targetPackets = new LinkedHashMap<>();
+    Map<DecisionPacketId, DecisionRecord> targetPackets = new LinkedHashMap<>();
     targetPackets.put(P1, packet(P1, DM1, PacketStatus.APPROVED, 7L, "拟稿 A 已改写"));
     targetPackets.put(P3, packet(P3, DM1, PacketStatus.MERGED, 9L, "拟稿 C"));
     Map<MergedEffectPlanId, MergedEffectPlan> targetPlans = new LinkedHashMap<>();
@@ -294,16 +305,17 @@ class GaRoundTripTest {
 
     // ⑤ 先逐字段（整态相等放最后：它自己挡不住"空对空"）
     assertThat(rebuilt.decisionPackets()).containsOnlyKeys(P1, P3);
-    assertThat(rebuilt.decisionPackets().get(P1).status())
-        .as("P1 状态被覆盖（不是留在 DRAFT）")
-        .isEqualTo(PacketStatus.APPROVED);
+    assertThat(rebuilt.decisionPackets().get(P1).packageState().pkg().state())
+        .as("P1 精确包状态被覆盖（不是留在 PROPOSED）")
+        .isEqualTo(PackageState.COMMITTED);
+    assertThat(rebuilt.decisionPackets().get(P1).packageState().receipt()).isNotNull();
     assertThat(rebuilt.decisionPackets().get(P1).createdAtRevision()).isEqualTo(7L);
     assertThat(rebuilt.decisionPackets().get(P1).intent()).isEqualTo("拟稿 A 已改写");
-    assertThat(rebuilt.decisionPackets().get(P1).calls()).hasSize(2);
-    assertThat(rebuilt.decisionPackets().get(P1).calls().get(1).status())
-        .as("逐 call 的字段也要活过往返（MERGED + mergedPlanId）")
-        .isEqualTo(CallStatus.MERGED);
-    assertThat(rebuilt.decisionPackets().get(P1).calls().get(1).mergedPlanId())
+    assertThat(rebuilt.decisionPackets().get(P1).view().calls()).hasSize(2);
+    assertThat(rebuilt.decisionPackets().get(P1).callMeta().get(1).mergedPlanId())
+        .as("逐 call 的领域字段也要活过往返（MERGED + mergedPlanId）")
+        .contains("merge-360-1");
+    assertThat(rebuilt.decisionPackets().get(P1).view().calls().get(1).mergedPlanId())
         .contains("merge-360-1");
     assertThat(rebuilt.decisionPackets().get(P3)).as("新增键（键读侧真的被解析回来）").isNotNull();
     assertThat(rebuilt.decisionPackets().get(P3).id()).isEqualTo(P3);
@@ -435,6 +447,169 @@ class GaRoundTripTest {
         GaState.empty(), full(), GaChangeSet::between, GaChangeSet::apply);
   }
 
+  /**
+   * ★★ <b>设计 §10.3 P3/P4：PROPOSED / DECIDING / DECIDED / COMMITTED 四种快照都能从 {@code GaState} 的 JSON
+   * 往返中原样恢复</b>。
+   *
+   * <p>这里不是只比整态 equals：逐包先比 {@code contentVersion}、{@code pkg().state()}、verdicts、decision、 receipt
+   * 与 packageState 整值，避免"两个坏对象碰巧相等"把判据稀释掉。四种状态都由 AgentLib {@link DecisionPackageTransitions}
+   * 真跑出来，不是手捏枚举。
+   */
+  @Test
+  void decisionRecordsRestoreProposedDecidingDecidedAndCommittedSnapshots() {
+    long now = 360L;
+    List<PackageItem> items =
+        List.of(
+            packageItem(0, "simos.gov.issueMoney"), packageItem(1, "simos.gov.setBudgetPolicy"));
+    DecisionPacketId proposedId = new DecisionPacketId("pkt-dm-1-360");
+    DecisionPacketId decidingId = new DecisionPacketId("pkt-dm-2-360");
+    DecisionPacketId decidedId = new DecisionPacketId("pkt-dm-3-361");
+    DecisionPacketId committedId = new DecisionPacketId("pkt-dm-1-361");
+    DecisionPackageSnapshot proposed = proposeSnapshot(proposedId, DM1, items, now);
+    DecisionPackageSnapshot decidingBase = proposeSnapshot(decidingId, DM2, items, now);
+    DecisionPackageSnapshot deciding =
+        DecisionPackageTransitions.itemDecided(decidingBase, 1L, 0, true, "gm-test", "同意第一条", now);
+    DecisionPackageSnapshot decidedBase = proposeSnapshot(decidedId, DM3, items, now);
+    DecisionPackageSnapshot decidingForDecided =
+        DecisionPackageTransitions.itemDecided(decidedBase, 1L, 0, true, "gm-test", "同意第一条", now);
+    DecisionPackageSnapshot decided =
+        DecisionPackageTransitions.itemDecided(
+            decidingForDecided, 2L, 1, true, "gm-test", "同意第二条", now);
+    DecisionPackageSnapshot committedBase = proposeSnapshot(committedId, DM1, items, now);
+    DecisionPackageSnapshot decidingForCommitted =
+        DecisionPackageTransitions.itemDecided(committedBase, 1L, 0, true, "gm-test", "同意第一条", now);
+    DecisionPackageSnapshot decidedForCommitted =
+        DecisionPackageTransitions.itemDecided(
+            decidingForCommitted, 2L, 1, true, "gm-test", "同意第二条", now);
+    DecisionCommitPlan plan = DecisionPackageTransitions.prepareCommit(decidedForCommitted, now);
+    CommitReceipt receipt =
+        new CommitReceipt(
+            CommitReceipt.Status.COMMITTED,
+            "9",
+            List.of(CommitReceipt.ItemOutcome.COMMITTED, CommitReceipt.ItemOutcome.COMMITTED),
+            "");
+    DecisionPackageSnapshot committed = DecisionPackageTransitions.completeCommit(plan, receipt);
+
+    Map<Integer, DecisionCallMeta> meta = callMetaFor(items);
+    Map<DecisionPacketId, DecisionRecord> packets = new LinkedHashMap<>();
+    packets.put(
+        proposedId,
+        recordFor(proposedId, DM1, items, proposed, meta, OptionalLong.empty(), "proposed"));
+    packets.put(
+        decidingId,
+        recordFor(decidingId, DM2, items, deciding, meta, OptionalLong.empty(), "deciding"));
+    packets.put(
+        decidedId, recordFor(decidedId, DM3, items, decided, meta, OptionalLong.of(8L), "decided"));
+    packets.put(
+        committedId,
+        recordFor(committedId, DM1, items, committed, meta, OptionalLong.of(9L), "committed"));
+
+    GaState state = full().withDecisionPackets(packets);
+    GaCodec codec = new GaCodec();
+    String json =
+        codec.encodeSnapshot(
+            new GaSnapshot(new StateRef(new BranchId("main"), new RevisionId(9)), AT, state));
+    GaSnapshot decoded = (GaSnapshot) codec.decodeSnapshot(json);
+
+    assertThat(decoded.state().decisionPackets())
+        .containsOnlyKeys(proposedId, decidingId, decidedId, committedId);
+    assertThat(decoded.state().decisionPackets().get(proposedId).packageState())
+        .as("PROPOSED 快照（含空 verdicts / 无 receipt / 无 expiry）逐字段还原")
+        .isEqualTo(proposed);
+    assertThat(decoded.state().decisionPackets().get(decidingId).packageState())
+        .as("DECIDING 快照：contentVersion 与首条 verdict 不丢")
+        .isEqualTo(deciding);
+    assertThat(decoded.state().decisionPackets().get(decidingId).packageState().pkg().state())
+        .isEqualTo(PackageState.DECIDING);
+    assertThat(decoded.state().decisionPackets().get(decidingId).packageState().verdicts())
+        .extracting(DecisionItemVerdict::index)
+        .containsExactly(0);
+    assertThat(decoded.state().decisionPackets().get(decidedId).packageState())
+        .as("DECIDED 快照：decision + 两条 verdict 不丢")
+        .isEqualTo(decided);
+    assertThat(decoded.state().decisionPackets().get(committedId).packageState())
+        .as("COMMITTED 快照：receipt / revisionRef / itemOutcomes 不丢")
+        .isEqualTo(committed);
+    assertThat(decoded.state().decisionPackets().get(committedId).packageState().receipt())
+        .isEqualTo(receipt);
+
+    GaChangeSet changeSet = GaChangeSet.between(GaState.empty(), state);
+    assertThat(
+            GaChangeSet.apply(
+                (GaChangeSet) codec.decodeChangeSet(codec.encodeChangeSet(changeSet)),
+                GaState.empty()))
+        .as("同一批四种决策包快照也要活过 GaChangeSet 的 JSON 往返（P4）")
+        .isEqualTo(state);
+  }
+
+  /** P3 的 expiryReason 单独钉住：EXPIRED 快照往返后原因与 pkg 状态都不丢。 */
+  @Test
+  void expiredDecisionRecordKeepsExpiryReasonAcrossCodecRoundTrip() {
+    long now = 100L;
+    List<PackageItem> items = List.of(packageItem(0, "simos.gov.issueMoney"));
+    ProposeRequest request = new ProposeRequest(DM1.value(), AccessToken.DEFAULT, items, now + 10L);
+    DecisionPacketId id = new DecisionPacketId("pkt-dm-1-expired");
+    DecisionPackageSnapshot proposed = DecisionPackageTransitions.propose(id.value(), request, now);
+    DecisionPackageSnapshot expired = DecisionPackageTransitions.expire(proposed, now + 10L);
+    DecisionRecord record =
+        recordFor(id, DM1, items, expired, callMetaFor(items), OptionalLong.empty(), "expired");
+    GaState state = full().withDecisionPackets(Map.of(id, record));
+
+    GaSnapshot decoded =
+        (GaSnapshot)
+            new GaCodec()
+                .decodeSnapshot(
+                    new GaCodec()
+                        .encodeSnapshot(
+                            new GaSnapshot(
+                                new StateRef(new BranchId("main"), new RevisionId(9)), AT, state)));
+
+    DecisionPackageSnapshot restored = decoded.state().decisionPackets().get(id).packageState();
+    assertThat(restored.pkg().state()).isEqualTo(PackageState.EXPIRED);
+    assertThat(restored.expiryReason()).isEqualTo(DecisionPackages.EXPIRED_NO_DECISION);
+    assertThat(restored).isEqualTo(expired);
+  }
+
+  private static DecisionRecord recordFor(
+      DecisionPacketId id,
+      DecisionMakerId proposer,
+      List<PackageItem> items,
+      DecisionPackageSnapshot snapshot,
+      Map<Integer, DecisionCallMeta> meta,
+      OptionalLong decidedAtRevision,
+      String intent) {
+    return new DecisionRecord(
+        id,
+        "main",
+        360L,
+        proposer,
+        intent,
+        6L,
+        OptionalLong.empty(),
+        Optional.empty(),
+        decidedAtRevision,
+        meta,
+        snapshot);
+  }
+
+  private static Map<Integer, DecisionCallMeta> callMetaFor(List<PackageItem> items) {
+    Map<Integer, DecisionCallMeta> meta = new LinkedHashMap<>();
+    for (PackageItem item : items) {
+      meta.put(
+          item.index(),
+          new DecisionCallMeta(
+              List.of(), "{}", List.of("scope-ok"), Optional.empty(), Optional.empty()));
+    }
+    return meta;
+  }
+
+  private static DecisionPackageSnapshot proposeSnapshot(
+      DecisionPacketId id, DecisionMakerId proposer, List<PackageItem> items, long now) {
+    ProposeRequest request =
+        new ProposeRequest(proposer.value(), AccessToken.DEFAULT, items, now + 10_000L);
+    return DecisionPackageTransitions.propose(id.value(), request, now);
+  }
+
   // ── ③b codec 的键读侧（本批最容易被"空表"掩盖的一处）──────────────────────────────────
 
   /**
@@ -561,7 +736,7 @@ class GaRoundTripTest {
 
   /** 七张表都**非空**的起点：两个决策包 + 两个合并效果集 + 两条决策记录 + 两条判决 + 两个决策人 + 两条 INFO + 两个效果。 */
   private static GaState full() {
-    Map<DecisionPacketId, DecisionPacket> packets = new LinkedHashMap<>();
+    Map<DecisionPacketId, DecisionRecord> packets = new LinkedHashMap<>();
     packets.put(P1, packet(P1, DM1, PacketStatus.DRAFT, 0L, "拟稿 A"));
     packets.put(P2, packet(P2, DM2, PacketStatus.PENDING, 0L, "拟稿 B"));
     Map<MergedEffectPlanId, MergedEffectPlan> plans = new LinkedHashMap<>();
@@ -720,45 +895,80 @@ class GaRoundTripTest {
 
   // ── 夹具：一个决策包 + 一个合并效果集（键 == 值内身份；callIndex 严格递增）──────────────
 
-  /** 一个决策包：两条 call（第 0 条 PENDING、第 1 条 MERGED 且带 mergedPlanId）。 */
-  private static DecisionPacket packet(
+  /** 一个决策包记录：两条 item + 对应两份 callMeta（第 1 条带 mergedPlanId）。 */
+  private static DecisionRecord packet(
       DecisionPacketId id,
       DecisionMakerId proposer,
       PacketStatus status,
       long createdRevision,
       String intent) {
-    List<FormattedCall> calls =
-        List.of(
-            call(0, "simos.unit.raiseUnit", CallStatus.PENDING, Optional.empty()),
-            call(1, "simos.unit.moveUnit", CallStatus.MERGED, Optional.of("merge-360-1")));
-    return new DecisionPacket(
+    List<PackageItem> items =
+        List.of(packageItem(0, "simos.unit.raiseUnit"), packageItem(1, "simos.unit.moveUnit"));
+    PackageState packageState =
+        switch (status) {
+          case DRAFT, PENDING -> PackageState.PROPOSED;
+          case APPROVED, MERGED -> PackageState.COMMITTED;
+          default -> throw new IllegalStateException("测试夹具未覆盖 PacketStatus: " + status);
+        };
+    boolean decided = packageState == PackageState.COMMITTED;
+    Decision decision = decided ? new Decision(Set.of(0, 1), "gm-1", "裁决留痕") : null;
+    List<DecisionItemVerdict> verdicts =
+        decided
+            ? List.of(
+                new DecisionItemVerdict(0, true, "gm-1", "同意"),
+                new DecisionItemVerdict(1, true, "gm-1", "同意"))
+            : List.of();
+    CommitReceipt receipt =
+        decided
+            ? new CommitReceipt(
+                CommitReceipt.Status.COMMITTED,
+                String.valueOf(createdRevision + 1),
+                List.of(CommitReceipt.ItemOutcome.COMMITTED, CommitReceipt.ItemOutcome.COMMITTED),
+                "")
+            : null;
+    DecisionPackage pkg =
+        new DecisionPackage(
+            id.value(),
+            proposer.value(),
+            AccessToken.DEFAULT,
+            items,
+            360L,
+            Long.MAX_VALUE,
+            packageState,
+            decision);
+    DecisionPackageSnapshot snapshot =
+        new DecisionPackageSnapshot(pkg, decided ? 2L : 1L, verdicts, receipt, null);
+    DecisionCallMeta first =
+        new DecisionCallMeta(
+            List.of(new CommandTarget("unit", "unit/u-1")),
+            "{\"preview\":\"raise\"}",
+            List.of("draft:raise"),
+            Optional.empty(),
+            Optional.empty());
+    DecisionCallMeta second =
+        new DecisionCallMeta(
+            List.of(new CommandTarget("unit", "unit/u-1")),
+            "{\"preview\":\"move\"}",
+            List.of("draft:move"),
+            Optional.of("merge-360-1"),
+            Optional.empty());
+    return new DecisionRecord(
         id,
         "main",
         360L,
         proposer,
-        status,
         intent,
-        calls,
         createdRevision,
-        Optional.of("gm-1"),
-        OptionalLong.of(createdRevision + 1),
+        OptionalLong.empty(),
         Optional.empty(),
-        Optional.of("裁决留痕"));
+        decided ? OptionalLong.of(createdRevision + 1) : OptionalLong.empty(),
+        Map.of(0, first, 1, second),
+        snapshot);
   }
 
-  /** 一条 call：targets 走跨命名空间的 {@code {namespace,path}} 形状。 */
-  private static FormattedCall call(
-      int callIndex, String toolName, CallStatus status, Optional<String> mergedPlanId) {
-    return new FormattedCall(
-        callIndex,
-        toolName,
-        "{\"q\":1,\"r\":2}",
-        List.of(new CommandTarget("map", "Map1/hex/1_2")),
-        "{\"preview\":true}",
-        List.of("scope-ok"),
-        status,
-        mergedPlanId,
-        Optional.empty());
+  private static PackageItem packageItem(int index, String toolName) {
+    return new PackageItem(
+        index, toolName, Map.of("q", 1, "r", 2), "digest-" + index, "摘要 " + index);
   }
 
   /** 一个合并效果集：两条有序效果 + 两条来源引用。 */

@@ -15,7 +15,6 @@ import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -55,7 +54,7 @@ import java.util.Set;
  * FxSettlement}），政府外汇窗口按 {@code bidP = buyPerMille} / {@code askP = sellPerMille} 挂牌， 储备上限 = 该 GOV
  * 对该币种累计发行量的 500‰。★ 没定过汇率的世界<b>完全没有外汇面</b>（逐值退回）。
  */
-public final class GovSetFxRateTool implements SimosTool, DecisionProposable {
+public final class GovSetFxRateTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.setFxRate";

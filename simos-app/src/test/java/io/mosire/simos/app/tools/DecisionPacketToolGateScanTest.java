@@ -18,8 +18,8 @@ import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
-import io.mosire.simos.ga.tools.write.ProposeCallTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.RequestTool;
 import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,10 +57,9 @@ class DecisionPacketToolGateScanTest {
 
   @TempDir Path tempDir;
 
-  /** 决策包七件套 + 推演确认：**必须** {@code gate()=ALLOW}、{@code toolRoles()={DM}}（设计书 §5 类3 DM_FREE）。 */
+  /** 决策包控制面（request 除外，它必须是 Ask）+ 推演确认：{@code gate()=ALLOW}、{@code toolRoles()={DM}}。 */
   private static final List<String> DM_FREE_TOOLS =
       List.of(
-          ProposeCallTool.NAME,
           ReviseCallTool.NAME,
           DropCallTool.NAME,
           PacketIntentTool.NAME,
@@ -83,7 +82,6 @@ class DecisionPacketToolGateScanTest {
   private static final Map<String, String> TOOL_CLASSES = new LinkedHashMap<>();
 
   static {
-    TOOL_CLASSES.put(ProposeCallTool.NAME, "write/ProposeCallTool.java");
     TOOL_CLASSES.put(ReviseCallTool.NAME, "write/ReviseCallTool.java");
     TOOL_CLASSES.put(DropCallTool.NAME, "write/DropCallTool.java");
     TOOL_CLASSES.put(PacketIntentTool.NAME, "write/PacketIntentTool.java");
@@ -157,7 +155,7 @@ class DecisionPacketToolGateScanTest {
         explicitGateCount++;
       }
 
-      String rolesBody = methodBody(source, "roles");
+      String rolesBody = methodBody(source, "toolRoles");
       assertThat(rolesBody)
           .as("★★ N10：%s 的 toolRoles() 必须是 {DM}（进 GM 桶 = 决策人面被放大）", toolName)
           .contains("ToolRole.DM")
@@ -175,12 +173,31 @@ class DecisionPacketToolGateScanTest {
     // ★ 扫描器自证之二：**显式 gate() 的那一批**也要有预期条数——否则"gate() 全被删掉"会让本扫描器静默变成空转
     //   （接口缺省仍是 ALLOW ⇒ 行为不变、扫描器也全绿 ⇒ 判据归零）。写死实测值，删一个当场红。
     assertThat(explicitGateCount)
-        .as("★ 扫描器自证：必须有 %d 条**显式**覆写 gate() 的工具（实测值；全被删掉 ⇒ 本扫描器空转）", 8)
-        .isEqualTo(8);
+        .as("★ 扫描器自证：必须有 %d 条**显式**覆写 gate() 的工具（实测值；全被删掉 ⇒ 本扫描器空转）", 7)
+        .isEqualTo(7);
     assertThat(TOOL_CLASSES.keySet())
         .as("★ 清单自洽：DM_FREE_TOOLS ∪ DM_READ_TOOLS 必须与扫描表逐条相同（加了工具却忘了进扫描面 ⇒ 这里红）")
         .containsExactlyInAnyOrderElementsOf(
             Stream.concat(DM_FREE_TOOLS.stream(), DM_READ_TOOLS.stream()).distinct().toList());
+  }
+
+  /**
+   * ★★ <b>§10 D1/D4：{@code simos.ga.request} 与包控制面相反，必须是 Ask</b>。
+   *
+   * <p>纯文本请求必须进入 {@code PendingDecisionQueue}；如果它的 gate 是 ALLOW，工具会被直接执行，text 不会入包。 源码扫描与行为面两侧都不把它当
+   * DM_FREE。
+   */
+  @Test
+  void requestToolIsAskAndDmOnly() throws IOException {
+    Path file = gaMainJava().resolve("write/RequestTool.java");
+    String source = Files.readString(file);
+    assertThat(source).contains("\"" + RequestTool.NAME + "\"");
+    String gateBody = methodBody(source, "gate");
+    assertThat(gateBody)
+        .as("§10 D1/D4：request 必须返回 Ask，由回合作用域队列接住；ALLOW 会静默丢文本")
+        .contains("new ToolGate.Ask");
+    String rolesBody = methodBody(source, "toolRoles");
+    assertThat(rolesBody).contains("ToolRole.DM").doesNotContain("ToolRole.GM");
   }
 
   /**
@@ -194,7 +211,7 @@ class DecisionPacketToolGateScanTest {
   void everyDecisionFaceToolIsInTheDecisionBucketAndNotInTheGmBucket() {
     // ★ store 用 @TempDir（绝对路径）：装配期要挂工作区，相对路径会被 registry 具名拒
     //   （实测：「挂载的物理落点必须是绝对路径」）。
-    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0))) {
       Set<String> decisionFace =
           ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
       List<String> gmFace =
@@ -302,54 +319,19 @@ class DecisionPacketToolGateScanTest {
   }
 
   /**
-   * ★★ <b>§3.9.4 / 不变量 I13·I14 的文案判据：GM 三条读口的 {@code description()} 必须写明 「PENDING = 当前提交 · 同 tick
-   * 可多次提交 · GM 以最后一次为准 · 已裁决之后不能再改」</b>。
+   * ★★ G6：{@code simos.gm.packet} 的文案必须把「只读领域投影」与「精确状态看 packageState」说清。
    *
-   * <p>★★ <b>为什么文案是判据、不是修辞</b>（设计书 §3.9.4 把它列为"必须改"）：GM 是<b>唯一的驱动者</b>，它读到的 {@code description()}
-   * 就是它判断"这个 DM 还会不会再改"的<b>全部依据</b>。★ 旧文案把 PENDING 描述成定稿 ⇒ GM 会在 DM 还没说完时就推演（设计书 §3.9.1「gm
-   * 应当取最后一轮提交的决策」直接被违反），而<b>没有任何一层会报错</b>。
-   *
-   * <p>★ <b>为什么扫源码而不是调 {@code description()}</b>：与 {@link
-   * #everyDecisionFaceToolDeclaresAllowAndDmOnlyInSource} 同一理由（形制也照它）——{@code description()}
-   * 是一段<b>声明</b>，它的坏法正是"某个分支下换一句话"，而装配期读一次 只能证"这一条路径上那句话对"。★
-   * 扫源码还能顺带钉住<b>三处逐字同源</b>（本仓为"第二处真相"付过代价）。
-   *
-   * <p>★★ <b>判别力</b>：四条要点各一个子串 ⇒ 删任意一条当场红；把三处里任意一处改回旧口径（旧文案讲的是 「已提交 ⇒ 定稿，先
-   * reopen」，那两句现在读的是「以最后一次为准」与「很多次」）⇒ 当场红。
+   * <p>旧的 DRAFT/PENDING 文案已随 AgentLib 包状态机退役；新的 GM 列表/待裁面由 {@code decision_package_list} 承担，{@code
+   * simos.gm.packet} 只负责领域投影，不改状态。
    */
   @Test
-  void theThreeGmReadFacesDescribePendingAsTheLatestSubmissionNotAsALock() throws IOException {
-    Path gaMain = gaMainJava();
-    assertThat(Files.isDirectory(gaMain))
-        .as("★ 扫描根必须存在（否则下面的「扫到 0 条」会伪装成通过）：%s", gaMain.toAbsolutePath())
-        .isTrue();
-
-    int scanned = 0;
-    for (Map.Entry<String, String> entry : GM_READ_TOOL_CLASSES.entrySet()) {
-      String toolName = entry.getKey();
-      Path file = gaMain.resolve(entry.getValue());
-      assertThat(Files.isRegularFile(file))
-          .as("★ 扫描面必须命中（%s 的源码不在 %s ⇒ 扫描器静默 = 判据失效）", toolName, entry.getValue())
-          .isTrue();
-      String source = Files.readString(file);
-      assertThat(source)
-          .as("★ 命名判据：%s 的源码里必须逐字写着它自己的 NAME（改错文件时当场红）", toolName)
-          .contains("\"" + toolName + "\"");
-
-      String description = methodBody(source, "description");
-      for (Map.Entry<String, String> phrase : REQUIRED_PHRASES.entrySet()) {
-        assertThat(description)
-            .as(
-                "★★ §3.9.4：%s 的 description() 必须写明「%s」（缺这条 ⇒ GM 会把 PENDING 当定稿，"
-                    + "在 DM 还没说完时就推演；设计书 §3.9.1「取最后一轮提交的决策」被违反而**无任何一层报错**）",
-                toolName, phrase.getKey())
-            .contains(phrase.getValue());
-      }
-      scanned++;
-    }
-    assertThat(scanned)
-        .as("★ 扫描器自证：必须真的扫到全部 %d 条 GM 读口（扫到 0/漏文件 = 「空 == 空」陷阱）", GM_READ_TOOL_CLASSES.size())
-        .isEqualTo(GM_READ_TOOL_CLASSES.size());
+  void gmPacketProjectionDescriptionIsReadOnlyAndPointsToPackageState() throws IOException {
+    Path file = gaMainJava().resolve("read/GmPacketTool.java");
+    assertThat(Files.isRegularFile(file)).as("扫描面必须存在：%s", file).isTrue();
+    String source = Files.readString(file);
+    assertThat(source).contains("\"" + GmPacketTool.NAME + "\"");
+    String description = methodBody(source, "description");
+    assertThat(description).contains("只读", "packageState", "不改任何状态");
   }
 
   private static int countOccurrences(String haystack, String needle) {

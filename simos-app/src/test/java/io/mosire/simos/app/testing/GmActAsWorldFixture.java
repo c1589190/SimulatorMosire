@@ -138,7 +138,7 @@ public final class GmActAsWorldFixture {
       Map<String, Set<String>> allowedToolsOf,
       Map<String, Map<String, Set<String>>> accessLimitOf) {
     ShellConfig config =
-        ShellConfig.defaults(storeDir).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
+        ShellConfig.defaults(storeDir).withPorts(0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
     Shell shell = Shell.start(config, fake::providerFor);
     try {
       SimulationState state = SmallWorld.state(config.mapId());
@@ -263,14 +263,20 @@ public final class GmActAsWorldFixture {
       return maker;
     }
 
-    /** 该决策人本 tick 的决策包（{@code null} = 还没有）。 */
-    public io.mosire.simos.ga.model.DecisionPacket packetOf(String decisionMakerId) {
+    /** 该决策人本 tick 的唯一世界状态记录（{@code null} = 还没有）。 */
+    public io.mosire.simos.ga.model.DecisionRecord recordOf(String decisionMakerId) {
       SimulationState state = state();
       String packetId = "pkt-" + decisionMakerId + "-" + state.meta().timestamp().tick();
       return ((GaSnapshot) state.module("ga").orElseThrow())
           .state()
           .decisionPackets()
           .get(io.mosire.simos.ga.id.DecisionPacketId.parse(packetId));
+    }
+
+    /** 该决策人本 tick 的只读领域视图（{@code null} = 还没有）；精确状态请用 {@link #recordOf}。 */
+    public io.mosire.simos.ga.model.DecisionPacket packetOf(String decisionMakerId) {
+      io.mosire.simos.ga.model.DecisionRecord record = recordOf(decisionMakerId);
+      return record == null ? null : record.view();
     }
 
     /** 决策人面上的某一条工具（真装配的桶；找不到 ⇒ 抛）。 */

@@ -90,16 +90,16 @@ class ToolClassAuditAssemblyTest {
    * <b>本条真跑实测</b>：红在「{@code 类1 GM_ONLY 条数锚点 … Expected size: 131 but was: 132}」（批 U 台账 §1）；★
    * 修后自洽：{@code 132 + 48(共享) = 180(GM 桶)}。
    */
-  private static final int GM_ONLY_SIZE = 132;
+  private static final int GM_ONLY_SIZE = 133;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
    * 裁定「甲」的那 7 条。
    */
-  private static final int DM_APPROVAL_SIZE = 24;
+  private static final int DM_APPROVAL_SIZE = 25;
 
   /** ★★ <b>类3 {@code DM_FREE} = 37</b>（★ 裁定「甲」<b>未动</b>本格：那 7 条本来就是 {@code Ask} ⇒ 落类2，不落类3）。 */
-  private static final int DM_FREE_SIZE = 37;
+  private static final int DM_FREE_SIZE = 36;
 
   /**
    * ★ <b>共享 = 46</b>：既在 GM 桶、又在决策人桶的工具（内部 38 + 外来 8，{@code toolRoles()} 含 {@code {GM, DM}} 两者）。
@@ -119,7 +119,7 @@ class ToolClassAuditAssemblyTest {
    * simos.command.submitBatch} 只进类1 ⇒ 并集 +1；★ 本条真跑实测：「{@code 扫描器自证之三 … Expected size: 192 but was:
    * 193}」）。
    */
-  private static final int TOOL_UNION_SIZE = 193;
+  private static final int TOOL_UNION_SIZE = 194;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
@@ -127,7 +127,7 @@ class ToolClassAuditAssemblyTest {
    * 180}（批 O 的 {@code simos.command.submitBatch}；本条真跑实测「{@code GM 桶条数 =
    * ShellAssemblySmokeTest.GM_BUCKET_SIZE … Expected size: 179 but was: 180}」）。
    */
-  private static final int GM_BUCKET_SIZE = 180;
+  private static final int GM_BUCKET_SIZE = 181;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +
@@ -180,7 +180,8 @@ class ToolClassAuditAssemblyTest {
           "doc_edit",
           "simos.gov.setDiplomaticRelation",
           "simos.gov.recordDiplomaticEvent",
-          "simos.gov.pay");
+          "simos.gov.pay",
+          "simos.ga.request");
 
   /**
    * ★ A3 点名的**纯 {@code {DM}} + {@code Ask}**（四格收敛成三格的证据；它们必须落类2、且不在类3）。
@@ -191,7 +192,8 @@ class ToolClassAuditAssemblyTest {
    * 这不是放宽：本清单只负责"纯 {@code {DM}} ⇒ 落类2"这一维，而**合并后那两条仍在类2**这一事实由新增的 {@link #MERGED_DIPLOMATIC_NAMES}
    * 断言逐条钉住（{@code toolRoles()} 必须**恰好** {@code {DM,GM}}、{@code gate} 必须 {@code Ask}）。
    */
-  private static final List<String> PURE_DM_APPROVAL_NAMES = List.of("simos.gov.pay");
+  private static final List<String> PURE_DM_APPROVAL_NAMES =
+      List.of("simos.gov.pay", "simos.ga.request");
 
   /**
    * ★★ <b>批 L ② 合并出来的两条（设计书 §2.1 裁定 N2「乙 + 合并甲」）</b>：两条命令各留**一条**工具、{@code roles={DM,GM}}、 {@code
@@ -501,7 +503,7 @@ class ToolClassAuditAssemblyTest {
 
   /** ★ 真装配（端口全 0 ⇒ OS 随机分配，绝不占 5711/5715/5713；store 用 JUnit 临时目录）。 */
   private Shell startShell() {
-    return Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    return Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
   }
 
   /**

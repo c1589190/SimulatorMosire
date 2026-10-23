@@ -91,7 +91,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **桶的判别力**：先断言 {@code sd.DecisionResults} **在**决策人桶、**不在** GM 桶（后者是本条工具的设计：GM 走 GUI 面）——
  * 少了这条，"从错桶里取"（比如将来图省事塞进 GM 桶）不会被发现。
  *
- * <p>★ **不占固定端口、不常驻**：{@code withPorts(0, 0, 0)}，用完 {@code shell.close()}。
+ * <p>★ **不占固定端口、不常驻**：{@code withPorts(0, 0)}，用完 {@code shell.close()}。
  */
 class DecisionResultsShellEndToEndTest {
 
@@ -115,7 +115,7 @@ class DecisionResultsShellEndToEndTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
   }
 
   @AfterEach

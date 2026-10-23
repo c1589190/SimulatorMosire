@@ -845,23 +845,13 @@ public final class CatalogTool implements SimosTool {
           Map.entry("ga.RunDecision", "decisionMakerId"),
           Map.entry("ga.SetDecisionMakerProvider", "decisionMakerId, providerId"),
           Map.entry(
-              "ga.UpsertDecisionPacket",
-              "id, branch, tick, proposerId,"
-                  + " status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED), intent?,"
-                  + " createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?,"
-                  + " decisionNote?, calls[{callIndex, toolName, argsJson,"
-                  + " targets[{namespace,path}], previewJson, draftChecks[],"
-                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]（★"
-                  + " D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.ga.packet.propose / simos.ga.packet.intent"
-                  + " / 决策效果执行器内部提交）"),
-          Map.entry(
-              "ga.SubmitDecisionPacket",
-              "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.ga.packet.confirm 调用）"),
-          Map.entry(
-              "ga.DecideDecisionPacket",
-              "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?（★"
-                  + " D2/D3：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide"
-                  + " 从身份派生；MERGE 必带 mergedPlanId 且目标 plan 必须已存在，callIndexes 与 MERGE 互斥）"),
+              "ga.ApplyDecisionPackage",
+              "expectedContentVersion(0=新建，否则=当前 contentVersion), record{id, branch, tick,"
+                  + " proposerId, intent, createdAtRevision, confirmedAtRevision?, reasonInfoId?,"
+                  + " decidedAtRevision?, callMeta{index:{targets[],previewJson,draftChecks[],"
+                  + " mergedPlanId?,outcomeJson?}}, packageState{pkg{id,proposerKey,caller,items[],"
+                  + " createdAtEpochMs,deadlineEpochMs,state,decision?}, contentVersion, verdicts[],"
+                  + " receipt?, expiryReason?}}（★ 决策包唯一内部写口；不对外窄工具）"),
           Map.entry(
               "ga.UpsertMergedEffectPlan",
               "id, tick, participantIds[决策人 id…]?, orderedEffects[{toolName, argsJson,"

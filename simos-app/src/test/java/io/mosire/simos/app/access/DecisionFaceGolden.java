@@ -130,13 +130,13 @@ public final class DecisionFaceGolden {
           // ★★ D2（2026-10-22 决策包计划）：决策包四件套。
           // ★★ 2026-10-14 决策自由化（批 B）：四件套**改名** sd → ga，并长成**七件套 + 推演确认**。
           //   改名（**不计增**，旧名一律不留 —— Alpha 不兼容旧档）：
-          //     simos.sd.propose        → simos.ga.packet.propose
+          //     simos.sd.propose        → simos.ga.request
           //     simos.sd.packet.intent  → simos.ga.packet.intent
           //     simos.sd.packet.my      → simos.ga.packet.my
           //     simos.sd.packet.submit  → simos.ga.packet.confirm（"确认本 tick 全部决策"，DRAFT→PENDING）
           //   净新增：revise / drop / reopen（自由改 / 删 / 撤回确认，都只在 DRAFT 上可用）
           //   另加一条推演确认：simos.ga.adjudication.ack（{DM} + gate=ALLOW）。
-          "simos.ga.packet.propose",
+          "simos.ga.request",
           "simos.ga.packet.revise",
           "simos.ga.packet.drop",
           "simos.ga.packet.intent",

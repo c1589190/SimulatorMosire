@@ -68,14 +68,14 @@ class AppShellLoggingTest {
 
   @Test
   void logLinesAreActuallyCaptured() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
 
     assertThat(appender.messages()).as("★ 捕获为空 ⇒ 整套装置失效。实得 %s", appender.messages()).isNotEmpty();
   }
 
   @Test
   void shellAssemblyIsLoggedAsInfoWithSystemOrigin() {
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
 
     assertThat(appender.messages())
         .as("实得 %s", appender.messages())
@@ -99,7 +99,7 @@ class AppShellLoggingTest {
   void appLevelSwitchHidesAndRevealsShellAssembly() throws Exception {
     setAppLevel(Level.WARN);
     appender.clear();
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     assertThat(appender.messages())
         .as("app 根级别 WARN ⇒ SHELL_ASSEMBLED 必须消失")
         .noneSatisfy(line -> assertThat(line).contains("event=SHELL_ASSEMBLED"));
@@ -107,7 +107,7 @@ class AppShellLoggingTest {
     setAppLevel(Level.INFO);
     appender.clear();
     Path secondStore = Files.createDirectories(tempDir.resolve("second"));
-    Shell second = Shell.start(ShellConfig.defaults(secondStore).withPorts(0, 0, 0));
+    Shell second = Shell.start(ShellConfig.defaults(secondStore).withPorts(0, 0));
     try {
       assertThat(appender.messages())
           .as("调回 INFO ⇒ 装配事件回来")

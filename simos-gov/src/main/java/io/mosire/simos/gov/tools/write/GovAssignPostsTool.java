@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -62,7 +61,7 @@ import java.util.UUID;
  * laborMilli} 只能在 (0, 当前劳动] 内（超上限 ⇒ 具名 BAD_REQUEST）。官吏户必须已在 {@code Unit.households} 里（先走 {@code
  * simos.gov.expandHousehold} / {@code simos.unit.assignHousehold}），本工具不擅自编户、不改位置。
  */
-public final class GovAssignPostsTool implements SimosTool, DecisionProposable {
+public final class GovAssignPostsTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.assignPosts}）。 */
   public static final String NAME = "simos.gov.assignPosts";

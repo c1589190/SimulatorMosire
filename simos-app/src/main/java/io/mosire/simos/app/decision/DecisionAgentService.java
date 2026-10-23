@@ -1,6 +1,7 @@
 package io.mosire.simos.app.decision;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.decision.PendingDecisionQueue;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
@@ -11,10 +12,12 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionToolNames;
 import io.mosire.simos.ga.decision.DecisionToolReach;
+import io.mosire.simos.ga.decision.PendingDecisionCarrier;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -152,7 +155,8 @@ public final class DecisionAgentService {
         conversations,
         mapId,
         maxLlmCalls,
-        DecisionAgentRunner.OpeningSnapshot.NONE);
+        DecisionAgentRunner.OpeningSnapshot.NONE,
+        new DecisionCallPreviewer(decisionTools.list(), mapId));
   }
 
   /** **全参**（P4 生产路径）：另给开场快照来源（{@link DecisionAgentRunner.OpeningSnapshot}；{@code NONE} = 关）。 */
@@ -165,6 +169,29 @@ public final class DecisionAgentService {
       String mapId,
       int maxLlmCalls,
       DecisionAgentRunner.OpeningSnapshot openingSnapshot) {
+    this(
+        core,
+        llmClients,
+        callerFactory,
+        decisionTools,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        openingSnapshot,
+        new DecisionCallPreviewer(decisionTools.list(), mapId));
+  }
+
+  /** 全参：预览器来自决策人工具面（生产路径由 {@code Shell} 注入）。 */
+  public DecisionAgentService(
+      CoreSimos core,
+      LlmClients llmClients,
+      DecisionCallerFactory callerFactory,
+      ToolRegistry decisionTools,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      DecisionAgentRunner.OpeningSnapshot openingSnapshot,
+      DecisionCallPreviewer previewer) {
     this.core = Objects.requireNonNull(core, "core");
     this.llmClients = Objects.requireNonNull(llmClients, "llmClients");
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
@@ -175,7 +202,9 @@ public final class DecisionAgentService {
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
     // ★ 可达面与工具面同源：转问的工厂就是下面建 runner 时取 whitelistFor 的那一个（见字段注）。
     this.toolReach = AppDecisionToolReach.of(callerFactory);
-    this.turnFinalizer = new DecisionTurnFinalizer(core);
+    this.turnFinalizer =
+        new DecisionTurnFinalizer(
+            core, Objects.requireNonNull(previewer, "previewer"), new AppGaToolIdentity(), mapId);
   }
 
   /**
@@ -303,7 +332,7 @@ public final class DecisionAgentService {
               turn.conversationId()));
       return turn;
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
-      // ★ 预算中止不是“决策作废”：把已写进 DRAFT packet 的内容保守结算成 PENDING，GM 仍能看到部分决策。
+      // ★ 预算中止不是“决策作废”：异常已携带本轮 PendingDecisionQueue，按 §7.2 追加进决策包。
       salvageAbortedTurn(branch, decisionMakerId, e);
       DECISION.warn(
           LogEvent.of(
@@ -319,17 +348,35 @@ public final class DecisionAgentService {
               e.getClass().getSimpleName()));
       throw e;
     } catch (RuntimeException e) {
-      // ★ 解析/协议异常同样不让已写进 packet 的内容静默消失；原异常照常抛出，由批量口如实记 failed。
+      // ★ 解析/协议异常同样不让已经登记 Ask 的队列静默消失；原异常照常抛出，由批量口如实记 failed。
       salvageAbortedTurn(branch, decisionMakerId, e);
       throw e;
     }
   }
 
-  /** 失败/预算中止时的保守结算：只抢救已经写进 packet 的内容，失败不遮盖原异常。 */
+  /**
+   * 失败/预算中止时的保守结算：从异常载体取**同一个** {@link PendingDecisionQueue}，交给 finalizer 走一次 §7.2 append/Apply。没有
+   * carrier（或finalizer 自身失败）时不伪造队列；失败不遮盖原异常。
+   */
   private void salvageAbortedTurn(
       BranchId branch, DecisionMakerId decisionMakerId, RuntimeException original) {
+    PendingDecisionQueue pendingDecisions =
+        original instanceof PendingDecisionCarrier carrier ? carrier.pendingDecisions() : null;
+    if (pendingDecisions == null) {
+      DECISION.debug(
+          LogEvent.of(
+              "DECISION_TURN_SALVAGE_SKIPPED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "reason",
+              "no-pending-decision-carrier",
+              "error",
+              original.getClass().getSimpleName()));
+      return;
+    }
     try {
-      turnFinalizer.finalizeAborted(branch, decisionMakerId);
+      turnFinalizer.finalizeAborted(branch, decisionMakerId, pendingDecisions);
     } catch (RuntimeException salvageFailure) {
       original.addSuppressed(salvageFailure);
       DECISION.warn(
@@ -340,6 +387,8 @@ public final class DecisionAgentService {
               decisionMakerId.value(),
               "error",
               original.getClass().getSimpleName(),
+              "queueSize",
+              pendingDecisions.size(),
               "salvageError",
               salvageFailure.getClass().getSimpleName()));
     }

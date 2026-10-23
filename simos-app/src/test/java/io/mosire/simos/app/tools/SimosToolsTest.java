@@ -214,7 +214,6 @@ class SimosToolsTest {
           "simos.command.catalog",
           "simos.economy.hex",
           "simos.economy.ownership",
-          "simos.gm.approvals",
           // ★★ 2026-10-14 GM⇄DM 信件批：GM 侧两个新的**纯派生读口**（都实现 GmOnlyRead ⇒ 必进本名单）。
           //   gm.inbox = 读 to=="gm" 的信（逐条带 answered）；gm.round = 看板（谁确认决策/有未答问题/确认推演）。
           //   ★ 它们**没有**对应的"写"侧误会：漏登记会让 writeFaceCoveredByTheWriteGate() 把它们当写工具 ⇒
@@ -261,7 +260,6 @@ class SimosToolsTest {
       List.of(
           "simos.army.stopReport",
           "simos.economy.ownership",
-          "simos.gm.approvals",
           // ★★ 2026-10-14 GM⇄DM 信件批 +2（15 → 17）：两条新读口都实现 GmOnlyRead。
           //   gm.inbox：`to=="gm"` 的信 + answered 派生列；gm.round：GM 看板（一次看"谁确认决策/谁有未答问题/谁确认推演"）。
           //   ★ 口径 = 实现 GmOnlyRead 的那些（不是手挑），故它们必须在这里登记。
@@ -322,7 +320,6 @@ class SimosToolsTest {
           "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
-          "simos.gm.approve",
           // ★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）+1（63 → 64）：它是**非窄写**（只
           //   implements SimosTool，不继承 AbstractNarrowWriteTool ⇒ 窄写扫描器扫不到它）。
           //   ★ 为什么必须登记进**本**名单（而不是 NARROW_WRITE_NAMES）：本名单 = "GM 桶里的写 ∖ 磁盘上的窄写类"
@@ -340,8 +337,6 @@ class SimosToolsTest {
           "simos.gm.message.send",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
-          "simos.gm.packet.decide",
-          "simos.gm.packet.execute",
           "simos.gm.periodicAdjustment",
           "simos.gm.vitalRates",
           "simos.gov.absorbUnit",
@@ -727,8 +722,19 @@ class SimosToolsTest {
    * 实测来源：真壳两桶计数（本文件改前实跑红在「Expected size: 173 but was: 175」）。 ★ 与"决策人互致消息"批**不同源**：那批在 GM 面净
    * 0，这两条是上游加的（本批只是**接入**它们）。
    */
+  /**
+   * AgentLib 五工具：角色 {@code {GM}}、工具自身 gate=ALLOW（决定包权限由 AgentLib 的角色闸把守）， 不参与 Simos 的「写工具必须 Ask」家族。
+   */
+  private static final List<String> AGENTLIB_DECISION_TOOL_NAMES =
+      List.of(
+          io.mosire.agentlib.decision.DecisionPackageTools.LIST_NAME,
+          io.mosire.agentlib.decision.DecisionPackageTools.GET_NAME,
+          io.mosire.agentlib.decision.DecisionPackageTools.DECIDE_NAME,
+          io.mosire.agentlib.decision.DecisionPackageTools.DECIDE_ITEM_NAME,
+          io.mosire.agentlib.decision.DecisionPackageTools.COMMIT_NAME);
+
   private static final List<String> GM_TOOL_NAMES =
-      concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES);
+      concat(concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES), AGENTLIB_DECISION_TOOL_NAMES);
 
   /**
    * catalog 预期的 <b>143</b> 个已注册命令类型（与 Shell 注册的 handler 同源）。
@@ -816,9 +822,9 @@ class SimosToolsTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
+          "ga.ApplyDecisionPackage",
           "ga.CancelEffect",
           "ga.CreateDecisionMaker",
-          "ga.DecideDecisionPacket",
           "ga.DeleteDecisionMaker",
           "ga.IssueDirective",
           "ga.PutInfo",
@@ -831,9 +837,7 @@ class SimosToolsTest {
           "ga.SetDecisionMakerProvider",
           "ga.SetDirectiveStatus",
           "ga.StartDecision",
-          "ga.SubmitDecisionPacket",
           "ga.SubmitVerdict",
-          "ga.UpsertDecisionPacket",
           "ga.UpsertMergedEffectPlan",
           "gov.AssignDecisionMakerGov",
           "gov.AssignDecisionMakerNation",
@@ -917,7 +921,7 @@ class SimosToolsTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -926,7 +930,6 @@ class SimosToolsTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -1199,7 +1202,7 @@ class SimosToolsTest {
                 + "★★ 2026-10-13 急停协议：新增 army.SetArmyContactWatch ⇒ 141 → 142（实测：本批扫 *Handler.java 的 type() 得 142）；"
                 + "★★ 2026-10-14 决策人互致消息：新增 ga.SetDecisionMakerPeer（新 handler + 新命令类型）⇒ 142 → **143**"
                 + "（★ 逐条核过它数的是**命令类型/handler 实现数**，不是工具数：本批命令 +1 而工具面净 0，两者不同源）")
-        .hasSize(143);
+        .hasSize(141);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1259,7 +1262,7 @@ class SimosToolsTest {
                 + "★★ 2026-10-15 批 U（同步批 O）：批 O 的 {@code simos.command.submitBatch}（{@code toolRoles()={GM}}、"
                 + "非窄写）⇒ GM 面 **179 → 180**，决策人面 **61 一条不动**"
                 + "（★ 实测：本条真跑红在「Expected size: 179 but was: 180」；下面那条决策人桶断言同一次跑**没红**）")
-        .hasSize(180);
+        .hasSize(181);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1346,6 +1349,7 @@ class SimosToolsTest {
     return shell.toolsFor(SimosToolSource.Role.GM).stream()
         .map(AgentTool::name)
         .filter(name -> !ALL_READ_TOOL_NAMES.contains(name))
+        .filter(name -> !AGENTLIB_DECISION_TOOL_NAMES.contains(name))
         .toList();
   }
 
@@ -1441,6 +1445,7 @@ class SimosToolsTest {
             .filter(name -> !ALL_READ_TOOL_NAMES.contains(name))
             .filter(name -> !NON_NARROW_WRITE_NAMES.contains(name))
             .filter(name -> !EXTERNAL_TOOL_NAMES.contains(name))
+            .filter(name -> !AGENTLIB_DECISION_TOOL_NAMES.contains(name))
             .toList();
     assertThat(gmNarrow)
         .as(
@@ -1628,7 +1633,6 @@ class SimosToolsTest {
             new Case("simos.ga.verdicts", Map.of(), "verdicts"),
             new Case("simos.gm.tool-usage", Map.of(), "entries"),
             // ★ P7b（2026-10-01）：待裁决审批清单（只给 GM 桶）。
-            new Case("simos.gm.approvals", Map.of(), "pending"),
             new Case("simos.llm.providers", Map.of(), "providers"),
             // ★ C5b（2026-10-02）：历法/气候信息读工具的最小形状（config+sources+date+solarTerm+notes）。
             new Case("simos.calendar.info", Map.of(), "sources"),
@@ -2218,7 +2222,7 @@ class SimosToolsTest {
                 + "★★ 2026-10-15 批 U（同步批 O）：磁盘上 **+1 个 *Tool.java ⇒ 实测 180 → 181** —— "
                 + "{@code simos-app/.../tools/write/CommandSubmitBatchTool.java}（批 O 的 GM 薄工具，"
                 + "{@code toolRoles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）")
-        .hasSize(181);
+        .hasSize(177);
 
     List<String> union =
         Stream.concat(
@@ -2235,8 +2239,11 @@ class SimosToolsTest {
     //   或桶里冒出本仓源码不存在且不在外来清单里的名字 ⇒ 照样红），只是把"外来"这一维显式化。
     //   ★ 为什么不用"放宽成正向检查"：正向检查（磁盘 ⊆ 桶）对"桶里多出幽灵"完全没有判别力 —— 那正是本条存在的理由。
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
-        .as("反向：GM 桶里的名字必须 ∈（本仓源码里的 *Tool.java ∪ 具名外来工具集 10 条）⇒ 幽灵条目仍然当场红")
-        .isSubsetOf(concat(new ArrayList<>(onDisk), EXTERNAL_TOOL_NAMES));
+        .as("反向：GM 桶里的名字必须 ∈（本仓源码里的 *Tool.java ∪ 具名外来工具集 ∪ AgentLib 五工具）" + "⇒ 幽灵条目仍然当场红")
+        .isSubsetOf(
+            concat(
+                concat(new ArrayList<>(onDisk), EXTERNAL_TOOL_NAMES),
+                AGENTLIB_DECISION_TOOL_NAMES));
   }
 
   /**
@@ -2438,8 +2445,9 @@ class SimosToolsTest {
     assertThat(ALL_READ_TOOL_NAMES)
         .as("读名单与写名单互斥")
         .doesNotContainAnyElementsOf(ALL_WRITE_TOOL_NAMES);
-    assertThat(concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES))
-        .as("读名单 + 写名单 == 现有口全名单（完整）：名单加项却没登记到任一侧，这里红")
+    assertThat(
+            concat(concat(ALL_READ_TOOL_NAMES, ALL_WRITE_TOOL_NAMES), AGENTLIB_DECISION_TOOL_NAMES))
+        .as("读名单 + 写名单 + AgentLib 五工具 == 现有口全名单（完整）：名单加项却没登记到任一侧，这里红")
         .containsExactlyInAnyOrderElementsOf(GM_TOOL_NAMES);
     for (String name : covered) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();

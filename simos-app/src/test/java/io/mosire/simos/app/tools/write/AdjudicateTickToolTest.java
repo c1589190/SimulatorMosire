@@ -142,7 +142,7 @@ class AdjudicateTickToolTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -151,7 +151,6 @@ class AdjudicateTickToolTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -872,17 +871,12 @@ class AdjudicateTickToolTest {
             MAP_ID + "/region/r-part",
             MAP_ID + "/hex/1_1"));
     samples.put(
-        "ga.DecideDecisionPacket",
+        "ga.ApplyDecisionPackage",
         List.of(
-            "{\"id\":\"pkt-x\",\"decision\":\"APPROVE\",\"decidedBy\":\"external-mcp\"}",
-            "decision-packet/pkt-x"));
+            io.mosire.simos.app.decision.DecisionPackageTestSupport.sampleApplyPayload(),
+            "decision-package/"
+                + io.mosire.simos.app.decision.DecisionPackageTestSupport.SAMPLE_PACKET_ID));
     samples.put("gov.DeleteNation", List.of("{\"nationId\":\"n-x\"}", "nation/n-x"));
-    samples.put(
-        "ga.SubmitDecisionPacket",
-        List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
-    samples.put(
-        "ga.UpsertDecisionPacket",
-        List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
     samples.put(
         "ga.UpsertMergedEffectPlan", List.of("{\"id\":\"merge-x\"}", "merged-plan/merge-x"));
     samples.put("social.DeleteCity", List.of("{\"id\":\"c-missing\"}"));
@@ -978,8 +972,9 @@ class AdjudicateTickToolTest {
         .as(
             "101 条样本一条不漏（82 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）"
                 + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97；"
-                + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101）")
-        .hasSize(101);
+                + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101；"
+                + "★★ 2026-10-17 S1：旧 Decide/Submit/UpsertDecisionPacket 三条退役、新增 ApplyDecisionPackage ⇒ 101 → 99）")
+        .hasSize(99);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

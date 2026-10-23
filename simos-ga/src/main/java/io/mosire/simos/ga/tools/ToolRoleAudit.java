@@ -31,10 +31,10 @@ import java.util.TreeSet;
  *       DM</b>。
  * </ol>
  *
- * <p>★★ <b>2026-10-17 批 R 追加 post-wrap 两件（审核 P1-1 / P1-2）</b>：{@link #requireFacesOnAgentTools}（语义同上两段，但读
- * {@link AgentTool#roles()} 的**字符串**、不再强转 {@link SimosTool} ⇒ 能在记录壳上跑）与 {@link #declaredRoleCatalog}（装订期
- * {@code RoleCatalogAudit} 的输入 A）。前两段**一个字没动**（包装前的旧判据继续存在）：包装丢角色（记录壳不转发 {@code
- * roles()} ⇒ 空声明 = 本维不表态）只有 post-wrap 这一段看得见。
+ * <p>★★ <b>2026-10-17 批 R 追加 post-wrap 两件（审核 P1-1 / P1-2）</b>：{@link
+ * #requireFacesOnAgentTools}（语义同上两段，但读 {@link AgentTool#roles()} 的**字符串**、不再强转 {@link SimosTool} ⇒
+ * 能在记录壳上跑）与 {@link #declaredRoleCatalog}（装订期 {@code RoleCatalogAudit} 的输入
+ * A）。前两段**一个字没动**（包装前的旧判据继续存在）：包装丢角色（记录壳不转发 {@code roles()} ⇒ 空声明 = 本维不表态）只有 post-wrap 这一段看得见。
  *
  * <p>★ <b>为什么本类住在 {@code simos-ga}</b>：它只认 {@link AgentTool} + {@link ToolRole}（契约层类型），不认任何域类型与 app
  * 的桶枚举 —— 与 {@link ToolBuckets} 同款（"工具运作"的纯规则）。{@code app} 负责把 {@code Role} 映射成 {@link ToolRole}
@@ -141,13 +141,13 @@ public final class ToolRoleAudit {
   }
 
   /**
-   * ★★ <b>包装后（post-wrap）的双面校验</b>（2026-10-17 批 R，计划 §4.4 / 审核 P1-1、P1-2）：语义同 {@link #requireFaces}（某面工具 ⇔
-   * 该面角色），但读 {@link AgentTool#roles()} 的**字符串**，与 {@link ToolRole#name()} 比对，**不再强转 {@link SimosTool}** ⇒
-   * 记录壳（{@code RecordingToolSource.RecordingTool}）上也能跑。
+   * ★★ <b>包装后（post-wrap）的双面校验</b>（2026-10-17 批 R，计划 §4.4 / 审核 P1-1、P1-2）：语义同 {@link
+   * #requireFaces}（某面工具 ⇔ 该面角色），但读 {@link AgentTool#roles()} 的**字符串**，与 {@link ToolRole#name()}
+   * 比对，**不再强转 {@link SimosTool}** ⇒ 记录壳（{@code RecordingToolSource.RecordingTool}）上也能跑。
    *
    * <p>★ <b>为什么必须另起一段</b>：{@link #requireFaces} 靠 {@code (SimosTool) tool} 取声明，只能在**包装前**跑；而 {@code
-   * Shell} 真正注册/暴露给 MCP 的是记录壳 ⇒ 只跑包装前那一段，包装丢角色（空声明 = 本维不表态）会静默放过（审核 §1 探针实测
-   * {@code raw_roles=[GM]; wrapped_roles=[]}）。
+   * Shell} 真正注册/暴露给 MCP 的是记录壳 ⇒ 只跑包装前那一段，包装丢角色（空声明 = 本维不表态）会静默放过（审核 §1 探针实测 {@code raw_roles=[GM];
+   * wrapped_roles=[]}）。
    *
    * <p>★ <b>两桶同名工具逐实例各验自己那面</b>：{@code gmFace} 与 {@code decisionFace} 里的每个实例**分别**读自己的 {@code
    * roles()}，再与两份桶成员名单双向对照——**不按名字合并、不在两实例里任选一侧**。⇒ "GM 面实例声明 {GM}、决策人面实例声明 {DM}"
@@ -157,7 +157,8 @@ public final class ToolRoleAudit {
    * @param decisionFace 装配给决策人的工具面实际实例（决策人注册表；只读）
    * @throws IllegalStateException 任一面有工具未声明该面角色，或某个同名工具的声明与两桶实际成员不符
    */
-  public static void requireFacesOnAgentTools(List<AgentTool> gmFace, List<AgentTool> decisionFace) {
+  public static void requireFacesOnAgentTools(
+      List<AgentTool> gmFace, List<AgentTool> decisionFace) {
     Objects.requireNonNull(gmFace, "gmFace");
     Objects.requireNonNull(decisionFace, "decisionFace");
     requireFaceOnAgentTools(gmFace, ToolRole.GM);
@@ -177,15 +178,15 @@ public final class ToolRoleAudit {
   }
 
   /**
-   * ★★ <b>装订期审计的输入 A（声明面，post-wrap）</b>（2026-10-17 批 R，计划 §4.4 / 审核 P1-2）：把两个面的**实际实例**的
-   * {@link AgentTool#roles()} 汇成「角色名 → 工具名集合」。
+   * ★★ <b>装订期审计的输入 A（声明面，post-wrap）</b>（2026-10-17 批 R，计划 §4.4 / 审核 P1-2）：把两个面的**实际实例**的 {@link
+   * AgentTool#roles()} 汇成「角色名 → 工具名集合」。
    *
    * <p>★ <b>与输入 B（实际桶成员投影）是两个独立观察面</b>：本方法**不读桶名单**（B 由调用方另行投影，见 {@code
-   * RoleCatalogAudit.withHandwrittenCatalog}）。两者的键都是角色名（{@link ToolRole#name()}），值都是工具名 ⇒ "声明写错成另一个已知角色 /
-   * 改成空、桶没动"能被 {@code RoleCatalogAudit} 的对账抓红（同一时刻面校验也会先红）。
+   * RoleCatalogAudit.withHandwrittenCatalog}）。两者的键都是角色名（{@link ToolRole#name()}），值都是工具名 ⇒
+   * "声明写错成另一个已知角色 / 改成空、桶没动"能被 {@code RoleCatalogAudit} 的对账抓红（同一时刻面校验也会先红）。
    *
-   * <p>★ <b>空角色名不在这里吞掉</b>：{@code null} 读作空串（{@code RoleCatalogAudit} 自己的防呆口径），空白名会让库的目录防御
-   * （{@code withDerivation} 的拷贝）**响亮失败**——不静默丢一项，把漂移洗成"没声明"。
+   * <p>★ <b>空角色名不在这里吞掉</b>：{@code null} 读作空串（{@code RoleCatalogAudit} 自己的防呆口径），空白名会让库的目录防御 （{@code
+   * withDerivation} 的拷贝）**响亮失败**——不静默丢一项，把漂移洗成"没声明"。
    *
    * @param gmFace GM 面实际实例（记录壳之后的注册表）
    * @param decisionFace 装配给决策人的实际实例
@@ -211,8 +212,7 @@ public final class ToolRoleAudit {
     for (AgentTool tool : tools) {
       String name = tool.name();
       if (!seen.add(name)) {
-        throw new IllegalStateException(
-            "工具面装配故障：" + face + " 面里出现重名工具 " + name + "（同一面重复注册）。");
+        throw new IllegalStateException("工具面装配故障：" + face + " 面里出现重名工具 " + name + "（同一面重复注册）。");
       }
       Set<String> roles = roleNamesOf(tool);
       if (!roles.contains(face.name())) {
@@ -235,10 +235,7 @@ public final class ToolRoleAudit {
 
   /** 双向对照（post-wrap，逐实例）：该实例的 {@code roles()} ⇔ 两份实际桶成员名单。 */
   private static void collectAgentToolFaults(
-      Set<String> faults,
-      List<AgentTool> face,
-      Set<String> gmNames,
-      Set<String> decisionNames) {
+      Set<String> faults, List<AgentTool> face, Set<String> gmNames, Set<String> decisionNames) {
     for (AgentTool tool : face) {
       String name = tool.name();
       Set<String> roles = roleNamesOf(tool);

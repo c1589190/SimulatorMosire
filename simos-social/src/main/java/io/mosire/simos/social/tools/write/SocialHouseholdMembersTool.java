@@ -3,7 +3,6 @@ package io.mosire.simos.social.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -45,8 +44,7 @@ import java.util.Set;
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；只写 social 命名空间。
  */
-public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool
-    implements SimosTool, DecisionProposable {
+public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.social.household.members";

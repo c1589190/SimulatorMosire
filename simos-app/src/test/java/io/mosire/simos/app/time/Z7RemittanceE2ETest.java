@@ -138,7 +138,7 @@ class Z7RemittanceE2ETest {
   /** 真空库壳：零中央国库 + 省 rate 指定（政策改 economy 切片）；bootstrap 后 head=1。 */
   private static Shell shellWithProvinceRate(Path storeDir, long rate) {
     ShellConfig config =
-        ShellConfig.defaults(storeDir).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
+        ShellConfig.defaults(storeDir).withPorts(0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
     Shell shell = Shell.start(config);
     try {
       SimulationState state = SmallWorld.state(config.mapId());

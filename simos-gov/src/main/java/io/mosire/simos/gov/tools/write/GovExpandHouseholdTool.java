@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -82,7 +81,7 @@ import java.util.UUID;
  *
  * <p>★ <b>不自动</b>：本工具不选人以外的任何自动动作——招多少人/招不招由调用方显式给 {@code count}；缺员只告警（Z3c-1）。
  */
-public final class GovExpandHouseholdTool implements SimosTool, DecisionProposable {
+public final class GovExpandHouseholdTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.expandHousehold}）。 */
   public static final String NAME = "simos.gov.expandHousehold";

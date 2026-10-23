@@ -35,10 +35,10 @@ import java.util.Objects;
  * <p>★ 扁平载荷字段由 {@link GaPayloads#requireMergedEffectPlan(JsonNode)} 读；{@code participantIds}
  * 允许历史已删除的决策人（与 packet 同口径，不做存在性校验）。
  *
- * <p>★ {@link CommandTargets#targetPaths} 返回 {@code merged-plan/<id>}；路径串逐字保留（见 {@link
- * UpsertDecisionPacketHandler} 的类注）。
+ * <p>★ {@link CommandTargets#targetPaths} 返回 {@code merged-plan/<id>}；路径串逐字保留（见 {@code
+ * ga.ApplyDecisionPackage} 的类注）。
  *
- * <p>★ 改名理由与权限口径同 {@link UpsertDecisionPacketHandler} 的类注（{@code namespaceOf} 按类型前缀选 codec； <b>不打
+ * <p>★ 改名理由与权限口径同 {@code ga.ApplyDecisionPackage} 的类注（{@code namespaceOf} 按类型前缀选 codec； <b>不打
  * {@code DmUsableCommand} ⇒ 仅 GM</b>）。
  */
 public final class UpsertMergedEffectPlanHandler implements CommandHandler, CommandTargets {

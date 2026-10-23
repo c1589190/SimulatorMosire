@@ -125,7 +125,7 @@ public final class GovZ6WorldFixture {
    */
   public static World smallWorldGenesis(Path storeDir, String label) {
     ShellConfig config =
-        ShellConfig.defaults(storeDir).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
+        ShellConfig.defaults(storeDir).withPorts(0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
     Shell shell = Shell.start(config);
     try {
       boolean seeded = GovGenesisSeedAccess.seed(shell);

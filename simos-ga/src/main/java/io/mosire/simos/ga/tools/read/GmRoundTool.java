@@ -1,5 +1,6 @@
 package io.mosire.simos.ga.tools.read;
 
+import io.mosire.agentlib.decision.PackageState;
 import io.mosire.agentlib.permission.Operation;
 import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceId;
@@ -12,8 +13,7 @@ import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.DecisionPacket;
-import io.mosire.simos.ga.model.PacketStatus;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -194,8 +194,11 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
       List<String> pendingQuestions,
       List<String> pendingAcks) {
     String id = maker.id().value();
-    DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetIdOf(id, tick)));
-    boolean confirmed = packet != null && packet.status() == PacketStatus.PENDING;
+    DecisionRecord record = ga.decisionPackets().get(DecisionPacketId.parse(packetIdOf(id, tick)));
+    // 设计书 §5.4：PROPOSED 视图为 PENDING，但 GM 已经可以裁决；这里把"尚未开始裁决"作为
+    // 旧看板的 pendingConfirmations 口径，避免把精确 PackageState 反推成第二个状态机。
+    boolean confirmed =
+        record != null && record.packageState().pkg().state() != PackageState.PROPOSED;
     int openQuestions = openQuestionsOf(ga, replied, maker.id());
     boolean acked = AdjudicationAckTool.isAcked(ga, tick, id);
     if (!confirmed) {
@@ -209,8 +212,8 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
     }
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("id", id);
-    row.put("packetStatus", packet == null ? null : packet.status().name());
-    row.put("callCount", packet == null ? 0 : packet.calls().size());
+    row.put("packetStatus", record == null ? null : record.view().status().name());
+    row.put("callCount", record == null ? 0 : record.packageState().pkg().items().size());
     row.put("openQuestions", openQuestions);
     row.put("adjudicationAcked", acked);
     return row;

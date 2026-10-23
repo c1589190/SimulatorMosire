@@ -83,7 +83,7 @@ class MapBlockApiTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     port = shell.boundGuiPort();
     client = HttpClient.newHttpClient();
   }

@@ -6,13 +6,11 @@ import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.id.VerdictId;
-import io.mosire.simos.ga.model.CallStatus;
 import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.DecisionRecord;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -42,14 +40,9 @@ import java.util.Set;
  * "搬迁前能构造、搬迁后当场抛"的失败面，属<b>另一次决定</b>（记入台账，留 3e 或后续批次复核）。今天这条外键的落点仍是<b>命令期</b>， 与 {@code
  * army.CreateArmy} 的 {@code masterGovUnitId} 同款口径。
  *
- * <p>★★ <b>值类型仍留 {@code simos-sd}</b>（{@link DecisionPacket} / {@link MergedEffectPlan} / {@link
- * Directive} / {@link Verdict} / {@link DecisionMaker} / {@link DecisionInfoEntry} / {@code
- * EffectId} 及它们的 id）：它们仍被 sd 的其余组件与 <b>sd 的测试</b>引用，而 {@code simos-sd} 不得依赖 {@code simos-ga}
- * （那会与既有的 {@code ga → sd} 成环，模块边界 enforcer 建图期直接拒）⇒ 本模块<b>反向引用</b>它们 （既有方向，不新增边，零 pom 改动）。★
- * 本批唯一的例外是 {@link Effect} 整族（{@code Effect}/{@code EffectKind}/{@code EffectStatus}/{@code
- * Trigger}/{@code Action}）：它们<b>搬进本模块</b> （{@code io.mosire.simos.ga.effect}）—— 判据是"搬走后 sd
- * 侧是否仍引用它"：{@code Directive.effects()} 只引 {@code EffectId}（<b>留 sd</b>），其余四个类型 sd 侧零引用 ⇒ 搬它们不产生任何
- * {@code sd → ga} 边。
+ * <p>★★ <b>{@code decisionPackets} 的值类型是 {@link DecisionRecord}</b>（设计书 §5）：精确包状态只在 {@code
+ * DecisionRecord.packageState()}（AgentLib {@code DecisionPackageSnapshot}），旧的 {@link
+ * io.mosire.simos.ga.model.DecisionPacket} 已降为只读视图，不再进入这张表。
  *
  * <p>★ <b>七张表的键都必须等于值内 id</b>（{@code decisionMaker} 一条与其余五张同形；{@code info} 的键是 canonical 地址串、
  * 值是**该地址下的条目列表**——{@code FieldDelta} 的键约定是"各 key 类型的裸值 {@code toString()}"，而 {@code Address} 没有重写
@@ -74,7 +67,7 @@ import java.util.Set;
  *     既有的六个键在线格式里的次序一字未动）
  */
 public record GaState(
-    Map<DecisionPacketId, DecisionPacket> decisionPackets,
+    Map<DecisionPacketId, DecisionRecord> decisionPackets,
     Map<MergedEffectPlanId, MergedEffectPlan> mergedEffectPlans,
     Map<DirectiveId, Directive> directives,
     Map<VerdictId, Verdict> verdicts,
@@ -91,7 +84,7 @@ public record GaState(
     decisionMakers = Collections.unmodifiableMap(copyDecisionMakers(decisionMakers));
     info = Collections.unmodifiableMap(copyInfo(info));
     effects = Collections.unmodifiableMap(copyEffects(effects));
-    requirePacketShape(decisionPackets);
+    requireDecisionRecordShape(decisionPackets);
     requireAtMostOneActiveDirective(directives);
     requireVerdictReferences(directives, verdicts);
     requireDecisionMakerReferences(directives, decisionMakers);
@@ -105,10 +98,10 @@ public record GaState(
   /**
    * 一个组件一个 with（照 {@code GovState} / {@code GameMap} 的形制）。
    *
-   * <p>★★ <b>本方法保留合并效果集、决策记录、判决、决策人与 INFO / 效果</b>：它是 {@code UpsertDecisionPacket} / {@code
-   * SubmitDecisionPacket} / {@code DecideDecisionPacket} 三条命令重写 {@code decisionPackets} 的推荐入口。
+   * <p>★★ <b>本方法保留合并效果集、决策记录、判决、决策人与 INFO / 效果</b>：它是 {@code ga.ApplyDecisionPackage} 重写 {@code
+   * decisionPackets} 的唯一推荐入口。
    */
-  public GaState withDecisionPackets(Map<DecisionPacketId, DecisionPacket> value) {
+  public GaState withDecisionPackets(Map<DecisionPacketId, DecisionRecord> value) {
     return new GaState(
         value, mergedEffectPlans, directives, verdicts, decisionMakers, info, effects);
   }
@@ -159,21 +152,22 @@ public record GaState(
   }
 
   /** 决策包表拷贝 + 键/值非 null + 键 == 值内 id；null ⇒ 空表（缺键读法）。 */
-  private static Map<DecisionPacketId, DecisionPacket> copyPackets(
-      Map<DecisionPacketId, DecisionPacket> map) {
+  private static Map<DecisionPacketId, DecisionRecord> copyPackets(
+      Map<DecisionPacketId, DecisionRecord> map) {
     if (map == null) {
       return new LinkedHashMap<>();
     }
-    Map<DecisionPacketId, DecisionPacket> copy = new LinkedHashMap<>();
-    for (Map.Entry<DecisionPacketId, DecisionPacket> entry : map.entrySet()) {
+    Map<DecisionPacketId, DecisionRecord> copy = new LinkedHashMap<>();
+    for (Map.Entry<DecisionPacketId, DecisionRecord> entry : map.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("decisionPackets 的键与值都不得为 null: " + entry.getKey());
       }
-      if (!entry.getKey().equals(entry.getValue().id())) {
+      DecisionRecord record = entry.getValue();
+      if (!entry.getKey().equals(record.id())) {
         throw new IllegalArgumentException(
-            "决策包键必须等于值内 id: key=" + entry.getKey() + " id=" + entry.getValue().id());
+            "决策包键必须等于值内 id: key=" + entry.getKey() + " id=" + record.id());
       }
-      copy.put(entry.getKey(), entry.getValue());
+      copy.put(entry.getKey(), record);
     }
     return copy;
   }
@@ -303,20 +297,34 @@ public record GaState(
   }
 
   /**
-   * 包内形状：{@code MERGED} 的 call 必须带 {@code mergedPlanId}（自 {@code SdState} 的原不变量整条搬来）。
-   *
-   * <p>★ 其余两条原不变量（键 == 值内 id、{@code callIndex} 严格递增）已在拷贝或 {@link DecisionPacket} 自己的构造期判， 不在此重复。
+   * 决策包状态形状（设计书 §5.3）：`DecisionRecord` 自己的构造期判据已覆盖 id/proposer/callMeta/contentVersion；
+   * 这里在完整状态树入口再判一次，确保绕过 handler 的构造（夹具、回放、分岔）不能造出"表键与记录身份不一致"的树。
    */
-  private static void requirePacketShape(Map<DecisionPacketId, DecisionPacket> packets) {
-    for (DecisionPacket packet : packets.values()) {
-      for (FormattedCall call : packet.calls()) {
-        if (call.status() == CallStatus.MERGED && call.mergedPlanId().isEmpty()) {
-          throw new IllegalArgumentException(
-              "MERGED 的 FormattedCall 必须带 mergedPlanId: "
-                  + packet.id().value()
-                  + ":"
-                  + call.callIndex());
-        }
+  private static void requireDecisionRecordShape(Map<DecisionPacketId, DecisionRecord> packets) {
+    for (Map.Entry<DecisionPacketId, DecisionRecord> entry : packets.entrySet()) {
+      DecisionRecord record = entry.getValue();
+      if (!entry.getKey().equals(record.id())) {
+        throw new IllegalArgumentException(
+            "决策包键必须等于 DecisionRecord.id: key=" + entry.getKey() + " id=" + record.id());
+      }
+      if (!record.id().value().equals(record.packageState().pkg().id())) {
+        throw new IllegalArgumentException(
+            "DecisionRecord.id 必须等于 packageState.pkg().id: id="
+                + record.id().value()
+                + " pkg="
+                + record.packageState().pkg().id());
+      }
+      if (!record.proposerId().value().equals(record.packageState().pkg().proposerKey())) {
+        throw new IllegalArgumentException(
+            "DecisionRecord.proposerId 必须等于 packageState.pkg().proposerKey: proposer="
+                + record.proposerId().value()
+                + " pkgProposer="
+                + record.packageState().pkg().proposerKey());
+      }
+      if (record.packageState().contentVersion() < 1L) {
+        throw new IllegalArgumentException(
+            "DecisionRecord.packageState.contentVersion 必须 ≥ 1: "
+                + record.packageState().contentVersion());
       }
     }
   }

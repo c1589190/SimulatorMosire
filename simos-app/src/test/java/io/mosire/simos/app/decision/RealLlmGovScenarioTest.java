@@ -11,6 +11,7 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.spec.McpSchema;
 import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
+import io.mosire.agentlib.decision.DecisionPackageTools;
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmClient;
 import io.mosire.agentlib.llm.LlmMessage;
@@ -65,8 +66,6 @@ import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.tools.read.GmPacketTool;
-import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
-import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.PutInfoTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
@@ -265,7 +264,7 @@ class RealLlmGovScenarioTest {
     // ★ 不注入 llm ⇒ 生产路径：按决策人 providerId 经 AgentLib 配置解析真 provider。
     ShellConfig shellConfig =
         new ShellConfig(
-            storeDir, CHECKPOINT_INTERVAL, 0, 0, "/mcp", 0, INITIATOR, MAP_ID, "127.0.0.1", false);
+            storeDir, CHECKPOINT_INTERVAL, 0, 0, "/mcp", INITIATOR, MAP_ID, "127.0.0.1", false);
     boolean fake = "1".equals(envText("SIMOS_GOV_SCENARIO_FAKE"));
     if (fake) {
       fakeLlmClients = new ScriptedGovLlmClients();
@@ -559,9 +558,9 @@ class RealLlmGovScenarioTest {
     List<DecisionPacket> out = new ArrayList<>();
     for (String dmId : dmIds) {
       DecisionPacketId id = DecisionPacketId.parse("pkt-" + dmId + "-" + tick);
-      DecisionPacket packet = sd.decisionPackets().get(id);
-      if (packet != null) {
-        out.add(packet);
+      io.mosire.simos.ga.model.DecisionRecord record = sd.decisionPackets().get(id);
+      if (record != null) {
+        out.add(record.view());
       }
     }
     return List.copyOf(out);
@@ -677,7 +676,7 @@ class RealLlmGovScenarioTest {
       args.put("branch", MAIN.value());
       args.put("expectedRevision", head());
       try {
-        decisionViews.add(callToolJson(GmDecidePacketTool.NAME, args));
+        decisionViews.add(callToolJson(DecisionPackageTools.DECIDE_NAME, args));
         approvedCalls += approveIndexes.size();
         rejectedViews.addAll(rejected);
       } catch (Exception e) {
@@ -704,7 +703,7 @@ class RealLlmGovScenarioTest {
     JsonNode execution = null;
     String batchRejection = null;
     try {
-      McpToolOutcome outcome = callToolOutcome(GmPacketExecuteTool.NAME, execArgs);
+      McpToolOutcome outcome = callToolOutcome(DecisionPackageTools.COMMIT_NAME, execArgs);
       if (outcome.isError()) {
         // ★ 整批被拒（世界业务拒 / CONFLICT）：原文照录 —— 不折成"未知错误"，也绝不静默重试。
         batchRejection = truncate(outcome.raw(), 4000);

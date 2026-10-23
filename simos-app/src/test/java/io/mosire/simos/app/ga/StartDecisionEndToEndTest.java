@@ -8,6 +8,7 @@ import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.permission.RoleSet;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
@@ -139,7 +140,7 @@ class StartDecisionEndToEndTest {
   @BeforeEach
   void startShell() {
     seedGenesis();
-    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0, 0);
+    ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
         Shell.start(
             new ShellConfig(
@@ -148,7 +149,6 @@ class StartDecisionEndToEndTest {
                 base.guiPort(),
                 base.mcpPort(),
                 base.mcpPath(),
-                base.approvalPort(),
                 TEST_INITIATOR,
                 base.mapId(),
                 base.bindAddress()));
@@ -301,7 +301,7 @@ class StartDecisionEndToEndTest {
     ToolContext context =
         new ToolContext(
             AccessToken.DEFAULT,
-            AgentPermissionSet.unrestricted(AccessToken.DEFAULT),
+            AgentPermissionSet.unrestricted(AccessToken.DEFAULT).withRoles(RoleSet.of("GM")),
             Map.of(),
             args,
             AgentIdentity.external());

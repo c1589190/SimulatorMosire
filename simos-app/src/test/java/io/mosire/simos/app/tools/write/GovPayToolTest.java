@@ -76,7 +76,7 @@ class GovPayToolTest {
 
   /** 起一个真壳（空 store）并把真 {@link GovPayTool} 交给回调——工具只依赖 core/query，验证分支不碰世界。 */
   private void withTool(java.util.function.Consumer<GovPayTool> body) {
-    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0))) {
       // ★★ 2026-10-12 B3 收尾（C3）：GovPayTool 已下放到 simos-gov（io.mosire.simos.gov.tools.write）
       //   ⇒ 构造器改吃 GovToolSupport 接缝束，七条实参与生产装配（SimosToolSource:670-676）同源。
       //   ★ 旧三参构造隐含的"缺省历法时钟"由 AppGovToolManpower(CalendarService.defaults()) 原样承接

@@ -14,7 +14,6 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -91,7 +90,7 @@ import java.util.UUID;
  * REJECTED} 带逐条可读拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
-public final class LevyRegionTool implements SimosTool, DecisionProposable {
+public final class LevyRegionTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它**不是**一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.unit.levyRegion";

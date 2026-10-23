@@ -236,7 +236,7 @@ public final class GmActAsTool implements SimosTool {
       String decisionMakerId = ToolSchema.requiredText(args, "decisionMakerId");
       String tool = ToolSchema.requiredText(args, "tool");
       // ★ args 的解析复用同包里已有的那一份（ReviseCallTool 也这么用）：缺省 = 空表，"对象参数"的解析不复制第二份。
-      Map<String, Object> innerArgs = ProposeCallTool.optionalMap(args, "args");
+      Map<String, Object> innerArgs = DecisionCallValidator.optionalMap(args, "args");
 
       // ★ 裁定 2：编排族显式具名拒（先判它——它与坐标、与决策人是否存在都无关，且省一次取状态）。
       if (ORCHESTRATION_TOOLS.contains(tool)) {

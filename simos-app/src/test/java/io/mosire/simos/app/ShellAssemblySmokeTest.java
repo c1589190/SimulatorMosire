@@ -156,7 +156,7 @@ class ShellAssemblySmokeTest {
    * 未跑全量）。★ 本值 = <b>本条真跑实测</b>：红在「{@code GM 桶条数锚点（增删工具须显式改本行）Expected size: 179 but was: 180}」（批 U
    * 台账 §1 有原始输出）；★ 决策人桶 <b>61 一条不动</b>（该工具 {@code toolRoles()} 只有 GM ⇒ 那条锚点同一次跑没红）。
    */
-  private static final int GM_BUCKET_SIZE = 180;
+  private static final int GM_BUCKET_SIZE = 181;
 
   /** ★★ 2026-10-15 用户裁定「甲」：{@code 54 → 61}（= 类2 24 + 类3 37；那 7 条补了 DM 标签的工具进本桶）。 */
   private static final int DECISION_BUCKET_SIZE = 61;
@@ -170,7 +170,7 @@ class ShellAssemblySmokeTest {
   void realShellAssemblesAuditsBothToolFacesAndClosesCleanly() throws IOException {
     Path store = Files.createDirectories(tempDir.resolve("store"));
     // ★ 端口全 0 ⇒ OS 随机分配（guarded：绝不占 5711/5715/5713 这三个本仓服务端口）。
-    ShellConfig config = ShellConfig.defaults(store).withPorts(0, 0, 0);
+    ShellConfig config = ShellConfig.defaults(store).withPorts(0, 0);
 
     try (Shell shell = Shell.start(config)) {
       // ★★ 判据：能执行到这一行 = 上一行 start() 没有抛 = 装配完成处的 ToolRoleAudit.requireFaces

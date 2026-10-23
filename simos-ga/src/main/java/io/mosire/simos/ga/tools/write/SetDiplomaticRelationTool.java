@@ -47,9 +47,9 @@ import java.util.Set;
  * ga:decision-maker/<自己>}（{@code decisionWriteResources}）；缺省策略取 {@code READ_ONLY} 使"未表态 ga"者
  * fail-closed。
  *
- * <p>★ <b>ToolSpec 敏感 + 既有审批链</b>（基类）：**决策人直写**链路 = {@code AutoApproveGate → ConfirmGate → 待批}，GM
- * 需在审批面点头。工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。★ **决策人只有直写这一条路径**：本工具不在 {@code
- * ProposalCatalog}（{@code simos.ga.packet.propose} 的可提议清单）里 ⇒ 没有"提议零审批"那条路（2026-10-15 回代码核实）。
+ * <p>★ <b>ToolSpec 敏感 + {@code gate=Ask}</b>（基类）：决策人调用时由 {@code DecisionTurnScope} 自动收进本 tick 决策包，由
+ * GM 通过 AgentLib 五工具裁决/提交，<b>不再走单条 PendingApprovals</b>。工具名不是命令类型 ⇒ 不进 catalog / {@code
+ * PAYLOAD_HINTS}。
  */
 public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -116,8 +116,8 @@ public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool imp
         + "（谈判状态记这里）、tick 缺省=世界当前 tick 且不得记在未来；同 (from,to) 再调一次 = 更新该边，不新增第二条。"
         + "★ 目标按调用者身份解析：决策人调用时 from 必须是调用者自己的 Nation（不许冒名）；"
         + "GM 调用时显式点名，可为任意 Nation 对写边。"
-        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
-        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
+        + "★ 决策人调用时：本调用作为 Ask 自动进入本 tick 的决策包，由 GM 裁决/提交；"
+        + "它不会在回合内直写世界，也不再走单条审批面。";
   }
 
   @Override

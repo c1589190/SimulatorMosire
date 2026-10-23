@@ -11,7 +11,6 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -65,7 +64,7 @@ import java.util.UUID;
  * {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED}
  * 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
  */
-public final class GovSelectExamineesTool implements SimosTool, DecisionProposable {
+public final class GovSelectExamineesTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.selectExaminees";
@@ -338,20 +337,6 @@ public final class GovSelectExamineesTool implements SimosTool, DecisionProposab
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
-  /**
-   * ★ 可提议声明（批 K ①；{@code ProposalCatalog} 的名单就从工具面的这些实现者派生）：本工具是**创建型**——目标提取整键跳过 {@code
-   * newUnitId}，并让与参数/预览里 {@code newUnitId} 逐字相等的单位 id 一并跳过（新单位尚不存在 ⇒ 不按"将要成为的目标"判越界）。
-   */
-  @Override
-  public Set<String> skipKeys() {
-    return Set.of("newUnitId");
-  }
-
-  @Override
-  public boolean createsUnit() {
-    return true;
-  }
-
   @Override
   public Set<ToolRole> toolRoles() {
     // ★★ 2026-10-15 用户裁定「甲」：本工具**本来就该是决策人能提议的**（决策人的核心动作），当年只是**漏打了 DM 标签** ⇒ 补上。

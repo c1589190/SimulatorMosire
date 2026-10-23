@@ -43,12 +43,11 @@ import java.util.Set;
  * </ul>
  *
  * <p>★ <b>资源声明 = ga 命名空间的自己那一块</b>（同 {@code IssueDirectiveTool}）：{@code decisionWriteResources} +
- * {@code READ_ONLY} 缺省策略（使"未表态 ga"者 fail-closed，失效方向不是放宽）；ToolSpec 敏感 ⇒ **决策人直写**走决策人链路的
- * 既有审批（{@code AutoApproveGate → ConfirmGate → 待批}，需 GM 在审批面点头）。工具名不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}；命令类型本体已注册并登记载荷提示。
+ * {@code READ_ONLY} 缺省策略（使"未表态 ga"者 fail-closed，失效方向不是放宽）；ToolSpec 敏感 + {@code gate=Ask} ⇒ 决策人调用时由
+ * {@code DecisionTurnScope} 自动收进本 tick 决策包，由 GM 通过 AgentLib 五工具裁决/提交， <b>不再走单条
+ * PendingApprovals</b>。
  *
- * <p>★ <b>决策人只有直写这一条路径</b>：本工具不在 {@code ProposalCatalog}（{@code simos.ga.packet.propose} 的可提议清单）里 ⇒
- * 没有"提议零审批"那条路（2026-10-15 回代码核实）。
+ * <p>★ 工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令类型本体已注册并登记载荷提示。
  */
 public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -114,8 +113,8 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
         + "participants ≥2 且不重复；text 自然语言；tick 缺省=世界当前 tick 且不得记在未来；eventId 缺省按 tick 合成。"
         + "★ 目标按调用者身份解析：决策人调用时 participants 必须包含调用者自己的 Nation（不许替别国记名）；"
         + "GM 调用时显式点名，participants 原样生效（可为任意参与国集合记录事件）。"
-        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
-        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
+        + "★ 决策人调用时：本调用作为 Ask 自动进入本 tick 的决策包，由 GM 裁决/提交；"
+        + "它不会在回合内直写世界，也不再走单条审批面。";
   }
 
   @Override

@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ **R9（spec §11 末行）的生命周期验收（M5 T11；T4 曾扩到四口，**2026-09-22 随决策人 MCP 口撤销回到三口**）**： {@link
- * Shell#close()} 之后**三个端口**（GUI / MCP / 审批）全部释放， 且**无停驻的非守护线程**。
+ * ★★ **R9（spec §11 末行）的生命周期验收（M5 T11；HTTP 审批端口已按设计 §8.5 退役）**： {@link Shell#close()} 之后**两个端口**（GUI
+ * / MCP）全部释放， 且**无停驻的非守护线程**。
  *
  * <p>★ **判别力来源**：端口释放用"再绑一次"证——{@code close()} 漏掉任何一次 {@code stop}/{@code closeGracefully}，
  * 对应端口仍被监听，{@code ServerSocket.bind} 当场 {@code EADDRINUSE}（{@code SO_REUSEADDR} 不允两个监听者同占一个地址）。 这正是
@@ -33,22 +33,19 @@ class ShellLifecycleTest {
   @TempDir Path tempDir;
 
   @Test
-  void closeReleasesAllThreePortsAndLeavesNoLingeringNonDaemonThreads() {
+  void closeReleasesBothLivePortsAndLeavesNoLingeringNonDaemonThreads() {
     Set<String> threadsBefore = nonDaemonThreads();
 
-    Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
     int guiPort = shell.boundGuiPort();
     int mcpPort = shell.boundMcpPort();
-    int approvalPort = shell.boundApprovalPort();
     assertThat(guiPort).as("GUI 端口已绑定").isPositive();
     assertThat(mcpPort).as("MCP 端口已绑定").isPositive();
-    assertThat(approvalPort).as("审批端口已绑定").isPositive();
 
     shell.close();
 
     assertEventuallyRebindable("GUI", guiPort, shell);
     assertEventuallyRebindable("MCP", mcpPort, shell);
-    assertEventuallyRebindable("审批", approvalPort, shell);
 
     Set<String> leaked = awaitDrainedNonDaemonThreads(threadsBefore, THREAD_DRAIN_WAIT);
     assertThat(leaked).as("close() 后不得有本壳新建且仍停驻的非守护线程: %s", leaked).isEmpty();

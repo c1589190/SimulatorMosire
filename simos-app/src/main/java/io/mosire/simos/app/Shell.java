@@ -2,10 +2,8 @@ package io.mosire.simos.app;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.ApprovalCoordinator;
-import io.mosire.agentlib.approval.ApprovalHttpEndpoint;
 import io.mosire.agentlib.approval.AutoApproveGate;
 import io.mosire.agentlib.approval.ConfirmGate;
-import io.mosire.agentlib.approval.HttpApprovalChannel;
 import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.llm.ToolAssetResolver;
 import io.mosire.agentlib.mcp.AgentToMcpServer;
@@ -34,10 +32,8 @@ import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
 import io.mosire.simos.app.access.AppDecisionMakerExistence;
 import io.mosire.simos.app.access.DecisionCallerFactory;
-import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.NationOpeningSnapshot;
-import io.mosire.simos.app.decision.ProposalDeclarationAudit;
 import io.mosire.simos.app.ga.CommandDrain;
 import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.ga.channel.CliDecisionChannel;
@@ -128,9 +124,9 @@ import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.ga.effect.GaTimeParticipant;
 import io.mosire.simos.ga.resolve.GaResolver;
+import io.mosire.simos.ga.spi.ApplyDecisionPackageHandler;
 import io.mosire.simos.ga.spi.CancelEffectHandler;
 import io.mosire.simos.ga.spi.CreateDecisionMakerHandler;
-import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.ga.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.ga.spi.DirectiveWhitelist;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
@@ -143,10 +139,8 @@ import io.mosire.simos.ga.spi.SetDecisionMakerPeerHandler;
 import io.mosire.simos.ga.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.StartDecisionHandler;
-import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.ga.spi.ToolRole;
-import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.GaToolSource;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
@@ -282,8 +276,7 @@ import java.util.function.Supplier;
  * <p>★ **装配清单**（spec §3.2 第 1~7 步）：各模块 codec（map/social/unit/sd/economy/actor/gov/army）+ 全部 handler
  * + 全部 participant（{@link CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 各域 {@code Resolver}
  * （map/social/unit/sd/economy/actor/army）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
- * QueryService}（查询层，T3）；审批链（T6，S5：{@code PendingApprovals → HttpApprovalChannel →
- * ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior 判定）→ {@link SimosToolSource}（spec
+ * QueryService}（查询层，T3）；内部审批链（HTTP 面已退役，非包 Ask fail-closed）→ {@link SimosToolSource}（spec
  * §2.1：**唯一的 MCP 口 = {@link SimosToolSource.Role#GM}** = 读工具 + 通用写 + 全部窄写；**条数以工具面为准**，不在此钉死）经
  * {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5）→ {@link
  * AgentToMcpServer#startHttp}（**一次**，第 6 步，T7）→ GUI（第 7 步，T8）。
@@ -365,15 +358,6 @@ public final class Shell implements AutoCloseable {
 
   /** 审批登记表（T6，spec §3.2 第 3 步）：进程内唯一的那一份，端点与通道共享同一 id。 */
   private final PendingApprovals pendingApprovals;
-
-  /** HTTP 审批通道（T6）：端点真的绑定成功后才 {@code markUp()}（可用性认"端口在监听"）。 */
-  private final HttpApprovalChannel approvalChannel;
-
-  /** 审批编排器（T6，S5）：gates = {@code AutoApproveGate → ConfirmGate}，M5 无 LLM 上级判定。 */
-  private final ApprovalCoordinator approvalCoordinator;
-
-  /** 审批 HTTP 端点（T6，spec §3.2 第 4 步）：恒绑回环；关闭次序在 GUI 之后（spec §3.3）。 */
-  private final ApprovalHttpEndpoint approvalEndpoint;
 
   /** 工具调用唯一入口（T6）：**带审批**（非 {@code standard()}），T7 交给 {@code startHttp}。 */
   private final ToolCallAuthorizer toolAuthorizer;
@@ -483,9 +467,6 @@ public final class Shell implements AutoCloseable {
       AgentToMcpServer mcpServer,
       GuiServer guiServer,
       PendingApprovals pendingApprovals,
-      HttpApprovalChannel approvalChannel,
-      ApprovalCoordinator approvalCoordinator,
-      ApprovalHttpEndpoint approvalEndpoint,
       ToolCallAuthorizer toolAuthorizer,
       ToolCallAuthorizer gmToolAuthorizer,
       int registeredModuleCount,
@@ -514,9 +495,6 @@ public final class Shell implements AutoCloseable {
     this.mcpServer = mcpServer;
     this.guiServer = guiServer;
     this.pendingApprovals = pendingApprovals;
-    this.approvalChannel = approvalChannel;
-    this.approvalCoordinator = approvalCoordinator;
-    this.approvalEndpoint = approvalEndpoint;
     this.toolAuthorizer = toolAuthorizer;
     this.gmToolAuthorizer = gmToolAuthorizer;
     this.registeredModuleCount = registeredModuleCount;
@@ -993,14 +971,8 @@ public final class Shell implements AutoCloseable {
                 // 直接提交照常可用。──
                 new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
-                // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
-                //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM
-                // 工具调用）。
-                //   ★★ 2026-10-12 批次 3a：三条自 {@code sd.*} 改名 {@code ga.*}、handler 与两张表一起搬进
-                //   {@code simos-ga}（类型前缀决定变更集施加到哪个命名空间的 codec ⇒ 改名是硬约束）。
-                new UpsertDecisionPacketHandler(),
-                new SubmitDecisionPacketHandler(),
-                new DecideDecisionPacketHandler(),
+                // 决策包唯一内部写口（设计书 §6.1）：DM flush / GM decide / commit 都经这条命令。
+                new ApplyDecisionPackageHandler(),
                 // ★★ D3（2026-10-22 合并计划契约 §9）：合并效果计划整包 upsert（GM 建计划 / 执行器 outcome 回写）。
                 //   同 D2 三条：不打 DmUsableCommand ⇒ 仅 GM（执行器在系统上下文同批回写 outcome）。
                 //   ★★ 2026-10-12 批次 3a：同上改名 {@code ga.*} 并搬进 {@code simos-ga}。
@@ -1232,40 +1204,23 @@ public final class Shell implements AutoCloseable {
             new CliDecisionChannel(coreSimos, representableActors),
             new HttpDecisionChannel(coreSimos, representableActors));
 
-    // 审批链（T6，spec §3.2 第 3 步；S5：无 Superior 判定，M5 无 LLM）。
+    // 审批链（HTTP 通道已退役）：DM 的非包 Ask 没有可用通道 ⇒ 立即 DENY（fail-closed），不再偷偷恢复 HTTP。
     PendingApprovals pendingApprovals = new PendingApprovals();
-    HttpApprovalChannel approvalChannel = new HttpApprovalChannel(pendingApprovals);
-    // ★ 2026-10-23 L1：通道外再包一层日志装饰器（pending/approved/denied/timeout 四个可观测点），
-    //   审批判定语义仍逐字由 approvalChannel 决定；端点/端口/markUp 仍用原通道。
-    LoggingApprovalChannel loggingApprovalChannel = new LoggingApprovalChannel(approvalChannel);
     ApprovalCoordinator approvalCoordinator =
         new ApprovalCoordinator(
             List.of(new AutoApproveGate(pendingApprovals), new ConfirmGate()),
-            List.of(loggingApprovalChannel),
+            List.of(),
             pendingApprovals,
             APPROVAL_TIMEOUT,
             null);
-    // ★★ 2026-09-24 用户裁定：「为啥这种 GM 级命令要额外审批？改成 MCP/GM Agent **无脑过**」。
-    //    ⇒ **GM 面（MCP 口）另起一条链**：只挂 GmAutoApproveGate（直接批准），不再进「待批 → 人点」。
-    //    决策人那条链（上面的 approvalCoordinator）**一个字不改**：出令仍要 GM 在「决策 → 审批」点头。
-    //    ★ 为什么按链分而不是按请求分：两张面的 caller 桶都是 DEFAULT，从 ApprovalRequest 上分不开（见该类注）。
+    // GM 面仍保留内部无脑过（MCP/GM Agent 同级），不依赖 HTTP。
     ApprovalCoordinator gmApprovalCoordinator =
         new ApprovalCoordinator(
-            List.of(new GmAutoApproveGate()),
-            List.of(loggingApprovalChannel),
-            pendingApprovals,
-            APPROVAL_TIMEOUT,
-            null);
+            List.of(new GmAutoApproveGate()), List.of(), pendingApprovals, APPROVAL_TIMEOUT, null);
     ToolCallAuthorizer toolAuthorizer =
         ToolCallAuthorizer.of(new ToolExecutionGuard(), approvalCoordinator);
     ToolCallAuthorizer gmToolAuthorizer =
         ToolCallAuthorizer.of(new ToolExecutionGuard(), gmApprovalCoordinator);
-
-    // 端点先真的绑上端口，再 markUp 通道（可用性认"端口在监听"，spec §3.2 第 4 步）。
-    // ★ 恒回环，**不**随 config.bindAddress() 变（AgentLib 无 host 形参；对外面是 GUI 的 /api/approvals 代理）。
-    ApprovalHttpEndpoint approvalEndpoint =
-        ApprovalHttpEndpoint.start(config.approvalPort(), pendingApprovals, approvalCoordinator);
-    approvalChannel.markUp();
 
     // ★ T11C：决策人 agent 运行流的装配（三样在它之前就绪：带审批的 authorizer、provider 解析链、查询层）。
     //   ① 权限组走**同一个** authorizer（决策人的两条窄写是敏感工具 ⇒ 没有审批编排器就永远进不了工具体）；
@@ -1325,7 +1280,8 @@ public final class Shell implements AutoCloseable {
             // ★ P4 开场快照：**开关关着就一个字节都不装**（传 NONE ⇒ 运行流那边分得出"没开"与"开了没出图"）。
             config.openingSnapshot()
                 ? new NationOpeningSnapshot(renderService)
-                : DecisionAgentRunner.OpeningSnapshot.NONE);
+                : DecisionAgentRunner.OpeningSnapshot.NONE,
+            decisionToolSource.decisionCallPreviewer());
 
     // 工具集（spec §2.1）：MCP 口 = **GM 组** = 读工具 + 通用写 + 全部窄写（条数以工具面为准）；
     //   GM 组的权限集是显式构造的那一份（gmCaller 的 resourceScopes 逐命名空间表态），不再是 unrestricted 的空资源图。
@@ -1349,8 +1305,6 @@ public final class Shell implements AutoCloseable {
             commandTargets,
             SimosToolSource.Role.GM,
             decisionAgentService,
-            pendingApprovals,
-            approvalCoordinator,
             decisionCallerFactory,
             decisionTools);
     // ★★ 2026-10-13 急停协议（B，设计书 §7.2 的"装配三处"）：原因系统的**进程内**持有 + 本批新增的两条 GM 工具。
@@ -1401,18 +1355,6 @@ public final class Shell implements AutoCloseable {
     //   ★ 返回值是三份不可变清单（类1 GM_ONLY / 类2 DM_APPROVAL / 类3 DM_FREE），供后续批次（3b）与测试取用；
     //     这里只取它"每条工具都落进三格之一"的装配期必过效果。
     ToolClassAudit.requireClasses(gmToolFace, decisionAgentFace);
-    // ★★ 2026-10-15 批 K ①（设计书 §3.3 / 不变量 K2）：**可提议声明的装配期 fail-closed 审计**（照上面 ToolClassAudit
-    // 的接线形制）。
-    //   C1：工具面上每个实现了 `DecisionProposable` 的工具，其 `toolRoles()` 必须含 DM（用户口径「没有 DM 标签的工具不该出现在
-    //       提议名单里」）——以前没东西拦，现在装配期当场拦；
-    //   C2：两个档的目录成员 ⇔ 各自工具面上实现了该接口的工具（双向、不重不漏）——「声明了可提议」与「装配面注册了它」
-    //       必须逐条一致，缺一条就是静默的能力丢失（目录里没有实参可预览/执行）。
-    //   ★ 判据只来自两处**活的**声明（工具面的 instanceof + 工具自己的 toolRoles()），没有第二处名单；违反 ⇒ 当场抛，不降级成日志。
-    ProposalDeclarationAudit.requireProposable(
-        gmToolFace,
-        decisionAgentFace,
-        toolSource.proposalCatalog(),
-        decisionToolSource.proposalCatalog());
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
     //   ★ 2026-10-13（B）：源改包**合并后的 GM 面**（含三条新工具）⇒ 它们与其余工具同吃 RecordingToolSource，
@@ -1437,7 +1379,8 @@ public final class Shell implements AutoCloseable {
         RoleCatalogAudit.of(toolRegistry, Set.of(ToolRole.GM.name(), ToolRole.DM.name()))
             .withDerivation(
                 // 输入 A：run() 传进来的注册表快照（= 记录壳后的 GM 面）+ 装配给决策人的面，逐个实例读 roles()。
-                registry -> ToolRoleAudit.declaredRoleCatalog(registry.list(), assembledDecisionFace))
+                registry ->
+                    ToolRoleAudit.declaredRoleCatalog(registry.list(), assembledDecisionFace))
             .withHandwrittenCatalog(
                 // 输入 B：实际桶成员投影（不新建手抄清单；两份桶名单就是上面校验过的两个面）。
                 Map.of(
@@ -1472,23 +1415,20 @@ public final class Shell implements AutoCloseable {
       mcpUp = true;
     } finally {
       if (!mcpUp) {
-        // 口绑定失败：桥与审批端点/通道都不能留着占端口（GUI 尚未起，spec §3.3 里它排第一）。
+        // 口绑定失败：桥不能留着（GUI 尚未起）。
         toolBridge.close();
-        approvalEndpoint.close();
-        approvalChannel.close();
       }
     }
 
     // 走到这里口已监听（绑定失败在上面的 finally 里已收尾并抛出）；显式断言以钉死该后置条件。
     Objects.requireNonNull(mcpServer, "mcpServer");
 
-    // GUI（T8，spec §3.2 第 7 步）：审批面 base URL 指向刚绑定的端点，5711 的 /api/approvals 是它的透传代理。
+    // GUI（T8，spec §3.2 第 7 步）：无审批代理（HTTP 面已退役）。
     GuiServer guiServer =
         new GuiServer(
             queryService,
             coreSimos,
             config.mapId(),
-            "http://127.0.0.1:" + approvalEndpoint.boundPort(),
             gmToolUsage,
             llmConfig,
             decisionAdjudicationService,
@@ -1504,11 +1444,9 @@ public final class Shell implements AutoCloseable {
       guiUp = true;
     } finally {
       if (!guiUp) {
-        // GUI 绑定失败：MCP 口与审批端点/通道、工具桥不能留着占端口（spec §3.3 里 GUI 排第一，此处它还没起来）。
+        // GUI 绑定失败：MCP 口与工具桥不能留着占端口。
         mcpServer.close();
         toolBridge.close();
-        approvalEndpoint.close();
-        approvalChannel.close();
       }
     }
 
@@ -1539,9 +1477,7 @@ public final class Shell implements AutoCloseable {
             "mcpPort",
             mcpServer.boundPort(),
             "guiPort",
-            guiServer.boundPort(),
-            "approvalPort",
-            approvalEndpoint.boundPort()));
+            guiServer.boundPort()));
     return new Shell(
         config,
         coreSimos,
@@ -1552,9 +1488,6 @@ public final class Shell implements AutoCloseable {
         mcpServer,
         guiServer,
         pendingApprovals,
-        approvalChannel,
-        approvalCoordinator,
-        approvalEndpoint,
         toolAuthorizer,
         gmToolAuthorizer,
         codecs.size(),
@@ -1689,9 +1622,7 @@ public final class Shell implements AutoCloseable {
                 commandTargets,
                 role,
                 decisionAgentService,
-                gm ? pendingApprovals : null,
-                gm ? approvalCoordinator : null,
-                // ★ 2026-10-14 批 G（GM 代打）：同审批面那条惯例 —— 两个依赖**只有 GM 档用**（决策人不代打别人）。
+                // ★ 2026-10-14 批 G（GM 代打）：两个依赖**只有 GM 档用**（决策人不代打别人）。
                 gm ? decisionToolCaller : null,
                 gm ? decisionToolRegistry : null)
             .listTools();
@@ -1768,9 +1699,9 @@ public final class Shell implements AutoCloseable {
    * <p>★ **身份仍是 {@link AgentIdentity#external()}**（用户裁定①）：它是**审批面语义**（"这不是本进程派生的下级"），
    * 与权限**级别**正交。GM 若是经 MCP 连入的外部 agent，这个身份是对的。
    *
-   * <p>★★ <b>2026-10-17 批 R（计划 §4.3 / C2）：调用者身份挂 {@code {GM}}</b>。AgentLib 0.2.1 的角色判定 = {@code 调用者角色 ∩
-   * 工具声明角色 ≠ ∅}；调用者侧空集是 **⊥ = 谁都不是（fail-closed）** ⇒ 漏挂这一行，GM 面所有声明了角色的工具一律拒。
-   * 角色名**只从 `ToolRole.GM.name()` 派生**（不手写 {@code "GM"} 字面量）。★ 与决策人那条（{@code
+   * <p>★★ <b>2026-10-17 批 R（计划 §4.3 / C2）：调用者身份挂 {@code {GM}}</b>。AgentLib 0.2.1 的角色判定 = {@code
+   * 调用者角色 ∩ 工具声明角色 ≠ ∅}；调用者侧空集是 **⊥ = 谁都不是（fail-closed）** ⇒ 漏挂这一行，GM 面所有声明了角色的工具一律拒。 角色名**只从
+   * `ToolRole.GM.name()` 派生**（不手写 {@code "GM"} 字面量）。★ 与决策人那条（{@code
    * DecisionCallerFactory.permissionSetOf} 的 {@code {DM}}）成对：两条缺一，对应面的角色维就是死的。
    */
   private static AgentPermissionSet gmPermissionSet() {
@@ -1802,11 +1733,6 @@ public final class Shell implements AutoCloseable {
         // ★ 2026-10-17 批 R（C2）：GM / MCP 口 = {GM}（角色名从枚举派生，唯一拼写点仍是 ga-spi 的 ToolRole）。
         .roles(RoleSet.of(ToolRole.GM.name()))
         .build();
-  }
-
-  /** 审批端点实际绑定端口（{@code approvalPort=0} 时由 OS 分配；spec §3.1 的读回口径）。 */
-  public int boundApprovalPort() {
-    return approvalEndpoint.boundPort();
   }
 
   /**
@@ -1974,11 +1900,9 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 关闭：GUI → MCP → 工具桥 → 审批端点 → 审批通道 → {@link CoreSimos}（spec §3.3 的次序）。幂等。
+   * 关闭：GUI → MCP → 工具桥 → 决策人会话库 → {@link CoreSimos}。幂等。
    *
-   * <p>★ spec §3.3 的完整次序是 GUI → MCP → 审批端点 → 审批通道 → CoreSimos；工具桥是 app 内的注册表卸载，插在 MCP 与审批之间不改变
-   * 端口/线程的释放次序（MCP 先 {@code closeGracefully} 再停 server 由 AgentLib 契约实现）。★ **决策人会话库**（T11C）是 app 自己的
-   * 存储（不占端口、不参与 spec §3.3 的次序），与 CoreSimos 同批关（都在最后）。
+   * <p>HTTP 审批端点已退役；关壳不再有审批端口/通道需要按次序释放。
    */
   @Override
   public void close() {
@@ -1989,8 +1913,6 @@ public final class Shell implements AutoCloseable {
     guiServer.close();
     mcpServer.close();
     toolBridge.close();
-    approvalEndpoint.close();
-    approvalChannel.close();
     decisionConversations.close();
     coreSimos.close();
   }

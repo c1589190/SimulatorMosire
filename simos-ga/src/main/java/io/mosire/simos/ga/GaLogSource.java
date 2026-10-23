@@ -35,7 +35,7 @@ public enum GaLogSource implements LogOrigin {
    */
   GA_DECISION(
       "ga-decision",
-      "ga 命令的 handler 面（决策包整包 upsert/提交/GM 裁决、合并效果集落盘；出令/状态翻转/交判决；★ 3b-4 起含效果登记/取消）与具名拒绝",
+      "ga 命令的 handler 面（决策包 ga.ApplyDecisionPackage、合并效果集落盘；出令/状态翻转/交判决；★ 3b-4 起含效果登记/取消）与具名拒绝",
       LogOriginKind.SYSTEM),
   /** ★ 2026-10-12 批次 3a：{@code GaCodec} 的编解码与变更集施加（照 {@code GovLogSource.GOV_CODEC} 同档）。 */
   GA_CODEC("ga-codec", "GaCodec 编解码与变更集施加", LogOriginKind.SYSTEM),

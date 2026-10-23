@@ -271,7 +271,7 @@ class LegacyToolNameRetirementTest {
   // ────────────────────────────── 助手 ──────────────────────────────
 
   private Shell startShell() {
-    return Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0));
+    return Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0));
   }
 
   private static Set<String> namesOf(List<AgentTool> tools) {

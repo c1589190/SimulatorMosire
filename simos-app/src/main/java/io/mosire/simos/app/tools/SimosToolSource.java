@@ -1,10 +1,9 @@
 package io.mosire.simos.app.tools;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.AskKind;
-import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.decision.DecisionPackageTools;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
@@ -18,8 +17,11 @@ import io.mosire.docs.DocsCapability;
 import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.decision.CoreDecisionPackageReadPort;
+import io.mosire.simos.app.decision.CoreDecisionReadAudit;
+import io.mosire.simos.app.decision.CoreDecisionSubmissionPort;
 import io.mosire.simos.app.decision.DecisionAgentService;
-import io.mosire.simos.app.decision.ProposalCatalog;
+import io.mosire.simos.app.decision.DecisionCallPreviewer;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
@@ -27,6 +29,7 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolViews;
+import io.mosire.simos.app.tools.ga.AgentLibDecisionTool;
 import io.mosire.simos.app.tools.ga.AppGaDecisionHost;
 import io.mosire.simos.app.tools.ga.AppGaEffectExecution;
 import io.mosire.simos.app.tools.ga.AppGaProposalHost;
@@ -102,11 +105,11 @@ import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.ga.spi.SimosToolAdapter;
 import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaEffectExecution;
-import io.mosire.simos.ga.tools.GaProposalHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolSource;
@@ -122,7 +125,6 @@ import io.mosire.simos.ga.tools.read.DiplomacyTool;
 import io.mosire.simos.ga.tools.read.DiplomaticEventsTool;
 import io.mosire.simos.ga.tools.read.DirectivesTool;
 import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
-import io.mosire.simos.ga.tools.read.GmApprovalsTool;
 import io.mosire.simos.ga.tools.read.GmInboxTool;
 import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.read.GmPacketsTool;
@@ -138,21 +140,18 @@ import io.mosire.simos.ga.tools.write.CreateNationTool;
 import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmActAsTool;
-import io.mosire.simos.ga.tools.write.GmApproveTool;
-import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanUpsertTool;
 import io.mosire.simos.ga.tools.write.GmMessageSendTool;
-import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
-import io.mosire.simos.ga.tools.write.ProposeCallTool;
 import io.mosire.simos.ga.tools.write.PutInfoTool;
 import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.ga.tools.write.RegisterEffectTool;
 import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.RequestTool;
 import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
@@ -263,6 +262,7 @@ import io.mosire.simos.unit.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.unit.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.unit.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.state.BranchId;
 import io.mosire.workspace.CapabilityCatalog;
 import io.mosire.workspace.CapabilityCatalogs;
 import io.mosire.workspace.DefaultWorkspaceRegistry;
@@ -930,11 +930,8 @@ public final class SimosToolSource implements ToolSource {
    */
   private final GaToolSource source;
 
-  /**
-   * ★★ <b>本档的可提议目录</b>（批 K ①，2026-10-15）：名单从**本档工具面**派生（{@code instanceof DecisionProposable}），
-   * 实例与桶里是同一批（见 {@link #decisionProposalTools}）；装配完成处由 {@code ProposalDeclarationAudit} 审计。
-   */
-  private final ProposalCatalog proposalCatalog;
+  /** 本档决策调用的真预览/目标提取器（request 条目无 target，由 finalizer 特判）。 */
+  private final DecisionCallPreviewer callPreviewer;
 
   /**
    * 测试/旧路径：全缺省时钟（不读 store）；生产 Shell 必须用带 {@link CalendarService} 的重载（{@link CalendarService#load}）。
@@ -1006,15 +1003,13 @@ public final class SimosToolSource implements ToolSource {
         Map.of(),
         role,
         null,
-        null,
-        null,
-        // ★ 2026-10-14 批 G（GM 代打）：决策人桶那条路**不需要**执行面与决策人桶注册表 ⇒ 两处 null（同 pendingApprovals 的惯例）。
+        // ★ 2026-10-14 批 G（GM 代打）：决策人桶那条路**不需要**执行面与决策人桶注册表 ⇒ 两处 null。
         null,
         null);
   }
 
   /**
-   * 测试/旧路径（源码兼容）：全缺省时钟、审批面装配为「未接入」；生产 Shell 必须用带 {@link CalendarService} 的全参重载。
+   * 测试/旧路径（源码兼容）：全缺省时钟；生产 Shell 必须用带 {@link CalendarService} 的全参重载。
    *
    * <p>全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
    *
@@ -1041,46 +1036,7 @@ public final class SimosToolSource implements ToolSource {
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
-    // ★ 测试/旧路径（源码兼容）：全缺省时钟、审批面装配为「未接入」（执行期具名 UNAVAILABLE）；
-    //   生产 Shell 必须用带 CalendarService 的全参构造器（CalendarService.load）。
-    this(
-        core,
-        query,
-        initiator,
-        mapId,
-        worldgenConfigFile,
-        commandTypes,
-        embeddableCommandTypes,
-        renderService,
-        gmToolUsage,
-        llmConfig,
-        commandTargets,
-        role,
-        decisionAgent,
-        null,
-        null);
-  }
-
-  /**
-   * 测试/旧路径（源码兼容）：全缺省时钟（不读 store）、审批面装配为「未接入」⇒ 执行期具名 UNAVAILABLE； 生产 Shell 必须用带 {@link
-   * CalendarService} 的重载（{@link CalendarService#load}）。
-   */
-  public SimosToolSource(
-      CoreSimos core,
-      QueryService query,
-      String initiator,
-      String mapId,
-      Path worldgenConfigFile,
-      Set<String> commandTypes,
-      Set<String> embeddableCommandTypes,
-      RenderService renderService,
-      GmToolUsage gmToolUsage,
-      AgentLibLlmConfig llmConfig,
-      Map<String, CommandTargets> commandTargets,
-      Role role,
-      DecisionAgentService decisionAgent,
-      PendingApprovals pendingApprovals,
-      ApprovalCoordinator approvalCoordinator) {
+    // ★ 测试/旧路径（源码兼容）：全缺省时钟；生产 Shell 必须用带 CalendarService 的全参构造器。
     this(
         core,
         CalendarService.defaults(),
@@ -1096,19 +1052,14 @@ public final class SimosToolSource implements ToolSource {
         commandTargets,
         role,
         decisionAgent,
-        pendingApprovals,
-        approvalCoordinator,
-        // ★ 2026-10-14 批 G：测试/旧路径不接 GM 代打面（同审批面的"未接入"惯例）。
+        // ★ 2026-10-14 批 G：测试/旧路径不接 GM 代打面。
         null,
         null);
   }
 
   /**
-   * 生产全参装配（含 GM 审批面接线）：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）， GM 桶另挂两条审批控制面工具（{@code
-   * simos.gm.approvals} / {@code simos.gm.approve}）；历法时钟来自启动期 {@link CalendarService#load} 的同一实例。
-   *
-   * <p>★ 审批依赖**只被 {@link Role#GM} 用到**：两条工具标了 {@link GmOnlyRead} / 只加在 {@link #addGmWrites}，
-   * 决策人桶里不出现；{@link Role#DECISION_AGENT} 下传 null 是合法装配（那两条根本不会被构造到可执行面）。
+   * 生产全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）；历法时钟来自启动期 {@link CalendarService#load}
+   * 的同一实例。
    *
    * <p>★★ <b>2026-10-14 批 G（GM 代打）：{@code decisionToolCaller} / {@code decisionToolRegistry} 同样只被
    * {@link Role#GM} 用到</b>——它们是 {@code simos.gm.actAs} 的两个依赖（执行面 + <b>决策人桶</b>注册表）， 该工具只在 {@link
@@ -1116,9 +1067,6 @@ public final class SimosToolSource implements ToolSource {
    * Shell.start} 保证：决策人桶（含注册表）与 {@code DecisionCallerFactory} 都在 GM 工具源**之前**建好。
    *
    * @param calendarService 启动期装载的历法服务（非空；四个 gov 写工具按它取时钟）
-   * @param pendingApprovals 进程内唯一的审批登记表（GM 裁决口读写它；null = 未接入 ⇒ 工具回 {@code UNAVAILABLE}）
-   * @param approvalCoordinator 决策人链的审批编排器（成功回执取 {@code effectiveDecision(...)} 算实际生效 scope； null =
-   *     未接入 ⇒ 工具回 {@code UNAVAILABLE}）
    * @param decisionToolCaller <b>只有 GM 档用</b>：决策人权限链的执行面（生产 = {@code DecisionCallerFactory}， 见
    *     {@link DecisionToolCaller}）。决策人档传 null。
    * @param decisionToolRegistry <b>只有 GM 档用</b>：<b>决策人桶</b>的工具注册表（代打只能用那个 DM 够得着的工具）。 决策人档传 null。
@@ -1138,8 +1086,6 @@ public final class SimosToolSource implements ToolSource {
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent,
-      PendingApprovals pendingApprovals,
-      ApprovalCoordinator approvalCoordinator,
       DecisionToolCaller decisionToolCaller,
       ToolRegistry decisionToolRegistry) {
     Objects.requireNonNull(core, "core");
@@ -1166,10 +1112,9 @@ public final class SimosToolSource implements ToolSource {
                     embeddableCommandTypes,
                     renderService,
                     gmToolUsage,
-                    llmConfig,
-                    pendingApprovals),
+                    llmConfig),
                 role));
-    ProposalCatalog catalog =
+    DecisionCallPreviewer previewer =
         switch (role) {
           case GM -> {
             addGenericWrites(built, core, initiator, mapId);
@@ -1184,8 +1129,6 @@ public final class SimosToolSource implements ToolSource {
                 embeddableCommandTypes,
                 commandTargets,
                 requireDecisionAgent(decisionAgent),
-                pendingApprovals,
-                approvalCoordinator,
                 // ★ 2026-10-14 批 G（GM 代打）：这两个依赖只在这一档（GM）用得上——见全参构造器的 javadoc。
                 requireDecisionToolCaller(decisionToolCaller),
                 requireDecisionToolRegistry(decisionToolRegistry));
@@ -1220,33 +1163,17 @@ public final class SimosToolSource implements ToolSource {
     //   ★ 双桶那一半（"标了 DM 却没注册进 DM 桶"）单桶看不见，由 Shell 用 ToolRoleAudit.requireFaces 校验
     //     （那里同时拿得到两桶）。★ 校验是 O(n) 一次，不是每条工具建的时候各查一遍。
     ToolRoleAudit.requireFace(built, role == Role.GM ? ToolRole.GM : ToolRole.DM);
-    // ★★ 批 K ①（2026-10-15）：本档的**可提议目录**（名单从工具面派生）——暴露给 Shell，供装配完成处的
-    //   `ProposalDeclarationAudit` 把「目录成员 ⇔ 工具面上的 DecisionProposable 实现者」逐条钉死（C1/C2）。
-    this.proposalCatalog = catalog;
+    // 本档决策调用预览器（只做真预览 + 目标提取；不能入包由 Ask/权限链决定）。
+    this.callPreviewer = previewer;
     this.source = GaToolSource.of(built);
   }
 
-  /**
-   * ★★ <b>本档的可提议目录</b>（批 K ①）：名单由工具面里实现 {@code DecisionProposable} 的工具派生 ⇒ 与 {@link #listTools()}
-   * 是**同一批实例**（决策人桶注册进目录的那个 List）。
-   *
-   * <p>★ 装配期审计（{@code ProposalDeclarationAudit.requireProposable}）读它做 C1/C2；诊断与用例也用它。
-   *
-   * <p>★ <b>为什么这里是有意豁免而不是改返回类型</b>：{@code ProposalCatalog} 自身没有致变途径——它是 {@code final} 类、字段只有 {@code
-   * private final Map<String, Entry> byName}（构造器里已包 {@code Collections.unmodifiableMap}）与一个 {@code
-   * final String mapId}，对外方法全是读（{@code contains}/{@code toolNames}/{@code requireTool}/{@code
-   * preview}/{@code targets}），类里没有任何 setter；{@link ProposalCatalog#toolNames()} 还返回 {@code
-   * List.copyOf} 拷贝。★ 唯一"看起来像 写"的 {@code preview} 也已被类注钉死只跑 {@code preview=true}（绝不落盘）。⇒
-   * 调用方拿到的引用改不动它，本访问口交出的本来就是只读件； SpotBugs 只是按**字段类型**判。
-   */
-  // ★ 形制同 {@code Shell#artifactStore()}：EI_EXPOSE_REP 按字段类型判，而调用方无致变途径 ⇒ 豁免写在这一处。
+  /** 本档决策调用的真预览/目标提取器（不可变件；供决策回合 finalizer 与诊断读取）。 */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP",
-      justification =
-          "ProposalCatalog 是不可变件（final 类、唯一字段 byName 构造时已 unmodifiableMap、无任何 setter，"
-              + "toolNames() 返回 List.copyOf 拷贝）⇒ 调用方拿不到致变途径；本口只供装配期审计与诊断读。")
-  public ProposalCatalog proposalCatalog() {
-    return proposalCatalog;
+      justification = "DecisionCallPreviewer 是不可变件（final 类、索引构造期冻结、无任何 setter）⇒ 调用方拿不到致变途径。")
+  public DecisionCallPreviewer decisionCallPreviewer() {
+    return callPreviewer;
   }
 
   /** GM 面必须带上决策人运行流（{@code ga.RunDecision} 没有它就只是半条工具）——缺了当场抛，不静默少一条。 */
@@ -1396,7 +1323,7 @@ public final class SimosToolSource implements ToolSource {
    * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
    * （**本注刻意不写条数**：数字是漂移源；M3 起本文件与 {@code Shell} 的工具面注释一律不钉条数）。
    */
-  private static ProposalCatalog addGmWrites(
+  private static DecisionCallPreviewer addGmWrites(
       List<AgentTool> built,
       CoreSimos core,
       CalendarService calendarService,
@@ -1407,8 +1334,6 @@ public final class SimosToolSource implements ToolSource {
       Set<String> embeddableCommandTypes,
       Map<String, CommandTargets> commandTargets,
       DecisionAgentService decisionAgent,
-      PendingApprovals pendingApprovals,
-      ApprovalCoordinator approvalCoordinator,
       // ★ 2026-10-14 批 G（GM 代打）：两个依赖都只被 addGmWrites 里的 simos.gm.actAs 用（见全参构造器 javadoc）。
       DecisionToolCaller decisionToolCaller,
       ToolRegistry decisionToolRegistry) {
@@ -1686,20 +1611,33 @@ public final class SimosToolSource implements ToolSource {
     built.add(new PutInfoTool(gaWrites, gaIdentity, mapId));
     // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
     //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
-    built.add(new GmDecidePacketTool(gaWrites, gaReads));
     // ★★ D3（2026-10-22 合并计划契约 §9）：三条 GM 决策效果工具——建计划 / 执行计划 / 执行已批准 call。
     //   **只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）；
-    //   执行器复用决策人桶同源的 ProposalCatalog（真工具实例 + 目标清单 fail-closed）。
-    // ★★ 批 K ①（2026-10-15）：目录的名单**从工具面派生**（`instanceof DecisionProposable`），不再手抄 16 条 ——
-    //   这里取**可提议工具族的唯一构造点**（{@link #decisionProposalTools}），与决策人桶注册的是同一批类/同一份接缝束。
-    ProposalCatalog gmProposalCatalog =
-        new ProposalCatalog(
+    //   执行器复用决策人桶同源的可执行工具面（真工具实例 + 目标清单 fail-closed）。
+    //   这里取可执行工具族的唯一构造点（{@link #decisionProposalTools}）。
+    DecisionCallPreviewer gmPreviewer =
+        new DecisionCallPreviewer(
             decisionProposalTools(core, calendarService, query, initiator, mapId), mapId);
-    GaProposalHost gaProposal = new AppGaProposalHost(gmProposalCatalog);
-    GaEffectExecution gaEffects = new AppGaEffectExecution(core, gmProposalCatalog);
-    built.add(new GmMergedPlanUpsertTool(gaWrites, gaReads, gaProposal));
+    GaEffectExecution gaEffects = new AppGaEffectExecution(core, gmPreviewer);
+    built.add(new GmMergedPlanUpsertTool(gaWrites, gaReads, gaEffects));
     built.add(new GmMergedPlanApplyTool(gaReads, initiator, gaEffects));
-    built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
+    CoreDecisionPackageReadPort decisionReadPort =
+        new CoreDecisionPackageReadPort(core, new BranchId(ToolResources.DEFAULT_BRANCH));
+    CoreDecisionSubmissionPort decisionSubmissionPort =
+        new CoreDecisionSubmissionPort(
+            core, new BranchId(ToolResources.DEFAULT_BRANCH), initiator, gmPreviewer);
+    CoreDecisionReadAudit decisionReadAudit =
+        new CoreDecisionReadAudit(core, new BranchId(ToolResources.DEFAULT_BRANCH), initiator);
+    for (AgentTool decisionTool :
+        DecisionPackageTools.all(
+            decisionReadPort,
+            decisionSubmissionPort,
+            Set.of(ToolRole.GM.name()),
+            null,
+            null,
+            decisionReadAudit)) {
+      built.add(new AgentLibDecisionTool(decisionTool));
+    }
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的窄写。
     //   ★★ 2026-10-15 批 L ②（设计书 §2 N2「乙 + 合并甲」/ §2.1）：原来"GM 一条 + 决策人一条"的两对**各自合并成一条**
     //   —— toolRoles()={DM, GM} ⇒ 在**两桶同名两处注册**（与 IssueDirectiveTool / SubmitVerdictTool 同制：GM 侧走
@@ -1814,7 +1752,6 @@ public final class SimosToolSource implements ToolSource {
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
     //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。
-    built.add(new GmApproveTool(pendingApprovals, approvalCoordinator));
     // ★★ C5b（2026-10-02 年份系统）：历法/气候配置写口（store_meta.calendar，**不落 revision**）。
     //   **只在 GM 桶**（注册点就是这里）：改锚点会让所有历史日期整体平移、改分带会改全世界的季节判定，是"世界级配置"。
     //   ★ 它**不继承** AbstractNarrowWriteTool、不调 core.submit（库级元数据与 time_base 同类）⇒ 工具名也不是命令类型，
@@ -1822,16 +1759,13 @@ public final class SimosToolSource implements ToolSource {
     //   ★ 敏感写 + ToolGate.Ask（classKey = 工具名）；GM 面的审批放行与 GmToolUsage 留痕见类注。
     built.add(new CalendarConfigureTool(query, calendarService));
     // ★ 批 K ①：本档（GM）的可提议目录随本档工具面一起交回（装配期审计读它；实例见 decisionProposalTools）。
-    return gmProposalCatalog;
+    return gmPreviewer;
   }
 
   /**
-   * ★★ <b>可提议工具族：唯一构造点</b>（批 K ① 根治版，设计书 §3.2；用户 2026-10-15：「这玩意不是在程序代码上已经写死了吗……为啥额外要张表？」）。
+   * 决策人可执行工具族：唯一构造点（决策人桶与合并计划执行面共用同一批实例）。
    *
-   * <p>★ <b>为什么是"一个方法"而不是"两张清单"</b>：这 16 条工具的实例**只在这里 {@code new} 一次** —— 决策人桶用 {@code
-   * built.addAll(...)} 注册**这一批对象**，{@code ProposalCatalog} 用**同一个 List** 建索引 ⇒
-   * 「谁在可提议名单里」不再有第二处手写清单；「我能不能被提议」的唯一声明是**工具自己的** {@code implements
-   * io.mosire.simos.ga.spi.DecisionProposable}（目录按 {@code instanceof} 派生，本方法不写任何名单语义）。
+   * <p>★ 这些工具实例只在这里 {@code new} 一次；入包由 Ask/权限链决定，预览器只负责真预览与目标提取。
    *
    * <p>★ <b>顺序 = 内容</b>：与历史目录的成员序逐条一致（unit/social 三条旧的 + 批 3b 的九条 {@code simos.gov.*}
    * 类2），便于与既往证据对读。★ 这 16 条**全部** {@code toolRoles()} 含 DM：前 7 条是 2026-10-15 用户裁定「甲」补的 DM 标签
@@ -1839,7 +1773,7 @@ public final class SimosToolSource implements ToolSource {
    *
    * <p>★ <b>为什么前 7 条也必须进决策人桶</b>：{@code ToolRoleAudit.requireFaces} 把「桶 ⇔ {@code toolRoles()}」双向钉死
    * —— 声明了 DM 却不注册进决策人桶 = 装配期当场抛。★ 注册进桶**不会**让 DM 绕过 GM：它们的 {@code gate()} 全是 {@code Ask} ⇒ 自动成**类2
-   * {@code DM_APPROVAL}**（直写停在待批等 GM 点头；或走 {@code simos.ga.packet.propose} 由 GM 统一批）。
+   * {@code DM_APPROVAL}**（会话队列接住并进入决策包，由 GM 五工具统一裁决）。
    *
    * <p>★ <b>依赖</b>：五类接缝束都在本方法里现建（窄写口 / 窄读口 / unit 五口 / gov 七口）——与两桶的装配同形， 不引入第二份适配器实现。
    *
@@ -1886,7 +1820,7 @@ public final class SimosToolSource implements ToolSource {
         new GovSelectExamineesTool(gov, mapId),
         new GovDispatchTeamTool(gov, mapId),
         // ── ② 批 3b（设计书 §8.3 第 1 条）进目录的九条 `simos.gov.*` 类2（`{DM,GM}` + `gate=Ask(SENSITIVE)`）──
-        //   无人值守时 DM 走 `simos.ga.packet.propose`（**零阻塞**）、GM 用 `gm.packet.decide` 真审、
+        //   无人值守时 DM 的 Ask 进入本 tick 决策包（零阻塞）、GM 用 AgentLib 五工具真审、
         //   `gm.packet.execute` 执行；类2 的直写路径**一条没删**（有真人看着的场合照旧可用）。
         //   ★ 九条都不建单位（`expandHousehold` 建的是**家户**、不是单位）⇒ `createsUnit=false`、`skipKeys` 空：
         //     它们的参数/预览里没有"将要成为的目标的新 id"，只有既存资源（GOV 单位 / 家户 / 国库 / 格）。
@@ -1923,7 +1857,7 @@ public final class SimosToolSource implements ToolSource {
    * {@code DmUsableCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
-  private static ProposalCatalog addDecisionAgentWrites(
+  private static DecisionCallPreviewer addDecisionAgentWrites(
       List<AgentTool> built,
       CoreSimos core,
       CalendarService calendarService,
@@ -1957,9 +1891,7 @@ public final class SimosToolSource implements ToolSource {
             new AppGovToolCommandTypes(),
             new AppGovToolManpower(calendarService));
     built.add(new GovPayTool(gov));
-    // ★★ 批 K ①（2026-10-15 根治版，设计书 §3.2）：**可提议工具族**（16 条）在这里**一次注册**，并与
-    //   `ProposalCatalog` 共用**同一个 List**（下一段 `new ProposalCatalog(proposable, mapId)`）⇒ 目录的成员
-    //   =「本桶里实现了 `DecisionProposable` 的工具」，**不再有第二处手写清单**（唯一构造点见 `decisionProposalTools`）。
+    // 决策人可执行工具族在这里一次注册；下方预览器用**同一个 built 面**建索引。
     //   ★ 组成 ①（2026-10-15 用户裁定「甲」）：raiseUnit / levyRegion / gov.recruit / gov.retireStaff /
     //     gov.selectExaminees / gov.dispatchTeam / social.household.members —— 这 7
     // 条**本来就是决策人的核心动作**
@@ -1969,36 +1901,26 @@ public final class SimosToolSource implements ToolSource {
     // setBudgetPolicy /
     //     assignPosts / expandHousehold / openPostsToMarket / defineCurrency / renameCurrency /
     // issueMoney / setFxRate。
-    //   ★ 两条路径（2026-10-15 批 3b §11.2 B3 实测）：
-    //     ①【决策人直写】AutoApproveGate → ConfirmGate → PendingApprovals：阻塞等 GM 在审批面点头
-    //        （上限 APPROVAL_TIMEOUT，到点 APPROVAL_DENIED、asks=1）；
-    //     ②【决策人提议】{@code simos.ga.packet.propose}：零审批、asks 不增、不阻塞。GM 侧用
-    //        {@code simos.gm.packet.decide} 真审、{@code simos.gm.packet.execute} 执行。
+    //   ★ 新路径：所有 Ask 由 DecisionTurnScope 队列接住，回合末进入本 tick 决策包；GM 用五工具裁决/执行。
     //   ★ 身份派生仍逐条由工具自己负责（GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。
     //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
     List<AgentTool> proposable =
         decisionProposalTools(core, calendarService, query, initiator, mapId);
     built.addAll(proposable);
-    // ★★ D2（2026-10-22 决策包计划）+ 2026-10-14 批 B（设计书 §3.2/§3.3）决策族定型：**七件套**
-    //   propose / revise / drop / intent / confirm / reopen / my。
-    //   **只在决策人桶**；白名单即由该桶派生（toolRoles() 是唯一声明）。
-    //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；confirm/intent/reopen 走 own-packet 围栏。
+    // ★★ 决策族（设计书 §7.3）：request / revise / drop / intent / confirm / reopen / my。
+    //   request 是 Ask，由 DecisionTurnScope 队列接住；其余是 ALLOW 控制面。
     //   ★ 权限：写口六条全 gate=ALLOW（类3 DM_FREE）—— 决策表达**零世界效果**（不变量 I1：只写自己的 sd
     //     包/INFO 覆盖层），真正的闸门在 GM 侧（gm.packet.decide / mergedPlan.* / packet.execute 本批一处不放松）；
     //     my 是只读口（无 gate 覆写）。
-    //   ★ 相对次序保持原样（propose → confirm → intent → my），三条新工具**追加在 my 之后**。
-    ProposalCatalog proposalCatalog = new ProposalCatalog(proposable, mapId);
-    GaProposalHost gaProposal = new AppGaProposalHost(proposalCatalog);
-    ProposeCallTool propose = new ProposeCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity);
-    built.add(propose);
+    //   ★ 相对次序：request → confirm → intent → my，revise/drop/reopen 追加在后。
+    DecisionCallPreviewer previewer = new DecisionCallPreviewer(built, mapId);
+    AppGaProposalHost gaProposal = new AppGaProposalHost(previewer);
+    built.add(new RequestTool());
     built.add(new ConfirmPacketTool(gaWrites, gaReads, gaIdentity));
     built.add(new PacketIntentTool(gaWrites, gaReads, gaIdentity));
     built.add(new MyPacketTool(gaReads, gaIdentity));
-    //   ★★ 三条新工具（批 B）：改 / 删 / 撤回确认。
-    //     revise 复用**同一个** propose 实例：校验段（catalog 校验 → 真 preview → 目标 scope → 造 FormattedCall）的
-    //       唯一实现 = ProposeCallTool.validateCall，两个调用点（propose 自己的逐条循环 + revise）共用它，
-    //       注入同一对象 ⇒ 装配面不可能凑出"第二份校验"。
-    built.add(new ReviseCallTool(gaWrites, gaReads, propose, gaIdentity));
+    //   ★★ 改 / 删 / 撤回确认；revise 与回合 flush 共用同一个 DecisionCallPreviewer/校验语义。
+    built.add(new ReviseCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity));
     built.add(new DropCallTool(gaWrites, gaReads, gaIdentity));
     built.add(new ReopenPacketTool(gaWrites, gaReads, gaIdentity));
     // ★★ 2026-10-14 决策人互致消息（设计书 §4.2/§4.3）：旧的 simos.sd.report 跨区上报**整族废弃**（用户原话
@@ -2020,7 +1942,7 @@ public final class SimosToolSource implements ToolSource {
     // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 侧"授权两人互通"的窄写（一次写两条 DM 记录、一条 revision）。
     //   **不在本桶**（roles={GM}，它是配权命令）⇒ 它注册在 addGmWrites。
     // ★ 批 K ①：本档（决策人）的可提议目录随本档工具面一起交回（成员即上面那批 proposable 实例）。
-    return proposalCatalog;
+    return previewer;
   }
 
   private static List<AgentTool> readTools(
@@ -2033,8 +1955,7 @@ public final class SimosToolSource implements ToolSource {
       Set<String> embeddableCommandTypes,
       RenderService renderService,
       GmToolUsage gmToolUsage,
-      AgentLibLlmConfig llmConfig,
-      PendingApprovals pendingApprovals) {
+      AgentLibLlmConfig llmConfig) {
     // ★★ 2026-10-12 B3 试点（设计书 §4.3 / 台账 §5）：地图的 7 条读工具**已下放到 simos-map**
     //   （`io.mosire.simos.map.tools.read`），这里只剩装配——注入四类接缝：
     //   ① 窄读口（QueryService 的三个方法面，含 head 解析/创世等待/读缓存）；
@@ -2160,9 +2081,6 @@ public final class SimosToolSource implements ToolSource {
         new GmPacketTool(gaReads),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
         new GmToolUsageTool(gmToolUsage, gaViews),
-        // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。
-        //   读的是传入的 PendingApprovals（null = 未接入 ⇒ 执行期 UNAVAILABLE）；资源声明 NONE、不落 revision。
-        new GmApprovalsTool(pendingApprovals),
         // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.1/§3.5）：**两条 GM-only 读口**——
         //   ① simos.gm.inbox：决策人寄给 GM 的信 + 逐条 answered（GM 回话的前提；缺它就是缺口 G2）；
         //   ② simos.gm.round：轮次看板（逐 DM：包状态 / 未答问题数 / 是否已确认推演 + 三个 pending 清单）。
