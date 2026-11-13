@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -18,7 +19,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * WebUI 静态资源结构护栏（M5 T9，spec §8.1/§8.3；M7 T2 扩条；M8 T7 校正）：三页 + 共享资产 + 工作台骨架**在册且非空**、**无 绝对 URL / 无
- * CDN**、三页**按相对路径**引用共享资产、{@code /} 是工作台主应用（模式栏**六个真控件**，M8 T7 起不再有"归 M8 的禁用按钮"、T7 起含「决策」）。
+ * CDN**、三页**按相对路径**引用共享资产、{@code /} 是工作台主应用（模式栏**四个真控件**，D-036 2+1）。
  *
  * <p>★ **为什么读源码树而不是 classpath**：本护栏要能对**故意违规**的源码变异响铃（计划 T9 变异 m1：往某资产里塞 {@code
  * https://cdn.example.com/x.js}）。读 {@code target/classes} 会读到上一次 {@code process-resources}
@@ -54,9 +55,9 @@ class WebuiAssetsTest {
   /** 块几何（M9 T13）：index/map 两页共用的纯函数模块（`window.SimosBlocks`）。 */
   private static final List<String> BLOCK_SCRIPTS = List.of("blocks.js");
 
-  /** 模式栏六按钮的可见标签（M8 spec §三；T7 起五个都是可点击的真控件；T7 加「决策」）。 */
+  /** D-036 2+1 模式栏四按钮：常规 / 地图编辑 / 单位编辑 / 战役。 */
   private static final List<String> MODE_LABELS =
-      List.of("常规", "区域查看", "地图编辑", "区域编辑", "单位移动编辑", "决策");
+      List.of("常规", "地图编辑", "单位编辑", "战役");
 
   private static final List<String> ALL_ASSETS =
       concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS, BLOCK_SCRIPTS);
@@ -142,14 +143,14 @@ class WebuiAssetsTest {
   }
 
   /**
-   * M8 T7：六个模式**都是可点击的真控件**（不再有"归 M8 的禁用按钮"；T7 起含「决策」）。
+   * D-036：模块栏四个模式**都是可点击的真控件**（常规 / 地图编辑 / 单位编辑 / 战役）。
    *
    * <p>★ 判别力：{@link #buttonScannerHasTeeth} 用冻结字面量证明本扫描器能区分 disabled / enabled 两种形态——若哪天有人把某个模式改回
    * {@code disabled} 或塞回 {@code data-milestone}，本用例必红。★ 新增模式只改 {@code modes.js} 而漏了 {@code
    * index.html} 的按钮 ⇒ 本用例红（T7 的 m3 变异靶子）。
    */
   @Test
-  void allSixModesAreEnabledRealControls() throws IOException {
+  void allModesAreEnabledRealControls() throws IOException {
     String html = read(WEBUI_SOURCE.resolve("index.html"));
 
     for (String label : MODE_LABELS) {
@@ -163,8 +164,8 @@ class WebuiAssetsTest {
   /**
    * 取**内部文本恰为** label 的完整 {@code <button …>…</button>} 标签。
    *
-   * <p>★ 用"整体相等"而非"包含"：决策模式里还有「开**始决策**」这个真按钮（T10），它含子串「决策」但**不是**模式按钮——按包含判会把
-   * 两者都算上，把"六个模式各一个按钮"的断言读错。整体相等同时更严（模式按钮文案被塞进额外文字也会红）。
+   * <p>★ 用"整体相等"而非"包含"：页内还有大量含模式名的按钮（如「开始决策」），按包含判会误算。
+   * 整体相等同时更严（模式按钮文案被塞进额外文字也会红）。
    */
   static List<String> buttonTagsContaining(String html, String label) {
     List<String> found = new ArrayList<>();
@@ -266,4 +267,22 @@ class WebuiAssetsTest {
     }
     return List.copyOf(out);
   }
+
+  /** D-036：模块自带前端 manifest 必须在 classpath，且 app 的发现接口能读到。 */
+  @Test
+  void moduleFrontendManifestIsDiscoverable() {
+    Map<String, Object> discovered = ModuleWebUI.discover();
+    assertThat(discovered.get("errors")).as("模块前端发现不得有错误").isEqualTo(List.of());
+    List<?> modules = (List<?>) discovered.get("modules");
+    assertThat(modules).hasSize(1);
+    Map<?, ?> map = (Map<?, ?>) modules.get(0);
+    assertThat(map.get("webuiId")).isEqualTo("map");
+    assertThat(map.get("module")).isEqualTo("simos-map");
+    try (InputStream in = getClass().getResourceAsStream("/webui/modules/map/manifest.json")) {
+      assertThat(in).as("模块 manifest 必须在 classpath（从 simos-map jar/classes 提供）").isNotNull();
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
 }

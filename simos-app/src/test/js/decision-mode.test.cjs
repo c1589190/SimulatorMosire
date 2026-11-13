@@ -7,7 +7,7 @@
 //   ③ 静态：index.html 六个模式按钮 + 决策面板/子页控件/三处挂载点；决策模式只读（无 StartDecision、
 //      无命令写）；app.js 的子页可见性委托给 fail-closed 纯函数。
 // ★ 故意违规自证（变异靶子）：m1 分组混排/漏桶 ⇒ 分组断言红；m2 国家 tag 只高亮第一个 ⇒ 集合相等红；
-//   m3 modes.js 加了模式但 index.html 没加按钮 ⇒ 六模式静态断言红；m4 子页切换失效 ⇒ 可见性断言红。
+//   m3 modes.js 加了模式但 index.html 没加按钮 ⇒ 模式栏静态断言红；m4 子页切换失效 ⇒ 可见性断言红。
 "use strict";
 
 const { test } = require("node:test");
@@ -911,13 +911,14 @@ test("render-left-shows-nation-decision-maker-for-a-nation-region-hex", async ()
   assert.equal(dls[0].attrs["data-decision-maker-id"], "dm-nation-a");
 });
 
-test("index-html-has-six-modes-and-decision-panel", () => {
+test("index-html-has-2plus1-modes-and-decision-panel", () => {
   const html = readWebui("index.html");
-  // ★ 故意违规（m3 的杀点）：modes.js 有第六个模式 ⇒ 模式栏必须也有第六个按钮。
+  // D-036：模式栏 = 常规 / 地图编辑 / 单位编辑 / 战役（4 个）；决策模式暂缓，面板代码保留但不进模式栏。
   const buttons = html.match(/class="mode[^"]*" data-mode="/g) || [];
-  assert.equal(buttons.length, 6, "模式栏必须 6 个按钮");
-  assert.ok(html.includes('data-mode="decision"'), "决策模式按钮必须在");
-  assert.ok(html.includes("决策"), "决策模式标签必须在");
+  assert.equal(buttons.length, 4, "模式栏必须 4 个按钮");
+  assert.ok(html.includes('data-mode="battle"'), "战役模式按钮必须在");
+  assert.equal(html.includes('data-mode="decision"'), false, "决策模式按钮暂缓，不得在模式栏");
+  assert.ok(html.includes('data-modes="decision"'), "决策面板代码保留（内部/后续接入）");
   // 左栏决策面板 + 子页控件。
   assert.ok(html.includes('data-modes="decision"'), "必须有 data-modes=decision 的面板");
   assert.ok(html.includes('id="decision-subpages"'), "子页控件必须在");

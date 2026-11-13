@@ -17,11 +17,9 @@
 
       <nav id="mode-bar" class="mode-bar" aria-label="模式栏">
         <button type="button" class="mode active" data-mode="view" aria-pressed="true">常规</button>
-        <button type="button" class="mode" data-mode="region" aria-pressed="false">区域查看</button>
         <button type="button" class="mode" data-mode="map-edit" aria-pressed="false">地图编辑</button>
-        <button type="button" class="mode" data-mode="region-edit" aria-pressed="false">区域编辑</button>
-        <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位移动编辑</button>
-        <button type="button" class="mode" data-mode="decision" aria-pressed="false">决策</button>
+        <button type="button" class="mode" data-mode="unit" aria-pressed="false">单位编辑</button>
+        <button type="button" class="mode" data-mode="battle" aria-pressed="false">战役</button>
         <span id="mode-current" class="mode-current" aria-live="polite" title="当前模式">常规</span>
       </nav>
 
@@ -220,7 +218,7 @@
           </div>
         </section>
 
-        <section class="region-editor" data-modes="region-edit" aria-label="区域编辑">
+        <section class="region-editor" data-modes="region-edit map-edit" aria-label="区域编辑">
           <h3>区域编辑</h3>
           <p id="region-edit-status" class="status muted"><b>右键拖动</b>=套索创建；<b>Shift+右键拖动</b>=逐格画/擦（临时选区，供合并/剔除）；<b>左键拖动</b>=平移地图。重叠是正常状态，不会被拒绝。</p>
           <div class="region-edit-row">
@@ -268,6 +266,19 @@
               <button type="button" id="region-delete-cancel">取消</button>
             </div>
           </fieldset>
+        </section>
+
+        <section class="battle-panel" data-modes="battle" aria-label="战役">
+          <h3>战役</h3>
+          <p class="muted">查看当前 tick 战报；战役/阶段文档按独立地址打开。阶段编辑后续接入同一面板。</p>
+          <div class="battle-actions">
+            <button type="button" id="battle-open-events">打开当前 tick 战报</button>
+            <button type="button" id="battle-open-doc">打开战役文档</button>
+          </div>
+          <label class="battle-id-label">战役 id
+            <input type="text" id="battle-id" placeholder="例如 berlinbattle">
+          </label>
+          <p class="muted">阶段文档可在战报卡片的每个阶段点「阶段文档」直达。</p>
         </section>
 
         <section class="decision-panel" data-modes="decision" aria-label="决策">
@@ -452,7 +463,7 @@
 
       <div class="wb-gap" aria-hidden="true"></div>
 
-      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision">
+      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision battle">
         <!-- ★ F1：世界总览（无选中时显示；有选中让位给 hex/城市/区域详情，由 panel-right.js 控制 hidden）。 -->
         <div data-modes="view region" id="world-overview-section">
           <h2>世界总览</h2>

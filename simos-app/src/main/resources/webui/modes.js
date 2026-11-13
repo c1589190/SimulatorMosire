@@ -1,6 +1,6 @@
-// modes.js —— 六模式 + 写权限白名单（M8 T7；T7 加「决策」）。★ 纯函数模块：无 DOM、无 IO、无 fetch。
+// modes.js —— 2+1 模式 + 写权限白名单（D-036）。★ 纯函数模块：无 DOM、无 IO、无 fetch。
 //
-// ★★ 六模式（spec §三 Q7 + 决策模式 spec §四.2）：常规 / 区域查看 / 地图编辑 / 区域编辑 / 单位移动编辑 / 决策。
+// ★★ 模式栏 = 常规 / 地图编辑 / 单位编辑 / 战役；区域编辑并入地图编辑，决策模式暂缓（legacy 仅供内部/测试）。
 //   `isWriteAllowed(mode, type)` 是**唯一**的允许判定：输入"模式 + 命令 type" ⇒ 允许/拒绝。
 //   调用点（app.js 的 writeCommand）在**发请求之前**用它把关 ⇒ 非该模式的写命令**前端不得发出**。
 //
@@ -19,44 +19,27 @@
   // （spec §三），本单 UI 只实现 SetTerrain，另两条在 UI 里置灰（未实现），但白名单已按表放行。
   var MODES = [
     { id: "view", label: "常规", writes: [] },
-    { id: "region", label: "区域查看", writes: [] },
     {
       id: "map-edit",
       label: "地图编辑",
-      // ★ spec §三 的写列只列了 SetTerrain/SetEdge/RandomizeRegion，但同一行的 UI 列明写「区域信息编辑」，
-      //   且本单 MUST DO #8 要求该面板改 RegionMeta 走 map.UpdateRegion ⇒ 写列漏了这一条。按 UI 列补上
-      //   （只改 meta，不动 hexes；区域内容编辑仍归 region-edit）。
-      writes: ["map.SetTerrain", "map.SetEdge", "map.RandomizeRegion", "map.UpdateRegion"],
-    },
-    {
-      id: "region-edit",
-      label: "区域编辑",
-      writes: ["map.CreateRegion", "map.UpdateRegion", "map.DeleteRegion"],
+      // D-036 2+1：区域编辑并入地图编辑。地图/区域/连通/地形/区域元数据的写面都在这里；
+      // region-edit 作为内部旧模式保留（legacy），不再出现在模式栏。
+      writes: [
+        "map.SetTerrain",
+        "map.SetEdge",
+        "map.RandomizeRegion",
+        "map.UpdateRegion",
+        "map.CreateRegion",
+        "map.DeleteRegion",
+      ],
     },
     {
       id: "unit",
-      label: "单位移动编辑",
-      // ★ spec §三 只列了 PlanRoute / CancelRoute；但 M7 T7 起"单位移动与编辑"面板**已经**有
-      //   ReparentUnit / SetComposition / DisbandUnit / CreateUnit 四个真写入口。把它们排除会让既有能力
-      //   当场退化（MUST NOT「不破坏既有能力」）⇒ 本表按**源码**的实际写面列全，并在报告里记为与 spec 的分歧。
-      //
-      // ★★ T10-i 裁定（只读取证后）：本表的语义 = **工作台**（index.html + map.js/app.js）实际发出的写命令面，
-      //   不是"后端注册面"。依据：工作台唯一写路径是 app.writeCommand（app.js），map.js 里的 unit.* 写恰是这 8 条；
-      //   unit.RenameUnit / unit.PlaceAt 只由**调试页** unit.js 经 SimosApi.submitCommand **直发**（绕开本白名单），
-      //   故**有意**不列——它们不是"漏"，是"不在工作台上"。T9 新注册的 12 条 unit 命令在工作台**无 UI 入口**
-      //   （unit-ext 是 MCP/agent-only，见 T10-l 范围声明），同样有意不列。
-      //   ⇒ 不变式：**新增工作台写命令必须同步加进本表**，否则被 isWriteAllowed fail-closed 静默拒。
-      //   该不变式由 modes.test.cjs 的 workbench-write-calls-are-all-whitelisted 静态扫描守卫（T10-i）。
-      //
-      // ★ 2026-09-24 编队状态起为**八条**：加 unit.AttachUnit / unit.DetachUnit——「编队状态（跟随 / 脱离独立作战）」
-      //   面板的「加入编队 / 脱离编队」两个真写入口（命令面同日把"跟随"做成可达：CreateUnit 省 position + attach 清位 +
-      //   detach 物化位置）。两条都是既有注册命令，不是新命令类型。
+      label: "单位编辑",
       writes: [
         "unit.PlanRoute",
         "unit.CancelRoute",
         "unit.ReparentUnit",
-        // ★ D3b（2026-10-02 / D3a 命令 rename）：旧 unit.SetStrength 已删，工作台写的是 unit.SetComposition
-        //   （整表复写 [{type,amount}…]）——白名单漏改会被 isWriteAllowed fail-closed 静默发不出。
         "unit.SetComposition",
         "unit.DisbandUnit",
         "unit.CreateUnit",
@@ -65,25 +48,24 @@
       ],
     },
     {
-      // ★ 决策模式（spec §四.2，R4）：**一个模式两个子页**（「决策人查看」/「审批」），
-      //   由 panels.js 的 decisionSubpage* 一族控制可见性（子页**不是**新模式、不改本表）。
-      //
-      // ★★ writes 恒为 **[]**（决策模式默认只读，fail-closed）：本模式的取数全走 T5 的只读查询面
-      //   （`/api/ga/decision-makers`），**不发任何 Command**。
-      //   ★ 审批子页的「批准/驳回」打的是 `POST /api/approvals/{id}`——那是**审批裁决**，不是
-      //     `Command → ChangeSet → Revision` 的世界写 ⇒ **不进本表**（本表只管命令类型），
-      //     它作为**单独一条**显式列在 `api.js` 的 postJson 与 `write-allowlist.test.cjs` 的
-      //     ALLOWED_APPROVAL_PREFIX 里（逐条精确列出，绝不放宽 isWriteAllowed）。
-      //   ★ T10 起本表有**一条**：「开始决策」（ga.StartDecision，spec §四.2 "若 D5 选新命令，则加 ga.StartDecision"）。
-      //     它是真命令（落 revision，铁律 2）、由 GUI 窄端点 POST /api/ga/start-decision 发出（api.startDecision）。
-      //     其余决策相关写仍不在本表：审批裁决打 /api/approvals/{id}（非命令写）；出令/配权只有 GM/决策人口。
-      //   ★ 2026-09-23 起为**两条**：加「让它跑一轮」（ga.RunDecision）——它同样先落一条真触发事实（revision），
-      //     再由服务端跑那一轮（POST /api/ga/run-decision，api.runDecision）。此前它只存在于 GM 的 MCP 工具面
-      //     ⇒ 界面上点不出来（"决策能生成"这件事只有 agent 做得到）。
-      //     ★ 它**不是**"直接出令"：出令仍由决策人自己的 ga.IssueDirective 落（各进一次审批），本条只发起那一轮。
-      //   ★ 2026-09-23 起为**三条**：加「上下文重置」（ga.ResetDecisionMakerConversation）——它也是真命令
-      //     （落 revision、会话世代 +1），由窄端点 POST /api/ga/reset-decision-maker-conversation 发出
-      //     （api.resetDecisionConversation）。用户要的"重跑沿用上下文、只有点重置才清"里的那个"重置"就是它。
+      id: "battle",
+      label: "战役",
+      // D-036 的 +1：战役/阶段是可独立编辑的地址；当前 GUI 先接通战报查看与文档入口，
+      // 下面三条命令白名单为阶段追加/判定/记录保留（后续阶段编辑器直接使用）。
+      writes: ["army.RecordCombat", "army.AppendCombatStage", "army.ResolveCombatStage"],
+    },
+  ];
+
+  // 旧模式只保留给内部子流程/测试调用，不再出现在模式栏：
+  // region（区域查看）、region-edit（区域编辑子页）、decision（决策人查看/审批，暂缓）。
+  var LEGACY_MODES = [
+    { id: "region", label: "区域查看", writes: [] },
+    {
+      id: "region-edit",
+      label: "区域编辑",
+      writes: ["map.CreateRegion", "map.UpdateRegion", "map.DeleteRegion"],
+    },
+    {
       id: "decision",
       label: "决策",
       writes: ["ga.StartDecision", "ga.RunDecision", "ga.ResetDecisionMakerConversation"],
@@ -91,11 +73,11 @@
   ];
 
   var BY_ID = {};
-  MODES.forEach(function (mode) {
+  MODES.concat(LEGACY_MODES).forEach(function (mode) {
     BY_ID[mode.id] = mode;
   });
 
-  /** 六模式 id（模式栏顺序）。 */
+  /** 模式栏 id（当前 4 个：常规 / 地图编辑 / 单位编辑 / 战役）。 */
   function modeIds() {
     return MODES.map(function (mode) {
       return mode.id;

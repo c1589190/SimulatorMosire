@@ -284,6 +284,23 @@
     if (saveButton) saveButton.addEventListener("click", save);
     var deleteButton = byId("docs-delete");
     if (deleteButton) deleteButton.addEventListener("click", remove);
+    var battleEventsButton = byId("battle-open-events");
+    if (battleEventsButton) {
+      battleEventsButton.addEventListener("click", function () {
+        if (window.SimosEvents && window.SimosEvents.openAll) window.SimosEvents.openAll();
+      });
+    }
+    var battleDocButton = byId("battle-open-doc");
+    if (battleDocButton) {
+      battleDocButton.addEventListener("click", function () {
+        var combatId = value(byId("battle-id")).trim();
+        if (!combatId) {
+          setStatus("先填写战役 id", true);
+          return;
+        }
+        openBattle(combatId);
+      });
+    }
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape") {
         var panel = byId("docs-panel");

@@ -201,9 +201,9 @@ test("index-html-has-suboption-control-and-grouped-panels", () => {
 
 test("suboptions-are-not-new-modes", () => {
   const html = readWebui("index.html");
-  // 模式栏 6 个按钮（T7 起加了「决策」）；子选项**不是**新模式——按 data-mode 计数。
+  // D-036：模式栏 4 个按钮（常规 / 地图编辑 / 单位编辑 / 战役）；子选项**不是**新模式——按 data-mode 计数。
   const modes = html.match(/class="mode[^"]*" data-mode="/g) || [];
-  assert.equal(modes.length, 6, "模式栏必须 6 个按钮（子选项不是新模式）");
+  assert.equal(modes.length, 4, "模式栏必须 4 个按钮（子选项不是新模式）");
   assert.equal(/data-mode="(terrain|connectivity)"/.test(html), false, "子选项不得变成新的 data-mode");
 });
 

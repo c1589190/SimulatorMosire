@@ -1,4 +1,4 @@
-// modes.test.cjs —— 六模式写权限白名单（M8 T7 / spec §三 Q7；T7 加「决策」）。纯函数，无 DOM/IO。
+// modes.test.cjs —— 2+1 模式写权限白名单（D-036）。纯函数，无 DOM/IO。
 // ★ 冻结夹具：每个模式的允许/拒绝逐条写死，不拿被测函数自身输出当期望。
 "use strict";
 
@@ -14,7 +14,7 @@ test("module-loads", () => {
 });
 
 test("mode-ids-order", () => {
-  assert.deepEqual(M.modeIds(), ["view", "region", "map-edit", "region-edit", "unit", "decision"]);
+  assert.deepEqual(M.modeIds(), ["view", "map-edit", "unit", "battle"]);
 });
 
 test("mode-labels", () => {
@@ -22,7 +22,8 @@ test("mode-labels", () => {
   assert.equal(M.modeLabel("region"), "区域查看");
   assert.equal(M.modeLabel("map-edit"), "地图编辑");
   assert.equal(M.modeLabel("region-edit"), "区域编辑");
-  assert.equal(M.modeLabel("unit"), "单位移动编辑");
+  assert.equal(M.modeLabel("unit"), "单位编辑");
+  assert.equal(M.modeLabel("battle"), "战役");
   assert.equal(M.modeLabel("decision"), "决策");
 });
 
@@ -42,18 +43,22 @@ test("region-allows-no-write", () => {
   assert.equal(M.isWriteAllowed("region", "map.UpdateRegion"), false);
 });
 
-test("map-edit-allows-exactly-four-writes", () => {
+test("map-edit-allows-map-and-region-writes", () => {
+  // D-036：区域编辑并入地图编辑 ⇒ 原 region-edit 的创建/删除也进本表。
   assert.deepEqual(M.allowedWrites("map-edit"), [
     "map.SetTerrain",
     "map.SetEdge",
     "map.RandomizeRegion",
     "map.UpdateRegion",
+    "map.CreateRegion",
+    "map.DeleteRegion",
   ]);
   assert.equal(M.isWriteAllowed("map-edit", "map.SetTerrain"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.SetEdge"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.RandomizeRegion"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.UpdateRegion"), true);
-  assert.equal(M.isWriteAllowed("map-edit", "map.CreateRegion"), false);
+  assert.equal(M.isWriteAllowed("map-edit", "map.CreateRegion"), true);
+  assert.equal(M.isWriteAllowed("map-edit", "map.DeleteRegion"), true);
   assert.equal(M.isWriteAllowed("map-edit", "unit.PlanRoute"), false);
 });
 
@@ -94,6 +99,18 @@ test("unit-allows-route-and-editor-writes", () => {
     "unit.AttachUnit",
     "unit.DetachUnit",
   ]);
+});
+
+test("battle-allows-combat-and-stage-writes", () => {
+  assert.deepEqual(M.allowedWrites("battle"), [
+    "army.RecordCombat",
+    "army.AppendCombatStage",
+    "army.ResolveCombatStage",
+  ]);
+  assert.equal(M.isWriteAllowed("battle", "army.AppendCombatStage"), true);
+  assert.equal(M.isWriteAllowed("battle", "army.ResolveCombatStage"), true);
+  assert.equal(M.isWriteAllowed("battle", "map.SetTerrain"), false);
+  assert.equal(M.isWriteAllowed("battle", "unit.PlanRoute"), false);
 });
 
 test("decision-allows-exactly-start-decision", () => {

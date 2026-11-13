@@ -2735,3 +2735,46 @@ table.event-losses td {
 .event-doc-button:hover {
   border-color: var(--accent);
 }
+
+/* D-036 2+1：战役面板 */
+.battle-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.battle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.battle-actions button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.battle-actions button:hover {
+  border-color: var(--accent);
+}
+
+.battle-id-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.battle-id-label input {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}

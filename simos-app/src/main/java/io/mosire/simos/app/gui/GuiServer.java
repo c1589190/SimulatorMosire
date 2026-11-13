@@ -304,6 +304,9 @@ public final class GuiServer implements AutoCloseable {
 
   private static final String DOCS_VERSION_PATH = "/api/docs/version";
 
+  /** D-036：模块前端资源发现（模块 manifest 由各模块 jar 提供）。 */
+  private static final String MODULES_PATH = "/api/webui/modules";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -312,6 +315,7 @@ public final class GuiServer implements AutoCloseable {
           DOCS_PATH,
           DOCS_SEARCH_PATH,
           DOCS_VERSION_PATH,
+          MODULES_PATH,
           "/api/map/overview",
           "/api/map/hex",
           "/api/map/path",
@@ -874,6 +878,9 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(DOCS_VERSION_PATH)) {
       return docsVersionReply(params);
+    }
+    if (path.equals(MODULES_PATH)) {
+      return Reply.of(200, ModuleWebUI.discover());
     }
     if (path.equals("/api/map/overview")) {
       if (asPresent) {
