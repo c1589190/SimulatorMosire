@@ -61,11 +61,49 @@ public final class WorldDocsService {
   private final ObjectMapper mapper = SimosObjectMapper.create();
   private final Object lock = new Object();
 
+  private static volatile WorldDocsService defaultService;
+
   public WorldDocsService(Path docsRoot) {
     Objects.requireNonNull(docsRoot, "docsRoot");
     this.worldRoot = docsRoot.toAbsolutePath().normalize().resolve("world");
     this.entriesRoot = worldRoot.resolve(ENTRIES_DIR);
     this.recycleRoot = worldRoot.resolve(RECYCLE_DIR);
+  }
+
+  /**
+   * 进程默认实例：GUI 与 MCP 共用同一把锁/同一根。
+   *
+   * <p>根可用系统属性 {@code simos.docs.root} 或环境变量 {@code SIMOS_DOCS_ROOT} 覆盖，缺省 {@code docs}。
+   */
+  public static WorldDocsService defaultService() {
+    WorldDocsService service = defaultService;
+    if (service == null) {
+      synchronized (WorldDocsService.class) {
+        service = defaultService;
+        if (service == null) {
+          service = new WorldDocsService(defaultRoot());
+          defaultService = service;
+        }
+      }
+    }
+    return service;
+  }
+
+  /** 测试/嵌入方重置默认实例（生产不调用）。 */
+  public static synchronized void resetDefaultForTests(Path docsRoot) {
+    defaultService = new WorldDocsService(docsRoot);
+  }
+
+  private static Path defaultRoot() {
+    String property = System.getProperty("simos.docs.root");
+    if (property != null && !property.isBlank()) {
+      return Path.of(property.strip());
+    }
+    String env = System.getenv("SIMOS_DOCS_ROOT");
+    if (env != null && !env.isBlank()) {
+      return Path.of(env.strip());
+    }
+    return Path.of("docs");
   }
 
   /** 文档根（{@code .../docs/world}）。 */

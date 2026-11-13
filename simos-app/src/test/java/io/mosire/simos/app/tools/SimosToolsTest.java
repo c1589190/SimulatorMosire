@@ -22,6 +22,7 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
+import io.mosire.simos.app.docs.WorldDocsService;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.gui.ApiViews;
@@ -242,6 +243,10 @@ class SimosToolsTest {
           "simos.ga.directives",
           // ★★ 2026-10-14：simos.sd.reports **已删**（旧上报读口整族废弃）。
           "simos.ga.verdicts",
+          // ★ D-036：世界文档读口（GM+DM）。
+          "simos.docs.get",
+          "simos.docs.search",
+          "simos.docs.versions",
           "simos.social.households",
           "simos.social.population",
           "simos.state.facets",
@@ -315,6 +320,10 @@ class SimosToolsTest {
           //     NARROW_WRITE_NAMES / 磁盘窄写扫描面（66）一条不动。
           //   ★ 它 toolRoles()={GM} ⇒ 决策人面一条不动；★ 与它同族的 simos.command.submit 就在上一行。
           "simos.command.submitBatch",
+          // ★ D-036：世界文档写口（独立持久数据；GM-only；不继承窄写基类）。
+          "simos.docs.create",
+          "simos.docs.edit",
+          "simos.docs.delete",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
@@ -710,6 +719,19 @@ class SimosToolsTest {
   private static final List<String> EXTERNAL_TOOL_NAMES =
       concat(EXTERNAL_READ_TOOL_NAMES, EXTERNAL_WRITE_TOOL_NAMES);
 
+  /**
+   * D-036：app 内宿主级工具（世界文档）——实现是 {@code WorldDocsToolset} 的嵌套类，不在
+   * {@code tools/read|write/*Tool.java} 扫描面里，故显式登记，供反向幽灵扫描使用。
+   */
+  private static final List<String> APP_SERVICE_TOOL_NAMES =
+      List.of(
+          "simos.docs.get",
+          "simos.docs.search",
+          "simos.docs.versions",
+          "simos.docs.create",
+          "simos.docs.edit",
+          "simos.docs.delete");
+
   /** 读名单 + 外来读 = 真正落在读闸里的全部读工具（{@link #GM_TOOL_NAMES} 的读侧）。 */
   private static final List<String> ALL_READ_TOOL_NAMES =
       concat(READ_TOOL_NAMES, EXTERNAL_READ_TOOL_NAMES);
@@ -964,6 +986,9 @@ class SimosToolsTest {
 
   @BeforeEach
   void startShell() {
+    WorldDocsService.resetDefaultForTests(tempDir.resolve("docs"));
+    WorldDocsService.defaultService()
+        .create("test-0/unit/army/doc-test", "文档测试", "内容", List.of("doc-test"));
     seedGenesis();
     ShellConfig base = ShellConfig.defaults(tempDir).withPorts(0, 0);
     shell =
@@ -1341,7 +1366,8 @@ class SimosToolsTest {
                 + "⇒ GM 面 180 → **181**，决策人面 **61 一条不动**（★ 实测：本轮真跑红在「Expected size: 180 but was: 181」；"
                 + "决策人桶那两条断言同一次跑**没红**）")
         // ★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策工具并入后 GM 桶 = 182。
-        .hasSize(182);
+        // ★ D-036：世界文档 3 读 + 3 写 ⇒ 182 + 6 = 188。
+        .hasSize(188);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1407,7 +1433,7 @@ class SimosToolsTest {
                 + "★ 共享（既在 GM 桶又含 DM）= 39 → **46**，与三格自洽：GM 桶 = 133(类1) + 46 = 179、本桶 = 24(类2) + 37(类3) = 61。"
                 + "★ 逐条成员见 {@code DecisionFaceGolden} 与 {@code ToolClassAuditAssemblyTest.DM_APPROVAL_NAMES}（三处同轮同步）。"
                 + "实测：本条真跑红在「Expected size: 54 but was: 61」")
-        .hasSize(61);
+        .hasSize(64);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -1776,6 +1802,10 @@ class SimosToolsTest {
             new Case("simos.gm.tool-usage", Map.of(), "entries"),
             // ★ P7b（2026-10-01）：待裁决审批清单（只给 GM 桶）。
             new Case("simos.llm.providers", Map.of(), "providers"),
+            // D-036：世界文档读口（测试夹具在 @BeforeEach 建了一份 test-0/... 文档）。
+            new Case("simos.docs.get", Map.of("address", "test-0/unit/army/doc-test"), "meta"),
+            new Case("simos.docs.versions", Map.of("address", "test-0/unit/army/doc-test"), "versions"),
+            new Case("simos.docs.search", Map.of(), "entries"),
             // ★ C5b（2026-10-02）：历法/气候信息读工具的最小形状（config+sources+date+solarTerm+notes）。
             new Case("simos.calendar.info", Map.of(), "sources"),
             // ★ D0–D4 新读口：GM 决策包清单/单包、家户聚合查询。
@@ -2388,7 +2418,9 @@ class SimosToolsTest {
         .as("反向：GM 桶里的名字必须 ∈（本仓源码里的 *Tool.java ∪ 具名外来工具集 ∪ AgentLib 五工具）" + "⇒ 幽灵条目仍然当场红")
         .isSubsetOf(
             concat(
-                concat(new ArrayList<>(onDisk), EXTERNAL_TOOL_NAMES),
+                new ArrayList<>(onDisk),
+                EXTERNAL_TOOL_NAMES,
+                APP_SERVICE_TOOL_NAMES,
                 AGENTLIB_DECISION_TOOL_NAMES));
   }
 

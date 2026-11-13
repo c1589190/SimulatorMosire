@@ -17,6 +17,11 @@ import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.DecisionQueryService;
+import io.mosire.simos.app.docs.WorldDocException;
+import io.mosire.simos.app.docs.WorldDocMeta;
+import io.mosire.simos.app.docs.WorldDocVersion;
+import io.mosire.simos.app.docs.WorldDocView;
+import io.mosire.simos.app.docs.WorldDocsService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
@@ -292,11 +297,18 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String ECONOMY_GOV_PATH = "/api/economy/gov";
 
+  /** D-036：世界文档读口（按地址）与查询口。 */
+  private static final String DOCS_PATH = "/api/docs";
+
+  private static final String DOCS_SEARCH_PATH = "/api/docs/search";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
           "/api/resolve",
           "/api/facets",
+          DOCS_PATH,
+          DOCS_SEARCH_PATH,
           "/api/map/overview",
           "/api/map/hex",
           "/api/map/path",
@@ -331,6 +343,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/command",
           "/api/advance",
           "/api/fork",
+          DOCS_PATH,
           "/api/ga/start-decision",
           "/api/ga/run-decision",
           RESET_DECISION_CONVERSATION_PATH,
@@ -377,6 +390,7 @@ public final class GuiServer implements AutoCloseable {
    */
   private final DecisionRunRegistry decisionRunRegistry = new DecisionRunRegistry();
 
+  private final WorldDocsService worldDocs;
   private final ExecutorService executor;
   private final StaticHandler staticHandler;
 
@@ -486,6 +500,7 @@ public final class GuiServer implements AutoCloseable {
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
+    this.worldDocs = WorldDocsService.defaultService();
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
     this.staticHandler = new StaticHandler();
   }
@@ -691,6 +706,116 @@ public final class GuiServer implements AutoCloseable {
     };
   }
 
+  // ── D-036：世界文档 HTTP 面 ─────────────────────────────────────────────
+
+  private Reply docsReply(Map<String, String> params) {
+    WorldDocView view = worldDocs.get(requiredParam(params, "address"));
+    return Reply.of(
+        200,
+        Map.of(
+            "meta", docMetaView(view.meta()),
+            "content", view.content(),
+            "versions", docVersionsView(view.versions())));
+  }
+
+  private Reply docsSearchReply(Map<String, String> params) {
+    String query = params.getOrDefault("q", "");
+    boolean includeDeleted = "true".equalsIgnoreCase(params.getOrDefault("includeDeleted", "false"));
+    List<Map<String, Object>> entries = new ArrayList<>();
+    for (WorldDocMeta meta : worldDocs.search(query, includeDeleted)) {
+      entries.add(docMetaView(meta));
+    }
+    return Reply.of(200, Map.of("entries", entries));
+  }
+
+  private Reply docsWriteReply(HttpExchange exchange) throws IOException {
+    JsonNode root = readBody(exchange);
+    String action = textField(root, "action");
+    String address = textField(root, "address");
+    try {
+      WorldDocView view;
+      switch (action) {
+        case "create" ->
+            view =
+                worldDocs.create(
+                    address,
+                    optionalTextField(root, "title"),
+                    optionalTextField(root, "content"),
+                    textList(root, "names"));
+        case "edit" ->
+            view =
+                worldDocs.edit(
+                    address,
+                    optionalTextField(root, "title"),
+                    optionalTextField(root, "content"),
+                    textList(root, "names"));
+        case "delete" -> {
+          WorldDocMeta meta = worldDocs.delete(address, optionalTextField(root, "deletedDate"));
+          return Reply.of(200, Map.of("meta", docMetaView(meta)));
+        }
+        default -> {
+          return Reply.of(422, Map.of("error", "未知文档动作: " + action));
+        }
+      }
+      return Reply.of(
+          200,
+          Map.of(
+              "meta", docMetaView(view.meta()),
+              "content", view.content(),
+              "versions", docVersionsView(view.versions())));
+    } catch (WorldDocException e) {
+      int status = switch (e.code()) {
+        case INVALID -> 400;
+        case NOT_FOUND -> 404;
+        case EXISTS -> 409;
+      };
+      return Reply.of(status, Map.of("error", e.getMessage(), "code", e.code().name()));
+    }
+  }
+
+  private static Map<String, Object> docMetaView(WorldDocMeta meta) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("address", meta.address());
+    view.put("title", meta.title());
+    view.put("names", meta.names());
+    view.put("version", meta.version());
+    view.put("createdAt", meta.createdAt());
+    view.put("updatedAt", meta.updatedAt());
+    view.put("deletedAt", meta.deletedAt());
+    return view;
+  }
+
+  private static List<Map<String, Object>> docVersionsView(List<WorldDocVersion> versions) {
+    List<Map<String, Object>> out = new ArrayList<>(versions.size());
+    for (WorldDocVersion version : versions) {
+      out.add(Map.of("version", version.version(), "file", version.file()));
+    }
+    return out;
+  }
+
+  private static String optionalTextField(JsonNode root, String field) {
+    JsonNode value = root.get(field);
+    return value == null || value.isNull() ? null : value.asText();
+  }
+
+  private static List<String> textList(JsonNode root, String field) {
+    JsonNode value = root.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串数组");
+    }
+    List<String> out = new ArrayList<>(value.size());
+    for (JsonNode item : value) {
+      if (!item.isTextual()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是字符串");
+      }
+      out.add(item.asText());
+    }
+    return List.copyOf(out);
+  }
+
   private Reply handleGet(HttpExchange exchange, String path) throws IOException {
     Map<String, String> params = queryParams(exchange);
     String actorParam = params.get("as");
@@ -714,6 +839,12 @@ public final class GuiServer implements AutoCloseable {
           queryService.facetsWorld(requiredParam(params, "address"), target(params), mapId);
       return redactedIfRequested(
           asPresent, actor, params, Reply.of(200, Map.of("entries", ApiViews.facets(entries))));
+    }
+    if (path.equals(DOCS_PATH)) {
+      return docsReply(params);
+    }
+    if (path.equals(DOCS_SEARCH_PATH)) {
+      return docsSearchReply(params);
     }
     if (path.equals("/api/map/overview")) {
       if (asPresent) {
@@ -912,6 +1043,9 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/fork")) {
       return forkReply(exchange);
+    }
+    if (path.equals(DOCS_PATH)) {
+      return docsWriteReply(exchange);
     }
     if (path.equals(START_DECISION_PATH)) {
       return startDecisionReply(exchange);

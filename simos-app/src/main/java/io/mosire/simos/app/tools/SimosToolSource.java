@@ -17,6 +17,8 @@ import io.mosire.docs.DocsCapability;
 import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.docs.WorldDocsService;
+import io.mosire.simos.app.docs.WorldDocsToolset;
 import io.mosire.simos.app.decision.CoreDecisionPackageReadPort;
 import io.mosire.simos.app.decision.CoreDecisionReadAudit;
 import io.mosire.simos.app.decision.CoreDecisionSubmissionPort;
@@ -1770,6 +1772,8 @@ public final class SimosToolSource implements ToolSource {
     //     不进 catalog/PAYLOAD_HINTS；资源声明 NONE（没有对应的世界命名空间，见 CalendarConfigureTool 类注）。
     //   ★ 敏感写 + ToolGate.Ask（classKey = 工具名）；GM 面的审批放行与 GmToolUsage 留痕见类注。
     built.add(new CalendarConfigureTool(query, calendarService));
+    // ★ D-036：世界文档写工具（独立持久数据；不经 world revision）。
+    built.addAll(WorldDocsToolset.writeTools(WorldDocsService.defaultService()));
     // ★ 批 K ①：本档（GM）的可提议目录随本档工具面一起交回（装配期审计读它；实例见 decisionProposalTools）。
     return gmPreviewer;
   }
@@ -2018,7 +2022,9 @@ public final class SimosToolSource implements ToolSource {
             new AppGovToolEconomy(),
             new AppGovToolCommandTypes(),
             new AppGovToolManpower(calendarService));
-    return List.of(
+    List<AgentTool> tools =
+        new ArrayList<>(
+            List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
         new CatalogTool(commandTypes, embeddableCommandTypes),
@@ -2101,7 +2107,9 @@ public final class SimosToolSource implements ToolSource {
         //   ★ 都是纯派生读口（零新状态）：资源声明 sd 只读 + 断言 sd:*（与 simos.gm.packets 同款）。
         new GmInboxTool(gaReads),
         new GmRoundTool(gaReads),
-        new LlmProvidersTool(llmConfig));
+        new LlmProvidersTool(llmConfig)));
+    tools.addAll(WorldDocsToolset.readTools(WorldDocsService.defaultService()));
+    return List.copyOf(tools);
   }
 
   /**
