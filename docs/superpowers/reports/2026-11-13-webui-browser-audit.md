@@ -32,12 +32,13 @@
 | 11 | 战役 id 为空点“打开战役文档”无反馈 | status 写在隐藏的文档面板 | 战役面板新增 `#battle-status` 就地提示 |
 | 12 | **地图编辑刷地形/连边/套索在有 GOV/城市/交战图标的格上无反应** | 编辑手势复用通用 `pickAt`，单位/城市/⚔ 优先于 hex ⇒ brushList 为空、命令不发出 | 编辑手势改用纯 hex `hexAt`；选择手势仍保留单位/城市优先 |
 | 13 | **地图编辑命令返回成功，但地图/读口仍是旧地形** | 同 tick 原地更新 revision 不变；QueryService 按 revision 缓存、前端 target/共享数据缓存均误判“没变化” | 新增 world `writeEpoch`：Timeline 写成功递增；`/api/state` 下发；QueryService 按 epoch 清缓存；前端 target/withTarget/地图/事件/右栏缓存键携带 epoch |
+| 14 | 成功状态写“head 已前进”，但 revision 明明没变 | 旧文案只适配普通 revision 追加；D-036 同 tick 合并节点 | 地图/区域编辑全部成功状态改为“已写入当前节点”，并加静态断言 |
 
 ## 3. 验证
 
 ```text
 node simos-app/src/test/js/run-gate.cjs
-[frontend-gate] OK tests=427 pass=427 fail=0
+[frontend-gate] OK tests=428 pass=428 fail=0
 
 tools/mvn-lock.sh -q -pl simos-app -am -Dtest=QueryServiceTest,GuiApiTest,WebuiAssetsTest,ShellAssemblySmokeTest test
 QueryServiceTest 17 / 0；GuiApiTest 35 / 0；WebuiAssetsTest 10 / 0；ShellAssemblySmokeTest 3 / 0
@@ -47,7 +48,7 @@ QueryServiceTest 17 / 0；GuiApiTest 35 / 0；WebuiAssetsTest 10 / 0；ShellAsse
 
 ```text
 中心格 (0,0) 同时有 GOV / 城市 / 区域；选中 low_hills：
-status = 已改 1 格为 low_hills（一条命令，head 已前进）
+status = 已改 1 格为 low_hills（一条命令，已写入当前节点）
 /api/state writeEpoch = 1，revision 仍 = 1
 /api/map/hex?q=0&r=0 terrain = low_hills
 右键拖 (0,0)->(1,0)：status = 已改 2 格为 plains；两格读回 plains；writeEpoch = 2
@@ -55,13 +56,13 @@ status = 已改 1 格为 low_hills（一条命令，head 已前进）
 
 新增/调整：
 
-- `frontend-optimization.test.cjs`：8 条（原有 6 条 + 编辑手势 `hexAt` + 同 tick `writeEpoch` 贯通 target/缓存）；
+- `frontend-optimization.test.cjs`：9 条（原有 6 条 + 编辑手势 `hexAt` + 同 tick `writeEpoch` 贯通 target/缓存 + 状态文案不宣称 head 前进）；
 - `webui-fix2.test.cjs`：区域名在 `map-edit` 可见；最小字号 13；同质心标签错开；
 - `WebuiAssetsTest`：`/webui/modules/...` 单前缀；
-- 前端门禁下界：`MIN_TESTS/MIN_ASSERTIONS = 426`（实际 427）。
+- 前端门禁下界：`MIN_TESTS/MIN_ASSERTIONS = 427`（实际 428）。
 
 ## 4. 未做 / 已知边界
 
 - PNG 文件选择仍是原生 `<input type=file>` 外观（已做宽度/颜色约束，未做完全自定义按钮）；
 - 1024px 以下未做专门的移动端布局；当前 1024×768 可用但三栏较挤；
-- 本轮最终 full gate：**PASS，326s**；全仓 Surefire 3777 / 0 failures / 0 errors / 7 skipped；前端 427/427（2026-11-13）。
+- 本轮最终 full gate：**PASS，321s**；全仓 Surefire 3777 / 0 failures / 0 errors / 7 skipped；前端 428/428（2026-11-13）。
