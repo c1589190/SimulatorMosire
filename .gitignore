@@ -50,3 +50,6 @@ __pycache__/
 
 # P1.4 小世界演示的独立 store（run/small-world-db 等；运行产物，不入库）
 /run/
+
+# 2026-11-13 用户裁定：旧 SDD 台账/证据全部清理；只保留 .superpowers/AGENTS.md 作为形制指针
+.superpowers/sdd/
