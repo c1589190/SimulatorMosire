@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -123,6 +124,18 @@ public final class CommandBus {
    * 提供，用于从 基态与候选态两整份状态**派生**那一条变更集（铁律 5）。
    */
   private final Map<String, ModuleDiffer> differs;
+
+  /**
+   * D-036 editor profile：同一 tick 的后续命令**原地更新当前节点 revision**，不追加中间 revision。
+   * 缺省 false（full profile / 既有测试保持旧逐命令 revision 语义）。
+   */
+  private volatile boolean sameTickMerge;
+
+  /**
+   * D-036 同 tick 合并：用候选态直接写 checkpoint（不能 replay 当前 ref——那会先读旧 checkpoint 再写回旧态）。
+   * 缺省 no-op；CoreSimos 装配时注入。
+   */
+  private volatile BiConsumer<StateRef, SimulationState> checkpointWriter = (ref, state) -> {};
 
   /**
    * C17 的锁：**只罩住 ③ 锁内复查与 ④ 落盘**。
@@ -241,6 +254,16 @@ public final class CommandBus {
    *
    * @throws IllegalArgumentException 命令不是 Core 封闭集里的三种之一
    */
+  /** D-036：启用/关闭同 tick 原地合并（只应由 editor profile 的组合根打开）。 */
+  public void setSameTickMerge(boolean enabled) {
+    this.sameTickMerge = enabled;
+  }
+
+  /** D-036：注入“候选态 → checkpoint”写口（CoreSimos 在 seal 时接上）。 */
+  public void setCheckpointWriter(BiConsumer<StateRef, SimulationState> writer) {
+    this.checkpointWriter = writer == null ? (ref, state) -> {} : writer;
+  }
+
   public CommandResult submit(Command command) {
     Objects.requireNonNull(command, "command");
     if (command instanceof AdvanceTime advanceTime) {
@@ -774,7 +797,7 @@ public final class CommandBus {
             yield reject(envelope, trace, rejection.get());
           }
         }
-        yield commitUnderLock(envelope, trace, applied.changeSet());
+        yield commitUnderLock(envelope, trace, applied.changeSet(), state);
       }
     };
   }
@@ -868,7 +891,10 @@ public final class CommandBus {
    * revision + 1}，这正是 Task 9 报告 §5 记的那条硬接缝（"并发下两提交会算出同一个 revision 号"）的收口处。
    */
   private CommandResult commitUnderLock(
-      CommandEnvelope envelope, List<EventRow> trace, ChangeSet changeSet) {
+      CommandEnvelope envelope,
+      List<EventRow> trace,
+      ChangeSet changeSet,
+      SimulationState baseState) {
     synchronized (commitLock) {
       Optional<RevisionId> current = timeline.head(envelope.branch());
       if (current.isEmpty() || current.get().compareTo(envelope.expectedRevision()) != 0) {
@@ -877,7 +903,12 @@ public final class CommandBus {
                 now -> conflict(envelope, trace, new StateRef(envelope.branch(), now)))
             .orElseGet(() -> reject(envelope, trace, "分支不存在: " + envelope.branch().value()));
       }
-      return commit(envelope, trace, new StateRef(envelope.branch(), current.get()), changeSet);
+      return commit(
+          envelope,
+          trace,
+          new StateRef(envelope.branch(), current.get()),
+          changeSet,
+          baseState);
     }
   }
 
@@ -895,7 +926,48 @@ public final class CommandBus {
    * 的事故形态）。
    */
   private CommandResult commit(
-      CommandEnvelope envelope, List<EventRow> trace, StateRef base, ChangeSet changeSet) {
+      CommandEnvelope envelope,
+      List<EventRow> trace,
+      StateRef base,
+      ChangeSet changeSet,
+      SimulationState baseState) {
+    if (sameTickMerge) {
+      Optional<RevisionRow> current = timeline.row(base);
+      if (current.isEmpty()) {
+        throw new IllegalStateException(
+            "head 行缺席（同 tick 合并要求当前节点存在）: "
+                + base.branch().value()
+                + "@"
+                + base.revision().value());
+      }
+      RevisionRow headRow = current.get();
+      String namespace = namespaceOf(envelope.type());
+      SimulationState candidate =
+          applyToCandidate(baseState, namespace, changeSet, baseState.meta());
+      WorldChangeSet merged =
+          headRow.parent().isEmpty()
+              ? WorldChangeSet.empty()
+              : deriveWorldChangeSet(stateLoader.load(headRow.parent().get()), candidate);
+      RevisionRow updated =
+          new RevisionRow(
+              base.branch(),
+              base.revision(),
+              headRow.parent(),
+              candidate.meta().timestamp(),
+              envelope.commandId(),
+              envelope.correlationId(),
+              envelope.initiator(),
+              envelope.type(),
+              Timeline.changeSetJson(merged));
+      StateRef committed = new StateRef(updated.branch(), updated.revision());
+      List<EventRow> events = new ArrayList<>(trace);
+      events.add(event(EventTypes.COMMAND_COMMITTED, envelope, json(refJson(committed))));
+      timeline.updateRevision(updated, events);
+      if (timeline.hasCheckpoint(committed)) {
+        checkpointWriter.accept(committed, candidate);
+      }
+      return new CommandResult.Committed(committed);
+    }
     RevisionRow row =
         revisionRow(
             base,
@@ -975,6 +1047,20 @@ public final class CommandBus {
    *
    * <p>★ 单条 {@link #commit} 与批 {@link #commitBatch} 共用本方法——两条落盘路径的**行形状**因此不可能漂移。
    */
+  /** 从父节点完整态到候选完整态派生整份 WorldChangeSet（同 tick 合并用；铁律 5）。 */
+  private WorldChangeSet deriveWorldChangeSet(SimulationState base, SimulationState target) {
+    LinkedHashMap<String, ChangeSet> modules = new LinkedHashMap<>();
+    for (Map.Entry<String, Snapshot> entry : target.modules().entrySet()) {
+      Snapshot baseSlice = base.modules().get(entry.getKey());
+      if (baseSlice == null) {
+        throw new IllegalStateException(
+            "父节点缺少模块切片，无法派生同 tick 节点变更集: " + entry.getKey());
+      }
+      modules.put(entry.getKey(), differFor(entry.getKey()).diff(baseSlice, entry.getValue()));
+    }
+    return new WorldChangeSet(modules);
+  }
+
   private RevisionRow revisionRow(
       StateRef base,
       String commandId,

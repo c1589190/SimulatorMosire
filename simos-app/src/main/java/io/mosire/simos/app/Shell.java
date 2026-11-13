@@ -588,6 +588,11 @@ public final class Shell implements AutoCloseable {
         new CoreSimos(
             new CoreConfig(
                 config.storeDir(), config.checkpointInterval(), SimosObjectMapper.create()));
+    // D-036 editor：同一 tick 的后续命令原地更新当前节点，不制造中间 revision。
+    if (EditorProfile.enabled()) {
+      coreSimos.enableSameTickMerge(true);
+      coreSimos.enableSingleNodeAdvance(true);
+    }
     // ★ C5：历法配置随 core 立刻装载（store_meta.calendar；缺省不写盘）；解析/校验失败即启动 fail-closed。
     CalendarService calendarService = CalendarService.load(coreSimos);
 

@@ -70,6 +70,14 @@ public final class Timeline {
           + ALL_COLUMNS
           + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
+  /** D-036：同一 tick 的后续命令原地更新当前节点（不新增 revision）。 */
+  private static final String UPDATE_SQL =
+      "UPDATE "
+          + REVISIONS_TABLE
+          + " SET parent_branch = ?, parent_revision = ?, tick = ?, calendar_label = ?,"
+          + " command_id = ?, correlation_id = ?, initiator = ?, command_type = ?, changeset_json = ?"
+          + " WHERE branch = ? AND revision = ?";
+
   private static final String SELECT_BY_REF_SQL =
       "SELECT " + ALL_COLUMNS + " FROM " + REVISIONS_TABLE + " WHERE branch = ? AND revision = ?";
 
@@ -182,6 +190,56 @@ public final class Timeline {
     store.inTransaction(
         connection -> {
           insert(connection, row);
+          EventStore.insertAll(connection, events);
+          return null;
+        });
+  }
+
+  /**
+   * D-036：原地更新一个节点 revision，并与事件同一事务落盘。
+   *
+   * <p>★ 只应由 {@code CommandBus} 在 editor profile 的“同 tick 合并”路径调用：命令不改变 tick，
+   * 同一 (branch,tick) 只保留一个节点；历史 tick 一旦离开就不再改。
+   *
+   * @param row 已存在的 revision 行（branch/revision 定位；其余列整行覆盖）
+   * @param events 与本次更新同事务的事件
+   * @throws IllegalStateException 目标行不存在（调用方坐标与库不一致）
+   */
+  public void updateRevision(RevisionRow row, List<EventRow> events) {
+    store.inTransaction(
+        connection -> {
+          try (PreparedStatement statement = connection.prepareStatement(UPDATE_SQL)) {
+            Optional<StateRef> parent = row.parent();
+            if (parent.isPresent()) {
+              statement.setString(1, parent.get().branch().value());
+              statement.setLong(2, parent.get().revision().value());
+            } else {
+              statement.setNull(1, Types.VARCHAR);
+              statement.setNull(2, Types.INTEGER);
+            }
+            SimosTimestamp timestamp = row.timestamp();
+            statement.setLong(3, timestamp.tick());
+            if (timestamp.calendarLabel().isPresent()) {
+              statement.setString(4, timestamp.calendarLabel().get());
+            } else {
+              statement.setNull(4, Types.VARCHAR);
+            }
+            statement.setString(5, row.commandId());
+            statement.setString(6, row.correlationId());
+            statement.setString(7, row.initiator());
+            statement.setString(8, row.commandType());
+            statement.setString(9, row.changesetJson());
+            statement.setString(10, row.branch().value());
+            statement.setLong(11, row.revision().value());
+            int updated = statement.executeUpdate();
+            if (updated != 1) {
+              throw new IllegalStateException(
+                  "待更新节点不存在: " + row.branch().value() + "@" + row.revision().value());
+            }
+          } catch (SQLException e) {
+            throw new IllegalStateException(
+                "更新节点失败: " + row.branch().value() + "@" + row.revision().value(), e);
+          }
           EventStore.insertAll(connection, events);
           return null;
         });

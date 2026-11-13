@@ -146,6 +146,12 @@ public final class CoreSimos implements AutoCloseable {
 
   private volatile CommandBus bus;
 
+  /** D-036 editor：seal 前先记下，seal 时传给 CommandBus。 */
+  private volatile boolean sameTickMerge;
+
+  /** D-036 editor：一次推进只落一个节点。 */
+  private volatile boolean singleNodeAdvance;
+
   /**
    * 封存后才有值：真 {@link TimeAdvance}（★ 2026-10-13 急停协议新增持有——{@link #submitAdvance} 要走到它那条**返回 {@link
    * AdvanceOutcome}** 的口；{@link #submit} 那条仍走 {@link CommandBus}，行为一字未变）。{@code volatile} 同上。
@@ -474,6 +480,27 @@ public final class CoreSimos implements AutoCloseable {
     return java.util.Set.copyOf(names);
   }
 
+  /**
+   * D-036：打开/关闭“同 tick 原地合并”。只应由 editor profile 的组合根调用；
+   * full profile 保持逐命令 revision 的既有语义。
+   */
+  public void enableSameTickMerge(boolean enabled) {
+    this.sameTickMerge = enabled;
+    CommandBus current = this.bus;
+    if (current != null) {
+      current.setSameTickMerge(enabled);
+    }
+  }
+
+  /** D-036：一次推进只落一个节点（editor profile）。 */
+  public void enableSingleNodeAdvance(boolean enabled) {
+    this.singleNodeAdvance = enabled;
+    TimeAdvance current = this.timeAdvance;
+    if (current != null) {
+      current.setSingleNodeAdvance(enabled);
+    }
+  }
+
   public boolean awaitGenesisReady(long timeoutMillis) {
     if (!genesisPending) {
       return false; // 非空库：从来没有"等创世"这回事（读路径行为与改前逐字相同）
@@ -620,6 +647,7 @@ public final class CoreSimos implements AutoCloseable {
             stopDrain,
             List.copyOf(validators));
     this.timeAdvance = timeAdvance;
+    this.timeAdvance.setSingleNodeAdvance(singleNodeAdvance);
     this.bus =
         new CommandBus(
             timeline,
@@ -629,6 +657,8 @@ public final class CoreSimos implements AutoCloseable {
             List.copyOf(guards),
             codecs,
             List.copyOf(validators));
+    this.bus.setSameTickMerge(sameTickMerge);
+    this.bus.setCheckpointWriter(this::writeNodeCheckpoint);
     this.sealed = true;
     // ★ 2026-10-23：装配完成一条 INFO（原类只有 OPENED/CLOSED 的 DEBUG，装配实况没有一行可读）。
     LIFE.info(
@@ -720,6 +750,24 @@ public final class CoreSimos implements AutoCloseable {
    * <p>★ **信封内容由 {@link CheckpointEncoder} 产出**（与解码侧逐条对称）：模块载荷交各 codec，{@code info} 段走 info
    * mapper。写失败（I/O、或装配缺 codec 的模块）都在这里被折成 WARNING——**此刻命令已经提交**，异常逃出去会让调用方 看到假失败。
    */
+  /** D-036：同 tick 合并后的节点 checkpoint，直接编码候选态（不 replay 旧 checkpoint）。 */
+  private void writeNodeCheckpoint(StateRef ref, SimulationState state) {
+    try {
+      checkpoints.write(ref, CheckpointEncoder.encode(state, codecs));
+    } catch (RuntimeException e) {
+      STORE.warn(
+          LogEvent.of(
+              "CHECKPOINT_WRITE_FAILED",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              ref.branch().value(),
+              "revision",
+              ref.revision().value(),
+              "error",
+              e.getClass().getSimpleName()));
+    }
+  }
+
   private void maybeWriteCheckpoint(StateRef ref) {
     if (!timeline.hasCheckpoint(ref)) {
       return;

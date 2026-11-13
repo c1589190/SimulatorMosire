@@ -22,6 +22,7 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CandidateStateValidator;
 import io.mosire.simos.util.spi.Incident;
 import io.mosire.simos.util.spi.ModuleCodec;
+import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.spi.StopReport;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
@@ -135,6 +136,9 @@ public final class TimeAdvance implements AdvanceRoute {
   private final CheckpointStore checkpoints;
   private final Map<String, ModuleCodec> codecs;
 
+  /** D-036 editor：一次推进只在目标/急停 tick 落一个节点（不逐日落 revision）。 */
+  private volatile boolean singleNodeAdvance;
+
   /** ★ **已按 namespace 字典序排好**（C25）。构造期定死 ⇒ ① 的"参与者清单"不可能被调用方的入参顺序污染。 */
   private final List<TimeParticipant> participants;
 
@@ -226,6 +230,11 @@ public final class TimeAdvance implements AdvanceRoute {
    * ⇒ 折成那一天的 {@link CommandResult.Committed}。★ **代价如实记**：这条折法**丢掉 {@link StopReport}**——
    * 要看急停原因，调用方必须走 {@link #advance}（{@code CoreSimos.submitAdvance}）。
    */
+  /** D-036：启用/关闭“一次推进只落一个节点”（只由 editor profile 的组合根打开）。 */
+  public void setSingleNodeAdvance(boolean enabled) {
+    this.singleNodeAdvance = enabled;
+  }
+
   @Override
   public CommandResult run(AdvanceTime cmd) {
     return advance(cmd).commandResult();
@@ -289,6 +298,7 @@ public final class TimeAdvance implements AdvanceRoute {
 
     StateRef base = new StateRef(cmd.branch(), head.get());
     SimulationState state = stateLoader.load(base);
+    SimulationState advanceBaseState = state;
 
     // ★ 连续性（一天一步的第二条）：range.from 必须等于 base 的时间戳。只比 tick，不比 calendarLabel
     //   ——label 是显示信息（如"正午"），客户端的 from 通常不带 label；把它纳入相等判据会让合法推进被拒。
@@ -335,8 +345,14 @@ public final class TimeAdvance implements AdvanceRoute {
     for (long day = fromTick + 1; day <= toTick; day++) {
       boolean firstDay = day == fromTick + 1;
       boolean lastDay = day == toTick;
-      StateRef dayBase = new StateRef(cmd.branch(), new RevisionId(committedRevision));
-      StateRef dayTarget = new StateRef(cmd.branch(), new RevisionId(committedRevision + 1));
+      StateRef dayBase =
+          singleNodeAdvance
+              ? base
+              : new StateRef(cmd.branch(), new RevisionId(committedRevision));
+      StateRef dayTarget =
+          singleNodeAdvance
+              ? new StateRef(cmd.branch(), new RevisionId(base.revision().value() + 1))
+              : new StateRef(cmd.branch(), new RevisionId(committedRevision + 1));
       SimosTimestamp dayFrom = firstDay ? cmd.range().from() : SimosTimestamp.of(day - 1);
       SimosTimestamp dayTo = lastDay ? cmd.range().to().orElseThrow() : SimosTimestamp.of(day);
       StateMeta dayMeta = new StateMeta(dayTarget, dayTo);
@@ -488,16 +504,29 @@ public final class TimeAdvance implements AdvanceRoute {
         }
       }
 
+      SimulationState dayState =
+          new SimulationState(dayMeta, mergedModules(state, validation.applied()), state.info());
+
+      // ★ D-036 editor：中间日只在内存里推进，不落 revision；事件累积到终结日一次落盘。
+      boolean terminalDay = lastDay || stopping;
+      if (singleNodeAdvance && !terminalDay) {
+        state = dayState;
+        continue;
+      }
+
       // ⑤ Commit：1 行 revision + **全部**事件，一个事务（裁定 47：`finished` 也在里面）。
       //   ★ `finished` 落在**终结日**（整段走完的最后一天，或急停停下的那天——急停是一段真实推进的终点，I4）。
-      boolean terminalDay = lastDay || stopping;
       if (terminalDay) {
         trace.add(finished(cmd, dayTarget));
       }
       trace.add(committed(cmd, dayTarget));
+      WorldChangeSet commitChangeSet =
+          singleNodeAdvance
+              ? deriveWorldChangeSet(advanceBaseState, dayState)
+              : resolved.changeSet();
       try {
         timeline.appendRevision(
-            revisionRow(cmd, dayBase, dayTarget, dayMeta, resolved.changeSet()), trace);
+            revisionRow(cmd, dayBase, dayTarget, dayMeta, commitChangeSet), trace);
       } catch (IllegalStateException e) {
         // 裁定 48：**动了才折成冲突，没动就原样重抛**
         Optional<RevisionId> moved;
@@ -540,8 +569,6 @@ public final class TimeAdvance implements AdvanceRoute {
               trace.size()));
 
       // ⑥ Post-commit：**只剩 checkpoint**（C19 命中才写）。它失败不影响已落盘的事实。
-      SimulationState dayState =
-          new SimulationState(dayMeta, mergedModules(state, validation.applied()), state.info());
       writeCheckpointIfDue(dayTarget, dayState);
 
       committedRevision = dayTarget.revision().value();
@@ -582,9 +609,11 @@ public final class TimeAdvance implements AdvanceRoute {
         return new AdvanceOutcome.Stopped(report, new CommandResult.Committed(dayTarget));
       }
 
-      // ⑧ 下一天的 base = 这一天做完的世界。
+      // ⑧ 下一天的 base = 这一天做完的世界（singleNode 时事件继续累积到终结日）。
       state = dayState;
-      trace = new ArrayList<>();
+      if (!singleNodeAdvance) {
+        trace = new ArrayList<>();
+      }
     }
 
     // ★ 2026-10-23：推进 END（START 见上面 ADVANCE_START）——一条完整的"这一轮从哪到哪、落了什么、参与者几条"。
@@ -880,6 +909,24 @@ public final class TimeAdvance implements AdvanceRoute {
 
   private static EventRow committed(AdvanceTime cmd, StateRef target) {
     return event(EventTypes.COMMAND_COMMITTED, cmd, json(refJson(target)));
+  }
+
+  /** 从推进起点完整态到当前完整态派生整份 WorldChangeSet（singleNodeAdvance 用；铁律 5）。 */
+  private WorldChangeSet deriveWorldChangeSet(SimulationState base, SimulationState target) {
+    java.util.LinkedHashMap<String, ChangeSet> modules = new java.util.LinkedHashMap<>();
+    for (Map.Entry<String, Snapshot> entry : target.modules().entrySet()) {
+      ModuleCodec codec = codecs.get(entry.getKey());
+      if (!(codec instanceof ModuleDiffer differ)) {
+        throw new IllegalStateException(
+            "模块 codec 未实现 ModuleDiffer，无法派生单节点推进变更集: " + entry.getKey());
+      }
+      Snapshot baseSlice = base.modules().get(entry.getKey());
+      if (baseSlice == null) {
+        throw new IllegalStateException("推进起点缺少模块切片: " + entry.getKey());
+      }
+      modules.put(entry.getKey(), differ.diff(baseSlice, entry.getValue()));
+    }
+    return new WorldChangeSet(modules);
   }
 
   private static RevisionRow revisionRow(
