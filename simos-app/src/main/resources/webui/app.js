@@ -20,6 +20,8 @@
     mode: "view",
     branch: "main",
     revision: null,
+    // D-036：同一 tick 原地更新时 revision 不变；写代次让 target/缓存失效。
+    writeEpoch: 0,
     // D-036：当前状态游标的 tick（文档地址 treeXXX-tickXXX 的 tick 部分）。
     tick: null,
     selection: null,
@@ -355,9 +357,12 @@
    * 把 /api/state 的服务器视图写进状态机（M7 T3）：分支表与各分支 head **永远更新**；游标**只在首次**（revision
    * 尚为 null）时初始化。若每次轮询都回填游标，用户拖到中间节点的预览会被 5s 定时器弹回末端——那让 U1 的"只读预览"不可用。
    */
-  function setServerState(branches, heads, meta) {
+  function setServerState(branches, heads, meta, writeEpoch) {
     state.branches = Array.isArray(branches) ? branches.slice() : [];
     state.heads = heads && typeof heads === "object" ? Object.assign({}, heads) : {};
+    if (typeof writeEpoch === "number" && isFinite(writeEpoch)) {
+      state.writeEpoch = writeEpoch;
+    }
     if (meta && meta.timestamp && meta.timestamp.tick !== undefined) {
       state.tick = meta.timestamp.tick;
     }
@@ -386,13 +391,13 @@
       window.SimosApi.invalidateState();
     }
     var body = await window.SimosApi.state();
-    setServerState(body.branches, body.heads, body.meta);
+    setServerState(body.branches, body.heads, body.meta, body.writeEpoch);
     return body;
   }
 
   /** 所有面板的只读取数目标（M7 T3 约定；T4~T7 一律传它）。 */
   function target() {
-    return { branch: state.branch, revision: state.revision };
+    return { branch: state.branch, revision: state.revision, writeEpoch: state.writeEpoch };
   }
 
   // ── 写命令（M7 T7）────────────────────────────────────────────────

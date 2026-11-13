@@ -20,6 +20,7 @@
   var panelDom = window.SimosPanelDom;
   var loadOverview = panelDom.loadOverview;
   var targetLabel = panelDom.targetLabel;
+  var targetCacheKey = panelDom.targetCacheKey;
   var appendRow = panelDom.appendRow;
   var appendLiveRow = panelDom.appendLiveRow;
   var appendBlock = panelDom.appendBlock;
@@ -2422,7 +2423,7 @@
     if (!mount) {
       return;
     }
-    var key = targetLabel();
+    var key = targetCacheKey();
     if (key === decisionRightKey) {
       if (decisionRightMakers !== null) {
         drawDecisionList(state);

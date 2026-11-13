@@ -26,6 +26,12 @@
     return t.branch + "@" + (t.revision === null || t.revision === undefined ? "head" : t.revision);
   }
 
+  /** D-036：组件内部缓存键；显示仍用 targetLabel（不把 writeEpoch 塞进用户状态行）。 */
+  function targetCacheKey() {
+    var t = app.target();
+    return targetLabel() + "#" + (t.writeEpoch === null || t.writeEpoch === undefined ? 0 : t.writeEpoch);
+  }
+
   /**
    * 追加一行读数。`hint`（可选）= 该行的**口径说明**，写进 `title=`（B16：口径不进主栏，进 tooltip）。
    */
@@ -70,6 +76,7 @@
   window.SimosPanelDom = {
     loadOverview: loadOverview,
     targetLabel: targetLabel,
+    targetCacheKey: targetCacheKey,
     appendRow: appendRow,
     appendLiveRow: appendLiveRow,
     appendBlock: appendBlock,

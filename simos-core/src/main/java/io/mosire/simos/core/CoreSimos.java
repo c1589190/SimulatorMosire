@@ -498,6 +498,11 @@ public final class CoreSimos implements AutoCloseable {
     }
   }
 
+  /** D-036：世界写入代次（同一 tick 原地更新也会递增；读缓存失效用）。 */
+  public long writeEpoch() {
+    return timeline.writeEpoch();
+  }
+
   public boolean awaitGenesisReady(long timeoutMillis) {
     if (!genesisPending) {
       return false; // 非空库：从来没有"等创世"这回事（读路径行为与改前逐字相同）

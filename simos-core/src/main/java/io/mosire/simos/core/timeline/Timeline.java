@@ -50,6 +50,10 @@ import java.util.Set;
  */
 public final class Timeline {
 
+  /** D-036：世界写入代次。同一 tick 原地更新 revision 时 revision 不变，读缓存必须靠它失效。 */
+  private final java.util.concurrent.atomic.AtomicLong writeEpoch =
+      new java.util.concurrent.atomic.AtomicLong();
+
   /** 分岔行的命令类型（spec §3.2 注释冻结的 Core 自有命令类型之一）；由本类钉住，调用方不必重复写这个串。 */
   public static final String FORK_COMMAND_TYPE = "core.ForkBranch";
 
@@ -171,6 +175,7 @@ public final class Timeline {
           insert(connection, row);
           return null;
         });
+    writeEpoch.incrementAndGet();
   }
 
   /**
@@ -193,6 +198,7 @@ public final class Timeline {
           EventStore.insertAll(connection, events);
           return null;
         });
+    writeEpoch.incrementAndGet();
   }
 
   /**
@@ -243,6 +249,7 @@ public final class Timeline {
           EventStore.insertAll(connection, events);
           return null;
         });
+    writeEpoch.incrementAndGet();
   }
 
   /**
@@ -303,6 +310,11 @@ public final class Timeline {
           insert(connection, firstRevision);
           return Optional.of(new StateRef(newBranch, firstRevision.revision()));
         });
+  }
+
+  /** D-036：世界写入代次（同一 tick 原地更新也会递增）。 */
+  public long writeEpoch() {
+    return writeEpoch.get();
   }
 
   /** head(b)（spec §3.3）：分支不存在 ⇒ 空。 */

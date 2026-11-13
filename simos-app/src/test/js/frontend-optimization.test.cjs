@@ -55,3 +55,30 @@ test("png-alignment-change-invalidates-stale-plan", () => {
   assert.ok(source.includes("lastPlan = null"), "参数变化必须清空旧取色计划");
   assert.ok(source.includes('"png-threshold"'), "阈值变化也必须触发布局失效");
 });
+
+test("map-edit-gestures-use-hex-only-hit-testing", () => {
+  const renderer = readWebui("renderer.js");
+  assert.ok(renderer.includes("function hexAt(point)"), "编辑手势必须有独立 hexAt");
+  const paint = renderer.slice(renderer.indexOf("function paintAt(point)"), renderer.indexOf("function canvasPoint"));
+  const edge = renderer.slice(renderer.indexOf("function edgeAt(point)"), renderer.indexOf("function edgeHitAt"));
+  assert.ok(paint.includes("hexAt(point)"), "刷子不得用单位/城市优先的 pickAt");
+  assert.ok(edge.includes("hexAt(point)"), "连边不得用单位/城市优先的 pickAt");
+  assert.ok(
+    renderer.includes("var lassoPick = hexAt(canvasPoint(event));"),
+    "套索不得用单位/城市优先的 pickAt"
+  );
+});
+
+test("same-tick-writeEpoch-is-wired-through-target-and-caches", () => {
+  const app = readWebui("app.js");
+  const api = readWebui("api.js");
+  const map = readWebui("map.js");
+  const events = readWebui("events.js");
+  const paneldom = readWebui("paneldom.js");
+  assert.ok(app.includes("writeEpoch: state.writeEpoch"), "target() 必须带 writeEpoch");
+  assert.ok(app.includes("body.writeEpoch"), "refreshState 必须回填 writeEpoch");
+  assert.ok(api.includes('target.writeEpoch !== null'), "共享取数缓存键必须带 writeEpoch");
+  assert.ok(map.includes("t.writeEpoch"), "地图 targetKey 必须带 writeEpoch");
+  assert.ok(events.includes("target.writeEpoch"), "事件 targetKey 必须带 writeEpoch");
+  assert.ok(paneldom.includes("targetCacheKey"), "右栏缓存键必须带 writeEpoch");
+});

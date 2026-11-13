@@ -1240,6 +1240,7 @@ public final class GuiServer implements AutoCloseable {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("branches", names);
     body.put("heads", heads);
+    body.put("writeEpoch", core.writeEpoch());
     body.put("meta", metaFor(names));
     return Reply.of(200, body);
   }

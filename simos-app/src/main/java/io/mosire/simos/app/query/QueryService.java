@@ -45,10 +45,9 @@ import java.util.concurrent.atomic.LongAdder;
  * #STATE_CACHE_CAPACITY} 的有界 LRU（访问序）。它消灭了"同一坐标的多个读端点各自重放一次"—— overview/units/state/hex/path
  * 全部落在同一坐标上时只重放一次，而每次重放都要从磁盘重读并解码整个 checkpoint。
  *
- * <p>★ **失效是键的函数，不是钩子**：head 在查缓存**之前**就解析成具体 {@link RevisionId}，键是**已解析的** {@link
- * StateRef}。提交（{@code CommandBus.submit} / {@code AdvanceTime} / {@code ForkBranch}）产生新 revision ⇒
- * head 解析出新值 ⇒ 新键 ⇒ 未命中 ⇒ 读到的必是新状态；新分支同理（它有自己的键空间）。**故意不装**"提交时清缓存" 的钩子：那是与时间线并存的第二份真相，漏掉任一写路径就会读到旧
- * revision；键即失效条件则无从漏。
+ * <p>★ **失效条件 = revision + writeEpoch**：head 在查缓存**之前**就解析成具体 {@link RevisionId}，键是**已解析的** {@link
+ * StateRef}。提交产生新 revision ⇒ 新键；D-036 editor 的**同 tick 原地更新**不改变 revision ⇒ 额外用 {@link
+ * CoreSimos#writeEpoch()} 清空按 revision 键的缓存。否则“命令成功、读口仍回旧状态”。
  *
  * <p>★ **缓存值是深度不可变的** {@link SimulationState}（{@code modules = Map.copyOf}；{@code GameMap} 的 7 张表
  * 全是 {@code Collections.unmodifiableMap}；各切片是 record；{@code InMemoryInfoSystem} 构造期深拷贝），故
@@ -78,6 +77,9 @@ public final class QueryService {
   private final Map<StateRef, SimulationState> stateCache =
       Collections.synchronizedMap(new StateCache(STATE_CACHE_CAPACITY));
 
+  /** D-036：世界写入代次；与 revision 不同，同 tick 原地更新也会变。 */
+  private volatile long cachedWriteEpoch = Long.MIN_VALUE;
+
   private final LongAdder stateCacheHits = new LongAdder();
   private final LongAdder stateCacheMisses = new LongAdder();
 
@@ -102,6 +104,12 @@ public final class QueryService {
 
   public SimulationState stateAt(QueryTarget target) {
     Objects.requireNonNull(target, "target");
+    // D-036：同 tick 原地更新不改变 revision，但会改变 writeEpoch ⇒ 必须清掉按 revision 键的缓存。
+    long epoch = core.writeEpoch();
+    if (epoch != cachedWriteEpoch) {
+      stateCache.clear();
+      cachedWriteEpoch = epoch;
+    }
     RevisionId revision = target.revision();
     if (revision == null) {
       Optional<RevisionId> head = core.head(target.branch());

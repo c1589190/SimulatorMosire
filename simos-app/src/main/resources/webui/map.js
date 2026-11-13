@@ -187,7 +187,8 @@
 
   function targetKey() {
     var t = app.target();
-    return t.branch + "#" + (t.revision === null || t.revision === undefined ? "head" : t.revision);
+    var epoch = t.writeEpoch === null || t.writeEpoch === undefined ? 0 : t.writeEpoch;
+    return t.branch + "#" + (t.revision === null || t.revision === undefined ? "head" : t.revision) + "@" + epoch;
   }
 
   function regionCacheKey(id) {

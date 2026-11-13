@@ -18,6 +18,7 @@
   var UNTAGGED_LABEL = window.SimosReadout.UNTAGGED_LABEL;
   var loadOverview = window.SimosPanelDom.loadOverview;
   var targetLabel = window.SimosPanelDom.targetLabel;
+  var targetCacheKey = window.SimosPanelDom.targetCacheKey;
   var appendRow = window.SimosPanelDom.appendRow;
 
   // ── 右栏区域分组（M7 T6）────────────────────────────────────────────
@@ -175,7 +176,7 @@
 
   /** map.js 取数后推来的世界数据（同一 target）；右栏不因此再发请求。 */
   function setWorldData(data) {
-    worldKey = targetLabel();
+    worldKey = targetCacheKey();
     // 每次推新世界数据（含 revision 变化）都重取一次待批数：审批会随写命令变化，"缓存一份旧计数"会撒谎。
     pendingState = "idle";
     pendingCount = null;
@@ -201,7 +202,7 @@
     if (!mount) {
       return;
     }
-    var key = targetLabel();
+    var key = targetCacheKey();
     if (key === worldKey && worldData) {
       renderWorldOverview(state);
       return;
@@ -502,7 +503,7 @@
     if (!mount) {
       return;
     }
-    var key = targetLabel();
+    var key = targetCacheKey();
     if (key === rightKey) {
       if (rightRegions !== null) {
         drawRight(state);

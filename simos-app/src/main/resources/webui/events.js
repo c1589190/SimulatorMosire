@@ -525,7 +525,13 @@
   function targetKey() {
     if (!app || typeof app.target !== "function") return "";
     var target = app.target() || {};
-    return String(target.branch) + "@" + String(target.revision);
+    return (
+      String(target.branch) +
+      "@" +
+      String(target.revision) +
+      "#" +
+      String(target.writeEpoch === null || target.writeEpoch === undefined ? 0 : target.writeEpoch)
+    );
   }
 
   function loadEvents() {

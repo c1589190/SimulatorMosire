@@ -65,6 +65,10 @@
     if (target.revision !== null && target.revision !== undefined) {
       query += "&revision=" + encodeURIComponent(target.revision);
     }
+    // D-036：同 tick 原地更新 revision 不变；把写代次放进 URL ⇒ 共享缓存键跟着换。
+    if (target.writeEpoch !== null && target.writeEpoch !== undefined) {
+      query += "&writeEpoch=" + encodeURIComponent(target.writeEpoch);
+    }
     return path + separator + query;
   }
 

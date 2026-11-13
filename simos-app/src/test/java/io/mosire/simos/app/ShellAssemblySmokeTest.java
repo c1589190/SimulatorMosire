@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -339,10 +340,21 @@ class ShellAssemblySmokeTest {
       assertThat(first).isInstanceOf(CommandResult.Committed.class);
       assertThat(shell.coreSimos().head(main)).as("同 tick 命令不得推进 revision").contains(genesis);
 
+      SimulationState firstRead = shell.queryService().stateAt(QueryTarget.head(main));
+      assertThat(ApiViews.gameMap(firstRead).terrainAt(target))
+          .as("第一次同 tick 写后，读口必须看到 firstTerrain")
+          .isEqualTo(firstTerrain);
+
       CommandResult second =
           shell.coreSimos().submit(terrainEnvelope(genesis, target, secondTerrain));
       assertThat(second).isInstanceOf(CommandResult.Committed.class);
       assertThat(shell.coreSimos().head(main)).as("第二条同 tick 命令仍更新同一节点").contains(genesis);
+
+      // revision 仍是 genesis；如果 QueryService 只按 revision 缓存，这里会拿到第一写后的旧态。
+      SimulationState secondRead = shell.queryService().stateAt(QueryTarget.head(main));
+      assertThat(ApiViews.gameMap(secondRead).terrainAt(target))
+          .as("同 tick 原地更新必须让读缓存失效（writeEpoch）")
+          .isEqualTo(secondTerrain);
 
       SimulationState after = shell.coreSimos().replay(new StateRef(main, genesis));
       assertThat(ApiViews.gameMap(after).terrainAt(target)).isEqualTo(secondTerrain);

@@ -2036,6 +2036,28 @@
       }, ZOOM_SETTLE_MS);
     }
 
+    /**
+     * 屏幕 CSS 坐标 → 世界 → **只命中 hex**（忽略单位/城市/交战图标）。
+     *
+     * <p>★ 地图编辑的刷子/连边/套索必须用它：通用 {@link #pickAt} 是“选择”语义（单位/城市优先），
+     * 若编辑手势也走它，右键落在 GOV/军队/城市格上时会被判成 unit/city ⇒ brushList 为空、写命令永不发出。
+     */
+    function hexAt(point) {
+      var world = screenToWorld(point, view);
+      var coord = pixelToHex(world.x, world.y, cellSize);
+      var block =
+        window.SimosBlocks && window.SimosBlocks.blockAtPoint
+          ? window.SimosBlocks.blockAtPoint(blocks, world.x / cellSize, world.y / cellSize)
+          : null;
+      return {
+        kind: "hex",
+        q: coord.q,
+        r: coord.r,
+        inMap: !!block,
+        terrain: block ? block.terrain : null,
+      };
+    }
+
     /** 屏幕 CSS 坐标 → 世界 → 命中（单位优先于格）。★ m2 保护的是这里的世界换算。 */
     function pickAt(point) {
       var world = screenToWorld(point, view);
@@ -2404,8 +2426,8 @@
 
     /** 拖刷：把当前指针下的格并入预览集合（去重）；图外/非格不动。 */
     function paintAt(point) {
-      var pick = pickAt(point);
-      if (pick && pick.kind === "hex" && pick.inMap) {
+      var pick = hexAt(point);
+      if (pick && pick.inMap) {
         brushKeys[pick.q + "_" + pick.r] = { q: pick.q, r: pick.r };
         scheduleRender();
       }
@@ -2470,8 +2492,8 @@
 
     /** 把当前指针下的格并入连边轨迹（去重相邻重复点）；图外/非格不动。 */
     function edgeAt(point) {
-      var pick = pickAt(point);
-      if (!pick || pick.kind !== "hex" || !pick.inMap) {
+      var pick = hexAt(point);
+      if (!pick || !pick.inMap) {
         return;
       }
       var path = edgeDrag.path;
@@ -2534,8 +2556,8 @@
           lassoKeys = {};
           lassoOrder = [];
           capturePointer(event.pointerId);
-          var lassoPick = pickAt(canvasPoint(event));
-          if (lassoPick && lassoPick.kind === "hex" && lassoPick.inMap) {
+          var lassoPick = hexAt(canvasPoint(event));
+          if (lassoPick && lassoPick.inMap) {
             addLassoPoint(lassoPick.q, lassoPick.r);
           }
           updateCursor();
@@ -2585,8 +2607,8 @@
 
     function onPointerMove(event) {
       if (lassoActive) {
-        var lassoPick = pickAt(canvasPoint(event));
-        if (lassoPick && lassoPick.kind === "hex" && lassoPick.inMap) {
+        var lassoPick = hexAt(canvasPoint(event));
+        if (lassoPick && lassoPick.inMap) {
           addLassoPoint(lassoPick.q, lassoPick.r);
         }
         return;

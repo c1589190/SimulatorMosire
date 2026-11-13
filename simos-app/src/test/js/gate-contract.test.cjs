@@ -123,7 +123,7 @@ const REQUIRED_FILES = [
 //     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
 //     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
 //     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 424;
+const MIN_ASSERTIONS = 426;
 
 function testFiles() {
   return fs
