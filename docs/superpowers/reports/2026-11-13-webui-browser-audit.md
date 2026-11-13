@@ -52,4 +52,4 @@ Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
 
 - PNG 文件选择仍是原生 `<input type=file>` 外观（已做宽度/颜色约束，未做完全自定义按钮）；
 - 1024px 以下未做专门的移动端布局；当前 1024×768 可用但三栏较挤；
-- 本文未重跑 full gate；本轮为前端/静态资源修复，跑的是前端门禁 + `WebuiAssetsTest`。上一轮 D-036 full gate 为 PASS（313s）。
+- 本轮最终 full gate：**PASS，329s**；全仓 Surefire 3777 / 0 failures / 0 errors / 7 skipped；前端 425/425（2026-11-13）。

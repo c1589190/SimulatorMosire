@@ -23,10 +23,10 @@
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `main` |
-| HEAD | `1053f289`（`fix(webui): 真实浏览器实测修复`，2026-11-13） |
-| upstream | `origin/main`；`main` 领先 origin 21 个提交（D-036 全切片 + 测试/格式/文档/前端修复），**未推送** |
+| HEAD | `fc38f7cb`（`docs(report): WebUI 真实浏览器实测`，2026-11-13） |
+| upstream | `origin/main`；`main` 领先 origin 23 个提交（D-036 全切片 + 测试/格式/文档/前端修复），**未推送** |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-13：D-036 全切片落地；full gate 313s；Chrome 实测修复 11 个 WebUI bug；前端门禁 425/425 |
+| 最近活动 | 2026-11-13：D-036 全切片；Chrome 实测修复 11 个 WebUI bug；full gate **329s / 3777 tests**；前端 425/425 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -70,7 +70,7 @@
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
 | `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
-| `tools/gate.sh full`（2026-11-13，最终，前端优化前） | **PASS**，耗时 **313s**（-89s）；全仓 Surefire **3776 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 418/418；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
+| `tools/gate.sh full`（2026-11-13，最终） | **PASS**，耗时 **329s**；全仓 Surefire **3777 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 425/425；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
 | `node simos-app/src/test/js/run-gate.cjs`（2026-11-13，前端优化后） | **PASS**，425/425（新增 frontend-optimization 6 条 + 区域名/字号断言调整） |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WebuiAssetsTest test` | 10 / 0 failures；含模块脚本单前缀回归 |
 | `python3 tools/check-docs.py` / `skills-lint.py` | PASS（links=44 / active skills=1） |
@@ -130,7 +130,7 @@ SKILLS LINT PASSED (active skills=1)
 1. ✅ P1.1 任意节点分叉；P1.2a `tree-tick` 地址；P1.3 editor 一 tick 一节点（同 tick 原地合并 + 一推进一节点）。
 2. ✅ P2a 文档服务；P2b 文档 GUI + 战役/阶段入口。
 3. ✅ P3 2+1 模式 + 模块前端 manifest 发现；P4 editor profile 卸载 economy/production/culture；P5 PNG 取色/应用。
-4. ✅ full gate 2026-11-13 最终 PASS（313s，402s → 313s）：GovPayToolTest 空库等待 31s→3.75s；180 tick 模拟打 `multitick` tag 移出默认门禁；全仓 3776 / 0 / 0 / 7。
+4. ✅ full gate 2026-11-13 最终 PASS（329s）：GovPayToolTest 空库等待 31s→3.75s；180 tick 模拟打 `multitick` tag 移出默认门禁；全仓 3777 / 0 / 0 / 7；前端 425/425。
 5. **下一步第一命令**：`tools/mvn-lock.sh -Dsimos.excludedTestGroups= -Dtest=StagedAgricultureEconomy180Test -pl simos-app -am test`（需要跑 180 tick 长测时显式 opt-in）。
 6. **剩余工程**：
    - 自然语言字段迁移：RegionMeta.description、CombatRecord/CombatStage.text → 文档地址；
