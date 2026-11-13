@@ -96,7 +96,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 决策包工具面归入后类1 = **134** （133 + 共享 48 = GM 桶 182）。
    */
-  private static final int GM_ONLY_SIZE = 134;
+  private static final int GM_ONLY_SIZE = 137;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
@@ -105,7 +105,7 @@ class ToolClassAuditAssemblyTest {
   private static final int DM_APPROVAL_SIZE = 25;
 
   /** ★★ <b>类3 {@code DM_FREE} = 37</b>（★ 裁定「甲」<b>未动</b>本格：那 7 条本来就是 {@code Ask} ⇒ 落类2，不落类3）。 */
-  private static final int DM_FREE_SIZE = 36;
+  private static final int DM_FREE_SIZE = 39;
 
   /**
    * ★ <b>共享 = 46</b>：既在 GM 桶、又在决策人桶的工具（内部 38 + 外来 8，{@code toolRoles()} 含 {@code {GM, DM}} 两者）。
@@ -117,7 +117,7 @@ class ToolClassAuditAssemblyTest {
    * 桶、又含 DM** ⇒ 共享 +2。★ 与被减 2 的 {@link #GM_ONLY_SIZE} 联立后 GM 桶**仍是 179**（{@code 131 + 48 = 179}）——
    * 这正是"两个桶锚点不动、只有格在搬家"的算术。
    */
-  private static final int SHARED_SIZE = 48;
+  private static final int SHARED_SIZE = 51;
 
   /**
    * ★ <b>两桶并集 = 193 = 132 + 24 + 37</b>（分区不重不漏的算术自证）。★★ 批 L ②：{@code 194 → 192}（合并把两条 GM-only 与两条
@@ -131,7 +131,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：并集 = 类1 134 + 类2 25 + 类3 36 = **195**。
    */
-  private static final int TOOL_UNION_SIZE = 195;
+  private static final int TOOL_UNION_SIZE = 201;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
@@ -145,13 +145,13 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：GM 桶 = 类1 134 + 共享 48 = **182**。
    */
-  private static final int GM_BUCKET_SIZE = 182;
+  private static final int GM_BUCKET_SIZE = 188;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +
    * 类3 37）。
    */
-  private static final int DECISION_BUCKET_SIZE = 61;
+  private static final int DECISION_BUCKET_SIZE = 64;
 
   // ────────────────────────── ★★ 类2 具名清单（A2/A3） ──────────────────────────
 

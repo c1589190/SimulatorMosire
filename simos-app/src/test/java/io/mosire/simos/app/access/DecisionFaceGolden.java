@@ -59,6 +59,10 @@ public final class DecisionFaceGolden {
           "simos.command.catalog",
           "simos.state.resolve",
           "simos.state.facets",
+          // D-036：世界文档读口（GM+DM；默认 ALLOW）。
+          "simos.docs.get",
+          "simos.docs.search",
+          "simos.docs.versions",
           "simos.timeline.branches",
           "simos.timeline.revisions",
           "simos.map.overview",
