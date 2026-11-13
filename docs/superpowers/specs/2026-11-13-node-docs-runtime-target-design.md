@@ -29,8 +29,8 @@
    - `NodeRef(branch=tree1, tick=360)`；
    - `Path=[unit, army, vg-berlin]`。
 3. `CoreSimos.revisionAtTick(branch,tick)` 取该 tick 的 revision：
-   - **目标**：一个 `(branch,tick)` 恰有一个节点 revision；
-   - **当前过渡**：取该 tick 最后一条 revision（节点压缩落地前）；地址对外始终是 `tree-tick`，不暴露 rev。
+   - **editor profile 已实现**：一个 `(branch,tick)` 恰有一个节点 revision（同 tick 命令原地更新、推进只落目标节点）；
+   - **full profile（测试/兼容）**：仍可能有多条 revision，取该 tick 最后一条；地址对外始终是 `tree-tick`，不暴露 rev。
 4. 实体路径映射到现有 namespace 地址（app 层）：
    - `hex/<q,r>` → `map:<mapId>:hex.<q_r>`
    - `region/<id>` → `map:<mapId>:region.<id>`
@@ -54,15 +54,15 @@
 4. 返回值 `CommandResult.Committed(StateRef)`；GUI/MCP 用新坐标刷新。
 
 **节点语义**：
-- **目标**：同一 `(branch,tick)` 只有一个节点；当前 tick 的 head 节点可继续编辑，离开 tick 后冻结；历史节点不改写。
-- **当前过渡**：同一 tick 多次写仍会落多条 revision；`revisionAtTick` 取最后一条。节点压缩（P1.3）负责合并为一条并重映射 `atRevision` 引用。
+- **editor profile 已实现**：同一 `(branch,tick)` 只有一个节点；当前 tick 的 head 节点可继续编辑，离开 tick 后冻结；历史节点不改写。同 tick 后续命令原地更新该 revision，变更集由父节点完整态派生，并直接重写该节点 checkpoint。
+- **full profile（测试/兼容）**：同一 tick 多次写仍会落多条 revision；`revisionAtTick` 取最后一条。旧档/legacy 路径不做物理压缩。
 - 任何历史写仍被 `expectedRevision == head` 拒绝；要改历史 ⇒ 从该节点分叉（S4）。
 
 ### S3 时间推进
 
 1. `AdvanceTime` 按日运行时间参与者，逐日产生 proposal/changeSet/incident。
-2. **目标**：一次推进到目标 tick，只在目标 tick 落**一个节点**；中途急停则在急停 tick 落一个节点。
-3. 当前过渡：仍逐日落 revision；推进语义不变，待 P1.3 改为一推进一节点。
+2. **editor profile 已实现**：一次推进到目标 tick，只在目标 tick 落**一个节点**；中途急停则在急停 tick 落一个节点；中间日只在内存推进，事件累积到终结日一次落盘。
+3. **full profile（测试/兼容）**：仍逐日落 revision；推进语义不变。
 4. 经济/生产/文化卸载后，时间参与者只保留 unit/army/gov/ga/actor/social 所需部分。
 
 **失败语义**：并发冲突折成 `Conflict`（报真实 head）；候选态校验失败 ⇒ 该日/该次推进不落 revision；急停 ⇒ 先 drain 跨模块效果，再返回 `StopReport`。
@@ -98,23 +98,23 @@
 
 ### S6 GUI 2+1
 
-1. 2 个核心模式：**地图编辑**（含区域/连通/地形/区域元数据）、**单位编辑**。
-2. +1：**战役编辑**；每个阶段是独立地址（`battle/<id>/stage/<sid>`）。
-3. 模块自带前端资源机制：`simos-*/src/main/resources/webui/` + 注册清单 + app 聚合；`StaticHandler` 不再是唯一根。
-4. 战争/阶段详情提供“文档入口”（S5 地址映射）。
+1. **已实现**：模式栏收敛为常规 / 地图编辑 / 单位编辑 / 战役；区域编辑并入地图编辑。
+2. **已实现**：战役模式提供当前 tick 战报与战役/阶段文档入口；阶段地址为 `battle/<id>/stage/<sid>`。
+3. **已实现最小机制**：模块资产放 `src/main/resources/webui/modules/<id>/`，app 通过 `modules.index.json` + `GET /api/webui/modules` 发现；`StaticHandler` 从 classpath 统一服务。
+4. **已实现**：战役/阶段详情提供“文档入口”（S5 地址映射）。
 
 ### S7 经济/生产/文化卸载
 
-1. `Shell` 装配面按 profile 选择模块；economy/production/culture 不注册 codec/handler/工具/时间参与者。
-2. `PopulationUnitTimeParticipant` 拆分：保留 unit/army/gov/ga/actor/social 所需部分，移除 economy 提议。
-3. 世界生成器不再 seed 经济；旧经济存档不承诺可读。
+1. **已实现（editor profile）**：`simos.profile=editor` / CLI `--profile editor`；economy/production/culture 的 handler、resolver、validator、工具、GUI API 不注册/404。
+2. **已实现**：editor 时间参与者只注册 unit/ga/army；population/economy/land 不参与。
+3. **过渡**：codec 仍保留以读取含旧切片的 store；世界生成器未裁剪经济 seed（编辑器路径不推进经济）。旧经济存档不承诺可读。
 4. 保留 gov 完整国家/外交、ga 决策人、actor 库存；决策人查看/编辑模式暂缓。
 
-### S8 PNG 底图（后置）
+### S8 PNG 底图（已实现第一版）
 
-1. GUI 载入 PNG，与指定 hex 对齐。
-2. 按 hex 中心像素取色，颜色→地形分类，预览后写入地图（`map.SetTerrain` 批）。
-3. 底图持久化策略在 P5 前单独定；不阻塞 S1~S7。
+1. **已实现**：地图编辑面板载入 PNG，设置 world offset / 图像缩放 / 透明度，renderer 按 world 坐标叠加。
+2. **已实现**：按 hex 中心 3×3 取色，最近地形色分类，预览计数后按地形分组发 `map.SetTerrain`。
+3. 底图本身不写入 world 数据；目前只作为对齐/取色辅助层，持久化策略仍可后续增强。
 
 ---
 
@@ -189,11 +189,16 @@
   - 日志：暂无专用 INFO 事件（后续补）；
   - 测试：`WorldDocsServiceTest` 8 例；docs 工具进入 GM 桶并纳入读工具覆盖表。
 
-### 4.4 节点压缩（P1.3，未实现）
+### 4.4 一 tick 一节点（P1.3，editor 已实现）
 
 - **父序列锚点**：S2/S3。
-- **目标**：同 `(branch,tick)` 合并为一条节点 revision；物理删除中间 revision；`atRevision` 重映射。
-- **影响**：见计划 P1.3；实现前必须补状态引用清单与迁移/不兼容声明。
+- **实现方式**：不事后删除 revision，而是**从源头不制造中间 revision**：
+  - 同 tick 命令原地更新当前节点 revision（`Timeline.updateRevision`）；
+  - 一次 `AdvanceTime` 只在目标/急停 tick 落一个 revision；
+  - 节点变更集由父节点/推进起点完整态派生（`ModuleDiffer`，铁律 5）；
+  - 节点 checkpoint 从候选态直接重写（不 replay 旧 checkpoint）。
+- **边界**：full profile / legacy 仍保留旧逐命令/逐日 revision 语义；旧档不做迁移/压缩。
+- **影响**：见 `ShellAssemblySmokeTest` 的 0→2 / 2→5 / 同 tick 双写功能测试。
 
 ---
 
@@ -218,7 +223,28 @@
 
 ---
 
-## 7. 修订记录
+## 7. 实现状态（2026-11-13）
+
+| 切片 | 状态 | 关键证据 |
+|---|---|---|
+| P1.1 任意节点分叉 | ✅ | `TimelineTest`、`CommandBusDispatchTest` |
+| P1.2a `tree-tick` 地址 | ✅ | `NodeAddressTest`、`QueryServiceTest` |
+| P1.3 editor 一 tick 一节点 | ✅ | `ShellAssemblySmokeTest` 0→2/2→5/同 tick 双写 |
+| P2a 文档服务 | ✅ | `WorldDocsServiceTest` 8 例 |
+| P2b 文档 GUI / 战役入口 | ✅ | `docs.js`、`events.js`、前端门禁 418/418 |
+| P3 2+1 模式 / 模块前端 manifest | ✅ 第一版 | `modes.test.cjs`、`WebuiAssetsTest.moduleFrontendManifestIsDiscoverable` |
+| P4 editor profile 卸载 | ✅ 第一版 | `ShellAssemblySmokeTest` 无 economy 工具、participants=army/ga/unit |
+| P5 PNG 取色 | ✅ 第一版 | `map-png.test.cjs`、`GuiApiTest.mapHexes...`、前端 418/418 |
+
+**尚未完成/明确边界**：
+- 领域模块中既有的自然语言字段（`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等）尚未逐项迁成文档地址；新文档系统已就位，但旧字段迁移需要单独 schema 改造。
+- full profile / 旧档的中间 revision 压缩未做；editor 新世界不再产生中间 revision。
+- 世界生成器仍可能 seed 经济数据（editor 不推进它）。
+- 文档 GUI 目前是通用地址面板 + 战役/阶段入口，尚未做每个实体的专用文档嵌入。
+
+---
+
+## 8. 修订记录
 
 | 日期 | 原文 | 改为什么 | 原因/来源 |
 |---|---|---|---|

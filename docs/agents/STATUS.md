@@ -1,6 +1,6 @@
 # SimulatorMosire 当前状态
 
-> **更新时间**：2026-11-13 16:05（Asia/Shanghai）
+> **更新时间**：2026-11-13 17:10（Asia/Shanghai）
 > **本文是唯一实时状态入口。** 其他 `docs/superpowers/status/*` 文件都是某时点的历史快照。
 > 当前事实与设计/维护裁定冲突时：设计/维护裁定优先；本文只记录“现在实际是什么”。
 
@@ -15,7 +15,7 @@
   - 用“每节点固定地址查询”（hex/region/unit/army/gov/battle/stage）补位；
   - 世界文档系统（`docs/` 根；地址 → md；回收站/备份/多版本/部分地址/名称查询）；**领域模块只存结构化数据，自然语言归文档系统**；
   - PNG 网页底图与 hex 中心取色提取地形，**排在架构修改之后**。
-- **当前阶段**：已完成 D-036 入账、清理、目标运行设计、P1.1 任意节点分叉、P1.2a 节点地址查询、P2a 世界文档服务与 HTTP/MCP 接入；**P1.3 节点压缩、P3 2+1/模块前端、P4 经济卸载、P5 PNG 未完成**。
+- **当前阶段**：D-036 八个工程切片已落地（P1.1 分叉 / P1.2a 地址 / P1.3 editor 一 tick 一节点 / P2a 文档服务 / P2b 文档 GUI / P3 2+1+模块前端 / P4 editor profile / P5 PNG）；**剩余：领域自然语言字段迁移（RegionMeta.description、CombatRecord/CombatStage.text 等）与 full profile/旧档压缩**。
 - **当前事实入口**：目标运行设计 `docs/superpowers/specs/2026-11-13-node-docs-runtime-target-design.md`；实施计划 `docs/superpowers/plans/2026-11-13-node-editor-refactor-plan.md`。
 
 ## 2. 源码基线
@@ -23,10 +23,10 @@
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `main` |
-| HEAD | `2933a0c9`（`feat(docs): 文档 HTTP/MCP 接口接入`，2026-11-13） |
-| upstream | `origin/main`；`main` 领先 origin 8 个提交（文档/清理/四代码切片），**未推送** |
-| 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空；STATUS 本次更新后还会产生 1 个文档提交 |
-| 最近活动 | 2026-11-13：D-036 入账；清理 53GB→1.8GB；P1.1 fork 任意节点、P1.2a tree-tick 地址、P2a 文档服务 + GUI/MCP 接入 |
+| HEAD | `1ad3ab7e`（`test(gate): 移除两处慢测根因`，2026-11-13） |
+| upstream | `origin/main`；`main` 领先 origin 18 个提交（D-036 全切片 + 测试/格式修复），**未推送** |
+| 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
+| 最近活动 | 2026-11-13：D-036 全切片（节点/地址/一 tick 一节点/文档/GUI/2+1/editor profile/PNG）落地；full gate PASS 402s；慢测治理中 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -69,6 +69,7 @@
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=QueryServiceTest ... test` | 17 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
+| `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
 | `python3 tools/check-docs.py` / `skills-lint.py` | PASS（links=44 / active skills=1） |
 
 > `full` 门禁未跑；上述结论只能写 FOCUSED TEST PASSED。
@@ -107,14 +108,14 @@ SKILLS LINT PASSED (active skills=1)
 
 ## 6. 未验证 / 风险 / blocker
 
-1. **D-034~D-036 已部分工程化**：D-036 已入账，已落目标运行设计、实施计划、P1.1/P1.2a/P2a 代码与聚焦测试；**不是完整实现**，P1.3/P3/P4/P5 仍未完成。
-2. **节点压缩未做**：当前 `revision` 仍是分支内全局序号；`revisionAtTick` 过渡期取该 tick 最后一条。中间 revision 物理删除会违反 `revisions` 自引用外键，并影响 `CombatRecord.atRevision` / `DecisionInfoEntry.at` / `Verdict.atRevision` 等持久引用；P1.3 必须先补引用清单与重映射方案。
+1. **D-034~D-036 工程主体已落地**：目标运行设计、8 个切片与聚焦测试已实现；**不是所有历史字段都迁移完**（见第 2 条）。
+2. **自然语言字段迁移未完成**：`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等仍存正文；文档系统已就位，但领域 schema 改造与旧档迁移未做。另有 full profile/旧档的中间 revision 压缩未做；editor 新世界从源头不产生中间 revision。
 3. **旧存档在 HEAD 不可读**：2026-11-13 实测，`run/small-world-db` 与 `test-world/store` 均因领域 schema 漂移无法打开；项目没有 schema 版本/迁移器。
 4. **导入器不在 CI**：`tools/gsimap_import.py` 的 map 切片当前可读，但同库 `social/unit` 旧切片会让整库打不开；导入器/真实世界脚本未进门禁。
 5. **官方一键脚本已坏**：`run-small-world.sh` 仍传 `--approval-port`（ShellMain 2026-10-23 已删除该参数），实测无法起服务且退出码为 0。
 6. **经济卸载未做**：当前 Shell/GUI/MCP 仍装配全部模块；app 中 economy 引用 95 文件、production 35、social 82、actor 56、ga 70；unit/army/gov 的工具也依赖 social。卸载是代码手术，必须先确认暂停范围与最小 reactor。
 7. **2+1 模式与模块前端未定**：当前 6 模式；所有 webui 资源在 simos-app，`StaticHandler` 单根，模块没有自带前端资源的注册/加载机制。
-8. **世界文档系统已落第一版**：`docs/world/` 的 create/edit/delete/versions/contentAt/search 已实现，HTTP `/api/docs` 与 MCP `simos.docs.*` 已接入；**仍缺** GUI 文档面板、战役/阶段到文档的 GUI 映射、文档事件日志、全量门禁。
+8. **世界文档系统已落第一版**：`docs/world/` create/edit/delete/versions/contentAt/search、HTTP `/api/docs`、MCP `simos.docs.*`、工作台文档面板、战役/阶段文档入口均已实现；仍缺文档事件日志与逐实体专用嵌入。
 9. **PNG 底图未做**：前端有 `pixelToHex`/canvas/取色钩子与 `TerrainCatalog` 颜色；缺载入/对齐 UI、颜色→地形分类、预览/应用/持久化。
 10. **清理已执行（2026-11-13）**：15 个 worktree 移除、`.superpowers/sdd` 9.6GB 删除、`test-world`/`run`/target 删除；仓库 53GB → 1.8GB。本地经济分支 66 个全部保留；dirty 内容已 WIP commit + 仓库外归档（`/home/cna/simos-cleanup-20261113/`）。`.git` 949MB 历史与 `.m2-repo` 779MB 保留。
 11. **`main` 已领先远端 8 个提交且未推送**：`origin/main..main = 8`（2026-11-13 实测）；用户未要求 push 前不动。
@@ -122,14 +123,14 @@ SKILLS LINT PASSED (active skills=1)
 
 ## 7. 下一步
 
-1. ✅ D-034/D-035 调查报告、D-036 入账、清理、目标运行设计、实施计划。
-2. ✅ P1.1 任意节点分叉：`Timeline.fork` 允许任意已存在 revision；`CommandBus` 区分分支/节点不存在。
-3. ✅ P1.2a 节点地址：`NodeRef` / `NodeAddress` / `revisionAtTick` / `resolveWorld` / `facetsWorld`。
-4. ✅ P2a 世界文档：`WorldDocsService` + `/api/docs` + `simos.docs.*`（读 3 / 写 3）。
-5. **下一步第一命令**：`tools/gate.sh focused simos-core simos-core`（或先跑 P1.3 的设计补丁）。
-6. **P1.3 节点压缩**：同 `(branch,tick)` 合并为一条节点 revision；物理删除中间 revision；`atRevision` 重映射；补正/负例。
-7. **P2b 文档 GUI**：docs 面板、战役/阶段到文档的 GUI 映射。
-8. **P3 2+1 与模块前端**：地图/单位/战役；模块自带 webui 资源与注册清单。
-9. **P4 经济卸载**：economy/production/culture 从装配面移除；拆 `PopulationUnitTimeParticipant`；保留 gov/ga/actor/social。
-10. **P5 PNG 底图**：载入/对齐/中心取色/颜色分类/预览应用。
-11. 未获推送授权前不 push；不删除本地经济分支；`.git` 不做 history rewrite。
+1. ✅ P1.1 任意节点分叉；P1.2a `tree-tick` 地址；P1.3 editor 一 tick 一节点（同 tick 原地合并 + 一推进一节点）。
+2. ✅ P2a 文档服务；P2b 文档 GUI + 战役/阶段入口。
+3. ✅ P3 2+1 模式 + 模块前端 manifest 发现；P4 editor profile 卸载 economy/production/culture；P5 PNG 取色/应用。
+4. ✅ full gate 2026-11-13 PASS（402s）；本轮又修 GovPayToolTest 30s 空库等待、把 180 tick 模拟移出默认门禁。
+5. **下一步第一命令**：等本轮 full gate 复跑完成，确认 402s → 预期 ~320s；记录实际值。
+6. **剩余工程**：
+   - 自然语言字段迁移：RegionMeta.description、CombatRecord/CombatStage.text → 文档地址；
+   - full profile/旧档的中间 revision 物理压缩与 `atRevision` 重映射；
+   - 世界生成器 editor profile 不 seed 经济；
+   - 决策人查看/编辑模式（暂缓）。
+7. 未获推送授权前不 push；不删除本地经济分支；`.git` 不做 history rewrite。
