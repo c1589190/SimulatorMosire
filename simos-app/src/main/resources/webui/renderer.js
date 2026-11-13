@@ -128,6 +128,8 @@
 
     var cellSize = opts.cellSize || BASE_CELL;
     var view = { scale: 1, tx: 0, ty: 0 };
+    // D-036 P5：PNG 底图叠加（world 坐标；不参与地图数据，只是对齐/取色辅助层）。
+    var pngOverlay = null;
     var overview = null;
     var blocks = []; // 权威地形块（M9 T13）：{id,terrain,hexCount,boundaries:[环…]}，顶点为「格边长=1」的世界坐标
     var units = []; // 单位全表：{id,name,parent,position}（只读数；标记坐标在 markers 上）
@@ -1879,6 +1881,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       worldTransform();
+      paintPngOverlay();
 
       if (perfConfig.terrainCacheEnabled) {
         updateTerrainCache();
@@ -1921,6 +1924,26 @@
         ctx.stroke();
       }
       updateZoomUi();
+    }
+
+    /** D-036 P5：把已载入的 PNG 按 world 坐标画在地形层下面。 */
+    function paintPngOverlay() {
+      if (!pngOverlay || !pngOverlay.image) {
+        return;
+      }
+      var image = pngOverlay.image;
+      var scale = Number(pngOverlay.scale);
+      if (!isFinite(scale) || scale <= 0) {
+        scale = 1;
+      }
+      var offsetX = Number(pngOverlay.offsetX) || 0;
+      var offsetY = Number(pngOverlay.offsetY) || 0;
+      worldTransform();
+      ctx.save();
+      ctx.globalAlpha = pngOverlay.opacity === undefined ? 0.65 : Number(pngOverlay.opacity);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(image, offsetX, offsetY, image.width * scale, image.height * scale);
+      ctx.restore();
     }
 
     function updateTerrainCache() {
@@ -3009,6 +3032,14 @@
       formationOf: formationOf,
       terrainColor: terrainColor,
       debug: debug,
+      /** D-036 P5：设置/清除 PNG 底图叠加（image + offsetX/offsetY + scale + opacity）。 */
+      setPngOverlay: function (overlay) {
+        pngOverlay = overlay || null;
+        scheduleRender();
+      },
+      pngOverlay: function () {
+        return pngOverlay;
+      },
       view: function () {
         return { scale: view.scale, tx: view.tx, ty: view.ty };
       },

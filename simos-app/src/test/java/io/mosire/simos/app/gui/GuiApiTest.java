@@ -291,6 +291,18 @@ class GuiApiTest {
     assertThat(blocks.get(0).get("boundaries")).isNotEmpty();
   }
 
+  /** D-036 P5：PNG 对齐/取色需要全图坐标表；单列端点不改变 overview 的“不逐格”口径。 */
+  @Test
+  void mapHexesReturnsEveryCoordinate() throws Exception {
+    JsonNode body = getJson("/api/map/hexes");
+
+    assertThat(body.get("count").asInt()).isEqualTo(4);
+    JsonNode hexes = body.get("hexes");
+    assertThat(hexes).hasSize(4);
+    assertThat(hexes.get(0).has("q")).isTrue();
+    assertThat(hexes.get(0).has("r")).isTrue();
+  }
+
   /**
    * M9 T3：overview 停发死重量 {@code height}（前端全仓零读取点）；M9 T13 起逐格 {@code hexes} 也整个停发。 单格 {@code
    * /api/map/hex} 的 {@code height} **必须保留**（{@code panels.js} 在用）。

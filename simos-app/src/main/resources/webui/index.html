@@ -201,6 +201,28 @@
             </div>
           </div>
 
+          <!-- D-036 P5：PNG 底图 → hex 中心取色 → 地形预览/应用（模块资产：/webui/modules/map/map-png.js）。 -->
+          <fieldset class="png-overlay-controls" id="png-overlay-controls">
+            <legend>PNG 底图 / 取色成地形</legend>
+            <label class="mp-field">PNG 文件
+              <input type="file" id="png-file" accept="image/png,image/*">
+            </label>
+            <div class="png-align-row">
+              <label>offsetX <input type="number" id="png-offset-x" value="0" step="1"></label>
+              <label>offsetY <input type="number" id="png-offset-y" value="0" step="1"></label>
+              <label>世界像素/图像像素 <input type="number" id="png-scale" value="1" min="0.01" step="0.01"></label>
+              <label>取色阈值 <input type="number" id="png-threshold" value="90" min="0" step="1"></label>
+              <label>透明度 <input type="range" id="png-opacity" min="0" max="1" step="0.05" value="0.65"></label>
+            </div>
+            <div class="png-actions">
+              <button type="button" id="png-sample">按格心取色预览</button>
+              <button type="button" id="png-apply" disabled>应用为地形</button>
+              <button type="button" id="png-clear">清除底图</button>
+            </div>
+            <p id="png-status" class="status muted">载入 PNG；调 offset/scale 让底图与网格对齐；取色预览后再应用。</p>
+            <div id="png-preview" class="png-preview"></div>
+          </fieldset>
+
           <div class="map-edit-params" id="edge-controls" data-subtool="connectivity" hidden>
             <div class="map-edit-tools" id="edge-kind-select" role="radiogroup" aria-label="连通性类型">
               <label><input type="radio" name="map-edit-edge-kind" value="river" checked> 河流</label>
@@ -631,6 +653,8 @@
   <script src="renderer.js"></script>
   <!-- ★ M12 第五波：单位编辑宿主 / 旧页+工作台 chrome 拆出；必须在 map.js 之后（取 window.SimosMapCore） -->
   <script src="map-uniteditor.js"></script>
+  <!-- D-036 P5：地图模块自带前端资产（classpath /webui/modules/map/…，由 StaticHandler 服务）。 -->
+  <script src="/webui/modules/map/map-png.js"></script>
   <script src="map-hostpage.js"></script>
   <script src="notifications.js"></script>
   <script src="gm.js"></script>

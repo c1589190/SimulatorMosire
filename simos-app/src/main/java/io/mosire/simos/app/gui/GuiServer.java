@@ -308,6 +308,9 @@ public final class GuiServer implements AutoCloseable {
   /** D-036：模块前端资源发现（模块 manifest 由各模块 jar 提供）。 */
   private static final String MODULES_PATH = "/api/webui/modules";
 
+  /** D-036 P5：PNG 对齐/取色需要的全图 hex 坐标表。 */
+  private static final String MAP_HEXES_PATH = "/api/map/hexes";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -317,6 +320,7 @@ public final class GuiServer implements AutoCloseable {
           DOCS_SEARCH_PATH,
           DOCS_VERSION_PATH,
           MODULES_PATH,
+          MAP_HEXES_PATH,
           "/api/map/overview",
           "/api/map/hex",
           "/api/map/path",
@@ -885,6 +889,17 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(MODULES_PATH)) {
       return Reply.of(200, ModuleWebUI.discover());
+    }
+    if (path.equals(MAP_HEXES_PATH)) {
+      SimulationState state = queryService.stateAt(target(params));
+      GameMap map = ApiViews.gameMap(state);
+      List<HexCoord> coords = new ArrayList<>(map.hexes().keySet());
+      coords.sort(Comparator.naturalOrder());
+      List<Map<String, Object>> hexes = new ArrayList<>(coords.size());
+      for (HexCoord coord : coords) {
+        hexes.add(Map.of("q", coord.q(), "r", coord.r()));
+      }
+      return Reply.of(200, Map.of("count", hexes.size(), "hexes", hexes));
     }
     if (path.equals("/api/map/overview")) {
       if (asPresent) {
