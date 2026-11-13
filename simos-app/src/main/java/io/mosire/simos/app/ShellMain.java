@@ -53,6 +53,8 @@ public final class ShellMain {
    * @throws InterruptedException 等待停止信号时被中断（正常路径不会）
    */
   public static void main(String[] args) throws InterruptedException {
+    // D-036：产品入口缺省 editor profile（纯编辑器）；显式 --profile full 保留完整装配。
+    EditorProfile.configureFromArgs(args);
     ShellConfig config;
     try {
       config = parse(args);
@@ -66,7 +68,7 @@ public final class ShellMain {
               AppLogSource.SHELL_LIFECYCLE,
               "usage",
               "--store <dir> [--world=<worldId>] [--config <file>] [--gui-port N] [--mcp-port N]"
-                  + " [--bind-address <host>] [--opening-snapshot]"));
+                  + " [--bind-address <host>] [--opening-snapshot] [--profile editor|full]"));
       return;
     }
     run(config);
@@ -89,12 +91,18 @@ public final class ShellMain {
     Integer mcpPort = null;
     String bindAddress = null;
     Boolean openingSnapshot = null;
+    String profile = null;
 
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       String inlineWorld = inlineValue(arg, "--world");
       if (inlineWorld != null) {
         worldId = inlineWorld;
+        continue;
+      }
+      String inlineProfile = inlineValue(arg, "--profile");
+      if (inlineProfile != null) {
+        profile = inlineProfile;
         continue;
       }
       String inlineConfig = inlineValue(arg, "--config");
@@ -116,6 +124,7 @@ public final class ShellMain {
         }
         // ★ 无值开关（P4）：它不开取值，故不在 value(...) 那一族里。
         case "--opening-snapshot" -> openingSnapshot = true;
+        case "--profile" -> profile = value(args, ++i, "--profile");
         default -> throw new IllegalArgumentException("未知参数: " + arg);
       }
     }
@@ -133,6 +142,13 @@ public final class ShellMain {
     String selectedWorld =
         coalesce(worldId, file.worldId().orElse(null), ShellConfig.DEFAULT_WORLD_ID);
     WorldRegistry.require(selectedWorld);
+    if (profile != null) {
+      String normalized = profile.strip().toLowerCase(java.util.Locale.ROOT);
+      if (!EditorProfile.FULL.equals(normalized) && !EditorProfile.EDITOR.equals(normalized)) {
+        throw new IllegalArgumentException("未知 profile: " + profile + "（只支持 full / editor）");
+      }
+      System.setProperty(EditorProfile.PROPERTY, normalized);
+    }
 
     return new ShellConfig(
         storeDir,

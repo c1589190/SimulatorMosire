@@ -16,6 +16,7 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.docs.DocsCapability;
 import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
+import io.mosire.simos.app.EditorProfile;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.docs.WorldDocsService;
 import io.mosire.simos.app.docs.WorldDocsToolset;
@@ -1774,6 +1775,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new CalendarConfigureTool(query, calendarService));
     // ★ D-036：世界文档写工具（独立持久数据；不经 world revision）。
     built.addAll(WorldDocsToolset.writeTools(WorldDocsService.defaultService()));
+    if (EditorProfile.enabled()) {
+      built.removeIf(tool -> EditorProfile.pausedTool(tool.name()));
+    }
     // ★ 批 K ①：本档（GM）的可提议目录随本档工具面一起交回（装配期审计读它；实例见 decisionProposalTools）。
     return gmPreviewer;
   }
@@ -2109,6 +2113,9 @@ public final class SimosToolSource implements ToolSource {
         new GmRoundTool(gaReads),
         new LlmProvidersTool(llmConfig)));
     tools.addAll(WorldDocsToolset.readTools(WorldDocsService.defaultService()));
+    if (EditorProfile.enabled()) {
+      tools.removeIf(tool -> EditorProfile.pausedTool(tool.name()));
+    }
     return List.copyOf(tools);
   }
 

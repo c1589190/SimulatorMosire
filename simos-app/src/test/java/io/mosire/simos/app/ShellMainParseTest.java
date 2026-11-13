@@ -84,4 +84,26 @@ class ShellMainParseTest {
         .hasMessageContaining("未知参数")
         .hasMessageContaining("--economy-threads");
   }
+
+  @Test
+  void profileEditorIsAcceptedAndSetsSystemProperty() {
+    try {
+      ShellMain.parse(
+          new String[] {"--store", tempDir.toString(), "--profile", "editor"});
+      assertThat(EditorProfile.enabled()).isTrue();
+    } finally {
+      System.clearProperty(EditorProfile.PROPERTY);
+    }
+  }
+
+  @Test
+  void unknownProfileIsRejected() {
+    assertThatThrownBy(
+            () ->
+                ShellMain.parse(
+                    new String[] {"--store", tempDir.toString(), "--profile", "nope"}))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知 profile");
+  }
+
 }

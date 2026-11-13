@@ -267,4 +267,39 @@ class ShellAssemblySmokeTest {
       throw e.getCause();
     }
   }
+
+  /**
+   * D-036 editor profile：economy / production / culture 的工具面必须消失；
+   * gov / ga / docs / map / unit 保留，Shell 仍能完整装配与关闭。
+   */
+  @Test
+  void editorProfileHidesPausedDomainsAndKeepsCoreTools() throws IOException {
+    System.setProperty(EditorProfile.PROPERTY, EditorProfile.EDITOR);
+    Path store = Files.createDirectories(tempDir.resolve("editor-store"));
+    try (Shell shell =
+        Shell.start(ShellConfig.defaults(store).withPorts(0, 0))) {
+      Set<String> names = namesOf(shell.toolsFor(SimosToolSource.Role.GM));
+      assertThat(names)
+          .as("editor profile 不得暴露 economy/production/culture 工具")
+          .noneMatch(
+              name ->
+                  name.startsWith("simos.economy.")
+                      || name.startsWith("simos.production.")
+                      || name.startsWith("simos.culture."));
+      assertThat(names)
+          .as("保留核心工具")
+          .contains(
+              "simos.map.hex",
+              "simos.unit.list",
+              "simos.gov.info",
+              "simos.ga.decision-makers",
+              "simos.docs.get");
+      assertThat(shell.coreSimos().timeParticipantNamespaces())
+          .as("editor profile 时间推进只剩 unit / ga / army；population/economy 不参与")
+          .containsExactlyInAnyOrder("army", "ga", "unit");
+    } finally {
+      System.clearProperty(EditorProfile.PROPERTY);
+    }
+  }
+
 }

@@ -245,6 +245,7 @@ import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
 import io.mosire.simos.unit.spi.SetVisionRadiusHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
+import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -1083,6 +1084,11 @@ public final class Shell implements AutoCloseable {
     //   ★ ③ 删得尤其要紧：它今天被 `sd.` 前缀规则吃掉（是死的），前缀一撤就复活成"自指可嵌令"的后门。
     //   ★ ①/② 引文里的 `GmOnlyCommand` 是**已删代码的历史原文**：该反向标记本身也已随批次 1 收尾（甲组第 2 条）
     //     整体退役 ⇒ 现在"不打 `DmUsableCommand`"就是 GM-only 的声明，不再有第二个标记。
+    //   ★ D-036 editor profile：economy / production / culture 的 handler 不进入注册面
+    //     （工具面、resolver、validator 同步过滤；codec 暂留以读旧切片）。
+    if (EditorProfile.enabled()) {
+      handlers.removeIf(handler -> EditorProfile.pausedCommand(handler.type()));
+    }
     //   ① 先收声明 —— 唯一读标记的地方在 ga 的规则层，不在组合根：
     CommandPermissionRules.Declarations declarations = CommandPermissionRules.declare(handlers);
     //   ② 用派生面构造"装配自身新增"的 6 条 handler（★ 2026-10-12 批次 3b-4 起是 ga.RegisterEffect + 5 条 ga
@@ -1150,21 +1156,24 @@ public final class Shell implements AutoCloseable {
     //   ★ 2026-10-09：生产路径收敛到 **production-runtime** —— 经济/人口/actor 三片由
     //     PopulationEconomyTimeParticipant（EconomySettlement 的日结算）推进；class-first 路由已删除。
     //   ★ 旧注释（R4 为何 economy 与 social 合为一个参与者）仍成立：出生/死亡要同时看两侧，且"同一模块只能有一个写者"。
-    List<TimeParticipant> participants =
-        List.of(
-            // ★ Z7d-2：unit 移动 + 人口—经济日结 + 逃亡摘除必须落在同一条 revision（写-写判定按模块键拒绝两个 unit 写者）
-            //   ⇒ 组合参与者把 UnitTimeParticipant 与 PopulationEconomyTimeParticipant 合成一份提案；
-            //   内部次序固定：population（含逃亡 outbox）→ unit 移动 → unit 摘除。
-            new PopulationUnitTimeParticipant(config.mapId()),
-            // ★★ 2026-10-12 批次 3b-4：sd 的推进器随 effects 整族搬进 simos-ga（GaTimeParticipant，单切片参与者：
-            //   effects 与 info 现在同住 GaState）⇒ 它不再需要注入 DecisionTablesLookup（那条跨切片写口已删）。
-            new GaTimeParticipant(config.mapId()),
-            // ★★ 2026-10-13 急停协议（B，设计书 §4.4）：**两军相遇**判据的推进者（namespace="army"）。
-            //   它**不消费任何参与者的提案**（两阶段模型里大家拿到的都是同一份 base，C25）⇒ 逐日自己用
-            //   UnitMoves.evaluate 现算各军位置（"军的位置 = 军 rootUnit 的位置"，ArmyData 不加位置字段）。
-            //   ★ 成本与 Unit 侧重复：账本已记（不得当成免费）。★ MovementCost 取**同一个**单例（与
-            //   PopulationUnitTimeParticipant 内部那条一致），否则"Army 算出的位置"与"Unit 搬到的位置"会分叉。
-            new ArmyTimeParticipant(TerrainMovementCost.INSTANCE));
+    List<TimeParticipant> participants = new ArrayList<>();
+    if (EditorProfile.enabled()) {
+      // editor：只跑 unit 移动；人口—经济/土地日结不参与（social 数据保留但时间推进不改它）。
+      participants.add(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()));
+    } else {
+      // ★ Z7d-2：unit 移动 + 人口—经济日结 + 逃亡摘除必须落在同一条 revision（写-写判定按模块键拒绝两个 unit 写者）
+      //   ⇒ 组合参与者把 UnitTimeParticipant 与 PopulationEconomyTimeParticipant 合成一份提案；
+      //   内部次序固定：population（含逃亡 outbox）→ unit 移动 → unit 摘除。
+      participants.add(new PopulationUnitTimeParticipant(config.mapId()));
+    }
+    // ★★ 2026-10-12 批次 3b-4：sd 的推进器随 effects 整族搬进 simos-ga（GaTimeParticipant，单切片参与者：
+    //   effects 与 info 现在同住 GaState）⇒ 它不再需要注入 DecisionTablesLookup（那条跨切片写口已删）。
+    participants.add(new GaTimeParticipant(config.mapId()));
+    // ★★ 2026-10-13 急停协议（B，设计书 §4.4）：**两军相遇**判据的推进者（namespace="army"）。
+    //   它**不消费任何参与者的提案**（两阶段模型里大家拿到的都是同一份 base，C25）⇒ 逐日自己用
+    //   UnitMoves.evaluate 现算各军位置（"军的位置 = 军 rootUnit 的位置"，ArmyData 不加位置字段）。
+    //   ★ 成本与 Unit 侧重复：账本已记（不得当成免费）。★ MovementCost 取**同一个**单例。
+    participants.add(new ArmyTimeParticipant(TerrainMovementCost.INSTANCE));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
@@ -1187,7 +1196,9 @@ public final class Shell implements AutoCloseable {
     // ★★ D-031 P1 §9.3：候选态落库前跨片校验 —— economy 实例对 production 定义权威的引用（unit/assetShare→industry、
     //   progressDays≤cycleDays、classStructure/position/组织/规则/变迁→mode、输出覆盖→配方产出键）。
     //   单条命令 / submitBatch 最终候选态 / restore / Advance 都在落库前拦；领域判断在 economy，app 只注册。
-    coreSimos.register(new io.mosire.simos.economy.EconomyProductionReferenceValidator());
+    if (!EditorProfile.enabled()) {
+      coreSimos.register(new io.mosire.simos.economy.EconomyProductionReferenceValidator());
+    }
 
     // ★★★ 2026-10-14 W2（设计书 §10.2 / 用户裁定「在1的基础上给每个决策人一个默认工作区」）：**装配期挂载**。
     //   ① 宿主根挂载（`mount_workspace` 只做派生形态 ⇒ 没根就无从起步）；② 此刻已有的每个决策人一块默认工作区。
@@ -1226,7 +1237,9 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new GaResolver());
     // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
     // :flow.<i>.<s>]）。
-    resolverRegistry.register(new EconomyResolver());
+    if (!EditorProfile.enabled()) {
+      resolverRegistry.register(new EconomyResolver());
+    }
     // ★ S1 阶段 2：actor 自己的地址解析器（actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> |
     // :goods.<key>]）——注册它，`/api/resolve` 读口才认识第六个命名空间。
     resolverRegistry.register(new ActorResolver());

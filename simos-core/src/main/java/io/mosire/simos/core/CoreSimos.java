@@ -461,6 +461,19 @@ public final class CoreSimos implements AutoCloseable {
    *
    * @return 调用返回时创世是否已就绪；{@code false} 同时覆盖"本进程不会创世"与"超时"
    */
+  /**
+   * 已注册时间参与者的 namespace 集合（只读、按字典序）：用于装配审计/profile 验收。
+   *
+   * <p>★ 只暴露 namespace，不暴露参与者实例——调用方不能借此在 Core 之外驱动结算。
+   */
+  public java.util.Set<String> timeParticipantNamespaces() {
+    java.util.TreeSet<String> names = new java.util.TreeSet<>();
+    for (TimeParticipant participant : participants) {
+      names.add(participant.namespace());
+    }
+    return java.util.Set.copyOf(names);
+  }
+
   public boolean awaitGenesisReady(long timeoutMillis) {
     if (!genesisPending) {
       return false; // 非空库：从来没有"等创世"这回事（读路径行为与改前逐字相同）

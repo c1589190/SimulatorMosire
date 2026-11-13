@@ -17,6 +17,7 @@ import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.DecisionQueryService;
+import io.mosire.simos.app.EditorProfile;
 import io.mosire.simos.app.docs.WorldDocException;
 import io.mosire.simos.app.docs.WorldDocMeta;
 import io.mosire.simos.app.docs.WorldDocVersion;
@@ -847,6 +848,9 @@ public final class GuiServer implements AutoCloseable {
   }
 
   private Reply handleGet(HttpExchange exchange, String path) throws IOException {
+    if (EditorProfile.enabled() && pausedApi(path)) {
+      return Reply.of(404, Map.of("error", "editor profile 已卸载该 API: " + path));
+    }
     Map<String, String> params = queryParams(exchange);
     String actorParam = params.get("as");
     boolean asPresent = actorParam != null && !actorParam.isBlank();
@@ -1071,6 +1075,9 @@ public final class GuiServer implements AutoCloseable {
   }
 
   private Reply handlePost(HttpExchange exchange, String path) throws IOException {
+    if (EditorProfile.enabled() && pausedApi(path)) {
+      return Reply.of(404, Map.of("error", "editor profile 已卸载该 API: " + path));
+    }
     if (path.equals("/api/command")) {
       return submitReply(exchange);
     }
@@ -1109,6 +1116,13 @@ public final class GuiServer implements AutoCloseable {
       return setDecisionMakerProviderReply(exchange);
     }
     return null;
+  }
+
+  /** editor profile 卸载的 API 前缀（GUI 面同步消失，不只是工具面）。 */
+  private static boolean pausedApi(String path) {
+    return path.startsWith("/api/economy")
+        || path.startsWith("/api/production")
+        || path.startsWith("/api/culture");
   }
 
   /** known-but-wrong-method ⇒ 405（带 Allow）；unknown ⇒ 404。 */
