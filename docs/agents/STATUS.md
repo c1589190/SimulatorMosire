@@ -23,10 +23,10 @@
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `main` |
-| HEAD | `1ad3ab7e`（`test(gate): 移除两处慢测根因`，2026-11-13） |
-| upstream | `origin/main`；`main` 领先 origin 18 个提交（D-036 全切片 + 测试/格式修复），**未推送** |
+| HEAD | `0aae1de0`（`docs(status): 回写 D-036 八切片完成状态与慢测治理`，2026-11-13） |
+| upstream | `origin/main`；`main` 领先 origin 20 个提交（D-036 全切片 + 测试/格式/文档修复），**未推送** |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-13：D-036 全切片（节点/地址/一 tick 一节点/文档/GUI/2+1/editor profile/PNG）落地；full gate PASS 402s；慢测治理中 |
+| 最近活动 | 2026-11-13：D-036 全切片落地；full gate 402s→**313s**（-89s）；3776 tests / 0 failures |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -70,6 +70,7 @@
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
 | `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
+| `tools/gate.sh full`（2026-11-13，最终） | **PASS**，耗时 **313s**（-89s）；全仓 Surefire **3776 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 418/418；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
 | `python3 tools/check-docs.py` / `skills-lint.py` | PASS（links=44 / active skills=1） |
 
 > `full` 门禁未跑；上述结论只能写 FOCUSED TEST PASSED。
@@ -126,8 +127,8 @@ SKILLS LINT PASSED (active skills=1)
 1. ✅ P1.1 任意节点分叉；P1.2a `tree-tick` 地址；P1.3 editor 一 tick 一节点（同 tick 原地合并 + 一推进一节点）。
 2. ✅ P2a 文档服务；P2b 文档 GUI + 战役/阶段入口。
 3. ✅ P3 2+1 模式 + 模块前端 manifest 发现；P4 editor profile 卸载 economy/production/culture；P5 PNG 取色/应用。
-4. ✅ full gate 2026-11-13 PASS（402s）；本轮又修 GovPayToolTest 30s 空库等待、把 180 tick 模拟移出默认门禁。
-5. **下一步第一命令**：等本轮 full gate 复跑完成，确认 402s → 预期 ~320s；记录实际值。
+4. ✅ full gate 2026-11-13 最终 PASS（313s，402s → 313s）：GovPayToolTest 空库等待 31s→3.75s；180 tick 模拟打 `multitick` tag 移出默认门禁；全仓 3776 / 0 / 0 / 7。
+5. **下一步第一命令**：`tools/mvn-lock.sh -Dsimos.excludedTestGroups= -Dtest=StagedAgricultureEconomy180Test -pl simos-app -am test`（需要跑 180 tick 长测时显式 opt-in）。
 6. **剩余工程**：
    - 自然语言字段迁移：RegionMeta.description、CombatRecord/CombatStage.text → 文档地址；
    - full profile/旧档的中间 revision 物理压缩与 `atRevision` 重映射；
