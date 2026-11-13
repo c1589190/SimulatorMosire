@@ -24,6 +24,9 @@
 | 家户文化/教区 | [`specs/2026-10-17-d033-parish-household-faith-design.md`](specs/2026-10-17-d033-parish-household-faith-design.md) | 文化身份、地方教区、共享流动表上的信奉选择；未实现部分按正文标注。 |
 | 社会/单位基础设计 | [`specs/2026-09-17-social-unit-simos-design.md`](specs/2026-09-17-social-unit-simos-design.md) | 人口/家户/编制树的基础契约；被后续专题局部扩展时看新文。 |
 | 聚合经济 v2 | [`specs/2026-09-25-aggregate-economy-v2-design.md`](specs/2026-09-25-aggregate-economy-v2-design.md) | 经济切片机制背景；D-032/新市场设计可能局部取代。 |
+| 产品收敛 / 时间线节点编辑 | [`specs/2026-11-13-timeline-node-editor-and-address-query-design.md`](specs/2026-11-13-timeline-node-editor-and-address-query-design.md) | **D-034**：产品收敛为“文游地图编辑器 + 数据保存处理器”；一个时间线状态机 + 地图/单位/战役三模式（GUI 面）+ 节点增量存储 + 每节点地址查询；经济/文化/生产力暂停。 |
+| 节点版本 / 2+1 模式 / 经济卸载 / 世界文档 | [`specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md`](specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md) | **D-035**：历史不改写（改地图开新节点）；任意节点可分叉；中间 revision 打死；节点身份 `tick+rev` 多版本；2+1 大模式；经济挂载/调用暂删；地址→md 文档系统（回收站/备份/多版本/部分地址/名称查询）；PNG 底图后置。 |
+| 节点地址 / 战役阶段 / 自然语言文档 | [`specs/2026-11-13-node-address-and-docs-ownership-design.md`](specs/2026-11-13-node-address-and-docs-ownership-design.md) | **D-036**：节点地址改为 `treeXXX-tickXXX`、弃用 rev（版本由分支表达）；战役为 +1、阶段独立地址、战役→文档 GUI 映射；**领域模块只存结构化数据，自然语言全部归文档系统**；gov/ga/actor 保留、决策模式暂缓；经济/生产/文化卸载；文档根 `docs/`；除本地经济分支外全可清理。 |
 
 ### 工具归属的原话（2026-10-12，逐字）
 
@@ -86,6 +89,9 @@
 | `D-031` | 家户逐 tick 流动表、文化与基层治理、生产与科技（2026-10-15 用户原话；调查阶段） | `specs/2026-10-02-architecture-design-source.md` |
 | `D-032` | 生产方案、家户经验、可配置公式与市场选择（2026-10-17） | `specs/2026-10-02-architecture-design-source.md` |
 | `D-033` | 家户文化、地方教区与择优信奉（2026-10-17） | `specs/2026-10-02-architecture-design-source.md` |
+| `D-034` | 产品收敛：时间线节点式地图/数据编辑器 + 三模式 + 地址查询；经济/文化/生产力暂停（2026-11-13） | `specs/2026-11-13-timeline-node-editor-and-address-query-design.md` |
+| `D-035` | 节点版本（tick+rev）/ 任意节点分叉 / 中间 revision 打死 / 2+1 模式 / 经济卸载 / 世界文档系统 / PNG 底图（2026-11-13 补裁） | `specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md` |
+| `D-036` | 节点地址 `treeXXX-tickXXX`（弃用 rev）/ 战役阶段独立地址 / 自然语言归文档系统 / gov/ga/actor 保留 / 文档根 docs / 清理授权（2026-11-13 补裁二） | `specs/2026-11-13-node-address-and-docs-ownership-design.md` |
 
 ## 四、专题设计与计划的边界
 

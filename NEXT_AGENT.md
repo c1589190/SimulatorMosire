@@ -1,5 +1,15 @@
 # 下一个 Agent 的入口
 
+> **2026-11-13 方向变更（D-034 + D-035）**：项目已收敛为「文游地图编辑器 + 数据保存处理器」；
+> 节点身份 = tick + revision（多版本）、任意节点可分叉、中间 revision 打死；GUI 2+1 模式；
+> 经济/文化/生产力等模块**卸载挂载与调用**；世界文档系统与 PNG 底图见补裁 spec。
+> 当前目标、基线与下一步只看 [`docs/agents/STATUS.md`](docs/agents/STATUS.md)；
+> 设计目标见 [`docs/superpowers/specs/2026-11-13-timeline-node-editor-and-address-query-design.md`](docs/superpowers/specs/2026-11-13-timeline-node-editor-and-address-query-design.md)
+> 与 [`docs/superpowers/specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md`](docs/superpowers/specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md)；
+> 现状调查见 [`docs/superpowers/reports/2026-11-13-timeline-node-editor-current-state.md`](docs/superpowers/reports/2026-11-13-timeline-node-editor-current-state.md)
+> 与 [`docs/superpowers/reports/2026-11-13-node-version-docs-and-assets-current-state.md`](docs/superpowers/reports/2026-11-13-node-version-docs-and-assets-current-state.md)。
+> **下方 2026-10-21 及更早的经济/工作树指令只作历史，不得按它开工。**
+
 > **2026-10-21 商队家户 + 运输生产方式 + 市场轮运力约束（最新 v2.2；覆盖下方旧运输/阶级口径）**：
 > 设计：`docs/superpowers/specs/2026-10-21-d032-carrier-household-transport-capacity-design.md`；
 > 开发计划：`docs/superpowers/plans/2026-10-21-d032-carrier-household-transport-capacity-plan.md`。
