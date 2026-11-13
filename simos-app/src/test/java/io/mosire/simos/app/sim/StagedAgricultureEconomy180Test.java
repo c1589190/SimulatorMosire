@@ -54,6 +54,7 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.AbstractConfiguration;
 import org.apache.logging.log4j.core.config.Property;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -77,6 +78,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>所有关键读数取自 {@link ProductionData#instances()}、{@link ActorData#accounts()} 与 {@link
  * SimulationState#meta()}；{@code D032_TICK_CHAIN}（由 {@code ProductionReceipt} 派生）只作补充证据， 不单独作为唯一判据。
  */
+@Tag("multitick")
 class StagedAgricultureEconomy180Test {
 
   private static final BranchId MAIN = new BranchId("main");

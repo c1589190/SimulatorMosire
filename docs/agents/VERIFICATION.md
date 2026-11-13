@@ -50,6 +50,9 @@ tools/gate.sh selftest
 
 - 用户 2026-10-15 裁定：多 tick 世界模拟不进 JUnit；用独立 `tools/multitick-sim.sh` 或真实 world。
 - 门禁内只留短窗口 smoke；禁止用 `@Disabled`/`@Ignore` 藏违规多 tick 用例。
+- 实现：多 tick 用例打 `@Tag("multitick")`；根 POM 默认 `excludedGroups=multitick`。
+  显式运行：`tools/mvn-lock.sh -Dsimos.excludedTestGroups= -Dtest=<类> test`。
+  这样默认 full gate 不承担 180 tick 长跑，但用例仍可被显式执行（不是 `@Disabled` 隐藏）。
 - 用户 2026-10-23 裁定：真实世界长跑测试移出程序化门禁；行为验证走真实 world + 日志。
 - 真模型优先：功能验收默认真进程 + 真模型 + HTTP/日志/事件库互证；假 LLM 只用于真模型造不出的确定性场景。
 
