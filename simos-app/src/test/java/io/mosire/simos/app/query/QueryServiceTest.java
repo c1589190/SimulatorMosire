@@ -150,6 +150,40 @@ class QueryServiceTest {
         .hasMessageContaining("nope");
   }
 
+  // ── D-036：节点地址 treeXXX-tickXXX ─────────────────────────────────
+
+  @Test
+  void resolveNodeAddressMapsHexToExistingCanonicalAddress() {
+    QueryResult result =
+        shell
+            .queryService()
+            .resolveWorld("main-7/hex/1,1", QueryTarget.head(main()), "Map1");
+
+    assertThat(result.candidates()).hasSize(1);
+    assertThat(result.candidates().get(0).canonicalAddress()).isEqualTo("map:Map1:hex.1_1");
+  }
+
+  @Test
+  void resolveNodeOnlyReturnsNodeCandidate() {
+    QueryResult result =
+        shell.queryService().resolveWorld("main-7", QueryTarget.head(main()), "Map1");
+
+    assertThat(result.candidates()).hasSize(1);
+    assertThat(result.candidates().get(0).canonicalAddress()).isEqualTo("node:main-7");
+    assertThat(result.candidates().get(0).typeName()).isEqualTo("Node");
+  }
+
+  @Test
+  void resolveNodeAddressWithUnknownTickFails() {
+    assertThatThrownBy(
+            () ->
+                shell
+                    .queryService()
+                    .resolveWorld("main-99/hex/1,1", QueryTarget.head(main()), "Map1"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("节点不存在");
+  }
+
   // ── M9 T3：读路径按坐标记忆化 ────────────────────────────────────────
 
   @Test

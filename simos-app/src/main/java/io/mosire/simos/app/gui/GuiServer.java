@@ -701,7 +701,8 @@ public final class GuiServer implements AutoCloseable {
       return redactedIfRequested(asPresent, actor, params, stateReply());
     }
     if (path.equals("/api/resolve")) {
-      QueryResult result = queryService.resolve(requiredParam(params, "address"), target(params));
+      QueryResult result =
+          queryService.resolveWorld(requiredParam(params, "address"), target(params), mapId);
       return redactedIfRequested(
           asPresent,
           actor,
@@ -710,7 +711,7 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/facets")) {
       List<FacetEntry> entries =
-          queryService.facets(requiredParam(params, "address"), target(params));
+          queryService.facetsWorld(requiredParam(params, "address"), target(params), mapId);
       return redactedIfRequested(
           asPresent, actor, params, Reply.of(200, Map.of("entries", ApiViews.facets(entries))));
     }

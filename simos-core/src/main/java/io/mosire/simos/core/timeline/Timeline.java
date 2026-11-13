@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -74,6 +75,10 @@ public final class Timeline {
 
   private static final String HEAD_SQL =
       "SELECT MAX(revision) FROM " + REVISIONS_TABLE + " WHERE branch = ?";
+
+  /** D-036：某分支某 tick 的节点 revision（取该 tick 的最后一条；节点压缩后应恰有一条）。 */
+  private static final String REVISION_AT_TICK_SQL =
+      "SELECT MAX(revision) FROM " + REVISIONS_TABLE + " WHERE branch = ? AND tick = ?";
 
   private static final String BRANCHES_SQL =
       "SELECT DISTINCT branch FROM " + REVISIONS_TABLE + " ORDER BY branch";
@@ -245,6 +250,42 @@ public final class Timeline {
   /** head(b)（spec §3.3）：分支不存在 ⇒ 空。 */
   public Optional<RevisionId> head(BranchId branch) {
     return store.inTransaction(connection -> head(connection, branch));
+  }
+
+  /**
+   * D-036：{@code (branch, tick)} 节点当前解析到的 revision。
+   *
+   * <p>当前实现取该 tick 的**最后一条** revision（前端时间轴也是这个口径）；节点压缩落地后应恰有一条。
+   * 分支不存在 / 该 tick 没有 revision ⇒ 空。
+   *
+   * @param branch 分支
+   * @param tick 模拟时刻（≥ 0）
+   * @throws IllegalArgumentException tick 为负
+   */
+  public Optional<RevisionId> revisionAtTick(BranchId branch, long tick) {
+    Objects.requireNonNull(branch, "branch");
+    if (tick < 0L) {
+      throw new IllegalArgumentException("tick 必须 ≥ 0: " + tick);
+    }
+    return store.inTransaction(
+        connection -> {
+          try (PreparedStatement statement = connection.prepareStatement(REVISION_AT_TICK_SQL)) {
+            statement.setString(1, branch.value());
+            statement.setLong(2, tick);
+            try (ResultSet resultSet = statement.executeQuery()) {
+              if (!resultSet.next()) {
+                return Optional.empty();
+              }
+              long value = resultSet.getLong(1);
+              if (resultSet.wasNull()) {
+                return Optional.empty();
+              }
+              return Optional.of(new RevisionId(value));
+            }
+          } catch (SQLException e) {
+            throw new IllegalStateException("读 revisionAtTick 失败: " + branch + "@" + tick, e);
+          }
+        });
   }
 
   /** 分支清单（spec §3.3）：{@code SELECT DISTINCT branch}，按字典序（迭代序确定，可比）。 */

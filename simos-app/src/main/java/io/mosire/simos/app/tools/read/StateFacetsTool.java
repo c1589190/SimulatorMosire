@@ -72,7 +72,7 @@ public final class StateFacetsTool implements SimosTool {
         view.put("entries", List.of());
         return ToolSupport.ok(view);
       }
-      List<FacetEntry> entries = query.facets(address, target);
+      List<FacetEntry> entries = query.facetsWorld(address, target, mapId);
       view.put("entries", ToolSupport.facets(entries));
       return ToolSupport.ok(view);
     } catch (IllegalArgumentException e) {
@@ -84,7 +84,7 @@ public final class StateFacetsTool implements SimosTool {
   private boolean anyCandidateVisible(ToolContext context, String address, QueryTarget target) {
     SimulationState state = query.stateAt(target);
     GameMap map = ToolSupport.gameMap(state);
-    for (ResolvedSubject subject : query.resolve(address, target).candidates()) {
+    for (ResolvedSubject subject : query.resolveWorld(address, target, mapId).candidates()) {
       if (ToolSupport.subjectVisible(context, mapId, map, state, subject)) {
         return true;
       }

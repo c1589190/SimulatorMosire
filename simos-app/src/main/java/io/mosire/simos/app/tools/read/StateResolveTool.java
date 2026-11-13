@@ -64,7 +64,8 @@ public final class StateResolveTool implements SimosTool {
     try {
       Map<String, Object> args = context.arguments();
       QueryTarget target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      QueryResult result = query.resolve(ToolSupport.requiredText(args, "address"), target);
+      QueryResult result =
+          query.resolveWorld(ToolSupport.requiredText(args, "address"), target, mapId);
       // ★ **筛掉不可见的主体**（T10）：**不是**回全量、也**不是**整调拒——解析得到的候选与"这个地址解析不出东西"
       //   必须分不开（否则"存在但你看不到"会从候选数里漏出去）。
       //   ★ D1 起 subjectVisible 多收一个 state：army 的交战记录主体没有自己的资源路径，要按记录所在格判。

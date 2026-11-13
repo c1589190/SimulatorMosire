@@ -172,6 +172,19 @@ class TimelineTest {
     assertThat(timeline.listRevisions(branch("ghost"))).isEmpty();
   }
 
+  /** D-036：{@code (branch,tick)} 取该 tick 的最后一条 revision；节点压缩后应恰有一条。 */
+  @Test
+  void revisionAtTickReturnsLastRevisionOfThatTick() {
+    append(ref("main", 1), Optional.empty(), SimosTimestamp.of(0L), "c1");
+    append(ref("main", 2), Optional.of(ref("main", 1)), SimosTimestamp.of(10L), "c2");
+    append(ref("main", 3), Optional.of(ref("main", 2)), SimosTimestamp.of(10L), "c3");
+
+    assertThat(timeline.revisionAtTick(branch("main"), 10L)).contains(new RevisionId(3));
+    assertThat(timeline.revisionAtTick(branch("main"), 0L)).contains(new RevisionId(1));
+    assertThat(timeline.revisionAtTick(branch("main"), 99L)).isEmpty();
+    assertThat(timeline.revisionAtTick(branch("ghost"), 10L)).isEmpty();
+  }
+
   /** 分岔语义（C13）：新行 (b2,1)、parent=源 head、变更集=空集、tick 继承父、命令类型钉为 core.ForkBranch。 */
   @Test
   void forkWritesFirstRevisionInheritingTimestampAndEmptyChangeSet() {

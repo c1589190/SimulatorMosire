@@ -494,6 +494,18 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * D-036：{@code (branch, tick)} 节点当前解析到的 revision（取该 tick 最后一条；压缩后应恰有一条）。
+   *
+   * @param branch 分支
+   * @param tick 模拟时刻（≥ 0）
+   * @return 该 tick 的 revision；没有 ⇒ 空
+   */
+  public Optional<RevisionId> revisionAtTick(BranchId branch, long tick) {
+    Objects.requireNonNull(branch, "branch");
+    return timeline.revisionAtTick(branch, tick);
+  }
+
+  /**
    * 本实例累计调用 {@link CheckpointStore#read} 的次数（M9 T3 的可观测计数）。
    *
    * <p>★ **只读、零写面**：只读取计数，不封存、不写盘。它与读路径缓存配合，使"缓存命中 ⇒ 不再重读 checkpoint" 成为**可断言的数字**，而不是"代码上看应该"。

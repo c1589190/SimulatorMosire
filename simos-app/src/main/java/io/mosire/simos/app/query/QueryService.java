@@ -1,13 +1,20 @@
 package io.mosire.simos.app.query;
 
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.address.NodeAddress;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.identity.QueryResult;
+import io.mosire.simos.util.identity.ResolvedSubject;
+import io.mosire.simos.util.identity.SubjectId;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.NodeRef;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
@@ -168,6 +175,145 @@ public final class QueryService {
   public List<FacetEntry> facets(String addressText, QueryTarget target) {
     Address address = Address.parse(addressText);
     return facetRegistry.queryAll(address, contextAt(target));
+  }
+
+  /**
+   * D-036：解析“节点地址”{@code treeXXX-tickXXX/...}；不是节点形态时回退到旧 {@link #resolve(String, QueryTarget)}。
+   *
+   * <p>节点地址的节点段决定 {@code (branch,tick)}；实体路径映射到现有 namespace 地址：
+   *
+   * <pre>
+   * hex/&lt;q,r&gt;        → map:&lt;mapId&gt;:hex.&lt;q_r&gt;
+   * region/&lt;id&gt;      → map:&lt;mapId&gt;:region.&lt;id&gt;
+   * city/&lt;id&gt;        → map:&lt;mapId&gt;:city.&lt;id&gt;
+   * unit/[subtype]/&lt;id&gt; → unit:&lt;id&gt;（subtype = army/gov/…，当前只作语义提示）
+   * battle/&lt;id&gt;      → army:combat.&lt;id&gt;
+   * battle/&lt;id&gt;/stage/&lt;sid&gt; → army:combat.&lt;id&gt;:stage.&lt;sid&gt;
+   * army/&lt;id&gt;        → army:army.&lt;id&gt;
+   * gov/&lt;id&gt;         → unit:&lt;id&gt;
+   * </pre>
+   *
+   * <p>空路径（只给节点）返回一个 {@code node:<branch>-<tick>} 候选，typeName = {@code Node}。
+   *
+   * @param addressText 地址文本
+   * @param fallback 非节点地址时使用的查询坐标
+   * @param mapId 本世界的 map 称谓（hex/region/city 的 map 命名空间根）
+   */
+  public QueryResult resolveWorld(String addressText, QueryTarget fallback, String mapId) {
+    Objects.requireNonNull(addressText, "addressText");
+    Objects.requireNonNull(fallback, "fallback");
+    Objects.requireNonNull(mapId, "mapId");
+    if (!NodeAddress.looksLikeNodeAddress(addressText)) {
+      return resolve(addressText, fallback);
+    }
+    NodeAddress nodeAddress = NodeAddress.parse(addressText);
+    QueryTarget target = nodeTarget(nodeAddress.node());
+    if (nodeAddress.path().isEmpty()) {
+      String label = nodeAddress.node().label();
+      return new QueryResult(
+          List.of(
+              new ResolvedSubject(
+                  new SubjectId("node", label), "node:" + label, "Node")));
+    }
+    Address entity = entityAddress(nodeAddress, mapId);
+    return resolverRegistry.resolve(entity, contextAt(target));
+  }
+
+  /** D-036：节点地址的 facet 视图；只给节点（无实体路径）⇒ 空表。 */
+  public List<FacetEntry> facetsWorld(String addressText, QueryTarget fallback, String mapId) {
+    Objects.requireNonNull(addressText, "addressText");
+    Objects.requireNonNull(fallback, "fallback");
+    Objects.requireNonNull(mapId, "mapId");
+    if (!NodeAddress.looksLikeNodeAddress(addressText)) {
+      return facets(addressText, fallback);
+    }
+    NodeAddress nodeAddress = NodeAddress.parse(addressText);
+    if (nodeAddress.path().isEmpty()) {
+      return List.of();
+    }
+    Address entity = entityAddress(nodeAddress, mapId);
+    return facetRegistry.queryAll(entity, contextAt(nodeTarget(nodeAddress.node())));
+  }
+
+  private QueryTarget nodeTarget(NodeRef node) {
+    RevisionId revision =
+        core.revisionAtTick(node.branch(), node.tick())
+            .orElseThrow(() -> new IllegalArgumentException("节点不存在: " + node.label()));
+    return QueryTarget.at(node.branch(), revision);
+  }
+
+  private static Address entityAddress(NodeAddress nodeAddress, String mapId) {
+    List<String> path = nodeAddress.path();
+    String type = path.get(0);
+    List<String> rest = nodeAddress.rest();
+    return switch (type) {
+      case "hex" -> {
+        requireSize(rest, 1, nodeAddress, "hex/<q,r>");
+        String coordText = rest.get(0).replace(',', '_');
+        HexCoord coord = HexCoord.parse(coordText);
+        yield new Address(
+            List.of(
+                new Namespace("map"),
+                Entity.of(mapId),
+                Entity.of("hex", coord.toString())));
+      }
+      case "region" -> {
+        requireSize(rest, 1, nodeAddress, "region/<id>");
+        yield new Address(
+            List.of(new Namespace("map"), Entity.of(mapId), Entity.of("region", rest.get(0))));
+      }
+      case "city" -> {
+        requireSize(rest, 1, nodeAddress, "city/<id>");
+        yield new Address(
+            List.of(new Namespace("map"), Entity.of(mapId), Entity.of("city", rest.get(0))));
+      }
+      case "unit" -> {
+        if (rest.size() == 1) {
+          yield new Address(List.of(new Namespace("unit"), Entity.of(rest.get(0))));
+        }
+        if (rest.size() == 2) {
+          yield new Address(List.of(new Namespace("unit"), Entity.of(rest.get(1))));
+        }
+        throw new IllegalArgumentException(
+            "unit 地址应为 unit/<id> 或 unit/<subtype>/<id>: " + nodeAddress.canonical());
+      }
+      case "gov" -> {
+        requireSize(rest, 1, nodeAddress, "gov/<id>");
+        yield new Address(List.of(new Namespace("unit"), Entity.of(rest.get(0))));
+      }
+      case "army" -> {
+        requireSize(rest, 1, nodeAddress, "army/<id>");
+        yield new Address(
+            List.of(new Namespace("army"), Entity.of("army", rest.get(0))));
+      }
+      case "battle" -> {
+        if (rest.size() == 1) {
+          yield new Address(
+              List.of(new Namespace("army"), Entity.of("combat", rest.get(0))));
+        }
+        if (rest.size() == 3 && "stage".equals(rest.get(1))) {
+          yield new Address(
+              List.of(
+                  new Namespace("army"),
+                  Entity.of("combat", rest.get(0)),
+                  Entity.of("stage", rest.get(2))));
+        }
+        throw new IllegalArgumentException(
+            "battle 地址应为 battle/<id> 或 battle/<id>/stage/<sid>: "
+                + nodeAddress.canonical());
+      }
+      default ->
+          throw new IllegalArgumentException(
+              "未知节点实体类型: " + type + "（地址: " + nodeAddress.canonical() + "）");
+    };
+  }
+
+  private static void requireSize(
+      List<String> rest, int expected, NodeAddress address, String expectedForm) {
+    if (rest.size() != expected) {
+      throw new IllegalArgumentException(
+          "地址形态应为 " + expectedForm + ": " + address.canonical());
+    }
   }
 
   /** 已注册 facet 名（注册序）。 */
