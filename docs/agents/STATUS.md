@@ -18,43 +18,34 @@
 - **当前阶段**：D-034/D-035 已入账；**现状调查已落两份报告**：
   `docs/superpowers/reports/2026-11-13-timeline-node-editor-current-state.md`、
   `docs/superpowers/reports/2026-11-13-node-version-docs-and-assets-current-state.md`（本轮补查）。
-- **本轮不改业务代码、不跑 Maven**；未开始代码重构，未执行破坏性清理。
+- **本轮不改业务代码、不跑 Maven**；已完成用户授权的清理（worktrees/.superpowers/test-world/target），尚未开始代码重构。
 
 ## 2. 源码基线
 
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `main` |
-| HEAD | `4f2552ce`（`chore(worktree): 记录三棵经济性能测试工作树`，2026-10-23 23:22） |
-| upstream | `origin/main`；`main` 与 origin 同步（ahead 0） |
-| 工作树 | 干净；仅 `.opencode/` 未跟踪；本轮新增/修改的文档未提交 |
-| 最近活动 | `main` 最后提交 2026-10-23；最新本地分支 `feature/catalog-hex-wage-integration` 2026-10-24 18:51；**截至 2026-11-13 已约 20 天无新提交** |
+| HEAD | `ecdc04eb`（`chore(cleanup): 清理本机 SDD 台账/证据`，2026-11-13） |
+| upstream | `origin/main`；`main` 领先 origin 2 个提交（`cd6f1757` 文档、`ecdc04eb` 清理），**未推送** |
+| 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
+| 最近活动 | 2026-11-13：记录 D-034~D-036、清理 15 个 worktree 与 `.superpowers/sdd`、旧 store/target；仓库 53GB → 1.8GB |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
-### 工作树目录
+### 工作树与清理结果（2026-11-13 执行）
 
-规范落点：`worktree/<name>/`。**实际 16 个**（2026-10-23 旧 STATUS 只列了 8 个，已过时）：
-
-| 工作树 | 分支 / 状态 | 未提交状态（2026-11-13 实测） |
-|---|---|---|
-| `worktree/agentlib-dock` | `agentlib/dock-0.2.1` | 1 个未跟踪 `WORKTREE.md` |
-| `worktree/catalog-residue-cleanup` | `feature/catalog-residue-cleanup` | 干净 |
-| `worktree/d031-p1-baseline` | detached `03faf0a3` | 57 条未提交改动 |
-| `worktree/economy-integration` | `feature/catalog-hex-wage-integration`（★ 与交接文档写的 `integration/economy-midterm` 不一致） | 干净 |
-| `worktree/economy-test1` | `test/economy-test1` 派生的 `feat/economy-production-midterm` | 43 条 |
-| `worktree/economy-test2` | `plan/economy-production-midterm` | 54 条 |
-| `worktree/economy-test3` | `plan/economy-test3-midterm` | 35 条 |
-| `worktree/endogenous-vacancy` | `feature/endogenous-vacancy` | 干净 |
-| `worktree/ga-opt` | `ga/opt` | 3 条 |
-| `worktree/hex-wage` | `feature/hex-wage` | 干净 |
-| `worktree/integration-agentlib-side` | `integration/agentlib-side` | 干净 |
-| `worktree/light-heavy-tools` | `feature/light-heavy-tools` | 干净 |
-| `worktree/parallel-side-module` | `parallel/side-module` | 1 个未跟踪 `extensions.idx` |
-| `worktree/production-catalog-config` | `feature/production-catalog-config` | 干净 |
-| `worktree/wage-migration` | `feature/wage-migration` | 干净 |
-
-> 三棵 `economy-test*` 是 2026-10-23/24 三路 Agent 经济评估/性能测试的产物；不是本轮 D-034 的实现分支。
+- **`worktree/` 已清空**：15 个附属工作树全部 `git worktree remove --force` 移除；`git worktree list` 只剩主树。
+- **本地经济分支全部保留**（66 个本地分支未删）：
+  - `feature/catalog-hex-wage-integration`、`feature/catalog-residue-cleanup`、`feature/endogenous-vacancy`、`feature/hex-wage`、`feature/light-heavy-tools`、`feature/production-catalog-config`、`feature/production-catalog-hex-wage`、`feature/wage-migration`、`integration/economy-midterm`；
+  - `integration/agentlib-side`、`plan/economy-production-midterm`、`plan/economy-test3-midterm`、`test/*`、`wip/d031-p1-baseline-20261113` 等也保留。
+- **清理前已保存 dirty 内容**：
+  - `agentlib-dock`、`economy-test1`、`economy-test2`、`economy-test3`、`ga-opt` 分别做了 WIP commit；
+  - `d031-p1-baseline` 新建分支 `wip/d031-p1-baseline-20261113` 后做 WIP commit；
+  - 仓库外归档：`/home/cna/simos-cleanup-20261113/`（tracked patch + untracked tgz，约 764KB）。
+- **`.superpowers/sdd` 删除**：9.6GB → 8KB；`.superpowers/AGENTS.md` 保留；`.gitignore` 增加 `.superpowers/sdd/`。
+- **`test-world/`、`run/`、各 `target/` 删除**：可重建/旧运行产物。
+- **保留**：`.m2-repo`（779MB，离线构建缓存）、`.git`（949MB，历史）、`docs/`（13MB）。
+- 仓库总体积：**53GB → 1.8GB**。
 
 ## 3. 最近功能门禁（历史基线，2026-10-23；本轮未复跑）
 
@@ -112,7 +103,7 @@ SKILLS LINT PASSED (active skills=1)
 7. **2+1 模式与模块前端未定**：当前 6 模式；所有 webui 资源在 simos-app，`StaticHandler` 单根，模块没有自带前端资源的注册/加载机制。
 8. **世界文档系统只有候选底座**：`docs-mosire` 提供 LOG/FILE、地址、多版本、tick 查询；缺删除/回收站、备份、部分地址查询、名称别名索引、节点地址协议。
 9. **PNG 底图未做**：前端有 `pixelToHex`/canvas/取色钩子与 `TerrainCatalog` 颜色；缺载入/对齐 UI、颜色→地形分类、预览/应用/持久化。
-10. **清理未执行**：`.superpowers` 9.6GB（1.3GB tracked + 8.4GB ignored）、worktrees 40GB、test-world 1.7GB；9 条经济分支本地未推送、7 个脏树。清理清单见第二份报告 §6，未删任何文件。
+10. **清理已执行（2026-11-13）**：15 个 worktree 移除、`.superpowers/sdd` 9.6GB 删除、`test-world`/`run`/target 删除；仓库 53GB → 1.8GB。本地经济分支 66 个全部保留；dirty 内容已 WIP commit + 仓库外归档（`/home/cna/simos-cleanup-20261113/`）。`.git` 949MB 历史与 `.m2-repo` 779MB 保留。
 11. **`main` 与远端同步**：2026-11-13 实测 `origin/main..main` 为 0；未获提交/推送授权前不动。
 12. 历史 status 中的测试数字/工具计数只作历史证据；不得当当前事实。
 
@@ -120,11 +111,13 @@ SKILLS LINT PASSED (active skills=1)
 
 1. ✅ D-034 现状调查报告：`docs/superpowers/reports/2026-11-13-timeline-node-editor-current-state.md`。
 2. ✅ D-035 补查报告：`docs/superpowers/reports/2026-11-13-node-version-docs-and-assets-current-state.md`。
-3. **等待用户对第二份报告 §8 的口径补裁**：
-   - 2+1 的精确拆分（地图+单位+战役？区域编辑并入地图？）；
-   - 暂停范围（social/actor/ga 是否随 economy/production/culture 一起下线；gov 保留范围）；
-   - `0tick-rev1` 的 `rev` 是 tick 内版本序号还是分支内全局 revision；
-   - 中间 revision 删除后的 `atRevision` 引用重映射；
-   - 世界文档根与 md 协议；清理授权层级（A/B/C/D/E）；
-   - PNG 对齐/颜色分类/持久化。
-4. 在口径确定前：不改业务代码、不合并经济分支、不删除旧模块/旧档/旧证据。
+3. ✅ 用户补裁已入账（D-036）：`treeXXX-tickXXX`（弃 rev）、战役 +1/阶段独立地址、自然语言归文档系统、gov/ga/actor 保留、docs 根、清理授权。
+4. ✅ 清理已执行：仓库 53GB → 1.8GB；15 个 worktree 移除；66 个本地分支保留；dirty 内容 WIP commit + 归档。
+5. **下一步（代码重构第一切片）**：
+   - 建立目标运行设计/实施计划（节点表 `(branch,tick)`、节点增量、任意节点分叉、中间 revision 清理）；
+   - 地址协议：`treeXXX-tickXXX/<type>[/<subtype>]/<id>` + 统一查询；
+   - 文档系统：`docs/` 下地址→md、版本/名称/回收站/备份/查询；
+   - 2+1 模式与模块前端机制；
+   - 经济/生产/文化卸载与时间参与者拆分；
+   - PNG 底图后置。
+6. 未获推送授权前不 push；不删除本地经济分支；`.git` 不做 history rewrite。

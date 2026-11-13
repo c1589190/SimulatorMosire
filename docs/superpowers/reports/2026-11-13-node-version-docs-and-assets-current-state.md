@@ -240,7 +240,21 @@ simos-app（瘦身）
 - C 层（worktree 30GB+）是最大头，但必须先处理 9 条本地分支和 7 个脏树；**不能直接 `rm -rf worktree`**。
 - `.superpowers` tracked 1.3GB 删除不会缩小 `.git`；要缩小 `.git` 只能历史重写（高风险，需用户明确授权）。
 
-**本轮未删除任何文件**；等待用户对 A/B/C/D/E 层给出“删/留”口令。
+**用户裁定（2026-11-13）**：「除了本地经济分支全都可以清理完」。
+
+### 6.3 执行结果（2026-11-13）
+
+- **worktree**：15 个附属工作树全部 `git worktree remove --force` 移除；`git worktree list` 只剩主树。**66 个本地分支全部保留**（含 9 条经济分支、integration/economy-midterm、plan/test 分支）。
+- **dirty 内容保存**：
+  - `agentlib-dock`、`economy-test1`、`economy-test2`、`economy-test3`、`ga-opt` 在各自分支上做了 WIP commit；
+  - `d031-p1-baseline` 新建分支 `wip/d031-p1-baseline-20261113` 后做 WIP commit；
+  - 仓库外归档：`/home/cna/simos-cleanup-20261113/`（tracked patch + untracked tgz，约 764KB）。
+- **`.superpowers/sdd`**：9.6GB → 删除；`.superpowers/AGENTS.md` 保留；`.gitignore` 新增 `.superpowers/sdd/`；commit `ecdc04eb`。
+- **`test-world/`、`run/`、各 `target/`**：删除（可重建/旧运行产物）。
+- **保留**：`.m2-repo`（779MB，离线构建缓存）、`.git`（949MB，历史）、`docs/`（13MB）、全部本地分支。
+- **结果**：仓库总体积 **53GB → 1.8GB**；没有做 `.git` history rewrite。
+
+> 本报告 §6.2 的表格保留为清理前的盘点快照；实际执行以上述结果为准。
 
 ---
 
