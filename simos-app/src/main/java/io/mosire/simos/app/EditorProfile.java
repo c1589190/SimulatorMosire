@@ -5,12 +5,11 @@ import java.util.Locale;
 /**
  * 运行 profile（D-036）：{@code full} / {@code editor}。
  *
- * <p>★ editor = “文游地图编辑器 + 数据保存处理器”：economy / production / culture 不再挂 handler、
- * resolver、validator 与工具；时间推进不再跑人口—经济/土地参与者。**codec 暂时保留**以便读取含旧切片的
- * store（replay 不因缺 codec 崩），但没有任何编辑器路径会写这三片。
+ * <p>★ editor = “文游地图编辑器 + 数据保存处理器”：economy / production / culture 不再挂 handler、 resolver、validator
+ * 与工具；时间推进不再跑人口—经济/土地参与者。**codec 暂时保留**以便读取含旧切片的 store（replay 不因缺 codec 崩），但没有任何编辑器路径会写这三片。
  *
- * <p>★ 缺省（直接调用 {@link Shell#start}）仍是 {@code full}，以免既有测试/嵌入方行为突变；
- * {@code ShellMain} 在无显式 {@code --profile} 时选择 {@code editor}，让产品入口默认进入编辑器。
+ * <p>★ 缺省（直接调用 {@link Shell#start}）仍是 {@code full}，以免既有测试/嵌入方行为突变； {@code ShellMain} 在无显式 {@code
+ * --profile} 时选择 {@code editor}，让产品入口默认进入编辑器。
  */
 public final class EditorProfile {
 
@@ -55,8 +54,8 @@ public final class EditorProfile {
   }
 
   /**
-   * 产品入口的 profile 选择：显式 {@code --profile full|editor} 优先；否则缺省 editor。
-   * 只应由 {@code ShellMain.main} 调用，测试/嵌入方直接设置系统属性。
+   * 产品入口的 profile 选择：显式 {@code --profile full|editor} 优先；否则缺省 editor。 只应由 {@code ShellMain.main}
+   * 调用，测试/嵌入方直接设置系统属性。
    */
   public static void configureFromArgs(String[] args) {
     String selected = null;

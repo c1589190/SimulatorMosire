@@ -88,8 +88,7 @@ class ShellMainParseTest {
   @Test
   void profileEditorIsAcceptedAndSetsSystemProperty() {
     try {
-      ShellMain.parse(
-          new String[] {"--store", tempDir.toString(), "--profile", "editor"});
+      ShellMain.parse(new String[] {"--store", tempDir.toString(), "--profile", "editor"});
       assertThat(EditorProfile.enabled()).isTrue();
     } finally {
       System.clearProperty(EditorProfile.PROPERTY);
@@ -100,10 +99,8 @@ class ShellMainParseTest {
   void unknownProfileIsRejected() {
     assertThatThrownBy(
             () ->
-                ShellMain.parse(
-                    new String[] {"--store", tempDir.toString(), "--profile", "nope"}))
+                ShellMain.parse(new String[] {"--store", tempDir.toString(), "--profile", "nope"}))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("未知 profile");
   }
-
 }

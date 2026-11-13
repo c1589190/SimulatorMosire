@@ -11,14 +11,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 模块前端资源发现（D-036）：模块把自带 webui 资产放在 {@code src/main/resources/webui/modules/<id>/}，
- * app 通过 {@code /webui/modules.index.json} 列出模块 id，再读取各模块的 {@code manifest.json}。
+ * 模块前端资源发现（D-036）：模块把自带 webui 资产放在 {@code src/main/resources/webui/modules/<id>/}， app 通过 {@code
+ * /webui/modules.index.json} 列出模块 id，再读取各模块的 {@code manifest.json}。
  *
  * <p>★ 资源本身由 {@link StaticHandler} 从 classpath {@code /webui/...} 统一服务，不复制到 app；
  * 本类只做**发现/校验**，不实现模块 UI。
  *
- * <p>★ 模块清单缺失 / manifest 坏 ⇒ 该模块不进入结果并记录在 {@code errors}（fail-closed：
- * 不让坏 manifest 静默变成“没有模块”）。
+ * <p>★ 模块清单缺失 / manifest 坏 ⇒ 该模块不进入结果并记录在 {@code errors}（fail-closed： 不让坏 manifest 静默变成“没有模块”）。
  */
 public final class ModuleWebUI {
 

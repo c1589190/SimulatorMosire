@@ -56,8 +56,7 @@ class WebuiAssetsTest {
   private static final List<String> BLOCK_SCRIPTS = List.of("blocks.js");
 
   /** D-036 2+1 模式栏四按钮：常规 / 地图编辑 / 单位编辑 / 战役。 */
-  private static final List<String> MODE_LABELS =
-      List.of("常规", "地图编辑", "单位编辑", "战役");
+  private static final List<String> MODE_LABELS = List.of("常规", "地图编辑", "单位编辑", "战役");
 
   private static final List<String> ALL_ASSETS =
       concat(PAGES, SHARED_ASSETS, PAGE_SCRIPTS, WORKBENCH_SCRIPTS, BLOCK_SCRIPTS);
@@ -164,8 +163,7 @@ class WebuiAssetsTest {
   /**
    * 取**内部文本恰为** label 的完整 {@code <button …>…</button>} 标签。
    *
-   * <p>★ 用"整体相等"而非"包含"：页内还有大量含模式名的按钮（如「开始决策」），按包含判会误算。
-   * 整体相等同时更严（模式按钮文案被塞进额外文字也会红）。
+   * <p>★ 用"整体相等"而非"包含"：页内还有大量含模式名的按钮（如「开始决策」），按包含判会误算。 整体相等同时更严（模式按钮文案被塞进额外文字也会红）。
    */
   static List<String> buttonTagsContaining(String html, String label) {
     List<String> found = new ArrayList<>();
@@ -284,5 +282,4 @@ class WebuiAssetsTest {
       throw new UncheckedIOException(e);
     }
   }
-
 }

@@ -22,9 +22,9 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
-import io.mosire.simos.app.docs.WorldDocsService;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
+import io.mosire.simos.app.docs.WorldDocsService;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.render.ArtifactStore;
@@ -720,8 +720,8 @@ class SimosToolsTest {
       concat(EXTERNAL_READ_TOOL_NAMES, EXTERNAL_WRITE_TOOL_NAMES);
 
   /**
-   * D-036：app 内宿主级工具（世界文档）——实现是 {@code WorldDocsToolset} 的嵌套类，不在
-   * {@code tools/read|write/*Tool.java} 扫描面里，故显式登记，供反向幽灵扫描使用。
+   * D-036：app 内宿主级工具（世界文档）——实现是 {@code WorldDocsToolset} 的嵌套类，不在 {@code
+   * tools/read|write/*Tool.java} 扫描面里，故显式登记，供反向幽灵扫描使用。
    */
   private static final List<String> APP_SERVICE_TOOL_NAMES =
       List.of(
@@ -1804,7 +1804,8 @@ class SimosToolsTest {
             new Case("simos.llm.providers", Map.of(), "providers"),
             // D-036：世界文档读口（测试夹具在 @BeforeEach 建了一份 test-0/... 文档）。
             new Case("simos.docs.get", Map.of("address", "test-0/unit/army/doc-test"), "meta"),
-            new Case("simos.docs.versions", Map.of("address", "test-0/unit/army/doc-test"), "versions"),
+            new Case(
+                "simos.docs.versions", Map.of("address", "test-0/unit/army/doc-test"), "versions"),
             new Case("simos.docs.search", Map.of(), "entries"),
             // ★ C5b（2026-10-02）：历法/气候信息读工具的最小形状（config+sources+date+solarTerm+notes）。
             new Case("simos.calendar.info", Map.of(), "sources"),

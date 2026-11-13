@@ -11,18 +11,18 @@ import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolResultTruncator;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.app.EditorProfile;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.decision.DecisionAgentService;
-import io.mosire.simos.app.ga.DecisionAdjudicationService;
-import io.mosire.simos.app.llm.AgentLibLlmConfig;
-import io.mosire.simos.app.query.DecisionQueryService;
-import io.mosire.simos.app.EditorProfile;
 import io.mosire.simos.app.docs.WorldDocException;
 import io.mosire.simos.app.docs.WorldDocMeta;
 import io.mosire.simos.app.docs.WorldDocVersion;
 import io.mosire.simos.app.docs.WorldDocView;
 import io.mosire.simos.app.docs.WorldDocsService;
+import io.mosire.simos.app.ga.DecisionAdjudicationService;
+import io.mosire.simos.app.llm.AgentLibLlmConfig;
+import io.mosire.simos.app.query.DecisionQueryService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
@@ -732,7 +732,8 @@ public final class GuiServer implements AutoCloseable {
 
   private Reply docsSearchReply(Map<String, String> params) {
     String query = params.getOrDefault("q", "");
-    boolean includeDeleted = "true".equalsIgnoreCase(params.getOrDefault("includeDeleted", "false"));
+    boolean includeDeleted =
+        "true".equalsIgnoreCase(params.getOrDefault("includeDeleted", "false"));
     List<Map<String, Object>> entries = new ArrayList<>();
     for (WorldDocMeta meta : worldDocs.search(query, includeDeleted)) {
       entries.add(docMetaView(meta));
@@ -799,11 +800,12 @@ public final class GuiServer implements AutoCloseable {
               "content", view.content(),
               "versions", docVersionsView(view.versions())));
     } catch (WorldDocException e) {
-      int status = switch (e.code()) {
-        case INVALID -> 400;
-        case NOT_FOUND -> 404;
-        case EXISTS -> 409;
-      };
+      int status =
+          switch (e.code()) {
+            case INVALID -> 400;
+            case NOT_FOUND -> 404;
+            case EXISTS -> 409;
+          };
       return Reply.of(status, Map.of("error", e.getMessage(), "code", e.code().name()));
     }
   }

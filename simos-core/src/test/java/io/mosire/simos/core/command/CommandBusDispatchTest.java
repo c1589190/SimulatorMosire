@@ -294,8 +294,8 @@ class CommandBusDispatchTest {
   /**
    * D-036：从历史 revision 分叉是合法操作（不再要求 expected == head）。
    *
-   * <p>旧用例 {@code forkBranchWithStaleExpectedConflictsWithSourceHead} 的语义已被用户改掉；
-   * “目标 revision 不存在”才拒绝（见 {@link #forkBranchFromUnknownRevisionIsRejected()}）。
+   * <p>旧用例 {@code forkBranchWithStaleExpectedConflictsWithSourceHead} 的语义已被用户改掉； “目标 revision
+   * 不存在”才拒绝（见 {@link #forkBranchFromUnknownRevisionIsRejected()}）。
    */
   @Test
   void forkBranchFromHistoricalRevisionIsAllowed() {

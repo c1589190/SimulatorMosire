@@ -214,8 +214,8 @@ class TimelineTest {
   /**
    * D-036（2026-11-13）：分叉不再要求 head——任意已存在 revision 都可作为分叉点。
    *
-   * <p>旧用例 {@code forkRefusesWhenHeadMovedOn} 的语义已被用户改掉：从历史 revision 分叉现在是合法操作；
-   * “不存在”才拒绝（见 {@link #forkRefusesUnknownRevision()}）。
+   * <p>旧用例 {@code forkRefusesWhenHeadMovedOn} 的语义已被用户改掉：从历史 revision 分叉现在是合法操作； “不存在”才拒绝（见 {@link
+   * #forkRefusesUnknownRevision()}）。
    */
   @Test
   void forkFromHistoricalRevisionIsAllowed() {

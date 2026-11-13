@@ -198,8 +198,8 @@ public final class Timeline {
   /**
    * D-036：原地更新一个节点 revision，并与事件同一事务落盘。
    *
-   * <p>★ 只应由 {@code CommandBus} 在 editor profile 的“同 tick 合并”路径调用：命令不改变 tick，
-   * 同一 (branch,tick) 只保留一个节点；历史 tick 一旦离开就不再改。
+   * <p>★ 只应由 {@code CommandBus} 在 editor profile 的“同 tick 合并”路径调用：命令不改变 tick， 同一 (branch,tick)
+   * 只保留一个节点；历史 tick 一旦离开就不再改。
    *
    * @param row 已存在的 revision 行（branch/revision 定位；其余列整行覆盖）
    * @param events 与本次更新同事务的事件
@@ -264,11 +264,11 @@ public final class Timeline {
   }
 
   /**
-   * 分岔（D-036 补裁，2026-11-13）：<b>任意已存在节点都可作为分岔点</b>——写新行 {@code (newBranch, 1)}，
-   * parent 指向 {@code (source, expected)}，变更集 = {@link WorldChangeSet#empty()}（C13），模拟时刻**继承父**。
+   * 分岔（D-036 补裁，2026-11-13）：<b>任意已存在节点都可作为分岔点</b>——写新行 {@code (newBranch, 1)}， parent 指向 {@code
+   * (source, expected)}，变更集 = {@link WorldChangeSet#empty()}（C13），模拟时刻**继承父**。
    *
-   * <p>★ 旧语义要求 {@code head(source) == expected}；D-036 改为“父 revision 存在即可”，以支持从历史节点
-   * 分叉（节点地址 {@code treeXXX-tickXXX} 的下层仍然落到具体 revision）。冲突/不存在的判定归 {@link
+   * <p>★ 旧语义要求 {@code head(source) == expected}；D-036 改为“父 revision 存在即可”，以支持从历史节点 分叉（节点地址 {@code
+   * treeXXX-tickXXX} 的下层仍然落到具体 revision）。冲突/不存在的判定归 {@link
    * io.mosire.simos.core.command.CommandBus}。
    *
    * @return 成功 ⇒ {@code (newBranch, 1)}；父 revision 不存在（含源分支不存在）⇒ {@link Optional#empty()}
@@ -313,8 +313,7 @@ public final class Timeline {
   /**
    * D-036：{@code (branch, tick)} 节点当前解析到的 revision。
    *
-   * <p>当前实现取该 tick 的**最后一条** revision（前端时间轴也是这个口径）；节点压缩落地后应恰有一条。
-   * 分支不存在 / 该 tick 没有 revision ⇒ 空。
+   * <p>当前实现取该 tick 的**最后一条** revision（前端时间轴也是这个口径）；节点压缩落地后应恰有一条。 分支不存在 / 该 tick 没有 revision ⇒ 空。
    *
    * @param branch 分支
    * @param tick 模拟时刻（≥ 0）

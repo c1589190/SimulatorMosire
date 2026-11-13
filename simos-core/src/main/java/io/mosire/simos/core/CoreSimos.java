@@ -480,10 +480,7 @@ public final class CoreSimos implements AutoCloseable {
     return java.util.Set.copyOf(names);
   }
 
-  /**
-   * D-036：打开/关闭“同 tick 原地合并”。只应由 editor profile 的组合根调用；
-   * full profile 保持逐命令 revision 的既有语义。
-   */
+  /** D-036：打开/关闭“同 tick 原地合并”。只应由 editor profile 的组合根调用； full profile 保持逐命令 revision 的既有语义。 */
   public void enableSameTickMerge(boolean enabled) {
     this.sameTickMerge = enabled;
     CommandBus current = this.bus;

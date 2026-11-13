@@ -10,8 +10,7 @@ import java.util.Optional;
 /**
  * 节点地址（D-036）：{@code treeXXX-tickXXX[/<type>[/<subtype>]/<id>...]}。
  *
- * <p>★ 第一段固定是节点坐标 {@code (branch, tick)}；后续段是实体路径，解释权归 app/各模块。
- * 例：
+ * <p>★ 第一段固定是节点坐标 {@code (branch, tick)}；后续段是实体路径，解释权归 app/各模块。 例：
  *
  * <pre>{@code
  * tree1-360
@@ -25,8 +24,8 @@ import java.util.Optional;
  *
  * <p>★ 本类型只解析**语法**，不解析实体语义；{@code path} 原样保留，避免 util 认识各领域类型。
  *
- * <p>★ 节点段解析：取**最后一个** {@code '-'} 之前为分支名、之后为十进制 tick。分支名允许含 {@code '-'}；
- * tick 必须是非负十进制整数。节点地址不得含空白、不得含空段、不得含 {@code ..}。
+ * <p>★ 节点段解析：取**最后一个** {@code '-'} 之前为分支名、之后为十进制 tick。分支名允许含 {@code '-'}； tick
+ * 必须是非负十进制整数。节点地址不得含空白、不得含空段、不得含 {@code ..}。
  *
  * @param node 节点坐标
  * @param path 实体路径（可为空 = 只查节点；非空时第 1 段是 type）

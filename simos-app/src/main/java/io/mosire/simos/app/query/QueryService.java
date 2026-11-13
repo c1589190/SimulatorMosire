@@ -211,9 +211,7 @@ public final class QueryService {
     if (nodeAddress.path().isEmpty()) {
       String label = nodeAddress.node().label();
       return new QueryResult(
-          List.of(
-              new ResolvedSubject(
-                  new SubjectId("node", label), "node:" + label, "Node")));
+          List.of(new ResolvedSubject(new SubjectId("node", label), "node:" + label, "Node")));
     }
     Address entity = entityAddress(nodeAddress, mapId);
     return resolverRegistry.resolve(entity, contextAt(target));
@@ -252,10 +250,7 @@ public final class QueryService {
         String coordText = rest.get(0).replace(',', '_');
         HexCoord coord = HexCoord.parse(coordText);
         yield new Address(
-            List.of(
-                new Namespace("map"),
-                Entity.of(mapId),
-                Entity.of("hex", coord.toString())));
+            List.of(new Namespace("map"), Entity.of(mapId), Entity.of("hex", coord.toString())));
       }
       case "region" -> {
         requireSize(rest, 1, nodeAddress, "region/<id>");
@@ -283,13 +278,11 @@ public final class QueryService {
       }
       case "army" -> {
         requireSize(rest, 1, nodeAddress, "army/<id>");
-        yield new Address(
-            List.of(new Namespace("army"), Entity.of("army", rest.get(0))));
+        yield new Address(List.of(new Namespace("army"), Entity.of("army", rest.get(0))));
       }
       case "battle" -> {
         if (rest.size() == 1) {
-          yield new Address(
-              List.of(new Namespace("army"), Entity.of("combat", rest.get(0))));
+          yield new Address(List.of(new Namespace("army"), Entity.of("combat", rest.get(0))));
         }
         if (rest.size() == 3 && "stage".equals(rest.get(1))) {
           yield new Address(
@@ -299,8 +292,7 @@ public final class QueryService {
                   Entity.of("stage", rest.get(2))));
         }
         throw new IllegalArgumentException(
-            "battle 地址应为 battle/<id> 或 battle/<id>/stage/<sid>: "
-                + nodeAddress.canonical());
+            "battle 地址应为 battle/<id> 或 battle/<id>/stage/<sid>: " + nodeAddress.canonical());
       }
       default ->
           throw new IllegalArgumentException(
@@ -311,8 +303,7 @@ public final class QueryService {
   private static void requireSize(
       List<String> rest, int expected, NodeAddress address, String expectedForm) {
     if (rest.size() != expected) {
-      throw new IllegalArgumentException(
-          "地址形态应为 " + expectedForm + ": " + address.canonical());
+      throw new IllegalArgumentException("地址形态应为 " + expectedForm + ": " + address.canonical());
     }
   }
 

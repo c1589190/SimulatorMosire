@@ -37,14 +37,13 @@ import java.util.stream.Stream;
  *   .recycle/&lt;删除日期&gt;/&lt;安全地址&gt;-v&lt;N&gt;.md
  * </pre>
  *
- * <p>★ 一个地址可对应多个版本（每次 edit 备份旧 current 到 history，再写新 current）与多个名称
- * （{@code meta.names}）；查询可按完整/部分地址、标题、名称匹配。
+ * <p>★ 一个地址可对应多个版本（每次 edit 备份旧 current 到 history，再写新 current）与多个名称 （{@code
+ * meta.names}）；查询可按完整/部分地址、标题、名称匹配。
  *
- * <p>★ 路径安全：地址被拆成段，非法字符替换为 {@code _}，末段追加地址 SHA-256 的前 8 位，
- * 避免斜杠/冒号/中文/同名碰撞；拒绝 {@code ..} 与反斜杠。
+ * <p>★ 路径安全：地址被拆成段，非法字符替换为 {@code _}，末段追加地址 SHA-256 的前 8 位， 避免斜杠/冒号/中文/同名碰撞；拒绝 {@code ..} 与反斜杠。
  *
- * <p>★ 原子写：同目录临时文件 + {@code ATOMIC_MOVE}；同一实例内方法 {@code synchronized}。
- * 本服务不进入 world revision（文档是外部持久数据，与 AgentLib docs 同一定位）。
+ * <p>★ 原子写：同目录临时文件 + {@code ATOMIC_MOVE}；同一实例内方法 {@code synchronized}。 本服务不进入 world
+ * revision（文档是外部持久数据，与 AgentLib docs 同一定位）。
  */
 public final class WorldDocsService {
 
@@ -142,10 +141,7 @@ public final class WorldDocsService {
     }
   }
 
-  /**
-   * 编辑文档：先备份旧 current 到 history/vN.md，再写新 current；版本号 +1。
-   * 文档不存在 / 已删除 ⇒ NOT_FOUND。
-   */
+  /** 编辑文档：先备份旧 current 到 history/vN.md，再写新 current；版本号 +1。 文档不存在 / 已删除 ⇒ NOT_FOUND。 */
   public WorldDocView edit(String address, String title, String content, List<String> names) {
     synchronized (lock) {
       String key = requireAddress(address);
@@ -191,9 +187,10 @@ public final class WorldDocsService {
       if (old.deleted()) {
         return old;
       }
-      String date = deletedDate == null || deletedDate.isBlank()
-          ? LocalDate.now().toString()
-          : deletedDate.strip();
+      String date =
+          deletedDate == null || deletedDate.isBlank()
+              ? LocalDate.now().toString()
+              : deletedDate.strip();
       Path recycleDir = recycleRoot.resolve(safeSegment(date));
       Path current = dir.resolve(CURRENT_FILE);
       if (Files.isRegularFile(current)) {
@@ -414,8 +411,7 @@ public final class WorldDocsService {
     try {
       Files.write(tmp, bytes);
       try {
-        Files.move(
-            tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       } catch (AtomicMoveNotSupportedException e) {
         Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
       }
@@ -436,9 +432,7 @@ public final class WorldDocsService {
     return entriesRoot.resolve(encodedAddress(address));
   }
 
-  /**
-   * 地址 → 安全目录名：按 {@code /} 分段、逐段替换非法字符，末段追加地址 sha256 前 8 位。
-   */
+  /** 地址 → 安全目录名：按 {@code /} 分段、逐段替换非法字符，末段追加地址 sha256 前 8 位。 */
   static String encodedAddress(String address) {
     String[] raw = address.split("/", -1);
     List<String> safe = new ArrayList<>(raw.length);
@@ -457,8 +451,17 @@ public final class WorldDocsService {
     StringBuilder out = new StringBuilder(segment.length());
     for (int i = 0; i < segment.length(); i++) {
       char c = segment.charAt(i);
-      if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<'
-          || c == '>' || c == '|' || Character.isWhitespace(c) || Character.isISOControl(c)) {
+      if (c == '/'
+          || c == '\\'
+          || c == ':'
+          || c == '*'
+          || c == '?'
+          || c == '"'
+          || c == '<'
+          || c == '>'
+          || c == '|'
+          || Character.isWhitespace(c)
+          || Character.isISOControl(c)) {
         out.append('_');
       } else {
         out.append(c);
@@ -482,7 +485,8 @@ public final class WorldDocsService {
 
   private static String shortHash(String address) {
     try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(address.getBytes(StandardCharsets.UTF_8));
+      byte[] digest =
+          MessageDigest.getInstance("SHA-256").digest(address.getBytes(StandardCharsets.UTF_8));
       return HexFormat.of().formatHex(digest, 0, 4);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("JVM 缺 SHA-256", e);

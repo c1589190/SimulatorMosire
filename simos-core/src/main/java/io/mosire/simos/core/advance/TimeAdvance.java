@@ -346,9 +346,7 @@ public final class TimeAdvance implements AdvanceRoute {
       boolean firstDay = day == fromTick + 1;
       boolean lastDay = day == toTick;
       StateRef dayBase =
-          singleNodeAdvance
-              ? base
-              : new StateRef(cmd.branch(), new RevisionId(committedRevision));
+          singleNodeAdvance ? base : new StateRef(cmd.branch(), new RevisionId(committedRevision));
       StateRef dayTarget =
           singleNodeAdvance
               ? new StateRef(cmd.branch(), new RevisionId(base.revision().value() + 1))

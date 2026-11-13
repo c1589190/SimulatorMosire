@@ -20,8 +20,8 @@ import java.util.Set;
 /**
  * 世界文档工具组（D-036）：AI 通过 MCP 对 {@code docs/} 下的地址文档做增/改/删/查。
  *
- * <p>★ 文档是独立持久数据，不是 world command；这些工具直接读写文件，不产生 revision。
- * 这与 AgentLib 的 {@code doc_*} 家族同一定位（外部文档面），不违反“世界状态写必须经 Command”的铁律。
+ * <p>★ 文档是独立持久数据，不是 world command；这些工具直接读写文件，不产生 revision。 这与 AgentLib 的 {@code doc_*}
+ * 家族同一定位（外部文档面），不违反“世界状态写必须经 Command”的铁律。
  */
 public final class WorldDocsToolset {
 
@@ -71,9 +71,7 @@ public final class WorldDocsToolset {
     @Override
     public ToolGate gate(ToolContext context) {
       return new ToolGate.Ask(
-          name(),
-          "写世界文档: address=" + context.arguments().get("address"),
-          AskKind.SENSITIVE);
+          name(), "写世界文档: address=" + context.arguments().get("address"), AskKind.SENSITIVE);
     }
   }
 

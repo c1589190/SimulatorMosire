@@ -3,8 +3,7 @@ package io.mosire.simos.app.docs;
 /**
  * 世界文档错误：把“输入坏 / 不存在 / 已存在”分成稳定错误码，HTTP/MCP 层才能给出确定回答。
  *
- * <p>D-036：世界文档是独立持久数据，不随 world revision 变化；因此这里的错误码与命令面
- * （{@code CommandResult}）无关，是文档面自己的契约。
+ * <p>D-036：世界文档是独立持久数据，不随 world revision 变化；因此这里的错误码与命令面 （{@code CommandResult}）无关，是文档面自己的契约。
  */
 public final class WorldDocException extends RuntimeException {
 

@@ -13,6 +13,12 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -23,12 +29,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
-import io.mosire.simos.util.state.BranchId;
-import io.mosire.simos.util.state.RevisionId;
-import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.state.StateRef;
-import io.mosire.simos.util.time.SimosTimestamp;
-import io.mosire.simos.util.time.TimeRange;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -282,15 +282,14 @@ class ShellAssemblySmokeTest {
   }
 
   /**
-   * D-036 editor profile：economy / production / culture 的工具面必须消失；
-   * gov / ga / docs / map / unit 保留，Shell 仍能完整装配与关闭。
+   * D-036 editor profile：economy / production / culture 的工具面必须消失； gov / ga / docs / map / unit
+   * 保留，Shell 仍能完整装配与关闭。
    */
   @Test
   void editorProfileHidesPausedDomainsAndKeepsCoreTools() throws IOException {
     System.setProperty(EditorProfile.PROPERTY, EditorProfile.EDITOR);
     Path store = Files.createDirectories(tempDir.resolve("editor-store"));
-    try (Shell shell =
-        Shell.start(ShellConfig.defaults(store).withPorts(0, 0))) {
+    try (Shell shell = Shell.start(ShellConfig.defaults(store).withPorts(0, 0))) {
       Set<String> names = namesOf(shell.toolsFor(SimosToolSource.Role.GM));
       assertThat(names)
           .as("editor profile 不得暴露 economy/production/culture 工具")
@@ -315,7 +314,6 @@ class ShellAssemblySmokeTest {
     }
   }
 
-
   /**
    * D-036 P1.3：editor profile 的同一 tick 命令原地更新当前节点 revision，不追加中间 revision；
    * 变更集必须由父节点完整态派生（第二次写后回放仍是最终地形）。
@@ -328,8 +326,7 @@ class ShellAssemblySmokeTest {
       assertThat(ShellMain.seedGenesisIfEmpty(shell)).as("空库应种入创世").isTrue();
       BranchId main = new BranchId("main");
       RevisionId genesis = shell.coreSimos().head(main).orElseThrow();
-      SimulationState initial =
-          shell.coreSimos().replay(new StateRef(main, genesis));
+      SimulationState initial = shell.coreSimos().replay(new StateRef(main, genesis));
       GameMap map = ApiViews.gameMap(initial);
       HexCoord target = map.hexes().keySet().iterator().next();
       List<String> terrains = List.copyOf(map.terrainTypes().keySet());
@@ -337,34 +334,27 @@ class ShellAssemblySmokeTest {
       String firstTerrain = terrains.get(0);
       String secondTerrain = terrains.get(1);
 
-      CommandResult first = shell.coreSimos().submit(terrainEnvelope(genesis, target, firstTerrain));
+      CommandResult first =
+          shell.coreSimos().submit(terrainEnvelope(genesis, target, firstTerrain));
       assertThat(first).isInstanceOf(CommandResult.Committed.class);
-      assertThat(shell.coreSimos().head(main))
-          .as("同 tick 命令不得推进 revision")
-          .contains(genesis);
+      assertThat(shell.coreSimos().head(main)).as("同 tick 命令不得推进 revision").contains(genesis);
 
       CommandResult second =
           shell.coreSimos().submit(terrainEnvelope(genesis, target, secondTerrain));
       assertThat(second).isInstanceOf(CommandResult.Committed.class);
-      assertThat(shell.coreSimos().head(main))
-          .as("第二条同 tick 命令仍更新同一节点")
-          .contains(genesis);
+      assertThat(shell.coreSimos().head(main)).as("第二条同 tick 命令仍更新同一节点").contains(genesis);
 
-      SimulationState after =
-          shell.coreSimos().replay(new StateRef(main, genesis));
+      SimulationState after = shell.coreSimos().replay(new StateRef(main, genesis));
       assertThat(ApiViews.gameMap(after).terrainAt(target)).isEqualTo(secondTerrain);
 
-      CommandResult firstAdvance =
-          shell.coreSimos().submit(
-              advance(genesis, 0L, 2L));
+      CommandResult firstAdvance = shell.coreSimos().submit(advance(genesis, 0L, 2L));
       assertThat(firstAdvance).isInstanceOf(CommandResult.Committed.class);
       RevisionId node2 = shell.coreSimos().head(main).orElseThrow();
       assertThat(node2.value()).as("一次推进 0→2 只落一个节点").isEqualTo(genesis.value() + 1);
       assertThat(shell.coreSimos().replay(new StateRef(main, node2)).meta().timestamp().tick())
           .isEqualTo(2L);
 
-      CommandResult secondAdvance =
-          shell.coreSimos().submit(advance(node2, 2L, 5L));
+      CommandResult secondAdvance = shell.coreSimos().submit(advance(node2, 2L, 5L));
       assertThat(secondAdvance).isInstanceOf(CommandResult.Committed.class);
       RevisionId node5 = shell.coreSimos().head(main).orElseThrow();
       assertThat(node5.value()).as("一次推进 2→5 仍只落一个节点").isEqualTo(node2.value() + 1);
@@ -402,5 +392,4 @@ class ShellAssemblySmokeTest {
             + terrain
             + "\"}");
   }
-
 }

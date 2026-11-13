@@ -36,10 +36,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 /**
  * 命令总线（spec §四，C16 的分派落点）。
@@ -126,14 +126,14 @@ public final class CommandBus {
   private final Map<String, ModuleDiffer> differs;
 
   /**
-   * D-036 editor profile：同一 tick 的后续命令**原地更新当前节点 revision**，不追加中间 revision。
-   * 缺省 false（full profile / 既有测试保持旧逐命令 revision 语义）。
+   * D-036 editor profile：同一 tick 的后续命令**原地更新当前节点 revision**，不追加中间 revision。 缺省 false（full profile /
+   * 既有测试保持旧逐命令 revision 语义）。
    */
   private volatile boolean sameTickMerge;
 
   /**
-   * D-036 同 tick 合并：用候选态直接写 checkpoint（不能 replay 当前 ref——那会先读旧 checkpoint 再写回旧态）。
-   * 缺省 no-op；CoreSimos 装配时注入。
+   * D-036 同 tick 合并：用候选态直接写 checkpoint（不能 replay 当前 ref——那会先读旧 checkpoint 再写回旧态）。 缺省
+   * no-op；CoreSimos 装配时注入。
    */
   private volatile BiConsumer<StateRef, SimulationState> checkpointWriter = (ref, state) -> {};
 
@@ -688,10 +688,7 @@ public final class CommandBus {
     }
     if (timeline.row(new StateRef(command.source(), command.expectedRevision())).isEmpty()) {
       return new CommandResult.Rejected(
-          "分岔目标节点不存在: "
-              + command.source().value()
-              + "@"
-              + command.expectedRevision().value());
+          "分岔目标节点不存在: " + command.source().value() + "@" + command.expectedRevision().value());
     }
     return new CommandResult.Conflict(new StateRef(command.source(), head.get()));
   }
@@ -904,11 +901,7 @@ public final class CommandBus {
             .orElseGet(() -> reject(envelope, trace, "分支不存在: " + envelope.branch().value()));
       }
       return commit(
-          envelope,
-          trace,
-          new StateRef(envelope.branch(), current.get()),
-          changeSet,
-          baseState);
+          envelope, trace, new StateRef(envelope.branch(), current.get()), changeSet, baseState);
     }
   }
 
@@ -1053,8 +1046,7 @@ public final class CommandBus {
     for (Map.Entry<String, Snapshot> entry : target.modules().entrySet()) {
       Snapshot baseSlice = base.modules().get(entry.getKey());
       if (baseSlice == null) {
-        throw new IllegalStateException(
-            "父节点缺少模块切片，无法派生同 tick 节点变更集: " + entry.getKey());
+        throw new IllegalStateException("父节点缺少模块切片，无法派生同 tick 节点变更集: " + entry.getKey());
       }
       modules.put(entry.getKey(), differFor(entry.getKey()).diff(baseSlice, entry.getValue()));
     }

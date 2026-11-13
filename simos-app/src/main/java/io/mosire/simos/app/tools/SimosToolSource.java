@@ -15,16 +15,16 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.docs.DocsCapability;
 import io.mosire.docs.DocsTools;
-import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.EditorProfile;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
-import io.mosire.simos.app.docs.WorldDocsService;
-import io.mosire.simos.app.docs.WorldDocsToolset;
 import io.mosire.simos.app.decision.CoreDecisionPackageReadPort;
 import io.mosire.simos.app.decision.CoreDecisionReadAudit;
 import io.mosire.simos.app.decision.CoreDecisionSubmissionPort;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.DecisionCallPreviewer;
+import io.mosire.simos.app.docs.WorldDocsService;
+import io.mosire.simos.app.docs.WorldDocsToolset;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.query.QueryService;
@@ -2029,89 +2029,90 @@ public final class SimosToolSource implements ToolSource {
     List<AgentTool> tools =
         new ArrayList<>(
             List.of(
-        // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
-        //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
-        new CatalogTool(commandTypes, embeddableCommandTypes),
-        new StateResolveTool(query, mapId),
-        new StateFacetsTool(query, mapId),
-        new BranchListTool(core),
-        // ★ 工具面 M4（2026-09-24）：补五条缺口的读口 —— 时间轴节点清单 / 区域详情 / 寻路试算 /
-        //   决策人清单 / 决策人详情。（`timeline.branches` 只给"有哪些分支、head 在哪"，看不到节点；sd 侧此前
-        //   只能 CreateDecisionMaker 写、写完看不见。）
-        new TimelineRevisionsTool(core, calendarService),
-        // ★★ C5b（2026-10-02 年份系统）：历法/气候配置 + 指定 tick 的日期/节气（可选季节）。**四桶共享**——
-        //   历法只是"今天几号、什么节气"，不含可见性侧信道（配置是 store_meta 库级元数据、不落 revision）。
-        //   ★ 不标 GmOnlyRead、**不进** PAYLOAD_HINTS（它不是命令类型）。
-        new CalendarInfoTool(query, calendarService),
-        new MapOverviewTool(mapReads, mapViews, mapPerspective, mapId),
-        new MapHexTool(mapReads, mapViews, mapPerspective, mapId),
-        new MapRegionTool(mapReads, mapViews, mapPerspective, mapId),
-        // ★ 用户 2026-10-02：GM 专用只读重合检测——同一 tag（如 Nation）下找区域的部分重合 / 完全重合 /
-        //   包含；决策人不给，避免越过视野泄露全图区域几何。
-        new MapOverlapsTool(mapReads, mapViews, mapPerspective, mapId),
-        // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
-        //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
-        new ProvinceDivideTool(gov, mapId),
-        new MapPathTool(mapReads, mapViews, mapPaths),
-        // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
-        //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
-        new MapBlockTool(mapReads, mapViews),
-        // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
-        new UnitListTool(unitReads, unitViews),
-        new UnitGetTool(unitReads, unitViews, unitPerspective),
-        new PopulationTool(socialReads, socialViews, socialPerspective),
-        // ★★ D1（2026-10-22 决策包计划）：家户聚合读口（GM 与决策人共用；scope=ALL 由工具内 social 面
-        //   unrestricted 判定，不标 GmOnlyRead）。资源声明 map/social/unit/economy/actor 全 READ_ONLY。
-        new SocialHouseholdsTool(query, calendarService, mapId),
-        // ★★ Z3c-2（2026-10-23）：GOV 行政运行只读读口（GM + 该 GOV 决策人；决策人视野收窄到自己 GOV）。
-        //   四桶共享（不标 GmOnlyRead）；资源断言 = unit:<govId> + 座位 map/social/actor；
-        //   白名单即由该桶派生（{@code toolRoles()} 是唯一声明）。
-        new GovInfoTool(gov, mapId),
-        // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
-        //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
-        new EconomyHexTool(economyReads, economyViews, economyPerspective, mapId),
-        // ★ H0.6（2026-09-27）：产权读口 —— 行侧家户库存与 actor 侧 HouseholdInventory **并排**发（堵"把一本账读成全系统"）。
-        //   只在 GM 桶（GmOnlyRead）：响应含 actor 切片的商品余额，而 actor 面在本仓的资源表态里是缺省拒。
-        new EconomyOwnershipTool(economyReads, economyViews, economyPerspective, mapId),
-        // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
-        new MapRenderTool(mapReads, mapViews, mapRender),
-        // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `ga.CreateDecisionMaker` 写、写完看不见。
-        new DecisionMakersTool(gaQueries),
-        // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
-        new DecisionMakerTool(gaQueries),
-        // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/ga/directives 的 MCP 读口）。
-        //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
-        //   ApiViews.directives，不另写一份。
-        new DirectivesTool(gaQueries),
-        // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
-        //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
-        //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
-        new DiplomacyTool(gaReads, gaViews),
-        new DiplomaticEventsTool(gaReads, gaViews),
-        // ★★ 2026-10-14：旧读口 simos.sd.reports **整条删除**（旧族废弃，用户原话「老的直接扔掉」）；
-        //   接替它的是决策人桶里的 simos.ga.message.inbox（只读寄给自己的消息，不泄漏名册）。
-        // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
-        //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
-        //   形状与 GUI 同源（ApiViews.armyCombat）。
-        new ArmyCombatsTool(armyReads, armyViews, armyPerspective, mapId),
-        new ArmyCombatTool(armyReads, armyViews, armyPerspective, mapId),
-        // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
-        new VerdictsTool(gaQueries),
-        // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
-        //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.ga.packet.my 读自己的。
-        new GmPacketsTool(gaReads),
-        new GmPacketTool(gaReads),
-        // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
-        new GmToolUsageTool(gmToolUsage, gaViews),
-        // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.1/§3.5）：**两条 GM-only 读口**——
-        //   ① simos.gm.inbox：决策人寄给 GM 的信 + 逐条 answered（GM 回话的前提；缺它就是缺口 G2）；
-        //   ② simos.gm.round：轮次看板（逐 DM：包状态 / 未答问题数 / 是否已确认推演 + 三个 pending 清单）。
-        //   ★ 两条都靠 GmOnlyRead **自动只进 GM 桶**（读工具默认四桶共享，见 readToolsFor 的唯一拼写点）：
-        //     决策人读自己的收件箱走 simos.ga.message.inbox，那条按可见性三轴筛、只回 to==自己的信——两条读口各读各的那一半。
-        //   ★ 都是纯派生读口（零新状态）：资源声明 sd 只读 + 断言 sd:*（与 simos.gm.packets 同款）。
-        new GmInboxTool(gaReads),
-        new GmRoundTool(gaReads),
-        new LlmProvidersTool(llmConfig)));
+                // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
+                //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
+                new CatalogTool(commandTypes, embeddableCommandTypes),
+                new StateResolveTool(query, mapId),
+                new StateFacetsTool(query, mapId),
+                new BranchListTool(core),
+                // ★ 工具面 M4（2026-09-24）：补五条缺口的读口 —— 时间轴节点清单 / 区域详情 / 寻路试算 /
+                //   决策人清单 / 决策人详情。（`timeline.branches` 只给"有哪些分支、head 在哪"，看不到节点；sd 侧此前
+                //   只能 CreateDecisionMaker 写、写完看不见。）
+                new TimelineRevisionsTool(core, calendarService),
+                // ★★ C5b（2026-10-02 年份系统）：历法/气候配置 + 指定 tick 的日期/节气（可选季节）。**四桶共享**——
+                //   历法只是"今天几号、什么节气"，不含可见性侧信道（配置是 store_meta 库级元数据、不落 revision）。
+                //   ★ 不标 GmOnlyRead、**不进** PAYLOAD_HINTS（它不是命令类型）。
+                new CalendarInfoTool(query, calendarService),
+                new MapOverviewTool(mapReads, mapViews, mapPerspective, mapId),
+                new MapHexTool(mapReads, mapViews, mapPerspective, mapId),
+                new MapRegionTool(mapReads, mapViews, mapPerspective, mapId),
+                // ★ 用户 2026-10-02：GM 专用只读重合检测——同一 tag（如 Nation）下找区域的部分重合 / 完全重合 /
+                //   包含；决策人不给，避免越过视野泄露全图区域几何。
+                new MapOverlapsTool(mapReads, mapViews, mapPerspective, mapId),
+                // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
+                //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
+                new ProvinceDivideTool(gov, mapId),
+                new MapPathTool(mapReads, mapViews, mapPaths),
+                // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
+                //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
+                new MapBlockTool(mapReads, mapViews),
+                // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
+                new UnitListTool(unitReads, unitViews),
+                new UnitGetTool(unitReads, unitViews, unitPerspective),
+                new PopulationTool(socialReads, socialViews, socialPerspective),
+                // ★★ D1（2026-10-22 决策包计划）：家户聚合读口（GM 与决策人共用；scope=ALL 由工具内 social 面
+                //   unrestricted 判定，不标 GmOnlyRead）。资源声明 map/social/unit/economy/actor 全 READ_ONLY。
+                new SocialHouseholdsTool(query, calendarService, mapId),
+                // ★★ Z3c-2（2026-10-23）：GOV 行政运行只读读口（GM + 该 GOV 决策人；决策人视野收窄到自己 GOV）。
+                //   四桶共享（不标 GmOnlyRead）；资源断言 = unit:<govId> + 座位 map/social/actor；
+                //   白名单即由该桶派生（{@code toolRoles()} 是唯一声明）。
+                new GovInfoTool(gov, mapId),
+                // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
+                //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
+                new EconomyHexTool(economyReads, economyViews, economyPerspective, mapId),
+                // ★ H0.6（2026-09-27）：产权读口 —— 行侧家户库存与 actor 侧 HouseholdInventory
+                // **并排**发（堵"把一本账读成全系统"）。
+                //   只在 GM 桶（GmOnlyRead）：响应含 actor 切片的商品余额，而 actor 面在本仓的资源表态里是缺省拒。
+                new EconomyOwnershipTool(economyReads, economyViews, economyPerspective, mapId),
+                // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
+                new MapRenderTool(mapReads, mapViews, mapRender),
+                // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `ga.CreateDecisionMaker` 写、写完看不见。
+                new DecisionMakersTool(gaQueries),
+                // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
+                new DecisionMakerTool(gaQueries),
+                // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/ga/directives 的 MCP 读口）。
+                //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
+                //   ApiViews.directives，不另写一份。
+                new DirectivesTool(gaQueries),
+                // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
+                //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
+                //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
+                new DiplomacyTool(gaReads, gaViews),
+                new DiplomaticEventsTool(gaReads, gaViews),
+                // ★★ 2026-10-14：旧读口 simos.sd.reports **整条删除**（旧族废弃，用户原话「老的直接扔掉」）；
+                //   接替它的是决策人桶里的 simos.ga.message.inbox（只读寄给自己的消息，不泄漏名册）。
+                // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
+                //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
+                //   形状与 GUI 同源（ApiViews.armyCombat）。
+                new ArmyCombatsTool(armyReads, armyViews, armyPerspective, mapId),
+                new ArmyCombatTool(armyReads, armyViews, armyPerspective, mapId),
+                // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
+                new VerdictsTool(gaQueries),
+                // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
+                //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.ga.packet.my 读自己的。
+                new GmPacketsTool(gaReads),
+                new GmPacketTool(gaReads),
+                // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
+                new GmToolUsageTool(gmToolUsage, gaViews),
+                // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.1/§3.5）：**两条 GM-only 读口**——
+                //   ① simos.gm.inbox：决策人寄给 GM 的信 + 逐条 answered（GM 回话的前提；缺它就是缺口 G2）；
+                //   ② simos.gm.round：轮次看板（逐 DM：包状态 / 未答问题数 / 是否已确认推演 + 三个 pending 清单）。
+                //   ★ 两条都靠 GmOnlyRead **自动只进 GM 桶**（读工具默认四桶共享，见 readToolsFor 的唯一拼写点）：
+                //     决策人读自己的收件箱走 simos.ga.message.inbox，那条按可见性三轴筛、只回 to==自己的信——两条读口各读各的那一半。
+                //   ★ 都是纯派生读口（零新状态）：资源声明 sd 只读 + 断言 sd:*（与 simos.gm.packets 同款）。
+                new GmInboxTool(gaReads),
+                new GmRoundTool(gaReads),
+                new LlmProvidersTool(llmConfig)));
     tools.addAll(WorldDocsToolset.readTools(WorldDocsService.defaultService()));
     if (EditorProfile.enabled()) {
       tools.removeIf(tool -> EditorProfile.pausedTool(tool.name()));

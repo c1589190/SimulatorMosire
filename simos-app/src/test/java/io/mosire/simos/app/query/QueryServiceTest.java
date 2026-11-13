@@ -155,9 +155,7 @@ class QueryServiceTest {
   @Test
   void resolveNodeAddressMapsHexToExistingCanonicalAddress() {
     QueryResult result =
-        shell
-            .queryService()
-            .resolveWorld("main-7/hex/1,1", QueryTarget.head(main()), "Map1");
+        shell.queryService().resolveWorld("main-7/hex/1,1", QueryTarget.head(main()), "Map1");
 
     assertThat(result.candidates()).hasSize(1);
     assertThat(result.candidates().get(0).canonicalAddress()).isEqualTo("map:Map1:hex.1_1");
