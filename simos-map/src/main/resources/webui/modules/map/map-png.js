@@ -149,6 +149,13 @@
   }
 
   function updateOverlay() {
+    // 对齐参数变了 ⇒ 旧取色计划失效，必须重新预览；否则“应用”会写入旧坐标的分配。
+    if (lastPlan) {
+      lastPlan = null;
+      var applyButton = byId("png-apply");
+      if (applyButton) applyButton.disabled = true;
+      status("对齐参数已变，请重新按格心取色预览", "warn");
+    }
     var active = renderer();
     if (!active || !active.setPngOverlay) {
       status("地图渲染器尚未就绪", "warn");
@@ -316,7 +323,7 @@
         loadFile(file.files && file.files[0]);
       });
     }
-    ["png-offset-x", "png-offset-y", "png-scale", "png-opacity"].forEach(function (id) {
+    ["png-offset-x", "png-offset-y", "png-scale", "png-threshold", "png-opacity"].forEach(function (id) {
       var node = byId(id);
       if (node) node.addEventListener("input", updateOverlay);
     });

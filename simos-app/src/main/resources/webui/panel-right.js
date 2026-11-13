@@ -137,6 +137,7 @@
   var worldKey = null;
   var worldData = null;
   var pendingCount = null;
+  var pendingError = null;
   var pendingState = "idle"; // idle | loading | loaded | failed
   var pendingToken = 0;
 
@@ -178,10 +179,17 @@
     // 每次推新世界数据（含 revision 变化）都重取一次待批数：审批会随写命令变化，"缓存一份旧计数"会撒谎。
     pendingState = "idle";
     pendingCount = null;
+    pendingError = null;
     worldData = {
       cities: (data && data.cities) || [],
       regionSummaries: (data && data.regionSummaries) || [],
       economyOverview: data ? data.economyOverview : null,
+      economyError:
+          data && data.economyError
+              ? data.economyError
+              : worldData
+                  ? worldData.economyError
+                  : null,
       units: (data && data.units) || [],
       decisionMakers: (data && data.decisionMakers) || [],
     };
@@ -209,8 +217,8 @@
       api.cachedRegionSummaries(app.target()).catch(function () {
         return null;
       }),
-      api.cachedEconomyOverview(app.target()).catch(function () {
-        return null;
+      api.cachedEconomyOverview(app.target()).catch(function (error) {
+        return { __error: error };
       }),
       api.cachedUnits(app.target()).catch(function () {
         return null;
@@ -225,7 +233,8 @@
       worldData = {
         cities: (results[0] && results[0].cities) || [],
         regionSummaries: (results[1] && results[1].regions) || [],
-        economyOverview: results[2] || null,
+        economyOverview: results[2] && !results[2].__error ? results[2] : null,
+        economyError: results[2] && results[2].__error ? results[2].__error : null,
         units: (results[3] && results[3].units) || [],
         decisionMakers: (results[4] && results[4].decisionMakers) || [],
       };
@@ -238,6 +247,7 @@
       return;
     }
     pendingState = "loading";
+    pendingError = null;
     var token = ++pendingToken;
     api
       .approvals()
@@ -249,11 +259,12 @@
         pendingState = "loaded";
         renderWorldOverview(app.getState());
       })
-      .catch(function () {
+      .catch(function (error) {
         if (token !== pendingToken) {
           return;
         }
         pendingCount = null;
+        pendingError = error;
         pendingState = "failed";
         renderWorldOverview(app.getState());
       });
@@ -264,7 +275,9 @@
       return pendingCount === null ? "—（响应形状未知）" : pendingCount;
     }
     if (pendingState === "failed") {
-      return "—（审批未接入）";
+      return pendingError && pendingError.status === 404
+          ? "—（editor profile 未挂载审批）"
+          : "—（审批未接入）";
     }
     return "…";
   }
@@ -351,7 +364,17 @@
     appendRow(dl, "待批", pendingText());
     var economy = worldData.economyOverview;
     if (!economy) {
-      appendRow(dl, "经济", "—（经济总览未载入）", "该端点取不到数据。");
+      var economyNote =
+          worldData.economyError && worldData.economyError.status === 404
+              ? "—（editor profile 未挂载经济）"
+              : "—（经济总览未载入）";
+      appendRow(
+          dl,
+          "经济",
+          economyNote,
+          worldData.economyError && worldData.economyError.status === 404
+              ? "当前 profile 已卸载 economy / production / culture。"
+              : "该端点取不到数据。");
     } else if (!economy.activated) {
       appendRow(dl, "经济", "未激活", "economy 切片的 meta 为空（这一版世界还没播种经济）。");
     } else {

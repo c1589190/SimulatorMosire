@@ -1928,7 +1928,8 @@
 
     /** D-036 P5：把已载入的 PNG 按 world 坐标画在地形层下面。 */
     function paintPngOverlay() {
-      if (!pngOverlay || !pngOverlay.image) {
+      // PNG 是对齐/取色的地图编辑辅助层；离开地图编辑后不应继续遮住世界视图。
+      if (!pngOverlay || !pngOverlay.image || !app || app.getState().mode !== "map-edit") {
         return;
       }
       var image = pngOverlay.image;

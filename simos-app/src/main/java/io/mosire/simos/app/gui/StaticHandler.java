@@ -57,7 +57,7 @@ final class StaticHandler {
   }
 
   /** 路径 → classpath 资源名；非静态路径或含目录穿越 ⇒ {@code null}（＝不服务）。 */
-  private static String resourceName(String path) {
+  static String resourceName(String path) {
     String alias = PAGE_ALIASES.get(path);
     if (alias != null) {
       return alias;
@@ -69,7 +69,11 @@ final class StaticHandler {
     if (name.contains("..")) {
       return null;
     }
-    return name;
+    // 模块资产以 /webui/modules/<id>/... 暴露；classpath 根已经是 /webui/ ⇒ 去掉重复前缀。
+    if (name.startsWith("webui/")) {
+      name = name.substring("webui/".length());
+    }
+    return name.isEmpty() ? null : name;
   }
 
   private static String contentType(String resourceName) {

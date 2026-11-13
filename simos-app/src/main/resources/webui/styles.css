@@ -1006,8 +1006,10 @@ body.workbench-page .topbar-actions button[aria-pressed="true"] {
 
 body.workbench-page .topbar-actions .region-name-toggle {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
   padding: 4px 8px;
   font-size: 12px;
   color: var(--muted);
@@ -1104,7 +1106,7 @@ body.workbench-page .wb-overlay .timeline-bar {
    选中项 .active；.region-meta-editor 只在所选 hex 有区域时显示。 */
 
 .mode-current {
-  margin-left: auto;
+  margin-left: 8px;
   padding: 3px 10px;
   border: 1px solid var(--accent);
   border-radius: 999px;
@@ -1176,6 +1178,7 @@ body.workbench-page .wb-overlay .timeline-bar {
 .map-edit-subtools label {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   justify-content: center;
   gap: 5px;
   padding: 5px 6px;
@@ -1202,6 +1205,7 @@ body.workbench-page .wb-overlay .timeline-bar {
 .map-edit-tools label {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   gap: 5px;
   padding: 4px 6px;
   font-size: 12px;
@@ -2604,6 +2608,7 @@ table.event-losses td {
 
 .docs-results {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
   max-height: 140px;
@@ -2641,6 +2646,7 @@ table.event-losses td {
 
 .docs-editor {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 8px;
 }
@@ -2856,4 +2862,76 @@ table.event-losses td {
   border: 1px solid var(--line);
   border-radius: 3px;
   display: inline-block;
+}
+
+/* D-036 前端优化：窄屏顶栏不压竖排，模式当前态在小屏不重复占位。 */
+body.workbench-page .wb-overlay .topbar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+body.workbench-page .wb-overlay .topbar h1 {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+body.workbench-page .shell-state {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1450px) {
+  body.workbench-page .wb-overlay .topbar {
+    gap: 8px;
+  }
+
+  body.workbench-page .mode-current {
+    display: none;
+  }
+
+  body.workbench-page .topbar-actions {
+    gap: 4px;
+  }
+
+  body.workbench-page .search-box input[type="search"] {
+    width: 160px;
+  }
+}
+
+@media (max-width: 1100px) {
+  body.workbench-page .search-box input[type="search"] {
+    width: 200px;
+  }
+
+  body.workbench-page .wb-overlay .mode-bar {
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  body.workbench-page .topbar-actions {
+    flex: 1 1 100%;
+    order: 3;
+    justify-content: flex-start;
+  }
+}
+
+/* PNG 面板在窄左栏里用两列网格，避免“世界像素/图像像素”和“取色阈值”挤成一行。 */
+.png-align-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.png-align-row label {
+  min-width: 0;
+}
+
+.png-align-row input[type="number"] {
+  width: 100%;
+}
+
+.png-overlay-controls input[type="file"] {
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--muted);
 }

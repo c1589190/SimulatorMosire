@@ -233,13 +233,20 @@
   }
 
   /** 战役地址：<branch>-<tick>/battle/<id>；tick 来自 /api/state 的当前游标。 */
+  function setBattleStatus(text) {
+    var node = byId("battle-status");
+    if (node) node.textContent = text || "";
+  }
+
   function openBattle(combatId) {
     var state = window.SimosApp && window.SimosApp.getState ? window.SimosApp.getState() : null;
     if (!state || state.tick === null || state.tick === undefined) {
+      setBattleStatus("当前没有可用 tick，无法定位战役地址");
       setStatus("当前没有可用 tick，无法定位战役地址", true);
       open();
       return;
     }
+    setBattleStatus("已打开战役地址：" + state.branch + "-" + state.tick + "/battle/" + combatId);
     open(state.branch + "-" + state.tick + "/battle/" + combatId);
   }
 
@@ -295,7 +302,7 @@
       battleDocButton.addEventListener("click", function () {
         var combatId = value(byId("battle-id")).trim();
         if (!combatId) {
-          setStatus("先填写战役 id", true);
+          setBattleStatus("先填写战役 id");
           return;
         }
         openBattle(combatId);

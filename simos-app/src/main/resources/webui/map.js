@@ -76,7 +76,8 @@
   var REGION_NAME_VISIBLE_MARGIN = 64;
   // ★ V2：区域名**只在区域查看/区域编辑两个模式**显示（常规模式下用户实测"区域名称也被显示了"）。
   //   开关（regionNamesEnabled）仍保留，但只在两模式内生效。
-  var REGION_NAME_MODES = ["region", "region-edit"];
+  // D-036：区域编辑并入地图编辑 ⇒ 地图编辑也算区域名可见模式；常规/单位/战役仍不画。
+  var REGION_NAME_MODES = ["region", "region-edit", "map-edit"];
   var REGION_NAMES_STORAGE_KEY = "simos.regionNames.v1";
   // ★ U2：区域名开关（默认开，localStorage 持久化；node 宿主无 localStorage ⇒ typeof 守卫）。
   var regionNamesEnabled = loadRegionNamesEnabled();
@@ -402,8 +403,8 @@
       api.cachedRegionSummaries(app.target()).catch(function () {
         return null;
       }),
-      api.cachedEconomyOverview(app.target()).catch(function () {
-        return null;
+      api.cachedEconomyOverview(app.target()).catch(function (error) {
+        return { __error: error };
       }),
       api.cachedDecisionMakers(app.target()).catch(function () {
         return null;
@@ -411,7 +412,8 @@
     ]);
     var cities = (results[0] && results[0].cities) || [];
     var regionSummaries = (results[1] && results[1].regions) || [];
-    var economyOverview = results[2] || null;
+    var economyOverview = results[2] && !results[2].__error ? results[2] : null;
+    var economyError = results[2] && results[2].__error ? results[2].__error : null;
     var makers = (results[3] && results[3].decisionMakers) || [];
     host.worldCities = cities;
     host.worldRegionSummaries = regionSummaries;
@@ -432,6 +434,7 @@
         cities: cities,
         regionSummaries: regionSummaries,
         economyOverview: economyOverview,
+        economyError: economyError,
         units: host.worldUnits,
         decisionMakers: makers,
       });
@@ -550,7 +553,7 @@
     return {
       q: region.label.q,
       r: region.label.r,
-      fontSize: Math.max(8, Math.min(40, Math.sqrt(hexCount) * 1.8)) / scale,
+      fontSize: Math.max(13, Math.min(40, Math.sqrt(hexCount) * 1.8)) / scale,
       text: String(text),
     };
   }
@@ -582,6 +585,9 @@
       return out;
     }
     var slack = typeof margin === "number" && margin >= 0 ? margin : REGION_NAME_VISIBLE_MARGIN;
+    // 多个区域可能共享同一个质心 hex（例如小世界 + 首都省都落在 (0,0)）：
+    // 同点标签纵向错开，避免 strokeText 叠成一团。
+    var groups = {};
     (regions || []).forEach(function (region) {
       var layout = regionLabelLayout(region, view.scale);
       if (!layout) {
@@ -597,7 +603,26 @@
       ) {
         return;
       }
-      out.push({ text: layout.text, fontSize: layout.fontSize, x: world.x, y: world.y });
+      var key = Math.round(world.x * 1000) + "," + Math.round(world.y * 1000);
+      if (!groups[key]) {
+        groups[key] = { x: world.x, y: world.y, labels: [] };
+      }
+      groups[key].labels.push({ text: layout.text, fontSize: layout.fontSize });
+    });
+    Object.keys(groups).forEach(function (key) {
+      var group = groups[key];
+      var line = group.labels.reduce(function (max, label) {
+        return Math.max(max, label.fontSize);
+      }, 0) + 4 / view.scale;
+      var start = -((group.labels.length - 1) * line) / 2;
+      group.labels.forEach(function (label, index) {
+        out.push({
+          text: label.text,
+          fontSize: label.fontSize,
+          x: group.x,
+          y: group.y + start + index * line,
+        });
+      });
     });
     return out;
   }

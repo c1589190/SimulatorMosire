@@ -49,6 +49,14 @@
         return pendingCount(body);
       })
       .catch(function (error) {
+        // editor profile 明确卸载了 /api/approvals（404）⇒ 静默隐藏，不把“未挂载”画成故障。
+        if (error && error.status === 404) {
+          node.hidden = true;
+          if (node.classList && node.classList.add) {
+            node.classList.add("muted");
+          }
+          return null;
+        }
         node.textContent = "审批未接入（" + ((error && error.message) || error) + "）";
         node.hidden = false;
         if (node.classList && node.classList.add) {
@@ -65,7 +73,11 @@
       return null;
     }
     renderInto(node, window.SimosApi);
-    window.setInterval(function () {
+    var timer = window.setInterval(function () {
+      if (node.hidden && node.classList && node.classList.contains("muted")) {
+        window.clearInterval(timer);
+        return;
+      }
       renderInto(node, window.SimosApi);
     }, POLL_MS);
     return node;

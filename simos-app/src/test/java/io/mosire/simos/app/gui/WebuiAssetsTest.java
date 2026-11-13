@@ -282,4 +282,15 @@ class WebuiAssetsTest {
       throw new UncheckedIOException(e);
     }
   }
+
+  /** D-036：/webui/modules/... 路径只能拼一次 classpath 根。 */
+  @Test
+  void staticHandlerDoesNotDoublePrefixWebuiRoot() {
+    assertThat(StaticHandler.resourceName("/api.js")).isEqualTo("api.js");
+    assertThat(StaticHandler.resourceName("/webui/modules/map/manifest.json"))
+        .isEqualTo("modules/map/manifest.json");
+    assertThat(StaticHandler.resourceName("/webui/modules/map/map-png.js"))
+        .isEqualTo("modules/map/map-png.js");
+    assertThat(StaticHandler.resourceName("/../webui/secret")).isNull();
+  }
 }

@@ -90,11 +90,11 @@ test("pixel-sampling-hook-is-exposed-for-color-level-evidence", () => {
 
 test("regionLabelLayout-uses-centroid-and-sqrt-font", () => {
   const layout = M.regionLabelLayout({ label: { q: 3, r: 4 }, hexCount: 100, name: "X" }, 2);
-  assert.deepEqual(layout, { q: 3, r: 4, fontSize: 9, text: "X" }, "字号 = max(8,min(40,√100×1.8))/zoom = 18/2");
+  assert.deepEqual(layout, { q: 3, r: 4, fontSize: 9, text: "X" }, "字号 = max(13,min(40,√100×1.8))/zoom = 18/2");
   const big = M.regionLabelLayout({ label: { q: 0, r: 0 }, hexCount: 10000, name: "Y" }, 1);
   assert.equal(big.fontSize, 40, "大区域字号封顶 40");
   const tiny = M.regionLabelLayout({ label: { q: 0, r: 0 }, hexCount: 1, name: "Z" }, 1);
-  assert.equal(tiny.fontSize, 8, "小区域字号下限 8");
+  assert.equal(tiny.fontSize, 13, "小区域字号下限 13（8px 屏幕上几乎不可读）");
 });
 
 test("regionLabelLayout-refuses-to-guess-without-label-or-hexcount", () => {
@@ -165,6 +165,23 @@ test("regionNamePlan-culls-by-viewport-like-hex-rendering", () => {
   assert.deepEqual(M.regionNamePlan(null, view, viewport, 64, 1), []);
   assert.deepEqual(M.regionNamePlan([onScreen], null, viewport, 64, 1), []);
   assert.deepEqual(M.regionNamePlan([onScreen], { scale: 0, tx: 0, ty: 0 }, viewport, 64, 1), []);
+});
+
+test("regionNamePlan-stacks-labels-sharing-the-same-centroid", () => {
+  const view = { scale: 1, tx: 0, ty: 0 };
+  const plan = M.regionNamePlan(
+    [
+      { id: "big", name: "大", hexCount: 18, label: { q: 0, r: 0 } },
+      { id: "small", name: "小", hexCount: 1, label: { q: 0, r: 0 } },
+    ],
+    view,
+    { width: 100, height: 100 },
+    64,
+    22
+  );
+  assert.equal(plan.length, 2);
+  assert.equal(plan[0].x, plan[1].x, "同质心 ⇒ x 相同");
+  assert.ok(plan[1].y > plan[0].y, "第二个标签必须向下错开，不能叠字");
 });
 
 test("region-names-are-actually-invoked-in-render-order", () => {
@@ -487,12 +504,17 @@ test("kv-value-column-is-not-squeezed-to-one-character", () => {
 
 test("region-names-only-show-in-the-two-region-modes", () => {
   assert.equal(M.regionNamesVisible("view"), false, "★ 常规模式不显示区域名（用户实测缺陷 V2）");
-  assert.equal(M.regionNamesVisible("map-edit"), false);
+  // D-036：区域编辑并入地图编辑，因此 map-edit 显示区域名；常规/单位/决策仍不显示。
+  assert.equal(M.regionNamesVisible("map-edit"), true);
   assert.equal(M.regionNamesVisible("unit"), false);
   assert.equal(M.regionNamesVisible("decision"), false);
   assert.equal(M.regionNamesVisible("region"), true);
   assert.equal(M.regionNamesVisible("region-edit"), true);
-  assert.deepEqual(M.REGION_NAME_MODES, ["region", "region-edit"], "只有区域两模式");
+  assert.deepEqual(
+    M.REGION_NAME_MODES,
+    ["region", "region-edit", "map-edit"],
+    "D-036：区域两模式 + 地图编辑（区域编辑已并入）"
+  );
 });
 
 test("region-name-paint-is-gated-by-mode", () => {

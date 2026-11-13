@@ -301,6 +301,7 @@
             <input type="text" id="battle-id" placeholder="例如 berlinbattle">
           </label>
           <p class="muted">阶段文档可在战报卡片的每个阶段点「阶段文档」直达。</p>
+          <p id="battle-status" class="status muted" aria-live="polite"></p>
         </section>
 
         <section class="decision-panel" data-modes="decision" aria-label="决策">
@@ -485,7 +486,7 @@
 
       <div class="wb-gap" aria-hidden="true"></div>
 
-      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision battle">
+      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision">
         <!-- ★ F1：世界总览（无选中时显示；有选中让位给 hex/城市/区域详情，由 panel-right.js 控制 hidden）。 -->
         <div data-modes="view region" id="world-overview-section">
           <h2>世界总览</h2>

@@ -99,7 +99,7 @@ const JS_DIR = __dirname;
 //     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
 //     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
 //     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
-const MIN_TESTS = 417;
+const MIN_TESTS = 424;
 
 function discoverTests() {
   return fs
