@@ -22,11 +22,11 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 分支 | `main` |
+| 分支 | `feature/d036-node-editor`（已推送） |
 | HEAD | `95a37969`（`fix(ui): 同 tick 编辑状态改为“已写入当前节点”`，2026-11-13） |
-| upstream | `origin/main`；`main` 领先 origin 27 个提交（D-036 全切片 + 测试/格式/文档/前端/地图编辑修复），**未推送** |
+| upstream | `origin/feature/d036-node-editor`；新分支已推送，`main` 的 27 个提交未推送到 `origin/main` |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-13：D-036 全切片；Chrome 实测修复 14 个 WebUI/地图编辑 bug（含编辑手势命中 + 同 tick writeEpoch + 状态文案）；full gate **321s / 3777 tests**；前端 428/428 |
+| 最近活动 | 2026-11-13：D-036 全切片；Chrome 实测修复 14 个 WebUI/地图编辑 bug（含编辑手势命中 + 同 tick writeEpoch + 状态文案）；full gate **321s / 3777 tests**；前端 428/428；分支 `feature/d036-node-editor` 已推送 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -122,7 +122,7 @@ SKILLS LINT PASSED (active skills=1)
 8. **世界文档系统已落第一版**：`docs/world/` create/edit/delete/versions/contentAt/search、HTTP `/api/docs`、MCP `simos.docs.*`、工作台文档面板、战役/阶段文档入口均已实现；**真实浏览器已测**搜索→结果→地址/标题/正文回填；仍缺文档事件日志与逐实体专用嵌入。
 9. **PNG 底图已落第一版**：载入/offset/scale/透明度/中心 3×3 取色/最近色分类/预览/按地形分组应用；实测 overlay 只在 map-edit 显示，参数变化会使旧计划失效。仍缺持久化与自定义文件按钮。
 10. **清理已执行（2026-11-13）**：15 个 worktree 移除、`.superpowers/sdd` 9.6GB 删除、`test-world`/`run`/target 删除；仓库 53GB → 1.8GB。本地经济分支 66 个全部保留；dirty 内容已 WIP commit + 仓库外归档（`/home/cna/simos-cleanup-20261113/`）。`.git` 949MB 历史与 `.m2-repo` 779MB 保留。
-11. **`main` 已领先远端 8 个提交且未推送**：`origin/main..main = 8`（2026-11-13 实测）；用户未要求 push 前不动。
+11. **分支已推送**：`feature/d036-node-editor` 已推送到 `origin`；`origin/main` 仍停在旧基线，未合并/未推送 `main`。
 12. 历史 status 中的测试数字/工具计数只作历史证据；不得当当前事实。
 
 ## 7. 下一步
