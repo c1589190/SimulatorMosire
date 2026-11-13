@@ -270,7 +270,7 @@
     var result = await app.writeCommand("map.CreateRegion", { regionId: id, name: name, hexes: hexes });
     host.regionEditBusy = false;
     if (result.ok) {
-      setRegionEditStatus("已创建 " + id + "（" + hexes.length + " 格，重叠允许）—— head 已前进", "ok");
+      setRegionEditStatus("已创建 " + id + "（" + hexes.length + " 格，重叠允许）—— 已写入当前节点", "ok");
       app.setRegionFocus(id);
     } else {
       setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
@@ -314,7 +314,7 @@
       core.active.setDraftHexes([]);
       host.regionCache = {};
       setRegionEditStatus(
-        "已把 " + pending.hexes.length + " 格并入 " + pending.existingId + "（并集共 " + hexes.length + " 格）—— head 已前进",
+        "已把 " + pending.hexes.length + " 格并入 " + pending.existingId + "（并集共 " + hexes.length + " 格）—— 已写入当前节点",
         "ok"
       );
       app.setRegionFocus(pending.existingId);
@@ -368,7 +368,7 @@
     var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
     host.regionEditBusy = false;
     if (result.ok) {
-      setRegionEditStatus("已更新 " + id + " 的 hex 集合（" + hexes.length + " 格）—— head 已前进", "ok");
+      setRegionEditStatus("已更新 " + id + " 的 hex 集合（" + hexes.length + " 格）—— 已写入当前节点", "ok");
       host.regionCache = {};
       await refreshFocusHexes();
     } else {
@@ -428,7 +428,7 @@
     var result = await app.writeCommand("map.UpdateRegion", { regionId: id, hexes: hexes });
     host.regionEditBusy = false;
     if (result.ok) {
-      setRegionEditStatus("已更新 " + id + "（" + hexes.length + " 格）—— head 已前进", "ok");
+      setRegionEditStatus("已更新 " + id + "（" + hexes.length + " 格）—— 已写入当前节点", "ok");
     } else {
       setRegionEditStatus(result.message, result.kind === "rejected" ? "err" : "warn");
     }
@@ -486,7 +486,7 @@
       host.regionDraft = {};
       core.active.setDraftHexes([]);
       host.regionCache = {};
-      setRegionEditStatus("已合并 " + id + "（" + hexes.length + " 格）—— head 已前进", "ok");
+      setRegionEditStatus("已合并 " + id + "（" + hexes.length + " 格）—— 已写入当前节点", "ok");
       await refreshFocusHexes();
       reloadRegionEditHighlight();
     } else {
@@ -520,7 +520,7 @@
       host.regionDraft = {};
       core.active.setDraftHexes([]);
       host.regionCache = {};
-      setRegionEditStatus("已剔除 " + id + "（余 " + hexes.length + " 格）—— head 已前进", "ok");
+      setRegionEditStatus("已剔除 " + id + "（余 " + hexes.length + " 格）—— 已写入当前节点", "ok");
       await refreshFocusHexes();
       reloadRegionEditHighlight();
     } else {
@@ -559,7 +559,7 @@
     var result = await app.writeCommand("map.DeleteRegion", { regionId: id });
     host.regionEditBusy = false;
     if (result.ok) {
-      setRegionEditStatus("已删除 " + id + " —— head 已前进", "ok");
+      setRegionEditStatus("已删除 " + id + " —— 已写入当前节点", "ok");
       host.regionDraft = {};
       core.active.setDraftHexes([]);
       app.setRegionFocus(null);

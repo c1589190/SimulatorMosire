@@ -203,7 +203,7 @@
     }
     if (result.ok) {
       setMapEditStatus(
-        "已改 " + hexes.length + " 格为 " + host.brushTerrain + "（一条命令，head 已前进）",
+        "已改 " + hexes.length + " 格为 " + host.brushTerrain + "（一条命令，已写入当前节点）",
         "ok"
       );
     } else {
@@ -319,7 +319,7 @@
       app.setSelection({ kind: "hex", q: pick.q, r: pick.r });
       setBucketStatus(
         "已把整块 " + count + " 格（原 " + block.terrain + "）换成 " + host.brushTerrain +
-          "（一条命令，head 已前进）",
+          "（一条命令，已写入当前节点）",
         "ok"
       );
     } else {
@@ -578,7 +578,7 @@
           edges.length +
           " 条边（" +
           modeState.mode +
-          "，一条命令，head 已前进）" +
+          "，一条命令，已写入当前节点）" +
           (chain && chain.nonAdjacent ? "；非相邻/缺格段已跳过" : ""),
         "ok"
       );
@@ -618,7 +618,7 @@
     });
     host.mapEditBusy = false;
     if (result.ok) {
-      setEdgeStatus("已删 " + (deletedKeys || []).length + " 条 " + kind + "（一条命令，head 已前进）", "ok");
+      setEdgeStatus("已删 " + (deletedKeys || []).length + " 条 " + kind + "（一条命令，已写入当前节点）", "ok");
       await refreshRegionInfoNow();
     } else {
       setEdgeStatus(result.message, result.kind === "rejected" ? "err" : "warn");
@@ -747,7 +747,7 @@
     if (result.ok) {
       setRandomizeStatus(
         "已随机化 " + selState.hexes.length + " 格（" + recipe.terrainA + " / " + recipe.terrainB + "，seed " +
-          seedState.seed + "，一条命令，head 已前进）",
+          seedState.seed + "，一条命令，已写入当前节点）",
         "ok"
       );
       await refreshRegionInfoNow();

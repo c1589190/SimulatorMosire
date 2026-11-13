@@ -82,3 +82,11 @@ test("same-tick-writeEpoch-is-wired-through-target-and-caches", () => {
   assert.ok(events.includes("target.writeEpoch"), "事件 targetKey 必须带 writeEpoch");
   assert.ok(paneldom.includes("targetCacheKey"), "右栏缓存键必须带 writeEpoch");
 });
+
+test("same-tick-status-does-not-claim-head-advanced", () => {
+  for (const file of ["map-mapeditor.js", "map-regioneditor.js"]) {
+    const source = readWebui(file);
+    assert.ok(!source.includes("head 已前进"), file + " 不得宣称同 tick 编辑推进了 head");
+    assert.ok(source.includes("已写入当前节点"), file + " 应明确写入当前节点");
+  }
+});
