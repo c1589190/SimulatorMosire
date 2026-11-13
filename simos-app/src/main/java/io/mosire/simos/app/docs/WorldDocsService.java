@@ -60,6 +60,8 @@ public final class WorldDocsService {
   private final ObjectMapper mapper = SimosObjectMapper.create();
   private final Object lock = new Object();
 
+  private static final Object DEFAULT_LOCK = new Object();
+
   private static volatile WorldDocsService defaultService;
 
   public WorldDocsService(Path docsRoot) {
@@ -77,7 +79,7 @@ public final class WorldDocsService {
   public static WorldDocsService defaultService() {
     WorldDocsService service = defaultService;
     if (service == null) {
-      synchronized (WorldDocsService.class) {
+      synchronized (DEFAULT_LOCK) {
         service = defaultService;
         if (service == null) {
           service = new WorldDocsService(defaultRoot());
@@ -89,8 +91,10 @@ public final class WorldDocsService {
   }
 
   /** 测试/嵌入方重置默认实例（生产不调用）。 */
-  public static synchronized void resetDefaultForTests(Path docsRoot) {
-    defaultService = new WorldDocsService(docsRoot);
+  public static void resetDefaultForTests(Path docsRoot) {
+    synchronized (DEFAULT_LOCK) {
+      defaultService = new WorldDocsService(docsRoot);
+    }
   }
 
   private static Path defaultRoot() {
@@ -293,7 +297,7 @@ public final class WorldDocsService {
       try (Stream<Path> files = Files.walk(entriesRoot)) {
         files
             .filter(Files::isRegularFile)
-            .filter(path -> META_FILE.equals(path.getFileName().toString()))
+            .filter(WorldDocsService::isMetaFile)
             .forEach(
                 metaFile -> {
                   try {
@@ -307,6 +311,11 @@ public final class WorldDocsService {
       }
       return List.copyOf(out);
     }
+  }
+
+  private static boolean isMetaFile(Path path) {
+    Path name = path.getFileName();
+    return name != null && META_FILE.equals(name.toString());
   }
 
   private static boolean matches(WorldDocMeta meta, String needle) {
@@ -330,7 +339,11 @@ public final class WorldDocsService {
     if (Files.isDirectory(history)) {
       try (DirectoryStream<Path> files = Files.newDirectoryStream(history, "v*.md")) {
         for (Path file : files) {
-          String name = file.getFileName().toString();
+          Path fileName = file.getFileName();
+          if (fileName == null) {
+            continue;
+          }
+          String name = fileName.toString();
           int version = parseVersion(name);
           if (version > 0) {
             out.add(new WorldDocVersion(version, HISTORY_DIR + "/" + name));
@@ -398,7 +411,7 @@ public final class WorldDocsService {
 
   private void writeContent(Path file, String content) {
     try {
-      Files.createDirectories(file.getParent());
+      Files.createDirectories(Objects.requireNonNull(file.getParent(), "文档文件必须有父目录"));
       atomicWrite(file, (content == null ? "" : content).getBytes(StandardCharsets.UTF_8));
     } catch (IOException e) {
       throw new IllegalStateException("写文档正文失败: " + file, e);
@@ -406,8 +419,9 @@ public final class WorldDocsService {
   }
 
   private static void atomicWrite(Path file, byte[] bytes) throws IOException {
-    Files.createDirectories(file.getParent());
-    Path tmp = Files.createTempFile(file.getParent(), ".simos-doc-", ".tmp");
+    Path parent = Objects.requireNonNull(file.getParent(), "文档文件必须有父目录");
+    Files.createDirectories(parent);
+    Path tmp = Files.createTempFile(parent, ".simos-doc-", ".tmp");
     try {
       Files.write(tmp, bytes);
       try {
