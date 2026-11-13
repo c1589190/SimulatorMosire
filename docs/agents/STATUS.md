@@ -83,7 +83,7 @@
 
 ```text
 python3 tools/check-docs.py
-DOCS CHECK PASSED (modules=18 files=35 links=43)
+DOCS CHECK PASSED (modules=18 files=35 links=44)
 
 python3 tools/skills-lint.py
 SKILLS LINT PASSED (active skills=1)
