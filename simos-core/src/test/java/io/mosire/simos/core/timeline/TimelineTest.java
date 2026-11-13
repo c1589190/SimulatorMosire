@@ -198,15 +198,36 @@ class TimelineTest {
     assertThat(timeline.branches()).containsExactly(branch("b2"), branch("main"));
   }
 
-  /** 冲突不写（spec §3.4 ①）：head ≠ expected ⇒ 空返回、零行落库、分支清单不变。 */
+  /**
+   * D-036（2026-11-13）：分叉不再要求 head——任意已存在 revision 都可作为分叉点。
+   *
+   * <p>旧用例 {@code forkRefusesWhenHeadMovedOn} 的语义已被用户改掉：从历史 revision 分叉现在是合法操作；
+   * “不存在”才拒绝（见 {@link #forkRefusesUnknownRevision()}）。
+   */
   @Test
-  void forkRefusesWhenHeadMovedOn() {
+  void forkFromHistoricalRevisionIsAllowed() {
     append(ref("main", 1), Optional.empty(), SimosTimestamp.of(0L), "c1");
     append(ref("main", 2), Optional.of(ref("main", 1)), SimosTimestamp.of(10L), "c2");
 
     Optional<StateRef> forked =
         timeline.fork(
             branch("main"), new RevisionId(1), branch("b2"), "cmd-f", "cf-f", "player:local");
+
+    assertThat(forked).contains(ref("b2", 1));
+    RevisionRow first = timeline.row(ref("b2", 1)).orElseThrow();
+    assertThat(first.parent()).contains(ref("main", 1));
+    assertThat(first.timestamp()).isEqualTo(SimosTimestamp.of(0L));
+    assertThat(timeline.head(branch("main"))).contains(new RevisionId(2));
+  }
+
+  /** 目标 revision 不存在 ⇒ 空返回、零行落库。 */
+  @Test
+  void forkRefusesUnknownRevision() {
+    append(ref("main", 1), Optional.empty(), SimosTimestamp.of(0L), "c1");
+
+    Optional<StateRef> forked =
+        timeline.fork(
+            branch("main"), new RevisionId(99), branch("b2"), "cmd-f", "cf-f", "player:local");
 
     assertThat(forked).isEmpty();
     assertThat(timeline.branches()).containsExactly(branch("main"));

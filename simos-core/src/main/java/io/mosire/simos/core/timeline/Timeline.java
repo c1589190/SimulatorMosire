@@ -201,11 +201,15 @@ public final class Timeline {
   }
 
   /**
-   * 分岔（spec §3.4 的 ① + ③，冻结语义）：{@code head(source) == expected} 时写新行 {@code (newBranch, 1)}， parent
-   * 指向 {@code (source, expected)}，变更集 = {@link WorldChangeSet#empty()}（C13），模拟时刻**继承父**。
+   * 分岔（D-036 补裁，2026-11-13）：<b>任意已存在节点都可作为分岔点</b>——写新行 {@code (newBranch, 1)}，
+   * parent 指向 {@code (source, expected)}，变更集 = {@link WorldChangeSet#empty()}（C13），模拟时刻**继承父**。
    *
-   * @return 成功 ⇒ {@code (newBranch, 1)}；{@code head(source)} 缺失或不等于 {@code expected} ⇒ {@link
-   *     Optional#empty()} 且**不写任何行**（冲突判定归 CommandBus）
+   * <p>★ 旧语义要求 {@code head(source) == expected}；D-036 改为“父 revision 存在即可”，以支持从历史节点
+   * 分叉（节点地址 {@code treeXXX-tickXXX} 的下层仍然落到具体 revision）。冲突/不存在的判定归 {@link
+   * io.mosire.simos.core.command.CommandBus}。
+   *
+   * @return 成功 ⇒ {@code (newBranch, 1)}；父 revision 不存在（含源分支不存在）⇒ {@link Optional#empty()}
+   *     且**不写任何行**
    */
   public Optional<StateRef> fork(
       BranchId source,
@@ -216,27 +220,18 @@ public final class Timeline {
       String initiator) {
     return store.inTransaction(
         connection -> {
-          Optional<RevisionId> current = head(connection, source);
-          if (current.isEmpty() || current.get().compareTo(expected) != 0) {
+          StateRef forkPoint = new StateRef(source, expected);
+          Optional<RevisionRow> parentRow = row(connection, forkPoint);
+          if (parentRow.isEmpty()) {
             return Optional.empty();
           }
-          StateRef forkPoint = new StateRef(source, expected);
-          // head 存在 ⇒ 它的行必在：读它只为继承 tick（spec §3.4 ③）；缺席是库被绕过本类改写，当场炸
-          RevisionRow parentRow =
-              row(connection, forkPoint)
-                  .orElseThrow(
-                      () ->
-                          new IllegalStateException(
-                              "head 行缺席（库被绕过本类写坏）: "
-                                  + forkPoint.branch().value()
-                                  + "@"
-                                  + forkPoint.revision().value()));
+          RevisionRow parent = parentRow.get();
           RevisionRow firstRevision =
               new RevisionRow(
                   newBranch,
                   new RevisionId(1),
                   Optional.of(forkPoint),
-                  parentRow.timestamp(),
+                  parent.timestamp(),
                   commandId,
                   correlationId,
                   initiator,

@@ -291,9 +291,14 @@ class CommandBusDispatchTest {
     assertThat(Timeline.readChangeSet(forkRow.changesetJson()).modules()).isEmpty();
   }
 
-  /** 分岔的期望值过期 ⇒ 冲突并报源分支的**真实 head**。 */
+  /**
+   * D-036：从历史 revision 分叉是合法操作（不再要求 expected == head）。
+   *
+   * <p>旧用例 {@code forkBranchWithStaleExpectedConflictsWithSourceHead} 的语义已被用户改掉；
+   * “目标 revision 不存在”才拒绝（见 {@link #forkBranchFromUnknownRevisionIsRejected()}）。
+   */
   @Test
-  void forkBranchWithStaleExpectedConflictsWithSourceHead() {
+  void forkBranchFromHistoricalRevisionIsAllowed() {
     append(ref("main", 2), Optional.of(ref("main", 1)), SimosTimestamp.of(5L));
     bus = busWith(handler("unit.RenameUnit"));
 
@@ -307,7 +312,28 @@ class CommandBusDispatchTest {
                 new RevisionId(1),
                 new BranchId("side")));
 
-    assertThat(result).isEqualTo(new CommandResult.Conflict(ref("main", 2)));
+    assertThat(result).isEqualTo(new CommandResult.Committed(ref("side", 1)));
+    assertThat(timeline.row(ref("side", 1)).orElseThrow().parent()).contains(ref("main", 1));
+    assertThat(timeline.head(main())).contains(new RevisionId(2));
+  }
+
+  /** 分岔目标 revision 不存在 ⇒ 拒绝（区别于“源分支不存在”）。 */
+  @Test
+  void forkBranchFromUnknownRevisionIsRejected() {
+    bus = busWith(handler("unit.RenameUnit"));
+
+    CommandResult result =
+        bus.submit(
+            new ForkBranch(
+                "cmd-f",
+                "corr-f",
+                "player:local",
+                main(),
+                new RevisionId(99),
+                new BranchId("side")));
+
+    assertThat(result).isInstanceOf(CommandResult.Rejected.class);
+    assertThat(((CommandResult.Rejected) result).reason()).contains("分岔目标节点不存在");
     assertThat(timeline.head(new BranchId("side"))).isEmpty();
   }
 

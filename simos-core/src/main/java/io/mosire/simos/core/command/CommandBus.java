@@ -657,11 +657,20 @@ public final class CommandBus {
     if (forked.isPresent()) {
       return new CommandResult.Committed(forked.get());
     }
-    return timeline
-        .head(command.source())
-        .<CommandResult>map(
-            head -> new CommandResult.Conflict(new StateRef(command.source(), head)))
-        .orElseGet(() -> new CommandResult.Rejected("分支不存在: " + command.source().value()));
+    // D-036：分叉不再要求“源分支 head == expected”，只要求父 revision 存在。
+    // ⇒ 失败原因必须先分清“源分支不存在”与“目标节点不存在”，不能再把历史节点分叉误报成 Conflict。
+    Optional<RevisionId> head = timeline.head(command.source());
+    if (head.isEmpty()) {
+      return new CommandResult.Rejected("分支不存在: " + command.source().value());
+    }
+    if (timeline.row(new StateRef(command.source(), command.expectedRevision())).isEmpty()) {
+      return new CommandResult.Rejected(
+          "分岔目标节点不存在: "
+              + command.source().value()
+              + "@"
+              + command.expectedRevision().value());
+    }
+    return new CommandResult.Conflict(new StateRef(command.source(), head.get()));
   }
 
   /**
