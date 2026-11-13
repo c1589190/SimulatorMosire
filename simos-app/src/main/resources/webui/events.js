@@ -705,7 +705,7 @@
     list.appendChild(app.el("dd", { text: value }));
   }
 
-  function renderStage(stage) {
+  function renderStage(stage, combatId) {
     var outcomes = Array.isArray(stage.outcomes) ? stage.outcomes : [];
     var rows = outcomes.map(function (outcome) {
       var selected =
@@ -729,18 +729,33 @@
       ]),
       app.el("tbody", {}, rows),
     ]);
-    return app.el("section", { class: "event-stage" }, [
+    var children = [
       app.el("h4", {
         text: "阶段 " + valueText(stage.name) + "（" + (stage.resolved ? "已判定" : "未判定") + "）",
       }),
+    ];
+    if (window.SimosDocs && stage.id !== null && stage.id !== undefined) {
+      var docButton = app.el("button", {
+        type: "button",
+        class: "event-doc-button",
+        text: "阶段文档",
+        title: "按独立阶段地址打开世界文档",
+      });
+      docButton.onclick = function () {
+        window.SimosDocs.openStage(combatId, valueText(stage.id));
+      };
+      children.push(docButton);
+    }
+    children.push(
       app.el("p", {
         class: "event-stage-participants muted",
         text: "participants：" + idListText(stage.participants),
       }),
       app.el("p", { class: "event-stage-text", text: valueText(stage.text) }),
       table,
-      app.el("p", { class: "event-roll-seed muted", text: "rollSeed：" + valueText(stage.rollSeed) }),
-    ]);
+      app.el("p", { class: "event-roll-seed muted", text: "rollSeed：" + valueText(stage.rollSeed) })
+    );
+    return app.el("section", { class: "event-stage" }, children);
   }
 
   function renderLosses(losses) {
@@ -796,9 +811,22 @@
     var detailText = app && typeof app.text === "function" ? app.text(raw.text) : valueText(raw.text);
     container.appendChild(app.el("p", { class: "event-text", text: detailText }));
 
+    if (window.SimosDocs && raw.id !== null && raw.id !== undefined) {
+      var combatDocButton = app.el("button", {
+        type: "button",
+        class: "event-doc-button",
+        text: "打开战役文档",
+        title: "按 tree-tick/battle/<id> 地址打开世界文档",
+      });
+      combatDocButton.onclick = function () {
+        window.SimosDocs.openBattle(valueText(raw.id));
+      };
+      container.appendChild(combatDocButton);
+    }
+
     var stages = Array.isArray(raw.stages) ? raw.stages : [];
     stages.forEach(function (stage) {
-      container.appendChild(renderStage(stage));
+      container.appendChild(renderStage(stage, raw.id));
     });
 
     container.appendChild(renderLosses(raw.losses));

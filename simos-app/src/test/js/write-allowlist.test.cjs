@@ -31,6 +31,8 @@ const ALLOWED_LLM_CONFIG = [
   "/api/llm/providers/delete",
   "/api/llm/providers/test",
 ];
+// ★ D-036：世界文档写口（create/edit/delete）——独立持久数据，不落 world revision，也不进 commands 白名单。
+const ALLOWED_DOCS = ["/api/docs"];
 // 固定类型的**世界写**窄端点（落 revision，但前端不传 type）——逐条精确列出，与命令 allowlist 同族对待。
 const ALLOWED_NARROW_WRITES = [
   "/api/ga/set-decision-maker-provider",
@@ -51,6 +53,7 @@ const DECLARED_WRITES = [
   "/api/advance",
   "/api/approvals/",
   "/api/command",
+  "/api/docs",
   "/api/fork",
   // ★ 2026-10-15 批 L ②：段路径 sd → ga（5 条窄写随路由改名）。★ 本数组与 `scanPostEndpoints` 的
   //   `Array.from(out).sort()` **逐字比对**（deepEqual）⇒ `/api/ga/*` 必须排在 `/api/llm/*` **之前**
@@ -77,6 +80,7 @@ const WRITE_FUNCTIONS = [
   "deleteLlmProvider",
   "testLlmProvider",
   "setDecisionMakerProvider",
+  "docsWrite",
 ];
 
 function scanPostEndpoints(source) {
@@ -96,7 +100,12 @@ function violations(endpoints) {
 
 /** 运行期写 URL 是否放行：命令写**逐字相等**；审批写 = **前缀 + 非空 id**（前缀精确到末尾斜杠）。 */
 function isAllowedWrite(url) {
-  if (ALLOWED.includes(url) || ALLOWED_LLM_CONFIG.includes(url) || ALLOWED_NARROW_WRITES.includes(url)) {
+  if (
+    ALLOWED.includes(url) ||
+    ALLOWED_LLM_CONFIG.includes(url) ||
+    ALLOWED_NARROW_WRITES.includes(url) ||
+    ALLOWED_DOCS.includes(url)
+  ) {
     return true;
   }
   if (url.startsWith(SAY_PREFIX) && url.endsWith(SAY_SUFFIX)) {
@@ -116,8 +125,8 @@ test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
   assert.equal(
     found.length,
-    12,
-    "扫描必须非空且恰十二条（3 通用命令 + 2 决策窄写 + 1 会话重置窄写 + 1 会话 say + 1 审批 + 4 provider/绑定窄写）：" +
+    13,
+    "扫描必须非空且恰十三条（3 通用命令 + 1 世界文档 + 2 决策窄写 + 1 会话重置窄写 + 1 会话 say + 1 审批 + 4 provider/绑定窄写）：" +
       JSON.stringify(found)
   );
   assert.deepEqual(found, DECLARED_WRITES);
@@ -208,6 +217,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.decisionMakers();
   await api.decisionMaker("dm-1");
   await api.approve("pm-1", "approve", "once");
+  await api.docsWrite({ action: "create", address: "tree1-0/unit/army/doc-test", content: "x" });
   await api.llmProviders();
   await api.saveLlmProvider({ id: "p1" });
   await api.deleteLlmProvider("p1");
@@ -221,6 +231,7 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
       "/api/advance",
       "/api/approvals/pm-1",
       "/api/command",
+      "/api/docs",
       "/api/fork",
       // ★ 同上：`posts` 也经 `.sort()` ⇒ `/api/ga/*` 在 `/api/llm/*` 之前。只挪位置，逐字相等未松。
       "/api/ga/decision-makers/dm-1/say",

@@ -20,6 +20,8 @@
     mode: "view",
     branch: "main",
     revision: null,
+    // D-036：当前状态游标的 tick（文档地址 treeXXX-tickXXX 的 tick 部分）。
+    tick: null,
     selection: null,
     highlightRegions: [],
     // ★ U3：高亮语义 —— "group"（tag 全选 / 多从属格，全部等亮）| "single"（单个区域，更亮 + 只压同 tag 兄弟）。
@@ -356,6 +358,9 @@
   function setServerState(branches, heads, meta) {
     state.branches = Array.isArray(branches) ? branches.slice() : [];
     state.heads = heads && typeof heads === "object" ? Object.assign({}, heads) : {};
+    if (meta && meta.timestamp && meta.timestamp.tick !== undefined) {
+      state.tick = meta.timestamp.tick;
+    }
     if (state.revision === null || state.revision === undefined) {
       var branch = (meta && meta.branch) || state.branch;
       if (state.branches.indexOf(branch) < 0) {

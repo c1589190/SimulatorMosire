@@ -36,6 +36,7 @@
             aria-label="搜索并定位城市、单位、区域、决策人">
           <div id="search-results" class="search-results" role="listbox" hidden></div>
         </div>
+        <button type="button" id="docs-open" title="打开世界文档（按地址查询/编辑 Markdown）">文档</button>
         <button type="button" id="layer-toggle" aria-expanded="false" aria-controls="layer-panel"
           title="图层开关（国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 战斗事件 / 路线）">图层</button>
       </div>
@@ -555,9 +556,40 @@
       </header>
       <div id="event-panel-mount" class="event-panel-body"></div>
     </section>
+
+    <!-- D-036 世界文档面板（2026-11-13）：地址 → Markdown；新建/编辑（自动备份旧版本）/删除（回收站）/查询/历史版本。
+         独立持久数据，不进入 world revision；战役/阶段详情可带地址直接打开本面板。 -->
+    <section id="docs-panel" class="docs-panel" hidden role="dialog" aria-modal="false" aria-label="世界文档">
+      <header class="docs-panel-head">
+        <h3>世界文档</h3>
+        <button type="button" id="docs-close" aria-label="关闭文档面板">关闭</button>
+      </header>
+      <div class="docs-panel-body">
+        <div class="docs-search-row">
+          <input type="search" id="docs-search-input" placeholder="搜索地址 / 标题 / 名称" autocomplete="off">
+          <button type="button" id="docs-search-button">搜索</button>
+          <button type="button" id="docs-new-button">新建</button>
+        </div>
+        <div id="docs-results" class="docs-results" aria-live="polite"></div>
+        <div class="docs-editor">
+          <label>地址 <input type="text" id="docs-address" placeholder="tree1-360/unit/army/vg-berlin"></label>
+          <label>标题 <input type="text" id="docs-title"></label>
+          <label>名称/别名（逗号分隔）<input type="text" id="docs-names"></label>
+          <label>正文（Markdown）<textarea id="docs-content" rows="12"></textarea></label>
+          <div class="docs-actions">
+            <button type="button" id="docs-save">保存</button>
+            <button type="button" id="docs-delete">删除</button>
+            <span id="docs-status" class="muted" aria-live="polite"></span>
+          </div>
+          <div id="docs-versions" class="docs-versions"></div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script src="api.js"></script>
+  <!-- D-036：世界文档面板（依赖 api.js；在 app.js 之前加载，事件在 DOMContentLoaded 后绑定）。 -->
+  <script src="docs.js"></script>
   <script src="modes.js"></script>
   <script src="app.js"></script>
   <script src="blocks.js"></script>

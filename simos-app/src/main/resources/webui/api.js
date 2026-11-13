@@ -517,6 +517,11 @@
     });
   }
 
+  /** D-036：世界文档写口（create/edit/delete；独立持久数据，不落 world revision）。 */
+  function docsWrite(body) {
+    return postJson("/docs", body);
+  }
+
   window.SimosApi = {
     getJson: getJson,
     postJson: postJson,
@@ -566,6 +571,7 @@
     resetDecisionConversation: resetDecisionConversation,
     approvals: approvals,
     approve: approve,
+    docsWrite: docsWrite,
     gmToolUsage: gmToolUsage,
     llmProviders: llmProviders,
     saveLlmProvider: saveLlmProvider,

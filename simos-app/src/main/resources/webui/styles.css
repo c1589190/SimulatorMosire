@@ -2547,3 +2547,191 @@ table.event-losses td {
 .event-error {
   color: var(--err);
 }
+
+/* ── D-036：世界文档面板 ─────────────────────────────────────────────── */
+.docs-panel {
+  position: fixed;
+  top: 84px;
+  right: 24px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 48px));
+  max-height: calc(100vh - 120px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.docs-panel[hidden] {
+  display: none;
+}
+
+.docs-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.docs-panel-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.docs-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+.docs-search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.docs-search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.docs-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.docs-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.docs-result:hover {
+  border-color: var(--accent);
+}
+
+.docs-result-address {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.docs-result-title {
+  font-size: 13px;
+}
+
+.docs-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.docs-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.docs-editor input,
+.docs-editor textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.docs-editor textarea {
+  resize: vertical;
+  min-height: 160px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.docs-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.docs-actions button,
+.docs-search-row button,
+.docs-panel-head button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.docs-actions button:hover,
+.docs-search-row button:hover,
+.docs-panel-head button:hover {
+  border-color: var(--accent);
+}
+
+.docs-versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.docs-versions button {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.docs-versions button.current {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.docs-error {
+  color: var(--err);
+}
+
+.event-doc-button {
+  margin: 4px 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.event-doc-button:hover {
+  border-color: var(--accent);
+}

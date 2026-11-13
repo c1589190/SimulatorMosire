@@ -302,6 +302,8 @@ public final class GuiServer implements AutoCloseable {
 
   private static final String DOCS_SEARCH_PATH = "/api/docs/search";
 
+  private static final String DOCS_VERSION_PATH = "/api/docs/version";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -309,6 +311,7 @@ public final class GuiServer implements AutoCloseable {
           "/api/facets",
           DOCS_PATH,
           DOCS_SEARCH_PATH,
+          DOCS_VERSION_PATH,
           "/api/map/overview",
           "/api/map/hex",
           "/api/map/path",
@@ -728,6 +731,29 @@ public final class GuiServer implements AutoCloseable {
     return Reply.of(200, Map.of("entries", entries));
   }
 
+  private Reply docsVersionReply(Map<String, String> params) {
+    String address = requiredParam(params, "address");
+    String versionText = requiredParam(params, "version");
+    int version;
+    try {
+      version = Integer.parseInt(versionText);
+    } catch (NumberFormatException e) {
+      return Reply.of(400, Map.of("error", "version 必须是整数: " + versionText));
+    }
+    try {
+      return Reply.of(
+          200,
+          Map.of(
+              "address", address,
+              "version", version,
+              "content", worldDocs.contentAt(address, version)));
+    } catch (WorldDocException e) {
+      return Reply.of(
+          e.code() == WorldDocException.Code.NOT_FOUND ? 404 : 400,
+          Map.of("error", e.getMessage(), "code", e.code().name()));
+    }
+  }
+
   private Reply docsWriteReply(HttpExchange exchange) throws IOException {
     JsonNode root = readBody(exchange);
     String action = textField(root, "action");
@@ -845,6 +871,9 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(DOCS_SEARCH_PATH)) {
       return docsSearchReply(params);
+    }
+    if (path.equals(DOCS_VERSION_PATH)) {
+      return docsVersionReply(params);
     }
     if (path.equals("/api/map/overview")) {
       if (asPresent) {
