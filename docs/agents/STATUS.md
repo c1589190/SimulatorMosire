@@ -23,10 +23,10 @@
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `main` |
-| HEAD | `0aae1de0`（`docs(status): 回写 D-036 八切片完成状态与慢测治理`，2026-11-13） |
-| upstream | `origin/main`；`main` 领先 origin 20 个提交（D-036 全切片 + 测试/格式/文档修复），**未推送** |
+| HEAD | `1053f289`（`fix(webui): 真实浏览器实测修复`，2026-11-13） |
+| upstream | `origin/main`；`main` 领先 origin 21 个提交（D-036 全切片 + 测试/格式/文档/前端修复），**未推送** |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-13：D-036 全切片落地；full gate 402s→**313s**（-89s）；3776 tests / 0 failures |
+| 最近活动 | 2026-11-13：D-036 全切片落地；full gate 313s；Chrome 实测修复 11 个 WebUI bug；前端门禁 425/425 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -70,7 +70,9 @@
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
 | `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
-| `tools/gate.sh full`（2026-11-13，最终） | **PASS**，耗时 **313s**（-89s）；全仓 Surefire **3776 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 418/418；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
+| `tools/gate.sh full`（2026-11-13，最终，前端优化前） | **PASS**，耗时 **313s**（-89s）；全仓 Surefire **3776 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 418/418；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
+| `node simos-app/src/test/js/run-gate.cjs`（2026-11-13，前端优化后） | **PASS**，425/425（新增 frontend-optimization 6 条 + 区域名/字号断言调整） |
+| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WebuiAssetsTest test` | 10 / 0 failures；含模块脚本单前缀回归 |
 | `python3 tools/check-docs.py` / `skills-lint.py` | PASS（links=44 / active skills=1） |
 
 > `full` 门禁未跑；上述结论只能写 FOCUSED TEST PASSED。
@@ -91,6 +93,7 @@
 | **D-036 节点地址/战役阶段/自然语言所有权** | `docs/superpowers/specs/2026-11-13-node-address-and-docs-ownership-design.md` |
 | **目标运行设计（当前实现序列）** | `docs/superpowers/specs/2026-11-13-node-docs-runtime-target-design.md` |
 | **实施计划** | `docs/superpowers/plans/2026-11-13-node-editor-refactor-plan.md` |
+| **WebUI 实测报告** | `docs/superpowers/reports/2026-11-13-webui-browser-audit.md` |
 
 ## 5. 本轮文档/Skill 检查（已运行）
 
@@ -115,9 +118,9 @@ SKILLS LINT PASSED (active skills=1)
 4. **导入器不在 CI**：`tools/gsimap_import.py` 的 map 切片当前可读，但同库 `social/unit` 旧切片会让整库打不开；导入器/真实世界脚本未进门禁。
 5. **官方一键脚本已坏**：`run-small-world.sh` 仍传 `--approval-port`（ShellMain 2026-10-23 已删除该参数），实测无法起服务且退出码为 0。
 6. **经济卸载未做**：当前 Shell/GUI/MCP 仍装配全部模块；app 中 economy 引用 95 文件、production 35、social 82、actor 56、ga 70；unit/army/gov 的工具也依赖 social。卸载是代码手术，必须先确认暂停范围与最小 reactor。
-7. **2+1 模式与模块前端未定**：当前 6 模式；所有 webui 资源在 simos-app，`StaticHandler` 单根，模块没有自带前端资源的注册/加载机制。
-8. **世界文档系统已落第一版**：`docs/world/` create/edit/delete/versions/contentAt/search、HTTP `/api/docs`、MCP `simos.docs.*`、工作台文档面板、战役/阶段文档入口均已实现；仍缺文档事件日志与逐实体专用嵌入。
-9. **PNG 底图未做**：前端有 `pixelToHex`/canvas/取色钩子与 `TerrainCatalog` 颜色；缺载入/对齐 UI、颜色→地形分类、预览/应用/持久化。
+7. **2+1 模式与模块前端已落第一版**：模式栏 = 常规/地图编辑/单位编辑/战役；区域编辑并入地图编辑；模块资产在 `webui/modules/<id>/`，有 manifest + `/api/webui/modules` 发现；`StaticHandler` 已修 `/webui/modules/...` 双前缀。
+8. **世界文档系统已落第一版**：`docs/world/` create/edit/delete/versions/contentAt/search、HTTP `/api/docs`、MCP `simos.docs.*`、工作台文档面板、战役/阶段文档入口均已实现；**真实浏览器已测**搜索→结果→地址/标题/正文回填；仍缺文档事件日志与逐实体专用嵌入。
+9. **PNG 底图已落第一版**：载入/offset/scale/透明度/中心 3×3 取色/最近色分类/预览/按地形分组应用；实测 overlay 只在 map-edit 显示，参数变化会使旧计划失效。仍缺持久化与自定义文件按钮。
 10. **清理已执行（2026-11-13）**：15 个 worktree 移除、`.superpowers/sdd` 9.6GB 删除、`test-world`/`run`/target 删除；仓库 53GB → 1.8GB。本地经济分支 66 个全部保留；dirty 内容已 WIP commit + 仓库外归档（`/home/cna/simos-cleanup-20261113/`）。`.git` 949MB 历史与 `.m2-repo` 779MB 保留。
 11. **`main` 已领先远端 8 个提交且未推送**：`origin/main..main = 8`（2026-11-13 实测）；用户未要求 push 前不动。
 12. 历史 status 中的测试数字/工具计数只作历史证据；不得当当前事实。
