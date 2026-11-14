@@ -913,6 +913,7 @@ class SimosToolsTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportHexGrid",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（production.* 按字典序排在 map.* 与 social.* 之间）。
@@ -1302,7 +1303,7 @@ class SimosToolsTest {
                 + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。"
                 + "；★★★ 2026-10-23 AgentLib×D-032 集成实测：agentlib 决策包迁移后扫描面 = **150**，"
                 + "catalog 同轮亦为 150。")
-        .hasSize(150);
+        .hasSize(151);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

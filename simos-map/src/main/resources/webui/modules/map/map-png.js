@@ -133,6 +133,47 @@
     return { assignments: assignments, counts: counts, skipped: skipped };
   }
 
+  /**
+   * 纯函数：底图像素 → 自动六角网格 + 逐格地形。
+   *
+   * 世界坐标直接使用图像像素坐标（PNG overlay offset=0/scale=1 时天然对齐）；
+   * 网格是 pointy-top，列数由 UI 给，行数按图像高度自动推。
+   */
+  function buildImageGrid(width, height, columns, pixels, terrains, threshold) {
+    var geom = window.SimosHexGeom;
+    var cols = Math.max(2, Math.floor(Number(columns) || 86));
+    if (!(width > 0) || !(height > 0) || !pixels) {
+      return { hexes: [], counts: {}, skipped: 0, columns: cols, rows: 0, cell: 0 };
+    }
+    var cell = width / (Math.sqrt(3) * (cols + 0.5));
+    var rows = Math.max(1, Math.ceil((height - 0.75 * cell) / (1.5 * cell)) + 1);
+    var hexes = [];
+    var counts = {};
+    var skipped = 0;
+    for (var r = 0; r < rows; r++) {
+      var y = 1.5 * cell * r + 0.75 * cell;
+      if (y < 0 || y >= height) continue;
+      var qStart = -Math.floor(r / 2);
+      for (var i = 0; i < cols; i++) {
+        var q = qStart + i;
+        var x = Math.sqrt(3) * cell * (q + r / 2);
+        if (x < 0 || x >= width) continue;
+        var rgb = averageColor(pixels, width, height, Math.round(x), Math.round(y));
+        var nearest = rgb ? nearestTerrain(rgb, terrains, threshold) : null;
+        if (!nearest) {
+          skipped += 1;
+          hexes.push({ q: q, r: r, terrain: "ocean" });
+          counts.ocean = (counts.ocean || 0) + 1;
+          continue;
+        }
+        var key = nearest.terrain.key;
+        hexes.push({ q: q, r: r, terrain: key });
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    }
+    return { hexes: hexes, counts: counts, skipped: skipped, columns: cols, rows: rows, cell: cell };
+  }
+
   function readOptions() {
     return {
       offsetX: Number(byId("png-offset-x") && byId("png-offset-x").value) || 0,
@@ -193,7 +234,8 @@
       var apply = byId("png-apply");
       if (apply) apply.disabled = true;
       updateOverlay();
-      status("已载入 " + imageWidth + "×" + imageHeight + " PNG；调整偏移/缩放后点「按格心取色预览」", "ok");
+      setGridButton();
+      status("已载入 " + imageWidth + "×" + imageHeight + " PNG；可生成空白地图网格，或调 offset/scale 后取色预览", "ok");
       URL.revokeObjectURL(url);
     };
     next.onerror = function () {
@@ -313,7 +355,72 @@
     if (previewMount) {
       while (previewMount.firstChild) previewMount.removeChild(previewMount.firstChild);
     }
+    setGridButton();
     status("已清除 PNG 底图", "muted");
+  }
+
+  function setGridButton() {
+    var button = byId("png-grid-generate");
+    if (button) button.disabled = !imagePixels;
+  }
+
+  async function generateGrid() {
+    if (!imagePixels) {
+      status("先载入 PNG 底图", "warn");
+      return;
+    }
+    var cols = Number(byId("png-grid-columns") && byId("png-grid-columns").value);
+    if (!isFinite(cols) || cols < 2) {
+      status("网格列数必须 >= 2", "warn");
+      return;
+    }
+    var button = byId("png-grid-generate");
+    if (button) button.disabled = true;
+    try {
+      var target = window.SimosApp.target();
+      var overview = await window.SimosApi.getJson(
+        window.SimosApi.withTarget("/map/overview", target)
+      );
+      terrainDefs = Array.isArray(overview.terrainTypes) ? overview.terrainTypes : [];
+      var plan = buildImageGrid(
+        imageWidth,
+        imageHeight,
+        cols,
+        imagePixels,
+        terrainDefs,
+        readOptions().threshold
+      );
+      if (!plan.hexes.length) {
+        status("没有生成任何六角格", "warn");
+        return;
+      }
+      var result = await window.SimosApp.writeCommand("map.ImportHexGrid", {
+        hexes: plan.hexes,
+      });
+      if (!result || !result.ok) {
+        status("网格生成失败：" + (result && result.message ? result.message : "未知错误"), "err");
+        return;
+      }
+      lastPlan = null;
+      var apply = byId("png-apply");
+      if (apply) apply.disabled = true;
+      status(
+        "已生成 " +
+          plan.hexes.length +
+          " 格（" +
+          plan.columns +
+          " 列 × " +
+          plan.rows +
+          " 行；无法匹配颜色的 " +
+          plan.skipped +
+          " 格按海洋处理）；可继续取色预览/微调",
+        "ok"
+      );
+    } catch (e) {
+      status("网格生成失败：" + e.message, "err");
+    } finally {
+      setGridButton();
+    }
   }
 
   function bind() {
@@ -333,6 +440,8 @@
     if (applyButton) applyButton.addEventListener("click", apply);
     var clearButton = byId("png-clear");
     if (clearButton) clearButton.addEventListener("click", clear);
+    var gridButton = byId("png-grid-generate");
+    if (gridButton) gridButton.addEventListener("click", generateGrid);
   }
 
   if (document.readyState === "loading") {
@@ -346,5 +455,6 @@
     colorDistance: colorDistance,
     nearestTerrain: nearestTerrain,
     buildPlan: buildPlan,
+    buildImageGrid: buildImageGrid,
   };
 })();

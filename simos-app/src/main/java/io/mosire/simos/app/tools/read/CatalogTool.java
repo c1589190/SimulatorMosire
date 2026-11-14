@@ -185,6 +185,7 @@ public final class CatalogTool implements SimosTool {
               "unitId, regionId, ratePerMille(0..1000)"
                   + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）"),
           Map.entry("map.SetTerrain", "hexes[{q,r}...], terrain"),
+          Map.entry("map.ImportHexGrid", "hexes[{q,r,terrain}...]（仅空白地图；前端从底图生成网格后一次提交）"),
           Map.entry(
               "map.SetHexArea",
               "hex{q,r}, key(内置字段标签 urban|rural) 或 customKey(自定义字段名，字符串)（两者恰给一个）, op(set|add),"

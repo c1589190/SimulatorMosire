@@ -149,6 +149,27 @@ final class MapPayloads {
     return value.asLong();
   }
 
+  /** 必填的 {@code [{q,r,terrain}…]} 数组 ⇒ 保序的地形网格；坐标重复/地形缺失在本层拒。 */
+  static Map<HexCoord, String> requireTerrainHexes(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      debugFieldRejected(field, "必须是 [{q,r,terrain}…] 数组");
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [{q,r,terrain}…] 数组: " + payload);
+    }
+    Map<HexCoord, String> out = new LinkedHashMap<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      HexCoord coord = hexFrom(element, field);
+      String terrain = requireText(element, "terrain");
+      if (out.putIfAbsent(coord, terrain) != null) {
+        throw new IllegalArgumentException("字段 " + field + " 含重复坐标: " + coord);
+      }
+    }
+    return out;
+  }
+
   /** 必填的 {@code [{q,r}…]} 数组 ⇒ 去重后的坐标集合（保序）。空数组**在这一层合法**（形状无错）， 由领域操作判定"至少要改一格"。 */
   static Set<HexCoord> requireHexes(JsonNode payload, String field) {
     JsonNode value = payload.get(field);

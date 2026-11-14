@@ -26,6 +26,7 @@
       // region-edit 作为内部旧模式保留（legacy），不再出现在模式栏。
       writes: [
         "map.SetTerrain",
+        "map.ImportHexGrid",
         "map.SetEdge",
         "map.RandomizeRegion",
         "map.UpdateRegion",

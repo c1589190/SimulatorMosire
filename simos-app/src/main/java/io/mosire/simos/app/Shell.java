@@ -167,6 +167,7 @@ import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
 import io.mosire.simos.map.spi.DeleteRegionHandler;
+import io.mosire.simos.map.spi.ImportHexGridHandler;
 import io.mosire.simos.map.spi.MergeRegionsHandler;
 import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.ReassignHexesHandler;
@@ -651,6 +652,7 @@ public final class Shell implements AutoCloseable {
         new ArrayList<>(
             List.of(
                 new SetTerrainHandler(),
+                new ImportHexGridHandler(),
                 // ★★ 2026-10-12 批次 2（hex 属性表）：GM 改单格可用地面积。**不打** {@code DmUsableCommand} ⇒ 默认仅
                 //   GM（用户裁定「map 层级的命令…肯定不该给 DM 用」）：它进 catalog 与 GM 提交面/窄工具，
                 //   但进不了令白名单 / RegisterEffect / 决策人 catalog。──

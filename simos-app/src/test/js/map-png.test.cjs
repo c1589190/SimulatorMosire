@@ -116,3 +116,22 @@ test("module-manifest-lists-map-png-asset", () => {
   assert.equal(manifest.webuiId, "map");
   assert.ok(manifest.assets.includes("map-png.js"));
 });
+
+test("buildImageGrid-generates-a-covering-hex-grid-with-terrain", () => {
+  const plan = P.buildImageGrid(120, 80, 6, solidPixels(120, 80, "#9CCB5B"), TERRAINS, 20);
+  assert.ok(plan.hexes.length > 0, "必须生成至少一格");
+  assert.equal(plan.columns, 6);
+  assert.ok(plan.rows >= 1);
+  assert.ok(plan.cell > 0);
+  assert.ok(plan.hexes.every((h) => h.terrain === "plains"), "纯色底图应全部映射到最近地形");
+  assert.equal(plan.skipped, 0);
+});
+
+test("buildImageGrid-falls-back-to-ocean-for-unmatched-or-transparent-pixels", () => {
+  const pixels = new Uint8ClampedArray(20 * 20 * 4);
+  // 全透明：没有可取样颜色 ⇒ 生成格不能留洞，按海洋兜底。
+  const plan = P.buildImageGrid(20, 20, 4, pixels, TERRAINS, 10);
+  assert.ok(plan.hexes.length > 0);
+  assert.ok(plan.hexes.every((h) => h.terrain === "ocean"));
+  assert.ok(plan.skipped > 0);
+});

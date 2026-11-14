@@ -256,6 +256,7 @@ class McpCoverageTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportHexGrid",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（按字典序插在 map.* 与 social.* 之间）。
@@ -339,6 +340,8 @@ class McpCoverageTest {
           // ★★ 2026-10-13 收尾测试第 2 层：乙收尾三条赋权命令里 gov 那条要一个**存在的 GOV 单位**
           //   （本夹具世界没有 ⇒ 载荷形状合法但必须具名拒）；另两条（nation/army）的目标建得出来 ⇒ 走正常覆盖。
           "gov.AssignDecisionMakerGov",
+          // 空白地图命令：本覆盖世界已播种，非空 ⇒ 合法载荷也必须具名拒。
+          "map.ImportHexGrid",
           "economy.SwitchMode",
           "economy.GmAdjust",
           "economy.MigrateHousehold",
@@ -429,6 +432,7 @@ class McpCoverageTest {
       Map.ofEntries(
           // ★★ 2026-10-13 收尾测试第 2 层：乙收尾的 gov 赋权命令 —— 载荷形状合法，但本夹具世界没有 GOV 单位
           //   ⇒ 走具名拒路径（与下面那批同款）。
+          Map.entry("map.ImportHexGrid", "{\"hexes\":[{\"q\":0,\"r\":0,\"terrain\":\"plains\"}]}"),
           Map.entry(
               "gov.AssignDecisionMakerGov",
               "{\"decisionMakerId\":\"dm-cov\",\"govUnitId\":\"g-missing\"}"),
@@ -1155,7 +1159,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 **150** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 P4c3 退役旧两条 SetProductionWageDefault/Posting ⇒ 153 → 151；★★★ D-032 T6（2026-10-17）：D1/D2 把"
+            "catalog 列出的 type 与 Shell 注册的 **151** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 P4c3 退役旧两条 SetProductionWageDefault/Posting ⇒ 153 → 151；★★★ D-032 T6（2026-10-17）：D1/D2 把"
                 + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
                 + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
                 + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148；"

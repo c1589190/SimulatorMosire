@@ -59,6 +59,9 @@ public final class WorldRegistry {
    */
   public static final String THREE_POWERS = "three-powers";
 
+  /** 图片底图空白世界：无 hex，等待 PNG 导入后生成六角网格。 */
+  public static final String IMAGE_WORLD = "image-world";
+
   /** 创世生成器：把 {@code mapId} 解析成一个可被 {@code bootstrapGenesis} 落盘的创世状态。 */
   @FunctionalInterface
   public interface GenesisProvider {
@@ -144,6 +147,10 @@ public final class WorldRegistry {
     register(
         entries,
         new Entry(CORRIDOR, "三格沙漠走廊夹具世界（3 hex / 1 单位 / 1 条人口序列；供小世界与用例复用）", CorridorWorld::state));
+    register(
+        entries,
+        new Entry(
+            IMAGE_WORLD, "图片底图空白世界（0 hex；PNG 导入后由 map.ImportHexGrid 生成网格）", BlankWorld::state));
     register(
         entries,
         new Entry(
