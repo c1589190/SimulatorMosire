@@ -1,6 +1,6 @@
 # SimulatorMosire 当前状态
 
-> **更新时间**：2026-11-13 17:10（Asia/Shanghai）
+> **更新时间**：2026-11-14 16:35（Asia/Shanghai）
 > **本文是唯一实时状态入口。** 其他 `docs/superpowers/status/*` 文件都是某时点的历史快照。
 > 当前事实与设计/维护裁定冲突时：设计/维护裁定优先；本文只记录“现在实际是什么”。
 
@@ -22,11 +22,11 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 分支 | `image-world-import`（独立 worktree，未推送） |
-| HEAD | `c4679917`（`feat(image-world): 空白世界 + PNG 底图自动六角网格导入`，2026-11-14） |
-| upstream | 尚无；`image-world-import` 独立分支，相对 `origin/main` 领先 32 个提交 |
-| 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-14：新增 `image-world` 空白世界 + PNG 自动六角网格导入（实测 1400×760 底图 86 列 → 4644 hex）；原圆柱面 WIP 留在主工作树未提交 |
+| 分支 | `image-world-import`（独立 worktree；修复前已推送 `41b8723f`，本次修复待推送） |
+| HEAD | `e4d6139a`（`fix(core): 同 tick checkpoint 写完后再推进 writeEpoch`；本状态文档提交在其上） |
+| upstream | `origin/image-world-import`；修复前远端为 `41b8723f` |
+| 工作树 | 修复代码已提交；状态/报告文档待提交；`run/image-world` 已重置为新的 0 hex 空白世界，旧生成档备份在 `run/image-world-attempt-20261114/`；仅 `.opencode/` 未跟踪 |
+| 最近活动 | 2026-11-14：新增 `image-world` 空白世界 + PNG 自动六角网格导入；随后修复“生成成功但 GUI 空白、刷新仍空白”的同 tick checkpoint/写代次读缓存竞态（`e4d6139a`）。原圆柱面 WIP 留在主工作树未提交 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -69,6 +69,11 @@
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=QueryServiceTest ... test` | 17 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
 | `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
+| `tools/mvn-lock.sh -q -pl simos-core -am test`（2026-11-14 竞态修复后） | util 224 / core 249，全 0 failures / 0 errors |
+| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=CommandBusSameTickMergeTest,ShellAssemblySmokeTest,QueryServiceTest ... test` | 1 / 3 / 17，全 0 failures；前端 430/430 |
+| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=AdjudicateTickToolTest ... test` | 16 / 0 failures（补入 `map.ImportHexGrid` 目标样本） |
+| 并发导入实测（2026-11-14，32 线程轮询 overview） | 4558 格导入后连续复查均 4558，不再被旧空态缓存污染 |
+| Playwright 真实 WebUI（2026-11-14，修复包） | 空白 world → 900×500 PNG → 30 列 600 格；生成后立即显示，刷新后仍显示 600 格 |
 | `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
 | `tools/gate.sh full`（2026-11-13，最终） | **PASS**，耗时 **321s**；全仓 Surefire **3777 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 428/428；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
 | `node simos-app/src/test/js/run-gate.cjs`（2026-11-13，前端优化后） | **PASS**，428/428（frontend-optimization 9 条 + 区域名/字号断言调整） |
@@ -113,7 +118,7 @@ SKILLS LINT PASSED (active skills=1)
 ## 6. 未验证 / 风险 / blocker
 
 1. **D-034~D-036 工程主体已落地**：目标运行设计、8 个切片与聚焦测试已实现；**不是所有历史字段都迁移完**（见第 2 条）。
-2b. **图片底图空白世界已可用**：`--world=image-world` 起 0 hex 空白地图；WebUI 地图编辑 PNG 面板可载入底图、填网格列数、点“从底图生成六角网格”；新的 `map.ImportHexGrid` 只在空白地图上执行并原子建立 hexes/terrainBlocks。实测 1400×760 底图 86 列 = 4644 hex。当前只是平面网格，不处理额外连通性/wrap；底图是编辑会话临时层，生成后的地形会持久化。报告：`docs/superpowers/reports/2026-11-14-image-world-grid-import.md`。
+2b. **图片底图空白世界已可用**：`--world=image-world` 起 0 hex 空白地图；WebUI 地图编辑 PNG 面板可载入底图、填网格列数、点“从底图生成六角网格”；新的 `map.ImportHexGrid` 只在空白地图上执行并原子建立 hexes/terrainBlocks。实测 1400×760 底图 86 列 = 4644 hex。用户在真实 WebUI 遇到“生成成功但界面空白、刷新仍空白”，根因是同 tick 合并先推进 `writeEpoch`、后覆盖 checkpoint，读线程在窗口内把旧空态按新代次缓存；已改为 checkpoint 写完后才推进写代次（`e4d6139a`），并用 32 线程并发导入 + Playwright 生成/刷新验证。当前只是平面网格，不处理额外连通性/wrap；底图是编辑会话临时层，生成后的地形会持久化。报告：`docs/superpowers/reports/2026-11-14-image-world-grid-import.md`。
 2a. **地球比例地图已做导入试验**：`tools/build_earth_hex_map.py` + Natural Earth 110m + Equal Earth 等面积投影，3965 格 / 陆地 27.64% / 8 大陆区域；`gsimap_import.py` 当前 10 模块空切片兼容修复；editor 实起并验证 `map.SetTerrain`。这是**平面等面积投影**，不是球面环绕拓扑；真要“地球仪”需 Goldberg 六角化/五边形缺陷或经度接缝语义。详见 `docs/superpowers/reports/2026-11-14-earth-globe-hex-import.md`。
 2. **自然语言字段迁移未完成**：`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等仍存正文；文档系统已就位，但领域 schema 改造与旧档迁移未做。另有 full profile/旧档的中间 revision 压缩未做；editor 新世界从源头不产生中间 revision。
 3. **旧存档在 HEAD 不可读**：2026-11-13 实测，`run/small-world-db` 与 `test-world/store` 均因领域 schema 漂移无法打开；项目没有 schema 版本/迁移器。
