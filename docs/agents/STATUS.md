@@ -22,10 +22,10 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 分支 | `image-world-import`（独立 worktree；修复前已推送 `41b8723f`，本次修复待推送） |
-| HEAD | `e4d6139a`（`fix(core): 同 tick checkpoint 写完后再推进 writeEpoch`；本状态文档提交在其上） |
-| upstream | `origin/image-world-import`；修复前远端为 `41b8723f` |
-| 工作树 | 修复代码已提交；状态/报告文档待提交；`run/image-world` 已重置为新的 0 hex 空白世界，旧生成档备份在 `run/image-world-attempt-20261114/`；仅 `.opencode/` 未跟踪 |
+| 分支 | `image-world-import`（独立 worktree，已推送） |
+| HEAD | `123f6186`（`docs: 记录图片网格生成空白故障与写代次修复`；本状态同步提交在其上） |
+| upstream | `origin/image-world-import` = `123f6186` |
+| 工作树 | 干净；`run/image-world` 已重置为新的 0 hex 空白世界，旧生成档备份在 `run/image-world-attempt-20261114/`；仅 `.opencode/` 未跟踪 |
 | 最近活动 | 2026-11-14：新增 `image-world` 空白世界 + PNG 自动六角网格导入；随后修复“生成成功但 GUI 空白、刷新仍空白”的同 tick checkpoint/写代次读缓存竞态（`e4d6139a`）。原圆柱面 WIP 留在主工作树未提交 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
