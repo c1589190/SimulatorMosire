@@ -956,8 +956,13 @@ public final class CommandBus {
       List<EventRow> events = new ArrayList<>(trace);
       events.add(event(EventTypes.COMMAND_COMMITTED, envelope, json(refJson(committed))));
       timeline.updateRevision(updated, events);
-      if (timeline.hasCheckpoint(committed)) {
-        checkpointWriter.accept(committed, candidate);
+      try {
+        if (timeline.hasCheckpoint(committed)) {
+          checkpointWriter.accept(committed, candidate);
+        }
+      } finally {
+        // ★ 代次必须在候选态 checkpoint 也落好之后再推进：否则读线程会把旧 checkpoint 缓存成“新代次的世界”。
+        timeline.bumpWriteEpoch();
       }
       return new CommandResult.Committed(committed);
     }

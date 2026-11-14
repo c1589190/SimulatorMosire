@@ -662,6 +662,9 @@ class AdjudicateTickToolTest {
         List.of("{\"unitId\":\"u-1\",\"role\":\"SCRIBE\",\"count\":1}", "u-1"));
     samples.put("map.DeleteRegion", List.of("{\"regionId\":\"701\"}", MAP_ID + "/region/701"));
     samples.put(
+        "map.ImportHexGrid",
+        List.of("{\"hexes\":[{\"q\":1,\"r\":1,\"terrain\":\"plains\"}]}", MAP_ID + "/hex/1_1"));
+    samples.put(
         "map.SetTerrain",
         List.of(
             "{\"hexes\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}],\"terrain\":\"plains\"}",
@@ -974,13 +977,14 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "100 条样本一条不漏（少一条 ⇒ 上面那条断言根本不会跑）"
+            "101 条样本一条不漏（少一条 ⇒ 上面那条断言根本不会跑）"
                 + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97；"
                 + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101；"
                 + "★★★ D-032 L4：map.SeedArableOwnership ⇒ 101 → 102；"
                 + "★★★ 2026-10-23 AgentLib×D-032 集成实测：旧 Decide/Submit/UpsertDecisionPacket 三条退役、"
-                + "新增 ApplyDecisionPackage，且有 side 的 SeedArable 样本 ⇒ 101 +1 −3 +1 = 100）")
-        .hasSize(100);
+                + "新增 ApplyDecisionPackage，且有 side 的 SeedArable 样本 ⇒ 101 +1 −3 +1 = 100；"
+                + "★★ 2026-11-14 image-world：map.ImportHexGrid 有逐格目标 ⇒ 100 +1 = 101）")
+        .hasSize(101);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

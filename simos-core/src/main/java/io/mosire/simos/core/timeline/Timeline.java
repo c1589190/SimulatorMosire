@@ -207,6 +207,10 @@ public final class Timeline {
    * <p>★ 只应由 {@code CommandBus} 在 editor profile 的“同 tick 合并”路径调用：命令不改变 tick， 同一 (branch,tick)
    * 只保留一个节点；历史 tick 一旦离开就不再改。
    *
+   * <p>★ 本方法**不推进 writeEpoch**。同 tick 合并还要在该节点是 checkpoint 时用候选态覆盖 checkpoint；若这里先推进代次，
+   * 读线程可在“代次已变、checkpoint 还是旧态”的窗口里把旧态按新代次缓存，之后即使 checkpoint 写完，缓存也不会再失效。 提交方必须在 checkpoint 写完后调用
+   * {@link #bumpWriteEpoch()}。
+   *
    * @param row 已存在的 revision 行（branch/revision 定位；其余列整行覆盖）
    * @param events 与本次更新同事务的事件
    * @throws IllegalStateException 目标行不存在（调用方坐标与库不一致）
@@ -249,7 +253,6 @@ public final class Timeline {
           EventStore.insertAll(connection, events);
           return null;
         });
-    writeEpoch.incrementAndGet();
   }
 
   /**
@@ -310,6 +313,17 @@ public final class Timeline {
           insert(connection, firstRevision);
           return Optional.of(new StateRef(newBranch, firstRevision.revision()));
         });
+  }
+
+  /**
+   * D-036：推进世界写入代次，使按 revision 键的读缓存失效。
+   *
+   * <p>普通 {@link #appendRevision(RevisionRow, List)} 在 revision 行提交后自行推进；同 tick 合并走 {@link
+   * #updateRevision(RevisionRow, List)}，必须等同 tick 的 checkpoint 也写完后再调用本方法，避免把旧 checkpoint
+   * 缓存成新代次的世界。
+   */
+  public void bumpWriteEpoch() {
+    writeEpoch.incrementAndGet();
   }
 
   /** D-036：世界写入代次（同一 tick 原地更新也会递增）。 */
