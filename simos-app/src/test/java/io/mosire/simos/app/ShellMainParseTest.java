@@ -3,6 +3,7 @@ package io.mosire.simos.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.app.world.WorldRegistry;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +84,19 @@ class ShellMainParseTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("未知参数")
         .hasMessageContaining("--economy-threads");
+  }
+
+  @Test
+  void blankEditorWorldFlagIsParsedAndUnknownWorldIsRejected() {
+    ShellConfig config =
+        ShellMain.parse(
+            new String[] {"--store", tempDir.toString(), "--world=" + WorldRegistry.BLANK_EDITOR});
+    assertThat(config.worldId()).isEqualTo(WorldRegistry.BLANK_EDITOR);
+
+    assertThatThrownBy(
+            () -> ShellMain.parse(new String[] {"--store", tempDir.toString(), "--world=nope"}))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知 worldId");
   }
 
   @Test

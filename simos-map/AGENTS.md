@@ -18,7 +18,8 @@
 ## 源码入口
 
 - 主代码：`src/main/java/io/mosire/simos/map/**`
-- 当前扫描：`*Tool.java` **17** 个；`*Handler.java` **13** 个；`*ToolSource.java` **0** 个。
+- 地图前端：`src/main/resources/webui/modules/map/`；底图识别、预览和本地草稿也归本模块。
+- 原子底图导入：`ops/RasterImportOperations.java`、`spi/ImportRasterHandler.java`、`tools/write/MapImportRasterTool.java`。
 
 ## 工具归属
 
@@ -31,6 +32,7 @@
 - 设计总索引：`../docs/superpowers/AGENTS.md`；设计裁定索引：`../docs/superpowers/DESIGN_RULINGS.md`
 - 用户设计原稿：`../docs/superpowers/specs/2026-10-02-architecture-design-source.md`
 - 专题设计：`../docs/superpowers/specs/2026-09-16-simos-master-design.md`
+- 底图导入：`../docs/superpowers/specs/2026-11-14-raster-import-runtime-design.md`
 
 ## 验证
 

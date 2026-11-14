@@ -28,7 +28,7 @@ public final class TerrainMovementCost implements MovementCost {
     if (!map.hexes().containsKey(to)) { // ★ R-8-c：一次查表兼判"图外"
       return OptionalLong.empty();
     }
-    if (from.equals(to) || from.distanceTo(to) != 1) {
+    if (from.equals(to) || map.distance(from, to) != 1) {
       throw new IllegalArgumentException("相邻性是调用方的前提（不是\"没有候选\"）: " + from + " → " + to);
     }
     return costOf(terrainOf(map, map.terrainAt(to)), unit.mobilityPerMille());

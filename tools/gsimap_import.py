@@ -722,6 +722,20 @@ def build_map_payload(data, report, regen_samples=None):
 
     # 键序与 GameMap record 组件序一致（hexes, terrainBlocks, regions, cities, terrainTypes,
     # pathways, pathwayGroups, edges, spec）；旧模式**不含** terrainBlocks（保持 M6 字节不变）。
+    spec_obj = dict(DEFAULT_SPEC)
+    wrap = data.get("simosWrap")
+    if wrap is not None:
+        if not isinstance(wrap, dict):
+            raise ImportRejected("simosWrap 不是对象: {!r}".format(wrap))
+        for key in ("wrapX", "qMin", "qWidth"):
+            if key not in wrap:
+                raise ImportRejected("simosWrap 缺字段 {}: {!r}".format(key, wrap))
+        spec_obj["wrap"] = {
+            "wrapX": bool(wrap["wrapX"]),
+            "qMin": int(wrap["qMin"]),
+            "qWidth": int(wrap["qWidth"]),
+        }
+
     map_obj = {"hexes": new_hexes}
     if rebuild:
         map_obj["terrainBlocks"] = terrain_blocks
@@ -732,7 +746,7 @@ def build_map_payload(data, report, regen_samples=None):
         "pathways": {},            # 旧档无 pathways（rivers/roads 已废弃）
         "pathwayGroups": pathway_groups,
         "edges": edges,
-        "spec": DEFAULT_SPEC,
+        "spec": spec_obj,
     })
 
     # 报告数据

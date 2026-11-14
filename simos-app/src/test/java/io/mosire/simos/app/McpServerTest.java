@@ -131,6 +131,7 @@ class McpServerTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.UpdateRegion",
           "simos.ga.adjudicateTick",
           "ga.CancelEffect",

@@ -2,7 +2,12 @@
   "webuiId": "map",
   "module": "simos-map",
   "label": "地图",
-  "version": 1,
-  "assets": ["map-png.js"],
+  "version": 2,
+  "assets": [
+    "map-raster-core.js",
+    "map-raster-draft.js",
+    "map-png.js",
+    "examples/horn-of-africa.png"
+  ],
   "notes": "D-036 模块前端资源根：模块自有 webui 资产放在 src/main/resources/webui/modules/<webuiId>/；app 的 StaticHandler 从 classpath /webui/ 统一服务。"
 }

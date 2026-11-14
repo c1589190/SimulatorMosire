@@ -26,11 +26,11 @@ test("module-loads", () => {
 test("subtool-ids-and-labels", () => {
   assert.deepEqual(
     M.MAP_EDIT_SUBTOOLS.map((s) => s.id),
-    ["terrain", "connectivity"]
+    ["image-import", "terrain", "connectivity"]
   );
   assert.deepEqual(
     M.MAP_EDIT_SUBTOOLS.map((s) => s.label),
-    ["地形", "连通性"]
+    ["底图导入", "地形", "连通性"]
   );
 });
 
@@ -121,30 +121,35 @@ test("write-gate-resolves-tool-then-subtool", () => {
 test("panel-visibility-is-mutually-exclusive", () => {
   // ★ 故意违规（m1 的杀点）：地形与连通性面板**恰一个**可见。
   assert.deepEqual(M.mapEditPanelVisibility("terrain"), {
+    imageImport: false,
     terrain: true,
     connectivity: false,
     randomize: false,
     bucket: false,
   });
   assert.deepEqual(M.mapEditPanelVisibility("randomize"), {
+    imageImport: false,
     terrain: true,
     connectivity: false,
     randomize: true,
     bucket: false,
   });
   assert.deepEqual(M.mapEditPanelVisibility("bucket"), {
+    imageImport: false,
     terrain: true,
     connectivity: false,
     randomize: false,
     bucket: true,
   });
   assert.deepEqual(M.mapEditPanelVisibility("river"), {
+    imageImport: false,
     terrain: false,
     connectivity: true,
     randomize: false,
     bucket: false,
   });
   assert.deepEqual(M.mapEditPanelVisibility("road"), {
+    imageImport: false,
     terrain: false,
     connectivity: true,
     randomize: false,
@@ -161,6 +166,7 @@ test("panel-visibility-is-mutually-exclusive", () => {
   });
   // 未知工具 ⇒ 全 false（fail-closed，不露任何面板）。
   assert.deepEqual(M.mapEditPanelVisibility("canal"), {
+    imageImport: false,
     terrain: false,
     connectivity: false,
     randomize: false,

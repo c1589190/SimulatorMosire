@@ -1,0 +1,271 @@
+{
+  "recorded_at": "2026-11-14T19:25:17.786316+08:00",
+  "head": "299bfc6f828b08f4fcc2253240adae6295598216",
+  "branch": "feature/d036-node-editor",
+  "scope": "HEAD plus pre-existing uncommitted map/wrap/import changes; no production edits by this audit",
+  "java": {
+    "tests": 59,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "reports": [
+      {
+        "file": "simos-unit/target/surefire-reports/TEST-io.mosire.simos.unit.move.PathFinderTest.xml",
+        "name": "io.mosire.simos.unit.move.PathFinderTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-map/target/surefire-reports/TEST-io.mosire.simos.map.generate.MapWrapTest.xml",
+        "name": "io.mosire.simos.map.generate.MapWrapTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-map/target/surefire-reports/TEST-io.mosire.simos.map.codec.MapCodecTest.xml",
+        "name": "io.mosire.simos.map.codec.MapCodecTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.ga.CommandDrainTest.xml",
+        "name": "io.mosire.simos.app.ga.CommandDrainTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.ShellMainGenesisTest.xml",
+        "name": "io.mosire.simos.app.ShellMainGenesisTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.decision.DecisionPackagePersistenceTest.xml",
+        "name": "io.mosire.simos.app.decision.DecisionPackagePersistenceTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.ga.TimeParticipantWiringTest.xml",
+        "name": "io.mosire.simos.app.ga.TimeParticipantWiringTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.ShellAssemblySmokeTest.xml",
+        "name": "io.mosire.simos.app.ShellAssemblySmokeTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.decision.DecisionAgentRunnerTest.xml",
+        "name": "io.mosire.simos.app.decision.DecisionAgentRunnerTest",
+        "tests": 28,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "file": "simos-app/target/surefire-reports/TEST-io.mosire.simos.app.llm.AdjudicationEndToEndTest.xml",
+        "name": "io.mosire.simos.app.llm.AdjudicationEndToEndTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "frontend": {
+    "tests": 429,
+    "passed": 429,
+    "failed": 0
+  },
+  "full_gate": "NOT_RUN",
+  "real_model": "NOT_RUN",
+  "dsh": "All three read-only tasks stopped before inference: MISSING_CREDENTIAL for deepseek-official. Built-in read-only agents used instead.",
+  "import": {
+    "legacy": {
+      "returncode": 0,
+      "modules": [
+        "map",
+        "social",
+        "unit"
+      ]
+    },
+    "rebuild": {
+      "returncode": 0,
+      "modules": [
+        "actor",
+        "army",
+        "culture",
+        "economy",
+        "ga",
+        "gov",
+        "map",
+        "production",
+        "social",
+        "unit"
+      ]
+    },
+    "overwrite": {
+      "returncode": 0,
+      "modules": [
+        "actor",
+        "army",
+        "culture",
+        "economy",
+        "ga",
+        "gov",
+        "map",
+        "production",
+        "social",
+        "unit"
+      ]
+    },
+    "overwrite_second": {
+      "returncode": 1,
+      "checkpoint_changed": true,
+      "sqlite_error": "sqlite3.IntegrityError: UNIQUE constraint failed: store_meta.key"
+    },
+    "root": "/tmp/simos-20261114-audit-ozh8zn4c"
+  },
+  "runtime": {
+    "legacy": {
+      "error": "IllegalStateException: social 侧 JSON 解码失败: SocialSnapshot | ValueInstantiationException: Cannot construct instance of `io.mosire.simos.social.SocialData`, problem: SocialData.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 provisioning）\n at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 127] (through reference chain: io.mosire.simos.social.SocialSnapshot[\"data\"]) | IllegalArgumentException: SocialData.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 provisioning） | ",
+      "readable": false
+    },
+    "rebuild": {
+      "hexes": 3,
+      "readable": true
+    },
+    "createOffice": {
+      "success": false,
+      "code": "REJECTED",
+      "submitted": false,
+      "submission": "rejected",
+      "rejected_commands": [
+        {
+          "type": "economy.RegisterGovernment",
+          "reason": "未注册的命令类型: economy.RegisterGovernment"
+        }
+      ]
+    },
+    "raiseUnit": {
+      "success": false,
+      "code": "REJECTED",
+      "submitted": true,
+      "submission": "rejected",
+      "rejected_commands": [
+        {
+          "type": "economy.RegisterHousehold",
+          "reason": "未注册的命令类型: economy.RegisterHousehold"
+        }
+      ]
+    },
+    "sameTickBatch": {
+      "afterHead": 2,
+      "rows": 2,
+      "tick": 0,
+      "beforeHead": 1
+    },
+    "advance1095": {
+      "economyUnchanged": true,
+      "tick": 1095,
+      "elapsedMillis": 177,
+      "result": "Committed[ref=StateRef[branch=BranchId[value=main], revision=RevisionId[value=3]]]",
+      "head": 3
+    },
+    "restart": {
+      "tick": 1095,
+      "head": 3
+    },
+    "worldgenDry": {
+      "success": true,
+      "code": ""
+    },
+    "worldgenApply": {
+      "success": false,
+      "code": "REJECTED",
+      "reasons": [
+        "production.Seed: 未注册的命令类型: production.Seed",
+        "economy.Seed: 未注册的命令类型: economy.Seed"
+      ]
+    }
+  },
+  "sqlite_small_world_rows": [
+    [
+      "main",
+      1,
+      0
+    ],
+    [
+      "main",
+      2,
+      0
+    ],
+    [
+      "main",
+      3,
+      1095
+    ]
+  ],
+  "invalid_cli": {
+    "returncode": 0,
+    "unknown_argument_logged": true
+  },
+  "evidence_root": "/tmp/simos-20261114-audit-ozh8zn4c",
+  "verification_command": "tools/gate.sh focused simos-app -Dtest=MapWrapTest,MapCodecTest,PathFinderTest,ShellAssemblySmokeTest,ShellMainGenesisTest,DecisionAgentRunnerTest,DecisionPackagePersistenceTest,AdjudicationEndToEndTest,TimeParticipantWiringTest,CommandDrainTest test",
+  "logs": [
+    "/tmp/simos-20261114-audit-pre.log",
+    "/tmp/simos-20261114-audit-focused.log",
+    "/tmp/simos-20261114-audit-ozh8zn4c/runtime-probe.log"
+  ],
+  "source_sha256": {
+    "simos-app/src/main/java/io/mosire/simos/app/Shell.java": "413a121fdf19678884a404cdd43b70d81fe5430ef3679535d36c33ba96c20c5c",
+    "simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java": "2bf73713006805383497c85188c6fabafcc9c7aa0ef4ffd8e995368f210a82d3",
+    "simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java": "f159209f3d0041f00a94654e546f7e5c5f143af4443a8b8a3e04521c30e39cc3",
+    "simos-app/src/main/resources/webui/renderer.js": "fdfbef8e3b6efc1eb4a5c6dbddfe8f24e27dbf33240e130275f6f1a60d34fe0a",
+    "simos-app/src/test/js/frontend-optimization.test.cjs": "493e48a2296f19db1a305f2d2f329fe130eba4ac43360f4750f25e4a77d19686",
+    "simos-app/src/test/js/gate-contract.test.cjs": "131258d62059f0bd9f7fca07926b03d40cddba6ca63e4c75c43623f07180a126",
+    "simos-app/src/test/js/run-gate.cjs": "7ccf23ba90c9a8c516dcc8a5181767c3524c04334fbcc3e50ef1ee24f223159b",
+    "simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java": "b3166321d52a41827a0c59783f8a74b44422ad8e730b1c7dca43763426227a4e",
+    "simos-map/src/main/java/io/mosire/simos/map/GameMap.java": "b2fdf1e770f62373f9dc2bea0e3549f6a1d08abbe2c5f6655a3b43d77940a7e7",
+    "simos-map/src/main/java/io/mosire/simos/map/block/TerrainBlocks.java": "428dd676bd9f697f4cc328494234093e70dd72eccdf34f625803ed7feb8a4603",
+    "simos-map/src/main/java/io/mosire/simos/map/generate/GenerationSpec.java": "5a6087acf7a2ce34db020a84171def7a454da33a59afc1a0f1698c9e654e4459",
+    "simos-map/src/main/java/io/mosire/simos/map/generate/MapGenerator.java": "ebc3139e5dd4240e3d60c72a9a3b33d64ab95a3329ec4c6509fbf7b470af505f",
+    "simos-map/src/main/java/io/mosire/simos/map/generate/MapWrap.java": "1257d605dd05dd9e9c510687363daa7943c6a138c185577669a37631901a0c54",
+    "simos-map/src/main/java/io/mosire/simos/map/generate/RegionRandomizer.java": "6eb6421ac558001c1097f5ccc9ec639c963c8039905f05cd8e76ea25b1e6c53d",
+    "simos-map/src/main/java/io/mosire/simos/map/ops/TerrainOperations.java": "cf79d2d8294f352fd244417db2114cb0dec65f5e09332671d9495db7c21745f4",
+    "simos-map/src/test/java/io/mosire/simos/map/codec/MapCodecTest.java": "610cffee71e556f6b671b317dc5590f5e20a7fc4ef3d9b6b800245c3a2e43022",
+    "simos-map/src/test/java/io/mosire/simos/map/generate/MapWrapTest.java": "5491340de4a974a60d785a468c04e6a12c9543d9bd8440c94ff70062106a8e82",
+    "simos-unit/src/main/java/io/mosire/simos/unit/move/PathFinder.java": "d4a668655ca7ef5d186c81624afa0e4678694bafbaa1672268127fa99e0baea7",
+    "simos-unit/src/main/java/io/mosire/simos/unit/move/TerrainMovementCost.java": "f153c8d055482e6e8ba9ffb57f5d60d73c7124e6c7ffaf93ddf6e4294ec926fa",
+    "simos-unit/src/test/java/io/mosire/simos/unit/move/PathFinderTest.java": "ba6e08e4dce0c1a6e69690d222630563904077ded47487e08dfaecd81d7c17cc",
+    "tools/build_earth_hex_map.py": "d1f8c520acaa8f7b3f095cc23c87f94f10014ba9b5281300757fe691992df18b",
+    "tools/gsimap_import.py": "d4c44177b34f63af0db1418943e6e8882225c6c7cfaccae72d5fd649df556826"
+  },
+  "docs_gate": {
+    "returncode": 0,
+    "modules": 18,
+    "files": 35,
+    "links": 60,
+    "active_skills": 1,
+    "log": "/tmp/simos-20261114-audit-docs.log"
+  }
+}

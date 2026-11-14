@@ -61,6 +61,28 @@ def inverse_project(x, y):
     return lon, lat
 
 
+
+
+# Lambert cylindrical equal-area, standard parallel 30°: area is preserved and
+# the map is a true rectangle whose left/right edges can be identified.
+CEA_PHI0 = math.radians(30.0)
+CEA_COS0 = math.cos(CEA_PHI0)
+CEA_XMAX = math.pi * CEA_COS0
+CEA_YMAX = 1.0 / CEA_COS0
+
+
+def cylindrical_project(lon_deg, lat_deg):
+    lam = math.radians(lon_deg)
+    phi = math.radians(lat_deg)
+    return lam * CEA_COS0, math.sin(phi) / CEA_COS0
+
+
+def cylindrical_inverse(x, y):
+    lon = math.degrees(x / CEA_COS0)
+    lat = math.degrees(math.asin(max(-1.0, min(1.0, y * CEA_COS0))))
+    return lon, lat
+
+
 def projected_area():
     """Numerically integrate the projection area on a 1-degree grid (stdlib only)."""
     total = 0.0
@@ -320,7 +342,55 @@ def build_hexes(target_hexes, land_mask):
     return rows, size, xmax, ymax
 
 
-def make_source_map(cells):
+def build_cylindrical_hexes(target_hexes, land_mask):
+    """Rule-of-thumb rectangular cylinder grid; all rows have the same q width."""
+    target = max(100, int(target_hexes))
+    size = 0.01
+    for _ in range(32):
+        q_width = max(3, int(round(2.0 * CEA_XMAX / (SQRT3 * size))))
+        r_max = int(math.ceil(CEA_YMAX / (1.5 * size)))
+        count = q_width * (2 * r_max + 1)
+        size *= math.sqrt(count / target)
+    q_width = max(3, int(round(2.0 * CEA_XMAX / (SQRT3 * size))))
+    r_max = int(math.ceil(CEA_YMAX / (1.5 * size)))
+    q_min = -(q_width // 2)
+    rows = []
+    for r in range(-r_max, r_max + 1):
+        # World y is down; inverse wants projection y up.
+        world_y = 1.5 * size * r
+        proj_y = -world_y
+        # pointy-top 行错位：行内 q 起点随 r 平移，保证每行屏幕 x 覆盖同一矩形。
+        row_q_min = q_min - (r // 2)
+        for q in range(row_q_min, row_q_min + q_width):
+            x = SQRT3 * size * (q + r / 2.0)
+            lon, lat = cylindrical_inverse(x, proj_y)
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                continue
+            # Keep the seam band ocean: the cylinder seam is a real antimeridian
+            # water channel, so no land region/terrain block has to straddle the seam.
+            land = land_mask.contains(lon, lat) and abs(lon) < 179.0
+            terrain = terrain_for(lon, lat) if land else "ocean"
+            rows.append(
+                {
+                    "q": q,
+                    "r": r,
+                    "x": x,
+                    "y": world_y,
+                    "lon": lon,
+                    "lat": lat,
+                    "land": land,
+                    "terrain": terrain,
+                    "continent": continent_for(lon, lat) if land else None,
+                }
+            )
+    return rows, size, CEA_XMAX, CEA_YMAX, {
+        "wrapX": True,
+        "qMin": q_min,
+        "qWidth": q_width,
+    }
+
+
+def make_source_map(cells, wrap=None):
     hexes = {}
     provinces = {}
     by_continent = {}
@@ -336,9 +406,9 @@ def make_source_map(cells):
             "hexes": keys,
             "color": color,
             "tag": "continent",
-            "description": "Natural Earth land sampled on an Equal Earth hex grid.",
+            "description": "Natural Earth land sampled on an equal-area hex grid.",
         }
-    return {
+    out = {
         "hexOrientation": False,
         "hexes": hexes,
         "provinces": provinces,
@@ -346,6 +416,9 @@ def make_source_map(cells):
         "edges": {},
         "pathwayGroups": {},
     }
+    if wrap is not None:
+        out["simosWrap"] = wrap
+    return out
 
 
 def make_samples(cells):
@@ -396,15 +469,25 @@ def main():
     parser.add_argument("--samples", help="output regen samples JSON")
     parser.add_argument("--preview", help="optional PNG preview")
     parser.add_argument("--target-hexes", type=int, default=4000)
+    parser.add_argument(
+        "--projection",
+        choices=("equal-earth", "cylindrical"),
+        default="equal-earth",
+        help="equal-earth = oval flat map; cylindrical = rectangular left/right-wrap map",
+    )
     args = parser.parse_args()
 
     if args.target_hexes < 100:
         raise SystemExit("--target-hexes must be >= 100")
     land = LandMask(args.geojson)
-    cells, size, xmax, ymax = build_hexes(args.target_hexes, land)
+    if args.projection == "cylindrical":
+        cells, size, xmax, ymax, wrap = build_cylindrical_hexes(args.target_hexes, land)
+    else:
+        cells, size, xmax, ymax = build_hexes(args.target_hexes, land)
+        wrap = None
     if not cells:
         raise SystemExit("no hexes generated")
-    source = make_source_map(cells)
+    source = make_source_map(cells, wrap)
     samples = make_samples(cells)
     Path(args.map_json).parent.mkdir(parents=True, exist_ok=True)
     Path(args.map_json).write_text(
@@ -422,7 +505,8 @@ def main():
 
     land_count = sum(1 for c in cells if c["land"])
     print(
-        "hexes={} land={} ({:.2f}%) ocean={} ({:.2f}%) grid_size={:.6f} extents=({:.4f},{:.4f})".format(
+        "projection={} hexes={} land={} ({:.2f}%) ocean={} ({:.2f}%) grid_size={:.6f} extents=({:.4f},{:.4f})".format(
+            args.projection,
             len(cells),
             land_count,
             100.0 * land_count / len(cells),

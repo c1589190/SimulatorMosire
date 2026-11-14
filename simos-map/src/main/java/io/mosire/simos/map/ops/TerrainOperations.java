@@ -133,7 +133,7 @@ public final class TerrainOperations {
                     paintHeight));
       }
     }
-    Map<BlockId, TerrainBlock> nextBlocks = TerrainBlocks.split(terrainByHex);
+    Map<BlockId, TerrainBlock> nextBlocks = TerrainBlocks.split(terrainByHex, base.wrap());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

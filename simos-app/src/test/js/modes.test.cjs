@@ -47,6 +47,7 @@ test("map-edit-allows-map-and-region-writes", () => {
   // D-036：区域编辑并入地图编辑 ⇒ 原 region-edit 的创建/删除也进本表。
   assert.deepEqual(M.allowedWrites("map-edit"), [
     "map.SetTerrain",
+    "map.ImportRaster",
     "map.SetEdge",
     "map.RandomizeRegion",
     "map.UpdateRegion",

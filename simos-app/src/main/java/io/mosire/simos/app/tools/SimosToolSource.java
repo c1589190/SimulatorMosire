@@ -206,6 +206,7 @@ import io.mosire.simos.map.tools.read.MapRegionTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
 import io.mosire.simos.map.tools.write.MapCreateRegionTool;
 import io.mosire.simos.map.tools.write.MapDeleteRegionTool;
+import io.mosire.simos.map.tools.write.MapImportRasterTool;
 import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
 import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.map.tools.write.MapRenameRegionTool;
@@ -1460,6 +1461,7 @@ public final class SimosToolSource implements ToolSource {
     UnitToolAllocations unitAllocations = new AppUnitToolAllocations(calendarService);
     UnitToolCommandTypes unitCommandTypes = new AppUnitToolCommandTypes();
     built.add(new MapSetTerrainTool(mapWrites, mapId));
+    built.add(new MapImportRasterTool(mapWrites, mapId));
     // ★★ 2026-10-12 批次 2（hex 属性表）：GM 改单格可用地面积（map.SetHexArea，命令不打 {@code DmUsableCommand}
     //   ⇒ 决策人令 / RegisterEffect / 决策人 catalog 三条路径都到不了；**只在 GM 桶**）。──
     built.add(new MapSetHexAreaTool(mapWrites, mapId));

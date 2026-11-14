@@ -175,6 +175,7 @@ class McpPortTopologyTest {
   private static final List<String> MAP_WRITES =
       List.of(
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.SetEdge",
           "map.SetHexArea",
           "map.CreateRegion",

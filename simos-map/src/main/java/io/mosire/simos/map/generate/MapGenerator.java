@@ -186,7 +186,7 @@ public final class MapGenerator {
     // ★ P1：地形是权威块——由逐格地形一次性切成同地形连通分量。
     return new GameMap(
         hexes,
-        TerrainBlocks.split(terrainByHex),
+        TerrainBlocks.split(terrainByHex, spec.wrap()),
         Map.of(),
         Map.of(),
         TerrainCatalog.defaults(),

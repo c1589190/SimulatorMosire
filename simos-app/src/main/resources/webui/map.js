@@ -2226,6 +2226,7 @@
 
   /** 两条编辑线：id + 中文标签 + 该线的工具集（顺序即面板内工具顺序）。 */
   var MAP_EDIT_SUBTOOLS = [
+    { id: "image-import", label: "底图导入", tools: ["image-import"] },
     { id: "terrain", label: "地形", tools: ["terrain", "randomize", "bucket"] },
     { id: "connectivity", label: "连通性", tools: ["river", "road"] },
   ];
@@ -2245,6 +2246,7 @@
 
   /** 子选项的写命令白名单（★ C2 的门控来源）：地形线改地形、连通性线改边，**互不越线**。 */
   var MAP_EDIT_SUBTOOL_WRITES = {
+    "image-import": ["map.ImportRaster"],
     terrain: ["map.SetTerrain", "map.RandomizeRegion"],
     connectivity: ["map.SetEdge"],
   };
@@ -2292,6 +2294,7 @@
     var subtool = mapEditSubtoolOf(tool);
     return {
       terrain: subtool === "terrain",
+      imageImport: subtool === "image-import",
       connectivity: subtool === "connectivity",
       randomize: tool === "randomize",
       bucket: tool === "bucket",

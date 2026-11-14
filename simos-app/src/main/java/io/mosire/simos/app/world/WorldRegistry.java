@@ -59,6 +59,8 @@ public final class WorldRegistry {
    */
   public static final String THREE_POWERS = "three-powers";
 
+  public static final String BLANK_EDITOR = "blank-editor";
+
   /** 创世生成器：把 {@code mapId} 解析成一个可被 {@code bootstrapGenesis} 落盘的创世状态。 */
   @FunctionalInterface
   public interface GenesisProvider {
@@ -132,6 +134,7 @@ public final class WorldRegistry {
    */
   private static Map<String, Entry> buildEntries() {
     Map<String, Entry> entries = new LinkedHashMap<>();
+    register(entries, new Entry(BLANK_EDITOR, "空白地图编辑世界（无经济播种，供底图导入）", BlankEditorWorld::state));
     register(
         entries,
         new Entry(V17LEVANT, "v17levant 复刻富世界（59223 hex / 252 区域 / 240 条河流边）", RichWorld::state));
@@ -139,7 +142,8 @@ public final class WorldRegistry {
         entries,
         new Entry(
             SMALL_WORLD,
-            "P1.4 小世界（19 hex / 2 个省级辖区（small-world + capital-province）/ 首都+镇 / 4,800 人；production-runtime 经济与两级 GOV 行政链内置）",
+            "P1.4 小世界（19 hex / 2 个省级辖区（small-world + capital-province）/ 首都+镇 / 4,800"
+                + " 人；production-runtime 经济与两级 GOV 行政链内置）",
             SmallWorld::state));
     register(
         entries,

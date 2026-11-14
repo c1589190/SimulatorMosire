@@ -99,7 +99,9 @@ const JS_DIR = __dirname;
 //     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
 //     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
 //     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
-const MIN_TESTS = 427;
+//   2026-11-14 底图导入统一测试起 428 → 456：新增 map-raster-core 12 条 + map-raster-lifecycle 15 条
+//     （算法真实行为 + P2 生命周期回归）；与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值。
+const MIN_TESTS = 456;
 
 function discoverTests() {
   return fs

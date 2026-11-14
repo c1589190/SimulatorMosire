@@ -11,6 +11,7 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.generate.GenerationSpec;
+import io.mosire.simos.map.generate.MapWrap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
@@ -80,6 +81,28 @@ class MapCodecTest {
    * 变更集往返：一条变更集里**四条 FieldDelta 变体各占一个组件**—— hexes=Upsert（新增 H_B）、regions=Unchanged、cities=Remove（删
    * c1）、edges=Patch（删 AB 增 BC）。
    */
+  @Test
+  void wrapSpecRoundTripsWithTheMapSnapshot() {
+    GameMap base = fixturedMap();
+    GenerationSpec d = base.spec();
+    GenerationSpec wrapped =
+        new GenerationSpec(
+            d.seed(),
+            d.mapRadius(),
+            d.baseSeaLevel(),
+            d.mainRidges(),
+            d.fragments(),
+            d.bands(),
+            d.ridges(),
+            d.fragmentParams(),
+            d.contourCacheMax(),
+            new MapWrap(true, -3, 7));
+    MapSnapshot snapshot = snapshotOf(base.withSpec(wrapped), SimosTimestamp.of(12));
+    MapSnapshot back = (MapSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.map().spec().wrap()).isEqualTo(new MapWrap(true, -3, 7));
+  }
+
   @Test
   void changeSetRoundTripsWithAllFourDeltaVariants() {
     GameMap base = fixturedMap();

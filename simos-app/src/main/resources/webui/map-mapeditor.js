@@ -462,6 +462,9 @@
       core.active.setEditTool(tool);
     }
     var panels = mapEditPanelVisibility(tool);
+    var imageControls = app.byId("png-overlay-controls");
+    if (imageControls) imageControls.hidden = !panels.imageImport;
+    if (window.SimosMapPng && window.SimosMapPng.onToolChange) window.SimosMapPng.onToolChange(tool);
     var terrainControls = app.byId("terrain-tool-controls");
     if (terrainControls) {
       terrainControls.hidden = !panels.terrain;
@@ -488,7 +491,9 @@
       core.active.setDraftHexes([]);
       core.active.setBrushHexes([]);
     }
-    if (tool === "terrain") {
+    if (tool === "image-import") {
+      setMapEditToolStatus("底图导入：载入图片、识别预览、确认应用，再继续地形修整。", "muted");
+    } else if (tool === "terrain") {
       setMapEditToolStatus("编辑线：地形（地形刷）—— 右键拖动涂抹；左键=平移地图。", "muted");
     } else if (tool === "randomize") {
       setMapEditToolStatus("编辑线：地形（圈选随机化）—— 右键拖动圈选；左键=平移地图。", "muted");

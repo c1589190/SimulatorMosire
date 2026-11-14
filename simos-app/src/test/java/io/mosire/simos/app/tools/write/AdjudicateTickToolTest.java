@@ -816,6 +816,13 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"hex\":{\"q\":1,\"r\":2},\"key\":\"rural\",\"op\":\"add\",\"value\":1000}",
             MAP_ID + "/hex/1_2"));
+    // ★ 2026-11-14 R4：底图导入也实现 CommandTargets（逐格声明目标）⇒ 必须在册；样本即合法 patch 载荷。
+    samples.put(
+        "map.ImportRaster",
+        List.of(
+            "{\"mode\":\"patch\",\"cells\":[{\"q\":1,\"r\":3,\"terrain\":\"plains\","
+                + "\"height\":0.37}]}",
+            MAP_ID + "/hex/1_3"));
     // ★★★ D-032 L4：Map arable owner 播种命令也实现 CommandTargets（逐 entry 的 hex 资源目标）。
     samples.put(
         "map.SeedArableOwnership",
@@ -979,8 +986,9 @@ class AdjudicateTickToolTest {
                 + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101；"
                 + "★★★ D-032 L4：map.SeedArableOwnership ⇒ 101 → 102；"
                 + "★★★ 2026-10-23 AgentLib×D-032 集成实测：旧 Decide/Submit/UpsertDecisionPacket 三条退役、"
-                + "新增 ApplyDecisionPackage，且有 side 的 SeedArable 样本 ⇒ 101 +1 −3 +1 = 100）")
-        .hasSize(100);
+                + "新增 ApplyDecisionPackage，且有 side 的 SeedArable 样本 ⇒ 101 +1 −3 +1 = 100；"
+                + "★★ 2026-11-14 R4：map.ImportRaster 实现 CommandTargets ⇒ 100 → 101）")
+        .hasSize(101);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

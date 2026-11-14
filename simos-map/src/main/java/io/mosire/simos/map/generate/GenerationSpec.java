@@ -56,7 +56,8 @@ public record GenerationSpec(
     NoiseBands bands,
     RidgeParams ridges,
     FragmentParams fragmentParams,
-    int contourCacheMax) {
+    int contourCacheMax,
+    MapWrap wrap) {
 
   public GenerationSpec {
     if (mapRadius < 1) {
@@ -80,6 +81,8 @@ public record GenerationSpec(
     bands = Objects.requireNonNull(bands, "bands");
     ridges = Objects.requireNonNull(ridges, "ridges");
     fragmentParams = Objects.requireNonNull(fragmentParams, "fragmentParams");
+    // 旧 checkpoint 没有 wrap 组件；Jackson 缺省传入 null ⇒ 平面地图（向后兼容）。
+    wrap = wrap == null ? MapWrap.none() : wrap;
     // ★ 那条可为负的差值（fragmentCount - secondary，GSimulator `MapGenerator.java:105`）在
     //   FragmentParams 里被挡（见其 requireNonNegativeRemaining）；这里只负责让它**在构造期发生**。
     fragmentParams.requireNonNegativeRemaining(fragments);
@@ -96,6 +99,30 @@ public record GenerationSpec(
    *
    * <p>{@code GameMap.empty()} 用 {@code defaults(0L)}（空图没有生成历史，取规范种子 0，见 R-48-e）。
    */
+  /** 旧调用点兼容构造：无左右环绕。 */
+  public GenerationSpec(
+      long seed,
+      int mapRadius,
+      double baseSeaLevel,
+      int mainRidges,
+      int fragments,
+      NoiseBands bands,
+      RidgeParams ridges,
+      FragmentParams fragmentParams,
+      int contourCacheMax) {
+    this(
+        seed,
+        mapRadius,
+        baseSeaLevel,
+        mainRidges,
+        fragments,
+        bands,
+        ridges,
+        fragmentParams,
+        contourCacheMax,
+        MapWrap.none());
+  }
+
   public static GenerationSpec defaults(long seed) {
     return new GenerationSpec(
         seed,

@@ -1,6 +1,7 @@
 package io.mosire.simos.map.block;
 
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.generate.MapWrap;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -35,7 +36,13 @@ public final class TerrainBlocks {
    * @return 按 {@link BlockId} 全序排列的块表（保序不可变）
    */
   public static Map<BlockId, TerrainBlock> split(Map<HexCoord, String> terrainByHex) {
+    return split(terrainByHex, MapWrap.none());
+  }
+
+  /** 同 {@link #split(Map)}，但六邻按 {@code wrap} 跨接缝。 */
+  public static Map<BlockId, TerrainBlock> split(Map<HexCoord, String> terrainByHex, MapWrap wrap) {
     Objects.requireNonNull(terrainByHex, "terrainByHex");
+    Objects.requireNonNull(wrap, "wrap");
     List<HexCoord> ordered = new ArrayList<>(terrainByHex.keySet());
     ordered.sort(Comparator.naturalOrder());
     Set<HexCoord> visited = new LinkedHashSet<>();
@@ -53,7 +60,7 @@ public final class TerrainBlocks {
       while (!queue.isEmpty()) {
         HexCoord at = queue.poll();
         component.add(at);
-        for (HexCoord neighbor : at.neighbors()) {
+        for (HexCoord neighbor : wrap.neighbors(at)) {
           if (visited.contains(neighbor)) {
             continue;
           }

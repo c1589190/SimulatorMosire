@@ -4,6 +4,7 @@ import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlock;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
+import io.mosire.simos.map.generate.MapWrap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
@@ -166,6 +167,26 @@ public record GameMap(
   public GameMap withSpec(GenerationSpec v) {
     return new GameMap(
         hexes, terrainBlocks, regions, cities, terrainTypes, pathways, pathwayGroups, edges, v);
+  }
+
+  /** 本图的左右环绕拓扑；平面地图返回 {@link MapWrap#none()}。 */
+  public MapWrap wrap() {
+    return spec.wrap();
+  }
+
+  /** 规范格坐标（圆柱图跨接缝时把 q 折回周期内；平面图原样）。 */
+  public HexCoord canonical(HexCoord coord) {
+    return wrap().canonical(coord);
+  }
+
+  /** 六邻；圆柱图跨接缝时进入另一侧。 */
+  public List<HexCoord> neighbors(HexCoord coord) {
+    return wrap().neighbors(coord);
+  }
+
+  /** 六角距离；圆柱图取跨接缝最短距离。 */
+  public int distance(HexCoord a, HexCoord b) {
+    return wrap().distance(a, b);
   }
 
   /**

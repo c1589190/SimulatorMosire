@@ -256,6 +256,7 @@ class McpCoverageTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（按字典序插在 map.* 与 social.* 之间）。
@@ -745,6 +746,9 @@ class McpCoverageTest {
         "{\"regionId\":\"r-cov\",\"hexes\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}],"
             + "\"meta\":{\"color\":\"#abc\"}}");
     MINIMAL_PAYLOADS.put("map.DeleteRegion", "{\"regionId\":\"r-cov\"}");
+    MINIMAL_PAYLOADS.put(
+        "map.ImportRaster",
+        "{\"mode\":\"patch\",\"cells\":[{\"q\":1,\"r\":3,\"terrain\":\"plains\",\"height\":0.37}]}");
     // ★★ P1b1（2026-10-01）：三个域的区域清空（GM-only 但可提交）。目标 r-nation 只含 (1,1)，此刻尚未播种
     //   economy/actor 数据；social 清掉后由后面的 social.SeedGroups 再种 ⇒ 不破坏后续 simos.advance 的前置。
     MINIMAL_PAYLOADS.put("social.ClearRegion", "{\"regionId\":\"r-nation\"}");

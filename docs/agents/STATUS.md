@@ -1,143 +1,101 @@
 # SimulatorMosire 当前状态
 
-> **更新时间**：2026-11-13 17:10（Asia/Shanghai）
-> **本文是唯一实时状态入口。** 其他 `docs/superpowers/status/*` 文件都是某时点的历史快照。
-> 当前事实与设计/维护裁定冲突时：设计/维护裁定优先；本文只记录“现在实际是什么”。
+> **更新时间**：2026-11-14 20:49（Asia/Shanghai）
+> **本文是唯一实时状态入口。** dated status 和旧报告只表示历史事实；设计与维护裁定仍以各自正本为准。
 
 ## 1. 当前目标
 
-- **进行中（2026-11-13 起）**：按用户 **D-034 + D-035 + D-036** 收敛产品方向——「文游地图编辑器 + 数据保存处理器」。
-  - 一个状态机：时间线 + 节点式分支；**节点地址 = `treeXXX-tickXXX`，弃用 rev**；同一 tick 的另一版本 = 新分支；
-  - 历史节点不原地改写；要改地图就**新开节点**；**任意节点可分叉**；
-  - 节点之间的中间 revision **物理删除/压缩**；只保留节点级增量；
-  - GUI 收敛为 **2+1 大模式**：地图编辑（含区域）、单位编辑、战役 +1；战役阶段独立地址；
-  - 经济/生产/文化等模块**卸载挂载与调用**，时间推进不参与；gov/ga/actor/social 保留；
-  - 用“每节点固定地址查询”（hex/region/unit/army/gov/battle/stage）补位；
-  - 世界文档系统（`docs/` 根；地址 → md；回收站/备份/多版本/部分地址/名称查询）；**领域模块只存结构化数据，自然语言归文档系统**；
-  - PNG 网页底图与 hex 中心取色提取地形，**排在架构修改之后**。
-- **当前阶段**：D-036 八个工程切片已落地（P1.1 分叉 / P1.2a 地址 / P1.3 editor 一 tick 一节点 / P2a 文档服务 / P2b 文档 GUI / P3 2+1+模块前端 / P4 editor profile / P5 PNG）；**剩余：领域自然语言字段迁移（RegionMeta.description、CombatRecord/CombatStage.text 等）与 full profile/旧档压缩**。
-- **当前事实入口**：目标运行设计 `docs/superpowers/specs/2026-11-13-node-docs-runtime-target-design.md`；实施计划 `docs/superpowers/plans/2026-11-13-node-editor-refactor-plan.md`。
+**已暂停（2026-11-14，用户明确要求）**：WebUI「地图编辑 → 底图导入」子模式，以根目录非洲之角截图为示例。范围为浏览器识别/修整/草稿、map 原子导入命令、空白 editor 创世与宿主接线。[目标运行设计](../superpowers/specs/2026-11-14-raster-import-runtime-design.md)、[实施计划](../superpowers/plans/2026-11-14-raster-import-plan.md)。
+
+生产已交回并停写：`tools/mvn-lock.sh -DskipTests compile -pl simos-app -am` rc=0 / Maven 6.113s；日志 `/tmp/simos-raster-compile-final.log`。[实现账本](../superpowers/reports/2026-11-14-raster-import-impl-ledger.md)。独立评审发现的参数输入取消新图解码、在途响应污染后续草稿两项 P2，已按 R1/R4 原地细化并修正。
+
+**暂停现场**：生产实现与统一测试已完成；`tools/gate.sh full` 于 20:46 完成，rc=0 / 289s；510 份新 Surefire XML 合计 **3801 tests / 0 failures / 0 errors / 7 skipped**，前端 **455/455**，shaded jar 32,152,500 字节。控制方已核对原始日志与 XML；[统一测试报告](../superpowers/reports/2026-11-14-raster-import-test-report.md)。真实浏览器识别质量、真实 IndexedDB 刷新/清除、用户截图全流程及其服务进程重启验收 **NOT_RUN**，不能称为整体功能已验收。
+
+用户提出转向“提供工具，让 LLM 自己读图填地形”。当前仅讨论该方向，未实施新工具、未替换现有设计、未继续原浏览器验收。dsh 测试会话在完成 full gate 和测试报告后已中断停止，当前没有 dsh 写入、Maven 或验收服务进程。已有实现、测试及用户 dirty 均保留，未 commit/push。
+
+全部内置子 Agent 已停止；后半段生产收尾和统一测试实际使用 dsh headless 的 `deepseek-account / deepseek-flash`。本次临时 overlay 启用 headless 默认停用的 credentials / authorization / deepseek-account，不修改全局配置、不复制密钥。
+
+更大方向仍是暂时搁置经济，建立非洲小军阀局势，再跑决策人 AI 与推演 AI 多年闭环。实施前的[调查报告](../superpowers/reports/2026-11-14-map-ai-readiness-audit.md)与[证据](../superpowers/reports/2026-11-14-map-ai-readiness-evidence.json)记录了旧 CLI 导入、editor 建局势、批提交和多年编排缺陷；本特性不代表这些缺陷已修复。未 commit/push，保留开工前 dirty。
 
 ## 2. 源码基线
 
 | 项 | 当前事实 |
 |---|---|
-| 分支 | `feature/d036-node-editor`（已推送） |
-| HEAD | `46965a2f`（`feat(tools): 地球等面积六角地图生成与当前导入格式修复`，2026-11-14） |
-| upstream | `origin/feature/d036-node-editor`；分支已推送；相对 `origin/main` 领先 30 个提交 |
-| 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-14：Equal Earth 地球比例六角图生成并导入成功（3965 hex / 27.64% land）；`gsimap_import.py` 升级到当前 10 模块格式；2026-11-13 full gate 321s / 3777 tests / 前端 428/428 |
-| reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
-| AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
+| 分支 | `feature/d036-node-editor` |
+| HEAD | `299bfc6f`（2026-11-14；本轮未新增提交） |
+| upstream | `origin/feature/d036-node-editor`；本地缓存比较 ahead=0 / behind=0，未联网刷新 |
+| main 差距 | 本地缓存 `origin/main..HEAD` 为 31 个提交；未合并 main |
+| 工作树 | 开工前 19 个 tracked dirty 文件，另有 `.opencode/`、`MapWrap.java`、`MapWrapTest.java`；本轮增加底图导入实现、测试和设计/验收文档；原用户 dirty 保留 |
+| reactor / Java | 18 个 simos 模块；本机 OpenJDK 21.0.13.0.3 |
+| AgentLib | POM 为 `0.2.3-SNAPSHOT` |
+| 构建与运行 | full gate 已通过并打包；用户叫停后无 Maven/验收服务，浏览器流程未执行 |
 
-### 工作树与清理结果（2026-11-13 执行）
+2026-11-13 清理的历史结果仍保留：worktree/旧运行产物和 SDD 已清理，本地经济分支保留；仓库外归档在 `/home/cna/simos-cleanup-20261113/`。本轮没有继续清理或删除分支。
 
-- **`worktree/` 已清空**：15 个附属工作树全部 `git worktree remove --force` 移除；`git worktree list` 只剩主树。
-- **本地经济分支全部保留**（66 个本地分支未删）：
-  - `feature/catalog-hex-wage-integration`、`feature/catalog-residue-cleanup`、`feature/endogenous-vacancy`、`feature/hex-wage`、`feature/light-heavy-tools`、`feature/production-catalog-config`、`feature/production-catalog-hex-wage`、`feature/wage-migration`、`integration/economy-midterm`；
-  - `integration/agentlib-side`、`plan/economy-production-midterm`、`plan/economy-test3-midterm`、`test/*`、`wip/d031-p1-baseline-20261113` 等也保留。
-- **清理前已保存 dirty 内容**：
-  - `agentlib-dock`、`economy-test1`、`economy-test2`、`economy-test3`、`ga-opt` 分别做了 WIP commit；
-  - `d031-p1-baseline` 新建分支 `wip/d031-p1-baseline-20261113` 后做 WIP commit；
-  - 仓库外归档：`/home/cna/simos-cleanup-20261113/`（tracked patch + untracked tgz，约 764KB）。
-- **`.superpowers/sdd` 删除**：9.6GB → 8KB；`.superpowers/AGENTS.md` 保留；`.gitignore` 增加 `.superpowers/sdd/`。
-- **`test-world/`、`run/`、各 `target/` 删除**：可重建/旧运行产物。
-- **保留**：`.m2-repo`（779MB，离线构建缓存）、`.git`（949MB，历史）、`docs/`（13MB）。
-- 仓库总体积：**53GB → 1.8GB**。
+## 3. 最近功能门禁与真实运行证据
 
-## 3. 最近功能门禁（历史基线，2026-10-23；本轮未复跑）
+底图特性 full gate **PASS**：`/tmp/simos-raster-gate-full.log`、`/tmp/simos-gate-full-verify-DYiklO.log`、`/tmp/simos-gate-full-validate-cjGZJg.log`。3801 Java tests（7 skipped）与 455 前端 tests；真实浏览器 **NOT_RUN**。见[测试报告](../superpowers/reports/2026-11-14-raster-import-test-report.md)。下表仅为实施前调查证据。
 
-来源：`docs/superpowers/status/2026-10-23-agentlib-side-integration-result.md`（历史快照）。
+### 实施前调查 2026-11-14
 
-| 项 | 事实 |
+| 验证 | 结果 |
 |---|---|
-| 主树全量门禁 | `tools/gate.sh full` **PASS**，耗时约 394s（集成树 386s，main 快进后同 tree 复跑） |
-| Surefire | **3751 tests / 0 failures / 0 errors / 7 skipped**（504 份报告） |
-| 前端 | **412/412** |
-| Spotless / Checkstyle / SpotBugs | 通过 |
-| shaded jar | **29,451,438 B** |
-| 360 tick | `SIMOS_MULTITICK_SKIP_BUILD=1 tools/multitick-sim.sh rural-32hex-360d` **PASS**，75.9s；`cases=1 failed=0` |
+| `tools/gate.sh pre` | PASS；文档/Skill 结构通过，无本仓服务或 Maven 占用 |
+| `tools/gate.sh focused simos-app -Dtest=MapWrapTest,MapCodecTest,PathFinderTest,ShellAssemblySmokeTest,ShellMainGenesisTest,DecisionAgentRunnerTest,DecisionPackagePersistenceTest,AdjudicationEndToEndTest,TimeParticipantWiringTest,CommandDrainTest test` | rc=0，35s；10 类共 **59 tests / 0 failures / 0 errors / 0 skipped** |
+| 聚焦构建内前端门禁 | **429/429** |
+| 默认 GSim 导入 → 当前 Shell 重放 | 导入 rc=0，但重放失败：缺 `SocialData.provisioning` |
+| 重建模式导入 → 当前 Shell 重放 | 三格样本可读回 |
+| 同目录重复导入 | rc=1，SQLite 唯一键冲突；已有 checkpoint 已被覆写，缺陷复现 |
+| editor 世界初始化 / 建 GOV / 募兵 | 均因暂停域命令未注册而整批 REJECTED；worldgen dryRun 成功不代表实际写入成功 |
+| editor 同 tick 批提交 | head 1→2，tick 均为 0；一 tick 一节点没有覆盖 submitBatch |
+| SmallWorld editor 0→1095 天 | 成功，经济 data 保持相等；重启仍为 tick=1095 / head=3；未调用模型 |
+| 无效 `--approval-port` | 日志报未知参数，但进程 rc=0；现有一键脚本仍传该参数 |
+| full gate / 真模型多年运行 | **NOT_RUN** |
 
-> 2026-11-13 调查实测（非全量门禁）：当前 `simos-app` shaded jar 能起 `small-world` 与 `v17levant`（59,223 hex）空库；
-> 前端门禁 412/412 PASS；文档检查 PASS。详见 `docs/superpowers/reports/2026-11-13-timeline-node-editor-current-state.md`（调查后补）。
+结论限于 **FOCUSED TEST PASSED，非 full gate**。上面的 1095 天是独立临时世界运行，不在 JUnit 内；不能称为多年 AI 推演。
 
-### 3.1 本轮已跑（FOCUSED，不是 full gate）
+证据：`/tmp/simos-20261114-audit-pre.log`、`/tmp/simos-20261114-audit-focused.log`、`/tmp/simos-20261114-audit-ozh8zn4c/`；关键输出已固化至报告旁 evidence JSON。
 
-| 命令 | 结果 |
-|---|---|
-| `tools/mvn-lock.sh -q -pl simos-util,simos-core -am test` | util 224 / core 248，0 failures / 0 errors，rc=0 |
-| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=QueryServiceTest ... test` | 17 / 0 |
-| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WorldDocsServiceTest ... test` | 8 / 0 |
-| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=SimosToolsTest,ShellAssemblySmokeTest,McpServerTest ... test` | 65 / 1 / 5，全 0 failures；前端 412/412 |
-| `tools/gate.sh full`（2026-11-13，速度治理前） | **PASS**，耗时 402s；Surefire 1078 / 0 failures / 0 errors / 7 skipped；前端 418/418；shaded jar 产出 |
-| `tools/gate.sh full`（2026-11-13，最终） | **PASS**，耗时 **321s**；全仓 Surefire **3777 / 0 failures / 0 errors / 7 skipped**（505 报告）；前端 428/428；Spotless/Checkstyle/SpotBugs/shade/validate 全过 |
-| `node simos-app/src/test/js/run-gate.cjs`（2026-11-13，前端优化后） | **PASS**，428/428（frontend-optimization 9 条 + 区域名/字号断言调整） |
-| `tools/mvn-lock.sh -q -pl simos-app -am -Dtest=WebuiAssetsTest test` | 10 / 0 failures；含模块脚本单前缀回归 |
-| `python3 tools/check-docs.py` / `skills-lint.py` | PASS（links=44 / active skills=1） |
+### 历史功能基线
 
-> `full` 门禁未跑；上述结论只能写 FOCUSED TEST PASSED。
+2026-11-13 曾记录 full gate PASS，321s；3777 tests / 0 failures / 0 errors / 7 skipped，前端 428/428。当前门禁已重新执行，采用上方本轮数字；历史数字仅作溯源。
 
-## 4. 当前有效的设计与维护入口
+## 4. 当前有效设计与维护入口
 
 | 类型 | 入口 |
 |---|---|
-| 根路由与常驻红线 | `AGENTS.md` |
-| 文档系统规则 | `docs/AGENTS.md` |
-| 项目维护裁定 | `docs/agents/MAINTENANCE_RULINGS.md` |
-| 工程 Skill 目录 | `docs/agents/SKILLS.md` |
-| 项目设计索引 | `docs/superpowers/AGENTS.md` |
-| 设计裁定索引 | `docs/superpowers/DESIGN_RULINGS.md` |
-| 用户设计原稿（D-001~D-036） | `docs/superpowers/specs/2026-10-02-architecture-design-source.md` |
-| **D-034 产品收敛专题** | `docs/superpowers/specs/2026-11-13-timeline-node-editor-and-address-query-design.md` |
-| **D-035 节点版本/文档/底图补裁** | `docs/superpowers/specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md` |
-| **D-036 节点地址/战役阶段/自然语言所有权** | `docs/superpowers/specs/2026-11-13-node-address-and-docs-ownership-design.md` |
-| **目标运行设计（当前实现序列）** | `docs/superpowers/specs/2026-11-13-node-docs-runtime-target-design.md` |
-| **实施计划** | `docs/superpowers/plans/2026-11-13-node-editor-refactor-plan.md` |
-| **WebUI 实测报告** | `docs/superpowers/reports/2026-11-13-webui-browser-audit.md` |
+| 常驻路由 | [根 AGENTS](../../AGENTS.md) |
+| 设计原稿与索引 | [设计原稿](../superpowers/specs/2026-10-02-architecture-design-source.md)、[DESIGN_RULINGS](../superpowers/DESIGN_RULINGS.md) |
+| D-034 产品收敛 | [时间线节点编辑与地址查询](../superpowers/specs/2026-11-13-timeline-node-editor-and-address-query-design.md) |
+| D-035 补裁 | [节点版本、世界文档与底图](../superpowers/specs/2026-11-13-node-version-world-docs-and-asset-pipeline-design.md) |
+| D-036 补裁 | [节点地址与文档所有权](../superpowers/specs/2026-11-13-node-address-and-docs-ownership-design.md) |
+| 当前实现父序列 | [目标运行设计](../superpowers/specs/2026-11-13-node-docs-runtime-target-design.md)、[既有实施计划](../superpowers/plans/2026-11-13-node-editor-refactor-plan.md) |
+| 维护正本 | [MAINTENANCE_RULINGS](MAINTENANCE_RULINGS.md)、[WORKFLOW](WORKFLOW.md)、[VERIFICATION](VERIFICATION.md)、[ENVIRONMENT](ENVIRONMENT.md) |
+| 文档与 Skill | [docs/AGENTS](../AGENTS.md)、[SKILLS](SKILLS.md) |
 
-## 5. 本轮文档/Skill 检查（已运行）
+既有目标运行设计中的“已实现”须结合本轮报告理解，尤其是批提交节点语义、editor 初始化和保留工具的经济调用。报告记录实现缺陷，不静默改写用户设计。
 
-2026-11-13 记录 D-034 后实跑：
+## 5. 未验证与当前 blocker
 
-```text
-python3 tools/check-docs.py
-DOCS CHECK PASSED (modules=18 files=35 links=44)
+1. **导入入口不可靠**：默认格式不可读，重复导入可能损坏旧 checkpoint；需要先保护已有世界并统一当前输出格式。
+2. **无经济建局势被阻断**：worldgen、建 GOV、募兵保留工具仍提交暂停域命令。内置创世仍生成经济数据；editor 日结停用则已实测成立。
+3. **双 AI 多年闭环尚未成立**：AdvanceTime 不调用决策人模型；army 参与者发现接触，不自动裁决战争。需要明确外部 GM Agent/宿主编排方式与可恢复轮次。
+4. **节点/分支边界**：submitBatch 绕过同 tick 合并；GM 五个决策包工具的读写审计口硬绑定 main。后者本轮仅源码核查。
+5. **长跑边界**：运行状态以内存为主，会话全量装载，尚未验证长期上下文、预算、异常中断与恢复；旧判决面还存在接受结果与真实落盘不一致的风险。
+6. **内容与局势**：底图特性已内置非洲之角示例，生成六角图幅实现和程序化门禁已完成，视觉验收暂停；仍没有已登记的完整派系局势。全球投影/环绕无需作为局部战区前置。
+7. **既有未完成项**：领域自然语言字段迁入文档、full/旧档中间 revision 压缩、PNG 持久化、决策人编辑 GUI；旧领域 schema 不承诺兼容。
+8. **dsh 本机环境已打通**：早期 `deepseek-official` 报缺凭据、account 报未登录的直接原因是 headless 默认停用 credentials / authorization / deepseek-account；仅为本次调用启用这些组件并选择 `deepseek-account / deepseek-flash` 后，模型探针成功，生产收尾与 full gate 成功，会话已按用户要求停止。全局配置与凭据未修改。
 
-python3 tools/skills-lint.py
-SKILLS LINT PASSED (active skills=1)
-```
+## 6. 下一步
 
-> 本轮已跑 Java 聚焦测试与前端门禁（见 §3.1）；**未跑** `tools/gate.sh full`，不得写成 full gate。
-> 2026-10-23 的文档系统重写检查（check-docs selftest 8/8、skills-lint selftest 6/6、`tools/gate.sh docs` PASS）仍是历史基线。
+**当前不继续执行。** 用户已要求暂停，先汇报状态并讨论 LLM 判图工具。
 
-## 6. 未验证 / 风险 / blocker
+- 可复用现有六角格生成、人工修正/确认预览、`map.ImportRaster` 原子写入和 `blank-editor`；识别策略可另加 LLM 入口。
+- 新方向需要先写目标运行序列：源图/格网绑定 → 带 q/r 标记的分区图片 → LLM 批量地形提案 → 完整性与坐标校验/原图对照 → 审阅确认 → 既有原子命令。分区结果应允许“不确定”，不能仅凭 LLM 假定真实海拔。
+- 判图模型和通道的图片能力尚未核实；dsh 编码 Agent 的可用性不等于判图输入链路已成立。
+- 原浏览器任务仅有临时脚本 `/tmp/SimosRasterFlow.java`，尚未启动服务或运行样例；不能把测试环境的程序重启等同于用户截图浏览器验收。
+- 更大的 CLI 导入保护、editor 建 GOV/募兵经济残余与双 AI 多年编排仍待后续处理。
 
-1. **D-034~D-036 工程主体已落地**：目标运行设计、8 个切片与聚焦测试已实现；**不是所有历史字段都迁移完**（见第 2 条）。
-2a. **地球比例地图已做导入试验**：`tools/build_earth_hex_map.py` + Natural Earth 110m + Equal Earth 等面积投影，3965 格 / 陆地 27.64% / 8 大陆区域；`gsimap_import.py` 当前 10 模块空切片兼容修复；editor 实起并验证 `map.SetTerrain`。这是**平面等面积投影**，不是球面环绕拓扑；真要“地球仪”需 Goldberg 六角化/五边形缺陷或经度接缝语义。详见 `docs/superpowers/reports/2026-11-14-earth-globe-hex-import.md`。
-2. **自然语言字段迁移未完成**：`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等仍存正文；文档系统已就位，但领域 schema 改造与旧档迁移未做。另有 full profile/旧档的中间 revision 压缩未做；editor 新世界从源头不产生中间 revision。
-3. **旧存档在 HEAD 不可读**：2026-11-13 实测，`run/small-world-db` 与 `test-world/store` 均因领域 schema 漂移无法打开；项目没有 schema 版本/迁移器。
-4. **导入器不在 CI**：`tools/gsimap_import.py` 的 map 切片当前可读，但同库 `social/unit` 旧切片会让整库打不开；导入器/真实世界脚本未进门禁。
-5. **官方一键脚本已坏**：`run-small-world.sh` 仍传 `--approval-port`（ShellMain 2026-10-23 已删除该参数），实测无法起服务且退出码为 0。
-6. **经济卸载未做**：当前 Shell/GUI/MCP 仍装配全部模块；app 中 economy 引用 95 文件、production 35、social 82、actor 56、ga 70；unit/army/gov 的工具也依赖 social。卸载是代码手术，必须先确认暂停范围与最小 reactor。
-7. **2+1 模式与模块前端已落第一版**：模式栏 = 常规/地图编辑/单位编辑/战役；区域编辑并入地图编辑；模块资产在 `webui/modules/<id>/`，有 manifest + `/api/webui/modules` 发现；`StaticHandler` 已修 `/webui/modules/...` 双前缀。
-8. **世界文档系统已落第一版**：`docs/world/` create/edit/delete/versions/contentAt/search、HTTP `/api/docs`、MCP `simos.docs.*`、工作台文档面板、战役/阶段文档入口均已实现；**真实浏览器已测**搜索→结果→地址/标题/正文回填；仍缺文档事件日志与逐实体专用嵌入。
-9. **PNG 底图已落第一版**：载入/offset/scale/透明度/中心 3×3 取色/最近色分类/预览/按地形分组应用；实测 overlay 只在 map-edit 显示，参数变化会使旧计划失效。仍缺持久化与自定义文件按钮。
-10. **清理已执行（2026-11-13）**：15 个 worktree 移除、`.superpowers/sdd` 9.6GB 删除、`test-world`/`run`/target 删除；仓库 53GB → 1.8GB。本地经济分支 66 个全部保留；dirty 内容已 WIP commit + 仓库外归档（`/home/cna/simos-cleanup-20261113/`）。`.git` 949MB 历史与 `.m2-repo` 779MB 保留。
-11. **分支已推送**：`feature/d036-node-editor` 已推送到 `origin`；`origin/main` 仍停在旧基线，未合并/未推送 `main`。
-12. 历史 status 中的测试数字/工具计数只作历史证据；不得当当前事实。
+## 7. 本轮文档检查
 
-## 7. 下一步
-
-1. ✅ P1.1 任意节点分叉；P1.2a `tree-tick` 地址；P1.3 editor 一 tick 一节点（同 tick 原地合并 + 一推进一节点）。
-2. ✅ P2a 文档服务；P2b 文档 GUI + 战役/阶段入口。
-3. ✅ P3 2+1 模式 + 模块前端 manifest 发现；P4 editor profile 卸载 economy/production/culture；P5 PNG 取色/应用。
-4. ✅ full gate 2026-11-13 最终 PASS（321s）：GovPayToolTest 空库等待 31s→3.75s；180 tick 模拟打 `multitick` tag 移出默认门禁；全仓 3777 / 0 / 0 / 7；前端 428/428。
-5. **下一步第一命令**：`tools/mvn-lock.sh -Dsimos.excludedTestGroups= -Dtest=StagedAgricultureEconomy180Test -pl simos-app -am test`（需要跑 180 tick 长测时显式 opt-in）。
-6a. **地球图下一步（待裁定）**：是否把 Equal Earth 六角图登记为正式世界；是否投入球面拓扑（Goldberg）而不是继续平面投影；若登记，补齐城市/单位/人口生成。
-6. ✅ 地图编辑真实链路：编辑手势改用 `hexAt`（不再被 GOV/城市/交战图标挡住）；同 tick `writeEpoch` 贯通服务端/前端缓存，命令成功后地图与读口立即新态。浏览器实测 grep 证据见 WebUI 报告第 12/13 条。
-7. **剩余工程**：
-   - 自然语言字段迁移：RegionMeta.description、CombatRecord/CombatStage.text → 文档地址；
-   - full profile/旧档的中间 revision 物理压缩与 `atRevision` 重映射；
-   - 世界生成器 editor profile 不 seed 经济；
-   - 决策人查看/编辑模式（暂缓）。
-7. 未获推送授权前不 push；不删除本地经济分支；`.git` 不做 history rewrite。
+2026-11-14 收尾运行 `tools/gate.sh docs`：`check-docs.py` 与 `skills-lint.py` 均 PASS，rc=0；18 模块 / 35 索引文件 / 66 链接，active skills=1。

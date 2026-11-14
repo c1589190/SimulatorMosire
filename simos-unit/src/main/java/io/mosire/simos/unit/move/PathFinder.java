@@ -75,7 +75,7 @@ public final class PathFinder {
     Set<HexCoord> closed = new HashSet<>();
     PriorityQueue<Node> open = new PriorityQueue<>(ORDER);
     bestG.put(start, 0L);
-    open.add(new Node(start, 0L, minStep * start.distanceTo(goal)));
+    open.add(new Node(start, 0L, minStep * map.distance(start, goal)));
 
     while (!open.isEmpty()) {
       Node current = open.poll();
@@ -85,7 +85,7 @@ public final class PathFinder {
       if (current.hex().equals(goal)) {
         return Optional.of(reconstruct(cameFrom, goal));
       }
-      for (HexCoord next : current.hex().neighbors()) {
+      for (HexCoord next : map.neighbors(current.hex())) {
         if (closed.contains(next)) {
           continue;
         }
@@ -100,7 +100,7 @@ public final class PathFinder {
         }
         bestG.put(next, g);
         cameFrom.put(next, current.hex());
-        open.add(new Node(next, g, minStep * next.distanceTo(goal)));
+        open.add(new Node(next, g, minStep * map.distance(next, goal)));
       }
     }
     return Optional.empty();

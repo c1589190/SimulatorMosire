@@ -133,7 +133,7 @@ public final class RegionRandomizer {
     }
     FieldDelta<TerrainBlock> blockDelta =
         touched
-            ? FieldDelta.diff(map.terrainBlocks(), TerrainBlocks.split(terrainByHex))
+            ? FieldDelta.diff(map.terrainBlocks(), TerrainBlocks.split(terrainByHex, map.wrap()))
             : new FieldDelta.Unchanged<>();
     return new MapChangeSet(
         new FieldDelta.Unchanged<>(), // hexes：只承载高度，地形改动不碰它

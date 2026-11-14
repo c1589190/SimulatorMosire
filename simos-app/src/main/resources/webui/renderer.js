@@ -128,10 +128,14 @@
 
     var cellSize = opts.cellSize || BASE_CELL;
     var view = { scale: 1, tx: 0, ty: 0 };
+    // 圆柱图：左右周期由 map spec 的 qWidth 给出；平面图为 null。
+    var wrapInfo = null;
+    var wrapPeriodWorld = 0;
     // D-036 P5：PNG 底图叠加（world 坐标；不参与地图数据，只是对齐/取色辅助层）。
     var pngOverlay = null;
     var overview = null;
     var blocks = []; // 权威地形块（M9 T13）：{id,terrain,hexCount,boundaries:[环…]}，顶点为「格边长=1」的世界坐标
+    var tiledBlocks = []; // 圆柱图渲染副本（只用于地形绘制；权威 bounds/拾取仍用 blocks）
     var units = []; // 单位全表：{id,name,parent,position}（只读数；标记坐标在 markers 上）
     var unitById = {}; // String(id) → 单位（pickAt 取回 leadId 的名字）
     // ★ 2026-09-24 修正 1：**标记**=按军队分组的绘制单位，{rootId,leadId,at,member,px,py,stackSpacing}。
@@ -514,8 +518,47 @@
       return out;
     }
 
+    function setWrap(wrap) {
+      wrapInfo = wrap && wrap.wrapX ? wrap : null;
+      wrapPeriodWorld = wrapInfo ? Math.sqrt(3) * cellSize * Number(wrapInfo.qWidth) : 0;
+      scheduleRender();
+    }
+
+    function wrapWorldX(x) {
+      if (!(wrapPeriodWorld > 0)) {
+        return x;
+      }
+      var shifted = ((x + wrapPeriodWorld / 2) % wrapPeriodWorld + wrapPeriodWorld) % wrapPeriodWorld;
+      return shifted - wrapPeriodWorld / 2;
+    }
+
+    function rebuildTiledBlocks() {
+      tiledBlocks = [];
+      var copies = wrapInfo ? [-1, 0, 1] : [0];
+      var shift = wrapInfo ? Math.sqrt(3) * Number(wrapInfo.qWidth) : 0;
+      copies.forEach(function (copy) {
+        blocks.forEach(function (block) {
+          if (copy === 0) {
+            tiledBlocks.push(block);
+            return;
+          }
+          tiledBlocks.push({
+            id: block.id,
+            terrain: block.terrain,
+            hexCount: block.hexCount,
+            boundaries: (block.boundaries || []).map(function (ring) {
+              return ring.map(function (point) {
+                return { x: point.x + copy * shift, y: point.y };
+              });
+            }),
+          });
+        });
+      });
+    }
+
     function setData(body) {
       overview = body;
+      setWrap(body && body.wrap ? body.wrap : null);
       // ★ T3：连通性候选 kind 与全图边表都来自 overview（服务端权威，不硬编码）。
       host.overviewEdges = Array.isArray(body.edges) ? body.edges : [];
       host.overviewGroups = Array.isArray(body.pathwayGroups) ? body.pathwayGroups : [];
@@ -535,6 +578,7 @@
           boundaries: b.boundaries || [],
         };
       });
+      rebuildTiledBlocks();
       blockVertexCount = countBlockVertices();
       var covered = 0;
       blocks.forEach(function (b) {
@@ -918,6 +962,7 @@
 
     function setCellSize(size) {
       cellSize = size;
+      wrapPeriodWorld = wrapInfo ? Math.sqrt(3) * cellSize * Number(wrapInfo.qWidth) : 0;
       recomputeWorldPixels();
       terrainDirty = true;
       scheduleRender();
@@ -1476,7 +1521,7 @@
     function paintTerrain(targetCtx) {
       var byColor = {};
       var colors = [];
-      blocks.forEach(function (block) {
+      tiledBlocks.forEach(function (block) {
         var color = terrainColor(block.terrain);
         if (!byColor[color]) {
           byColor[color] = new Path2D();
@@ -2044,6 +2089,7 @@
      */
     function hexAt(point) {
       var world = screenToWorld(point, view);
+      world = { x: wrapWorldX(world.x), y: world.y };
       var coord = pixelToHex(world.x, world.y, cellSize);
       var block =
         window.SimosBlocks && window.SimosBlocks.blockAtPoint
@@ -2061,6 +2107,7 @@
     /** 屏幕 CSS 坐标 → 世界 → 命中（单位优先于格）。★ m2 保护的是这里的世界换算。 */
     function pickAt(point) {
       var world = screenToWorld(point, view);
+      world = { x: wrapWorldX(world.x), y: world.y };
       var baseHitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
       // ★ 2026-10-02 用户：⚔ 优先命中（它画在格心、交战布局把单位标记挪到两侧 ⇒ 格心让给 ⚔）。
       //   与 drawUnits 同一门控：图层开 + 交战布局启用才画、才可点（关掉 ⇒ 不画也不可点）。
@@ -2570,7 +2617,7 @@
             beginEdgeDrag(event);
             return;
           }
-          beginPaint(event);
+          if (mapEditSubtoolOf(editTool) === "terrain") beginPaint(event);
         }
         return;
       }
@@ -2634,6 +2681,11 @@
           dragMoved = true;
         }
         view = { scale: viewStart.scale, tx: viewStart.tx + dx, ty: viewStart.ty + dy };
+        if (wrapPeriodWorld > 0) {
+          var periodPx = wrapPeriodWorld * view.scale;
+          var half = periodPx / 2;
+          view.tx = ((view.tx + half) % periodPx + periodPx) % periodPx - half;
+        }
         scheduleRender();
         return;
       }
@@ -3008,6 +3060,10 @@
       setSelectedCity: setSelectedCity,
       cityPositionOf: cityPositionOf,
       setCellSize: setCellSize,
+      setWrap: setWrap,
+      wrapInfo: function () {
+        return wrapInfo;
+      },
       setSelected: setSelected,
       setSelectedUnit: setSelectedUnit,
       setHighlightHexes: setHighlightHexes,

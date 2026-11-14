@@ -88,6 +88,7 @@ import io.mosire.simos.map.tools.read.MapOverlapsTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
 import io.mosire.simos.map.tools.write.MapCreateRegionTool;
 import io.mosire.simos.map.tools.write.MapDeleteRegionTool;
+import io.mosire.simos.map.tools.write.MapImportRasterTool;
 import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
 import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.map.tools.write.MapRenameRegionTool;
@@ -441,6 +442,7 @@ class SimosToolsTest {
   private static final List<String> MAP_WRITE_NAMES =
       List.of(
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.SetEdge",
           "map.CreateRegion",
           "map.UpdateRegion",
@@ -620,6 +622,7 @@ class SimosToolsTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.UpdateRegion",
           // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（固定命令 army.SetArmyContactWatch）
           "simos.army.contactWatch",
@@ -913,6 +916,7 @@ class SimosToolsTest {
           "map.SetEdge",
           "map.SetHexArea",
           "map.SetTerrain",
+          "map.ImportRaster",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（production.* 按字典序排在 map.* 与 social.* 之间）。
@@ -1037,6 +1041,7 @@ class SimosToolsTest {
     List<AgentTool> mapTools =
         List.of(
             new MapSetTerrainTool(mapWrites, mapId),
+            new MapImportRasterTool(mapWrites, mapId),
             new MapSetEdgeTool(mapWrites, mapId),
             new MapCreateRegionTool(mapWrites, mapId),
             new MapUpdateRegionTool(mapWrites, mapId),
@@ -1302,7 +1307,7 @@ class SimosToolsTest {
                 + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。"
                 + "；★★★ 2026-10-23 AgentLib×D-032 集成实测：agentlib 决策包迁移后扫描面 = **150**，"
                 + "catalog 同轮亦为 150。")
-        .hasSize(150);
+        .hasSize(151);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1367,7 +1372,7 @@ class SimosToolsTest {
                 + "决策人桶那两条断言同一次跑**没红**）")
         // ★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策工具并入后 GM 桶 = 182。
         // ★ D-036：世界文档 3 读 + 3 写 ⇒ 182 + 6 = 188。
-        .hasSize(188);
+        .hasSize(189);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1602,7 +1607,7 @@ class SimosToolsTest {
                 + "{@code EconomySetPlanSourcesTool}（真继承基类 ⇒ 扫描器扫得到）⇒ **实测 66 → 67**"
                 + "（本轮真跑本类红在「Expected size: 66 but was: 67」）"
                 + "；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(67);
+        .hasSize(68);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具 ∖ 外来工具。
     // ★★ 2026-10-14：外来工具（doc_*/工作区）既不是本仓窄写类、也不在磁盘扫描面里 ⇒ 必须显式排除，
@@ -2399,7 +2404,7 @@ class SimosToolsTest {
                 + "（{@code simos-economy/.../tools/write/EconomySetPlanSourcesTool.java}，真继承窄写基类）"
                 + "⇒ **实测 181 → 182**（本轮真跑本类红在「Expected size: 181 but was: 182」）"
                 + "；★★★ 2026-10-23 AgentLib×D-032 集成实测：旧决策工具删除后磁盘 *Tool.java = **178**。")
-        .hasSize(178);
+        .hasSize(179);
 
     List<String> union =
         Stream.concat(

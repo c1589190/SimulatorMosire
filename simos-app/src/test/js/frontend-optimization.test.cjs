@@ -52,7 +52,11 @@ test("png-alignment-change-invalidates-stale-plan", () => {
     "../../../../simos-map/src/main/resources/webui/modules/map/map-png.js"
   );
   const source = fs.readFileSync(file, "utf8");
-  assert.ok(source.includes("lastPlan = null"), "参数变化必须清空旧取色计划");
+  assert.match(
+    source,
+    /function invalidate\([^)]*\)\s*\{[\s\S]*?plan = null/,
+    "参数变化必须清空旧识别计划"
+  );
   assert.ok(source.includes('"png-threshold"'), "阈值变化也必须触发布局失效");
 });
 
@@ -89,4 +93,12 @@ test("same-tick-status-does-not-claim-head-advanced", () => {
     assert.ok(!source.includes("head 已前进"), file + " 不得宣称同 tick 编辑推进了 head");
     assert.ok(source.includes("已写入当前节点"), file + " 应明确写入当前节点");
   }
+});
+
+test("cylindrical-map-wrap-is-wired-through-renderer", () => {
+  const renderer = readWebui("renderer.js");
+  assert.ok(renderer.includes("function setWrap(wrap)"), "renderer 必须接收 map wrap metadata");
+  assert.ok(renderer.includes("function wrapWorldX(x)"), "点选/编辑必须先规范跨接缝 x");
+  assert.ok(renderer.includes("tiledBlocks"), "圆柱图必须绘制左右地形副本");
+  assert.ok(renderer.includes("setWrap: setWrap"), "wrap 必须是 renderer 公开入口");
 });

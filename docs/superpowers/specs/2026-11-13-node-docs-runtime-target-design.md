@@ -1,6 +1,7 @@
 # 节点编辑器与文档系统目标运行设计
 
 > **状态**：有效（2026-11-13 起）· **性质**：目标运行序列 + 子设计嵌入表，不是实现计划。
+> **S8 局部取代（2026-11-14）**：[底图识别与六角导入](2026-11-14-raster-import-runtime-design.md) 取代旧格心取色/分组应用流程；实施中，旧 S8 描述仅代表此前实现。
 > **父设计锚点**：
 > - D-034 [`2026-11-13-timeline-node-editor-and-address-query-design.md`](2026-11-13-timeline-node-editor-and-address-query-design.md)
 > - D-035 [`2026-11-13-node-version-world-docs-and-asset-pipeline-design.md`](2026-11-13-node-version-world-docs-and-asset-pipeline-design.md)

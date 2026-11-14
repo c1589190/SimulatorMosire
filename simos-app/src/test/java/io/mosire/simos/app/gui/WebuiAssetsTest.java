@@ -283,6 +283,36 @@ class WebuiAssetsTest {
     }
   }
 
+  /** D-036 底图导入：算法/草稿/工作区/示例四个模块资产必须在 manifest 里且真能经 classpath 读到。 */
+  @Test
+  void mapModuleRasterImportAssetsAreListedAndPackaged() {
+    Map<String, Object> discovered = ModuleWebUI.discover();
+    assertThat(discovered.get("errors")).isEqualTo(List.of());
+    List<?> modules = (List<?>) discovered.get("modules");
+    assertThat(modules).hasSize(1);
+    Map<?, ?> map = (Map<?, ?>) modules.get(0);
+    assertThat(map.get("version")).isEqualTo(2);
+    List<String> assets = ((List<?>) map.get("assets")).stream().map(String::valueOf).toList();
+    assertThat(assets)
+        .containsExactly(
+            "map-raster-core.js",
+            "map-raster-draft.js",
+            "map-png.js",
+            "examples/horn-of-africa.png");
+    for (String asset :
+        List.of(
+            "map-raster-core.js",
+            "map-raster-draft.js",
+            "map-png.js",
+            "examples/horn-of-africa.png")) {
+      try (InputStream in = getClass().getResourceAsStream("/webui/modules/map/" + asset)) {
+        assertThat(in).as("classpath /webui/modules/map/%s 必须可读", asset).isNotNull();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
+  }
+
   /** D-036：/webui/modules/... 路径只能拼一次 classpath 根。 */
   @Test
   void staticHandlerDoesNotDoublePrefixWebuiRoot() {

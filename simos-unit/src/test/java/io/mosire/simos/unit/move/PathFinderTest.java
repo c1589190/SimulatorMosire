@@ -6,6 +6,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
+import io.mosire.simos.map.generate.MapWrap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.Unit;
@@ -74,16 +75,34 @@ class PathFinderTest {
 
   /** 给定逐格地形的图：hexes 与 terrainBlocks 原子构造（分割不变式）。 */
   private static GameMap mapWith(Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain) {
+    return mapWith(hexes, terrain, MapWrap.none());
+  }
+
+  private static GameMap mapWith(
+      Map<HexCoord, HexCell> hexes, Map<HexCoord, String> terrain, MapWrap wrap) {
+    GenerationSpec base = GenerationSpec.defaults(0L);
+    GenerationSpec spec =
+        new GenerationSpec(
+            base.seed(),
+            base.mapRadius(),
+            base.baseSeaLevel(),
+            base.mainRidges(),
+            base.fragments(),
+            base.bands(),
+            base.ridges(),
+            base.fragmentParams(),
+            base.contourCacheMax(),
+            wrap);
     return new GameMap(
         hexes,
-        TerrainBlocks.split(terrain),
+        TerrainBlocks.split(terrain, wrap),
         Map.of(),
         Map.of(),
         detourTerrainTypes(),
         Map.of(),
         Map.of(),
         Map.of(),
-        GenerationSpec.defaults(0L));
+        spec);
   }
 
   private static Map<String, TerrainType> detourTerrainTypes() {
@@ -177,6 +196,23 @@ class PathFinderTest {
           .as("对称夹具第 %d 次重跑", i)
           .isEqualTo(symFirst);
     }
+  }
+
+  @Test
+  void cylinderWrapMakesTheLeftAndRightEdgesAdjacent() {
+    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
+    for (int q = 0; q < 5; q++) {
+      hexes.put(new HexCoord(q, 0), new HexCell(0.5));
+    }
+    GameMap map = mapWith(hexes, flatTerrain(hexes), new MapWrap(true, 0, 5));
+    Optional<List<HexCoord>> path =
+        PathFinder.findPath(
+            map,
+            new HexCoord(0, 0),
+            new HexCoord(4, 0),
+            MoveFixture.unit(),
+            TerrainMovementCost.INSTANCE);
+    assertThat(path).contains(List.of(new HexCoord(0, 0), new HexCoord(4, 0)));
   }
 
   @Test

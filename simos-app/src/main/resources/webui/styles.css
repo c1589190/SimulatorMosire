@@ -2935,3 +2935,38 @@ body.workbench-page .shell-state {
   font-size: 11px;
   color: var(--muted);
 }
+
+/* 底图导入工作区：与地图编辑共用工具，独立宽画布不挤占侧栏。 */
+.raster-dialog { width: min(1320px, 96vw); max-width: 96vw; max-height: 94vh; padding: 0; border: 1px solid var(--border, #435169); border-radius: 14px; background: var(--panel, #182130); color: inherit; box-shadow: 0 24px 90px #0009; }
+.raster-dialog::backdrop { background: #06101bd9; }
+.raster-heading { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 10px; gap: 20px; }
+.raster-heading h2 { margin: 0; font-size: 23px; }
+.raster-eyebrow { margin: 0 0 5px; color: #9bb3c9; font-size: 12px; }
+.raster-steps { list-style: none; display: flex; gap: 8px; margin: 0; padding: 8px 24px 16px; border-bottom: 1px solid #ffffff18; }
+.raster-steps li { flex: 1; padding: 10px; background: #ffffff06; border-radius: 6px; color: #9aabc0; font-size: 13px; }
+.raster-steps li.active { color: #b7e5ff; background: #36749b44; }
+.raster-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); }
+.raster-settings { padding: 18px; border-right: 1px solid #ffffff18; display: flex; flex-direction: column; gap: 13px; max-height: 68vh; overflow: auto; }
+.raster-settings label, .raster-settings label input, .raster-settings select { display: block; width: 100%; box-sizing: border-box; }
+.raster-settings label { font-size: 12px; line-height: 1.8; }
+.raster-settings input[type=checkbox] { display: inline; width: auto; }
+.raster-settings p { margin: 0; font-size: 12px; }
+.raster-settings input, .raster-settings select { margin-top: 3px; }
+.raster-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.raster-preview-area { padding: 16px 20px; min-width: 0; max-height: 68vh; overflow: auto; }
+.raster-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 12px; }
+.raster-preview-toolbar label { display: flex; align-items: center; gap: 6px; }
+.raster-preview-toolbar input[type=range] { width: 95px; }
+.raster-canvas-wrap { position: relative; background: #0c1420; border: 1px solid #ffffff15; border-radius: 8px; overflow: hidden; }
+#raster-canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+#raster-empty { position: absolute; top: 43%; left: 10%; right: 10%; text-align: center; color: #92a7bd; pointer-events: none; }
+.raster-correction { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 12px; }
+.raster-correction select { max-width: 200px; }
+.raster-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.raster-counts .png-preview-row { background: #ffffff09; padding: 5px 8px; border-radius: 5px; font-size: 12px; }
+.raster-preview-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.raster-confirmation { margin-top: 14px; padding: 14px; border: 1px solid #6c9db35c; background: #264a5b33; border-radius: 8px; }
+.raster-confirmation h3 { margin-top: 0; }
+.raster-confirmation button { margin-top: 12px; display: block; }
+.raster-clear { margin-top: auto; font-size: 12px; }
+@media (max-width: 800px) { .raster-layout { grid-template-columns: 1fr; } .raster-settings { max-height: none; border-right: none; border-bottom: 1px solid #ffffff18; } .raster-preview-area { max-height: none; } .raster-dialog { max-height: 96vh; } .raster-heading, .raster-steps { padding-left: 14px; padding-right: 14px; } }

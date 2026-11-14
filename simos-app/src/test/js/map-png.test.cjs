@@ -46,6 +46,7 @@ function loadPngModule() {
   win.document = doc;
   win.SimosHexGeom = geom;
   vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(path.dirname(MODULE_FILE), "map-raster-core.js"), "utf8"), sandbox);
   vm.runInContext(fs.readFileSync(MODULE_FILE, "utf8"), sandbox, { filename: MODULE_FILE });
   return win.SimosMapPng;
 }
@@ -83,7 +84,7 @@ test("nearestTerrain-picks-nearest-and-honors-threshold", () => {
   assert.equal(far, null);
 });
 
-test("buildPlan-samples-hex-center-and-maps-color", () => {
+test("buildPlan-preserves-palette-compatibility-with-area-sampling", () => {
   const plan = P.buildPlan(
     [{ q: 0, r: 0 }],
     solidPixels(12, 12, "#9CCB5B"),

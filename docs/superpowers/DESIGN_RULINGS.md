@@ -13,6 +13,8 @@
 
 ## 二、关键跨切面设计裁定
 
+- **2026-11-14 底图导入子模式**：[目标运行设计](specs/2026-11-14-raster-import-runtime-design.md)，局部扩展 D-036 的 S8；整合底图、区域采样识别、人工修整、单命令确认与草稿恢复。
+
 | 主题 | 当前设计入口 | 说明 |
 |---|---|---|
 | 工具归属 / app 只组装 | [`specs/2026-10-12-ga-module-and-tool-descent.md`](specs/2026-10-12-ga-module-and-tool-descent.md) | **领域工具实现归领域模块；`ga-spi` 只放工具契约；app 只装配/桥接；仅跨切片工具留 app**。用户原话见下。 |

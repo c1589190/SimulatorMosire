@@ -122,6 +122,7 @@ import io.mosire.simos.map.LandTypeId;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlock;
+import io.mosire.simos.map.generate.MapWrap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexVertex;
 import io.mosire.simos.map.pathway.EdgeRef;
@@ -442,6 +443,13 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("mapId", mapId);
     view.put("hexCount", map.hexes().size());
+    MapWrap wrap = map.spec().wrap();
+    view.put(
+        "wrap",
+        Map.of(
+            "wrapX", wrap.wrapX(),
+            "qMin", wrap.qMin(),
+            "qWidth", wrap.qWidth()));
     view.put("blocks", blockViews(map));
 
     List<Map<String, Object>> regions = new ArrayList<>(map.regions().size());

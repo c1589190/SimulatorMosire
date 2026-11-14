@@ -100,11 +100,17 @@ class RegressionGuardsTest {
   private static final String HEXCOORD_FILE =
       "simos-map/src/main/java/io/mosire/simos/map/hex/HexCoord.java";
 
-  /** L8② 的冻结白名单：{@code new GameMap(} 的逐文件调用点数（P1 后 GameMap 多一个 with* ⇒ 10 处）。 */
+  /**
+   * L8② 的冻结白名单：{@code new GameMap(} 的逐文件调用点数（P1 后 GameMap 多一个 with* ⇒ 10 处）。
+   *
+   * <p>★ 2026-11-14 R4：{@code RasterImportOperations} 按设计“一次构造完整 GameMap 再 MapChangeSet.between”⇒
+   * 新增 1 处登记点；其余文件不变。
+   */
   private static final Map<String, Long> GAME_MAP_CONSTRUCTOR_CALL_SITES =
       Map.of(
           "simos-map/src/main/java/io/mosire/simos/map/GameMap.java", 10L,
           "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java", 1L,
+          "simos-map/src/main/java/io/mosire/simos/map/ops/RasterImportOperations.java", 1L,
           "simos-map/src/main/java/io/mosire/simos/map/generate/MapGenerator.java", 1L);
 
   /** L9③ 的冻结白名单：只在 {@code TerrainCatalog} 里出现的四个 key（其余三词有合法常量，不进扫描）。 */
