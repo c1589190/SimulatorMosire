@@ -23,10 +23,10 @@
 | 项 | 当前事实 |
 |---|---|
 | 分支 | `feature/d036-node-editor`（已推送） |
-| HEAD | `95a37969`（`fix(ui): 同 tick 编辑状态改为“已写入当前节点”`，2026-11-13） |
-| upstream | `origin/feature/d036-node-editor`；新分支已推送，`main` 的 27 个提交未推送到 `origin/main` |
+| HEAD | `46965a2f`（`feat(tools): 地球等面积六角地图生成与当前导入格式修复`，2026-11-14） |
+| upstream | `origin/feature/d036-node-editor`；分支已推送；相对 `origin/main` 领先 30 个提交 |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-13：D-036 全切片；Chrome 实测修复 14 个 WebUI/地图编辑 bug（含编辑手势命中 + 同 tick writeEpoch + 状态文案）；full gate **321s / 3777 tests**；前端 428/428；分支 `feature/d036-node-editor` 已推送 |
+| 最近活动 | 2026-11-14：Equal Earth 地球比例六角图生成并导入成功（3965 hex / 27.64% land）；`gsimap_import.py` 升级到当前 10 模块格式；2026-11-13 full gate 321s / 3777 tests / 前端 428/428 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -113,6 +113,7 @@ SKILLS LINT PASSED (active skills=1)
 ## 6. 未验证 / 风险 / blocker
 
 1. **D-034~D-036 工程主体已落地**：目标运行设计、8 个切片与聚焦测试已实现；**不是所有历史字段都迁移完**（见第 2 条）。
+2a. **地球比例地图已做导入试验**：`tools/build_earth_hex_map.py` + Natural Earth 110m + Equal Earth 等面积投影，3965 格 / 陆地 27.64% / 8 大陆区域；`gsimap_import.py` 当前 10 模块空切片兼容修复；editor 实起并验证 `map.SetTerrain`。这是**平面等面积投影**，不是球面环绕拓扑；真要“地球仪”需 Goldberg 六角化/五边形缺陷或经度接缝语义。详见 `docs/superpowers/reports/2026-11-14-earth-globe-hex-import.md`。
 2. **自然语言字段迁移未完成**：`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等仍存正文；文档系统已就位，但领域 schema 改造与旧档迁移未做。另有 full profile/旧档的中间 revision 压缩未做；editor 新世界从源头不产生中间 revision。
 3. **旧存档在 HEAD 不可读**：2026-11-13 实测，`run/small-world-db` 与 `test-world/store` 均因领域 schema 漂移无法打开；项目没有 schema 版本/迁移器。
 4. **导入器不在 CI**：`tools/gsimap_import.py` 的 map 切片当前可读，但同库 `social/unit` 旧切片会让整库打不开；导入器/真实世界脚本未进门禁。
@@ -132,6 +133,7 @@ SKILLS LINT PASSED (active skills=1)
 3. ✅ P3 2+1 模式 + 模块前端 manifest 发现；P4 editor profile 卸载 economy/production/culture；P5 PNG 取色/应用。
 4. ✅ full gate 2026-11-13 最终 PASS（321s）：GovPayToolTest 空库等待 31s→3.75s；180 tick 模拟打 `multitick` tag 移出默认门禁；全仓 3777 / 0 / 0 / 7；前端 428/428。
 5. **下一步第一命令**：`tools/mvn-lock.sh -Dsimos.excludedTestGroups= -Dtest=StagedAgricultureEconomy180Test -pl simos-app -am test`（需要跑 180 tick 长测时显式 opt-in）。
+6a. **地球图下一步（待裁定）**：是否把 Equal Earth 六角图登记为正式世界；是否投入球面拓扑（Goldberg）而不是继续平面投影；若登记，补齐城市/单位/人口生成。
 6. ✅ 地图编辑真实链路：编辑手势改用 `hexAt`（不再被 GOV/城市/交战图标挡住）；同 tick `writeEpoch` 贯通服务端/前端缓存，命令成功后地图与读口立即新态。浏览器实测 grep 证据见 WebUI 报告第 12/13 条。
 7. **剩余工程**：
    - 自然语言字段迁移：RegionMeta.description、CombatRecord/CombatStage.text → 文档地址；
