@@ -22,11 +22,11 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 分支 | `feature/d036-node-editor`（已推送） |
-| HEAD | `46965a2f`（`feat(tools): 地球等面积六角地图生成与当前导入格式修复`，2026-11-14） |
-| upstream | `origin/feature/d036-node-editor`；分支已推送；相对 `origin/main` 领先 30 个提交 |
+| 分支 | `image-world-import`（独立 worktree，未推送） |
+| HEAD | `c4679917`（`feat(image-world): 空白世界 + PNG 底图自动六角网格导入`，2026-11-14） |
+| upstream | 尚无；`image-world-import` 独立分支，相对 `origin/main` 领先 32 个提交 |
 | 工作树 | 干净；仅 `.opencode/` 未跟踪；`worktree/` 已清空 |
-| 最近活动 | 2026-11-14：Equal Earth 地球比例六角图生成并导入成功（3965 hex / 27.64% land）；`gsimap_import.py` 升级到当前 10 模块格式；2026-11-13 full gate 321s / 3777 tests / 前端 428/428 |
+| 最近活动 | 2026-11-14：新增 `image-world` 空白世界 + PNG 自动六角网格导入（实测 1400×760 底图 86 列 → 4644 hex）；原圆柱面 WIP 留在主工作树未提交 |
 | reactor | **18 个 `simos-*` 模块**（根 `pom.xml`） |
 | AgentLib | 本仓 POM 仍钉 `agentlib-mosire.version=0.2.3-SNAPSHOT`；版本切换未做 |
 
@@ -113,6 +113,7 @@ SKILLS LINT PASSED (active skills=1)
 ## 6. 未验证 / 风险 / blocker
 
 1. **D-034~D-036 工程主体已落地**：目标运行设计、8 个切片与聚焦测试已实现；**不是所有历史字段都迁移完**（见第 2 条）。
+2b. **图片底图空白世界已可用**：`--world=image-world` 起 0 hex 空白地图；WebUI 地图编辑 PNG 面板可载入底图、填网格列数、点“从底图生成六角网格”；新的 `map.ImportHexGrid` 只在空白地图上执行并原子建立 hexes/terrainBlocks。实测 1400×760 底图 86 列 = 4644 hex。当前只是平面网格，不处理额外连通性/wrap；底图是编辑会话临时层，生成后的地形会持久化。报告：`docs/superpowers/reports/2026-11-14-image-world-grid-import.md`。
 2a. **地球比例地图已做导入试验**：`tools/build_earth_hex_map.py` + Natural Earth 110m + Equal Earth 等面积投影，3965 格 / 陆地 27.64% / 8 大陆区域；`gsimap_import.py` 当前 10 模块空切片兼容修复；editor 实起并验证 `map.SetTerrain`。这是**平面等面积投影**，不是球面环绕拓扑；真要“地球仪”需 Goldberg 六角化/五边形缺陷或经度接缝语义。详见 `docs/superpowers/reports/2026-11-14-earth-globe-hex-import.md`。
 2. **自然语言字段迁移未完成**：`RegionMeta.description`、`CombatRecord.text`、`CombatStage.text` 等仍存正文；文档系统已就位，但领域 schema 改造与旧档迁移未做。另有 full profile/旧档的中间 revision 压缩未做；editor 新世界从源头不产生中间 revision。
 3. **旧存档在 HEAD 不可读**：2026-11-13 实测，`run/small-world-db` 与 `test-world/store` 均因领域 schema 漂移无法打开；项目没有 schema 版本/迁移器。
