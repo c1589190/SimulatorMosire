@@ -179,7 +179,7 @@ class ShellAssemblySmokeTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策工具并入后 GM 桶 = **182**。
    */
-  private static final int GM_BUCKET_SIZE = 189;
+  private static final int GM_BUCKET_SIZE = 196;
 
   /** ★★ 2026-10-15 用户裁定「甲」：{@code 54 → 61}（= 类2 24 + 类3 37；那 7 条补了 DM 标签的工具进本桶）。 */
   private static final int DECISION_BUCKET_SIZE = 64;

@@ -1,0 +1,10 @@
+{
+  "webuiId": "gov",
+  "module": "simos-gov",
+  "label": "国家",
+  "version": 1,
+  "assets": [
+    "nation-editor.js"
+  ],
+  "notes": "国家编辑入口：一次 JSON 调用 simos.gov.editNation；读回 simos.gov.nations 的国家并集/颜色/GOV/PNG。"
+}

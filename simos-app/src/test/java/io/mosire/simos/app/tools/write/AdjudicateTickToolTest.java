@@ -594,6 +594,7 @@ class AdjudicateTickToolTest {
             "{\"id\":\"u-9\",\"name\":\"x\",\"position\":{\"q\":1,\"r\":1},"
                 + "\"speed\":1,\"mobilityPerMille\":500}",
             "u-9"));
+    samples.put("unit.UpdateFormationNode", List.of("{\"id\":\"u-1\",\"speed\":2}", "u-1"));
     samples.put("unit.CancelRoute", List.of("{\"id\":\"u-1\"}", "u-1"));
     samples.put("unit.DisbandUnit", List.of("{\"id\":\"u-1\"}", "u-1"));
     samples.put("unit.SetComposition", List.of("{\"id\":\"u-1\",\"equipment\":[]}", "u-1"));
@@ -823,6 +824,22 @@ class AdjudicateTickToolTest {
             "{\"mode\":\"patch\",\"cells\":[{\"q\":1,\"r\":3,\"terrain\":\"plains\","
                 + "\"height\":0.37}]}",
             MAP_ID + "/hex/1_3"));
+    // ★ 2026-11-14 自由判图：直接多格地形 + 有序格链连通性都实现 CommandTargets（逐格声明目标）。
+    samples.put(
+        "map.PaintTerrain",
+        List.of(
+            "{\"cells\":[{\"q\":1,\"r\":1,\"terrain\":\"mountains\",\"height\":0.8},"
+                + "{\"q\":1,\"r\":3,\"terrain\":\"plains\"}]}",
+            MAP_ID + "/hex/1_1",
+            MAP_ID + "/hex/1_3"));
+    samples.put(
+        "map.ConnectHexes",
+        List.of(
+            "{\"kind\":\"river\",\"hexes\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},"
+                + "{\"q\":1,\"r\":3}],\"op\":\"merge\"}",
+            MAP_ID + "/hex/1_1",
+            MAP_ID + "/hex/1_2",
+            MAP_ID + "/hex/1_3"));
     // ★★★ D-032 L4：Map arable owner 播种命令也实现 CommandTargets（逐 entry 的 hex 资源目标）。
     samples.put(
         "map.SeedArableOwnership",
@@ -987,8 +1004,10 @@ class AdjudicateTickToolTest {
                 + "★★★ D-032 L4：map.SeedArableOwnership ⇒ 101 → 102；"
                 + "★★★ 2026-10-23 AgentLib×D-032 集成实测：旧 Decide/Submit/UpsertDecisionPacket 三条退役、"
                 + "新增 ApplyDecisionPackage，且有 side 的 SeedArable 样本 ⇒ 101 +1 −3 +1 = 100；"
-                + "★★ 2026-11-14 R4：map.ImportRaster 实现 CommandTargets ⇒ 100 → 101）")
-        .hasSize(101);
+                + "★★ 2026-11-14 R4：map.ImportRaster 实现 CommandTargets ⇒ 100 → 101；"
+                + "★★ 2026-11-14 自由判图：map.PaintTerrain / map.ConnectHexes 实现 CommandTargets ⇒ 101 → 103；"
+                + "★★ 2026-11-14 国家/编制编辑器：unit.UpdateFormationNode 实现 CommandTargets ⇒ 103 → 104）")
+        .hasSize(104);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

@@ -20,6 +20,7 @@ import io.mosire.simos.app.docs.WorldDocMeta;
 import io.mosire.simos.app.docs.WorldDocVersion;
 import io.mosire.simos.app.docs.WorldDocView;
 import io.mosire.simos.app.docs.WorldDocsService;
+import io.mosire.simos.app.editor.EditorToolBridge;
 import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.DecisionQueryService;
@@ -48,6 +49,8 @@ import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.reference.MapReferenceService;
+import io.mosire.simos.map.reference.MapReferenceViews;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.resolve.MapResolver;
@@ -75,6 +78,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -82,6 +86,7 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -311,16 +316,34 @@ public final class GuiServer implements AutoCloseable {
   /** D-036 P5：PNG 对齐/取色需要的全图 hex 坐标表。 */
   private static final String MAP_HEXES_PATH = "/api/map/hexes";
 
+  /** 参考图工件列表/发布（GM 输入工件；POST body 独立上限）。 */
+  private static final String MAP_REFERENCES_PATH = "/api/map/references";
+
+  /** 参考图查看（概览或局部原图 + 坐标；GUI 用 base64，工具用 assetId）。 */
+  private static final String MAP_REFERENCE_PATH = "/api/map/reference";
+
+  /** 参考图 POST body 上限（base64 放大后仍 ≤ 46MB；服务另有 32MB/32Mpx 预检）。 */
+  private static final long MAX_REFERENCE_BODY_BYTES = MapReferenceService.MAX_REQUEST_BYTES;
+
+  /** 网页编辑器固定 HTTP 桥（只桥接下列领域工具，不接受任意工具名）。 */
+  private static final String EDITOR_NATION_PATH = "/api/editor/nation";
+
+  private static final String EDITOR_FORMATION_PATH = "/api/editor/formation";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
           "/api/resolve",
+          EDITOR_NATION_PATH,
+          EDITOR_FORMATION_PATH,
           "/api/facets",
           DOCS_PATH,
           DOCS_SEARCH_PATH,
           DOCS_VERSION_PATH,
           MODULES_PATH,
           MAP_HEXES_PATH,
+          MAP_REFERENCES_PATH,
+          MAP_REFERENCE_PATH,
           "/api/map/overview",
           "/api/map/hex",
           "/api/map/path",
@@ -354,6 +377,9 @@ public final class GuiServer implements AutoCloseable {
       Set.of(
           "/api/command",
           "/api/advance",
+          EDITOR_NATION_PATH,
+          EDITOR_FORMATION_PATH,
+          MAP_REFERENCES_PATH,
           "/api/fork",
           DOCS_PATH,
           "/api/ga/start-decision",
@@ -388,6 +414,16 @@ public final class GuiServer implements AutoCloseable {
 
   /** 决策编排（T3）：{@code /api/ga/start-decision} 提交成功后跑 LLM 判决；null = 未接入（退回"只发起、不裁决"）。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
+
+  /**
+   * 参考图工件服务（2026-11-14）：与 MCP 工具共用 {@code RenderService} 持有的同一实例；null = 未接入（新端点 503）。
+   *
+   * <p>★ 本类只做 HTTP 接线（body 上限、base64、查询参数）与调用服务；原图解码、格网校验、视图渲染都在 {@code simos-map}。
+   */
+  private final MapReferenceService mapReferences;
+
+  /** 网页编辑器固定工具桥；null = 未接入（端点回 503，不假装成功）。 */
+  private final EditorToolBridge editorToolBridge;
 
   /**
    * 决策人 agent 运行流（T11C 的装配点）：{@code /api/ga/run-decision} 提交成功后跑一轮真 LLM；null = 未接入（退回"只落
@@ -486,6 +522,57 @@ public final class GuiServer implements AutoCloseable {
    * @param decisionAgentService 决策人 agent 运行流；null = 未接入（该端点只落触发事实、不跑那一轮）
    * @param calendarService 世界历法/气候配置服务；生产路径必须由 {@code Shell} 传 {@link CalendarService#load} 的同一实例
    */
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService,
+      DecisionAgentService decisionAgentService,
+      CalendarService calendarService) {
+    this(
+        queryService,
+        core,
+        mapId,
+        gmToolUsage,
+        llmConfig,
+        decisionAdjudicationService,
+        decisionAgentService,
+        calendarService,
+        null,
+        null);
+  }
+
+  /**
+   * 参考图接入版（2026-11-14）：多一个与 MCP 工具共用的 {@link MapReferenceService}；旧构造保留（测试/旧路径无参考图面）。
+   *
+   * @param mapReferences 参考图服务；null = 未接入（{@code /api/map/references*} 回 503，不假装成功）
+   */
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService,
+      DecisionAgentService decisionAgentService,
+      CalendarService calendarService,
+      MapReferenceService mapReferences) {
+    this(
+        queryService,
+        core,
+        mapId,
+        gmToolUsage,
+        llmConfig,
+        decisionAdjudicationService,
+        decisionAgentService,
+        calendarService,
+        mapReferences,
+        null);
+  }
+
+  /** 编辑器工具桥接入版（2026-11-14）：固定白名单 HTTP 桥，旧构造保留（测试/旧路径无编辑器写入口）。 */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP2",
       justification = "GUI 是组合根装配出来的请求处理器，持有配置门面与历法服务即其职责本身（只读/写配置、算日期季节），非内部表示外泄")
@@ -497,7 +584,9 @@ public final class GuiServer implements AutoCloseable {
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
-      CalendarService calendarService) {
+      CalendarService calendarService,
+      MapReferenceService mapReferences,
+      EditorToolBridge editorToolBridge) {
     this.decisionAgentService = decisionAgentService;
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
@@ -512,6 +601,8 @@ public final class GuiServer implements AutoCloseable {
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.llmConfig = llmConfig;
     this.decisionAdjudicationService = decisionAdjudicationService;
+    this.mapReferences = mapReferences;
+    this.editorToolBridge = editorToolBridge;
     this.worldDocs = WorldDocsService.defaultService();
     this.executor = Executors.newVirtualThreadPerTaskExecutor();
     this.staticHandler = new StaticHandler();
@@ -853,6 +944,76 @@ public final class GuiServer implements AutoCloseable {
     return List.copyOf(out);
   }
 
+  private Reply editorReadReply(
+      String toolName, Map<String, String> params, String idKey, String renderKey) {
+    if (editorToolBridge == null) {
+      return Reply.of(503, Map.of("error", "编辑器工具桥未接入"));
+    }
+    Map<String, Object> args = new LinkedHashMap<>();
+    copyIfPresent(params, args, "branch", "branch");
+    copyIfPresent(params, args, "revision", "revision");
+    copyIfPresent(params, args, idKey, idKey);
+    if (params.containsKey(renderKey)) {
+      String render = params.get(renderKey);
+      if ("true".equalsIgnoreCase(render)) {
+        args.put(renderKey, Boolean.TRUE);
+      } else if ("false".equalsIgnoreCase(render)) {
+        args.put(renderKey, Boolean.FALSE);
+      } else {
+        throw new IllegalArgumentException(renderKey + " 只接受 true/false: " + render);
+      }
+    }
+    if (args.containsKey("revision")) {
+      try {
+        args.put("revision", Long.parseLong(String.valueOf(args.get("revision"))));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("revision 必须是整数");
+      }
+    }
+    return editorReply(editorToolBridge.invoke(toolName, args));
+  }
+
+  private Reply editorWriteReply(HttpExchange exchange, String toolName) throws IOException {
+    if (editorToolBridge == null) {
+      return Reply.of(503, Map.of("error", "编辑器工具桥未接入"));
+    }
+    String as = queryParams(exchange).get("as");
+    if (as != null && !as.isBlank()) {
+      throw new IllegalArgumentException("编辑器端点不支持 as= 视角参数（GM 面固定写桥）");
+    }
+    JsonNode body = readBody(exchange);
+    if (!body.isObject()) {
+      throw new IllegalArgumentException("编辑器请求体必须是 JSON 对象");
+    }
+    @SuppressWarnings("unchecked")
+    Map<String, Object> args = MAPPER.convertValue(body, Map.class);
+    return editorReply(editorToolBridge.invoke(toolName, args));
+  }
+
+  private static Reply editorReply(Map<String, Object> result) {
+    if (Boolean.TRUE.equals(result.get("ok"))) {
+      return Reply.of(200, result);
+    }
+    Object code = result.get("code");
+    int status =
+        switch (code == null ? "" : String.valueOf(code)) {
+          case "BAD_REQUEST" -> 400;
+          case "CONFLICT" -> 409;
+          case "REJECTED" -> 422;
+          case "TOOL_ERROR" -> 500;
+          default -> 422;
+        };
+    return Reply.of(status, result);
+  }
+
+  private static void copyIfPresent(
+      Map<String, String> params, Map<String, Object> args, String paramKey, String argKey) {
+    String value = params.get(paramKey);
+    if (value != null && !value.isBlank()) {
+      args.put(argKey, value);
+    }
+  }
+
   private Reply handleGet(HttpExchange exchange, String path) throws IOException {
     if (EditorProfile.enabled() && pausedApi(path)) {
       return Reply.of(404, Map.of("error", "editor profile 已卸载该 API: " + path));
@@ -862,6 +1023,14 @@ public final class GuiServer implements AutoCloseable {
     boolean asPresent = actorParam != null && !actorParam.isBlank();
     DecisionMakerId actor = asPresent ? new DecisionMakerId(actorParam) : null;
 
+    if (path.equals(EDITOR_NATION_PATH)) {
+      rejectAs(path, asPresent);
+      return editorReadReply("simos.gov.nations", params, "nationId", "render");
+    }
+    if (path.equals(EDITOR_FORMATION_PATH)) {
+      rejectAs(path, asPresent);
+      return editorReadReply("simos.army.formation", params, "armyId", "render");
+    }
     if (path.equals("/api/state")) {
       return redactedIfRequested(asPresent, actor, params, stateReply());
     }
@@ -891,6 +1060,15 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals(MODULES_PATH)) {
       return Reply.of(200, ModuleWebUI.discover());
+    }
+    if (path.equals(MAP_REFERENCES_PATH)) {
+      // ★ 参考图是 GM 输入工件：未接 redaction ⇒ 带 as= 显式拒（fail-closed，不把全量参考图给 DM 视角）。
+      rejectAs(path, asPresent);
+      return mapReferencesReply();
+    }
+    if (path.equals(MAP_REFERENCE_PATH)) {
+      rejectAs(path, asPresent);
+      return mapReferenceReply(params);
     }
     if (path.equals(MAP_HEXES_PATH)) {
       SimulationState state = queryService.stateAt(target(params));
@@ -1097,6 +1275,15 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/command")) {
       return submitReply(exchange);
+    }
+    if (path.equals(EDITOR_NATION_PATH)) {
+      return editorWriteReply(exchange, "simos.gov.editNation");
+    }
+    if (path.equals(EDITOR_FORMATION_PATH)) {
+      return editorWriteReply(exchange, "simos.army.editFormation");
+    }
+    if (path.equals(MAP_REFERENCES_PATH)) {
+      return publishMapReferenceReply(exchange);
     }
     if (path.equals("/api/advance")) {
       return advanceReply(exchange);
@@ -1401,6 +1588,102 @@ public final class GuiServer implements AutoCloseable {
                 unit,
                 TerrainMovementCost.INSTANCE);
     return Reply.of(200, ApiViews.pathResult(path.isPresent(), path.orElse(List.of())));
+  }
+
+  // ── 参考图 HTTP 面（2026-11-14）：只接线 + 调 map 服务 ─────────────────────────
+
+  private Reply mapReferencesReply() {
+    if (mapReferences == null) {
+      return Reply.of(503, Map.of("error", "参考图服务未接入"));
+    }
+    return Reply.of(200, Map.of("references", mapReferences.list()));
+  }
+
+  private Reply mapReferenceReply(Map<String, String> params) {
+    if (mapReferences == null) {
+      return Reply.of(503, Map.of("error", "参考图服务未接入"));
+    }
+    String referenceId = requiredParam(params, "referenceId");
+    Integer q = optionalIntParam(params, "q");
+    Integer r = optionalIntParam(params, "r");
+    Integer radius = optionalIntParam(params, "radius");
+    boolean terrainOverlay = optionalBooleanParam(params, "terrainOverlay", false);
+    SimulationState state = queryService.stateAt(target(params));
+    MapReferenceService.View view =
+        mapReferences.view(referenceId, q, r, radius, terrainOverlay, ApiViews.gameMap(state));
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("branch", state.meta().ref().branch().value());
+    body.put("revision", state.meta().ref().revision().value());
+    body.putAll(MapReferenceViews.view(view, terrainOverlay));
+    // ★ GUI 需要可直接显示的图；工具面只拿 assetId（文本不放 base64）。
+    body.put("imageBase64", Base64.getEncoder().encodeToString(view.png()));
+    return Reply.of(200, body);
+  }
+
+  private Reply publishMapReferenceReply(HttpExchange exchange) throws IOException {
+    if (mapReferences == null) {
+      return Reply.of(503, Map.of("error", "参考图服务未接入"));
+    }
+    // 参考图是 GM 输入工件：POST 也不接受 as= 视角（fail-closed，避免“以 DM 身份上传/覆盖”的读法）。
+    String actorParam = queryParams(exchange).get("as");
+    if (actorParam != null && !actorParam.isBlank()) {
+      throw new IllegalArgumentException("参考图接口不支持 as= 视角参数（fail-closed）");
+    }
+    JsonNode root = readBody(exchange, MAX_REFERENCE_BODY_BYTES);
+    String fileName = textField(root, "fileName");
+    String imageBase64 = textField(root, "imageBase64");
+    byte[] imageBytes;
+    try {
+      imageBytes = Base64.getDecoder().decode(imageBase64);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 imageBase64 不是合法 base64", e);
+    }
+    List<MapReferenceService.Cell> cells = referenceCells(root.get("cells"));
+    MapReferenceService.Summary summary = mapReferences.publish(fileName, imageBytes, cells);
+    return Reply.of(200, Map.of("reference", MapReferenceViews.summary(summary)));
+  }
+
+  private static List<MapReferenceService.Cell> referenceCells(JsonNode node) {
+    if (node == null || !node.isArray() || node.isEmpty()) {
+      throw new IllegalArgumentException("字段 cells 必须是非空数组");
+    }
+    if (node.size() > MapReferenceService.MAX_CELLS) {
+      throw new IllegalArgumentException("字段 cells 不得超过 " + MapReferenceService.MAX_CELLS + " 格");
+    }
+    List<MapReferenceService.Cell> cells = new ArrayList<>(node.size());
+    for (JsonNode element : node) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 cells 的元素必须是 {q,r,imageX,imageY,imageRadius} 对象");
+      }
+      JsonNode q = element.get("q");
+      JsonNode r = element.get("r");
+      if (q == null
+          || r == null
+          || !q.isIntegralNumber()
+          || !r.isIntegralNumber()
+          || !q.canConvertToInt()
+          || !r.canConvertToInt()) {
+        throw new IllegalArgumentException("字段 cells 的 q/r 必须是 int 范围内的整数");
+      }
+      JsonNode x = element.get("imageX");
+      JsonNode y = element.get("imageY");
+      JsonNode radius = element.get("imageRadius");
+      if (x == null
+          || !x.isNumber()
+          || y == null
+          || !y.isNumber()
+          || radius == null
+          || !radius.isNumber()) {
+        throw new IllegalArgumentException("字段 cells 必须有数值 imageX/imageY/imageRadius");
+      }
+      cells.add(
+          new MapReferenceService.Cell(
+              new HexCoord(q.intValue(), r.intValue()),
+              x.doubleValue(),
+              y.doubleValue(),
+              radius.doubleValue()));
+    }
+    return List.copyOf(cells);
   }
 
   /** 区域详情（M7 T1，spec §3.3）：区域不存在、或带 {@code as=} 时不可见 ⇒ 404（同口径，不给存在性侧信道）。 */
@@ -2374,6 +2657,40 @@ public final class GuiServer implements AutoCloseable {
     try (InputStream in = exchange.getRequestBody()) {
       bytes = in.readAllBytes();
     }
+    return parseBody(bytes);
+  }
+
+  /** 有独立上限的请求体读取（参考图 base64 上传用）：边读边计数，超限立即拒，不先吃进内存再判。 */
+  private JsonNode readBody(HttpExchange exchange, long maxBytes) throws IOException {
+    String declared = exchange.getRequestHeaders().getFirst("Content-Length");
+    if (declared != null && !declared.isBlank()) {
+      long length;
+      try {
+        length = Long.parseLong(declared.trim());
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Content-Length 不是整数");
+      }
+      if (length > maxBytes) {
+        throw new IllegalArgumentException("请求体不得超过 " + maxBytes + " 字节");
+      }
+    }
+    ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
+    long total = 0;
+    try (InputStream in = exchange.getRequestBody()) {
+      byte[] buffer = new byte[64 * 1024];
+      int read;
+      while ((read = in.read(buffer)) >= 0) {
+        total += read;
+        if (total > maxBytes) {
+          throw new IllegalArgumentException("请求体不得超过 " + maxBytes + " 字节");
+        }
+        out.write(buffer, 0, read);
+      }
+    }
+    return parseBody(out.toByteArray());
+  }
+
+  private static JsonNode parseBody(byte[] bytes) {
     if (bytes.length == 0) {
       throw new IllegalArgumentException("请求体为空");
     }
@@ -2381,6 +2698,8 @@ public final class GuiServer implements AutoCloseable {
       return MAPPER.readTree(bytes);
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("请求体不是合法 JSON: " + e.getOriginalMessage());
+    } catch (IOException e) {
+      throw new IllegalArgumentException("请求体不是合法 JSON: " + e.getMessage());
     }
   }
 
@@ -2443,6 +2762,35 @@ public final class GuiServer implements AutoCloseable {
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
     }
+  }
+
+  /** 可选整数查询参数：缺省/空白 ⇒ null；给了但非整数 ⇒ 400。 */
+  private static Integer optionalIntParam(Map<String, String> params, String name) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
+    }
+  }
+
+  /** 可选布尔查询参数；只认 true/false，其余 400（不静默当 false）。 */
+  private static boolean optionalBooleanParam(
+      Map<String, String> params, String name, boolean fallback) {
+    String value = params.get(name);
+    if (value == null || value.isBlank()) {
+      return fallback;
+    }
+    if ("true".equalsIgnoreCase(value)) {
+      return true;
+    }
+    if ("false".equalsIgnoreCase(value)) {
+      return false;
+    }
+    throw new IllegalArgumentException("查询参数 " + name + " 必须是 true 或 false: " + value);
   }
 
   /**

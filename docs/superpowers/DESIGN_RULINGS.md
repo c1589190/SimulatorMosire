@@ -13,6 +13,8 @@
 
 ## 二、关键跨切面设计裁定
 
+- **2026-11-14 自由判图与连通性工具**：[目标运行设计](specs/2026-11-14-map-reference-tools-design.md)，LLM 直接改地形/连接多格，自由工具调用，无提案与强制复核流程。
+
 - **2026-11-14 底图导入子模式**：[目标运行设计](specs/2026-11-14-raster-import-runtime-design.md)，局部扩展 D-036 的 S8；整合底图、区域采样识别、人工修整、单命令确认与草稿恢复。
 
 | 主题 | 当前设计入口 | 说明 |
@@ -24,6 +26,8 @@
 | D-032 标准小农业 v2 | [`specs/2026-10-19-d032-standard-agriculture-architecture-design-v2.md`](specs/2026-10-19-d032-standard-agriculture-architecture-design-v2.md) | 当前目标运行设计入口；旧目标设计只作历史。 |
 | 统一 lot/库存/市场 | [`specs/2026-10-22-d032-unified-lot-inventory-market-design.md`](specs/2026-10-22-d032-unified-lot-inventory-market-design.md) | 商品与土地同一订单簿/撮合入口；共享预算与冻结边界。 |
 | 家户文化/教区 | [`specs/2026-10-17-d033-parish-household-faith-design.md`](specs/2026-10-17-d033-parish-household-faith-design.md) | 文化身份、地方教区、共享流动表上的信奉选择；未实现部分按正文标注。 |
+| 国家/地区区域显示 | [`specs/2026-11-15-region-visibility-repair.md`](specs/2026-11-15-region-visibility-repair.md) | 已移除区域模式的浏览/图层/标签接回现有模式，独立基底区域边界与高亮。 |
+| 国家与完整军队编制编辑 | [`specs/2026-11-14-nation-formation-editor-design.md`](specs/2026-11-14-nation-formation-editor-design.md) | 一次 JSON 原子编辑国家/领土/GOV 或整个师旅营树、Social 人员、共同移动、图形与网页入口。 |
 | 社会/单位基础设计 | [`specs/2026-09-17-social-unit-simos-design.md`](specs/2026-09-17-social-unit-simos-design.md) | 人口/家户/编制树的基础契约；被后续专题局部扩展时看新文。 |
 | 聚合经济 v2 | [`specs/2026-09-25-aggregate-economy-v2-design.md`](specs/2026-09-25-aggregate-economy-v2-design.md) | 经济切片机制背景；D-032/新市场设计可能局部取代。 |
 | 产品收敛 / 时间线节点编辑 | [`specs/2026-11-13-timeline-node-editor-and-address-query-design.md`](specs/2026-11-13-timeline-node-editor-and-address-query-design.md) | **D-034**：产品收敛为“文游地图编辑器 + 数据保存处理器”；一个时间线状态机 + 地图/单位/战役三模式（GUI 面）+ 节点增量存储 + 每节点地址查询；经济/文化/生产力暂停。 |

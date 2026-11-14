@@ -134,7 +134,7 @@
     loadToken++; restoreVersion++; loading = false; sourceVersion++; image = null; blob = null; pixels = null; imageWidth = 0; imageHeight = 0; fileName = "";
     invalidate("", true);
     if (byId("png-sample")) byId("png-sample").disabled = true;
-    if (byId("raster-file-info")) byId("raster-file-info").textContent = "图片在本机处理，不上传原图。";
+    if (byId("raster-file-info")) byId("raster-file-info").textContent = "自动识别在浏览器本地处理，不上传原图；点“共享当前底图”给判图工具时，会把当前原图上传到本机世界服务。";
     stage("load"); draw();
   }
   async function loadSource(nextBlob, name, restoring) {
@@ -159,7 +159,8 @@
       var nextPixels = ctx.getImageData(0, 0, width, height).data;
       if (token !== loadToken) return;
       image = decoded; blob = nextBlob; fileName = name || "本地图像"; pixels = nextPixels; imageWidth = width; imageHeight = height; sourceVersion++;
-      byId("raster-file-info").textContent = fileName + " · " + width + "×" + height;
+      byId("raster-file-info").textContent = fileName + " · " + width + "×" + height
+        + " · 自动识别在本地；共享参考图时上传到本机世界服务。";
       byId("png-sample").disabled = false; stage("recognize");
       status(restoring ? "已恢复底图与参数；请重新识别，确认后才会写入地图。" : "底图已载入。调整格网与识别方式，再生成预览。", "ok");
       draw(); if (!restoring) scheduleSave();
@@ -455,10 +456,34 @@
     });
     updateControls(); draw();
   }
+  // ★ 2026-11-14 自由判图工具：只读导出当前底图 + 当前格网选择，不生成识别 plan、不写世界。
+  //   共享参考图与“创建缺失格”都直接取这一份输入；格网生成/套用沿用本文件已有的 options 与 core 几何。
+  function referenceInput() {
+    if (!blob || !imageWidth || !imageHeight) throw new Error("先在底图导入工作区载入图片");
+    var opts = readOptions();
+    var grid = opts.grid === "generate"
+      ? core.makeGrid(imageWidth, imageHeight, opts)
+      : core.existingGrid(hexes, opts);
+    if (!grid.length) throw new Error("当前格网没有可导出的格");
+    return { blob: blob, fileName: fileName || "本地底图", width: imageWidth, height: imageHeight, grid: grid, options: opts };
+  }
+  function blobBase64(value) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var text = String(reader.result || "");
+        var at = text.indexOf(",");
+        resolve(at >= 0 ? text.slice(at + 1) : text);
+      };
+      reader.onerror = function () { reject(new Error("底图读取失败")); };
+      reader.readAsDataURL(value);
+    });
+  }
   window.SimosMapPng = {
     parseHexColor: core && core.parseHexColor, nearestTerrain: core && core.nearestTerrain, buildPlan: core && core.buildPlan,
     readOptions: readOptions, preview: preview, apply: apply, clear: clear, open: openWorkspace, close: closeWorkspace, loadExample: loadExample,
     onToolChange: onToolChange, getPlan: function () { return plan; },
+    getReferenceInput: referenceInput, blobBase64: blobBase64,
     debugState: function () { return { fileName: fileName, width: imageWidth, height: imageHeight, hasImage: !!image, plan: plan, completed: !!completedPlan, overrides: Object.assign({}, overrides), draftKey: draftKey, sourceVersion: sourceVersion, parameterVersion: parameterVersion, restoreVersion: restoreVersion, loading: loading, applying: applying }; }
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind); else bind();

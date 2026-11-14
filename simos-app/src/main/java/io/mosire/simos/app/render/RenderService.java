@@ -1,15 +1,18 @@
 package io.mosire.simos.app.render;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.reference.MapReferenceService;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * 渲染服务：把"某个 revision 的某块视野"变成<b>可发给 LLM 的字节</b>，并把字节放进工件库。
@@ -28,6 +31,7 @@ public final class RenderService {
   private final QueryService query;
   private final RenderCache cache;
   private final ArtifactStore artifacts;
+  private final MapReferenceService mapReferences;
   private final int maxPngBytes;
 
   public RenderService(QueryService query, ArtifactStore artifacts) {
@@ -47,6 +51,11 @@ public final class RenderService {
     this.query = Objects.requireNonNull(query, "query");
     this.cache = Objects.requireNonNull(cache, "cache");
     this.artifacts = Objects.requireNonNull(artifacts, "artifacts");
+    // ★ 参考图工件与渲染 PNG 同属宿主工件库：目录取 ArtifactStore 相邻的 map-references，
+    //   发布 PNG 复用同一个内容寻址 putPng（不新建第二套工件库）。
+    this.mapReferences =
+        new MapReferenceService(
+            artifacts.directory().resolveSibling("map-references"), artifacts::putPng);
     if (maxPngBytes < 1) {
       throw new IllegalArgumentException("maxPngBytes 必须 ≥ 1: " + maxPngBytes);
     }
@@ -100,6 +109,30 @@ public final class RenderService {
             + "）";
     return new Rendered(
         text, Optional.of(assetId), attempt.png().length, attempt.width(), attempt.height());
+  }
+
+  /**
+   * 窄写入口：返回"字节 → 内容寻址 assetId"的发布闭包，不把工件库或本服务的其余写面交出去。
+   *
+   * <p>★ 编制图/国家图等非地图视图像只需要这一个动作；服务本身不新增 public put/set 方法。
+   */
+  public Function<byte[], String> pngPublisher() {
+    return artifacts::putPng;
+  }
+
+  /**
+   * 地图参考图服务（同一实例供 MCP 工具与 GUI HTTP 共用；Shell 由本服务取出后传 GuiServer）。
+   *
+   * <p>★ 只暴露服务对象，不暴露 ArtifactStore 的写面——真正写工件仍是本服务注入的 {@code pngPublisher} 窄闭包。
+   *
+   * <p>★★ <b>为什么这里是显式共享身份而不是 EI 缺陷</b>：GUI HTTP 与 MCP 工具必须拿同一个服务实例（同一参考图缓存/同一工件身份）；
+   * 它是有意共享的宿主工件服务，不是可复制的世界状态值。返回共享实例正是它的正确契约。
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "参考图服务是显式共享的宿主工件服务：GUI HTTP 与 MCP 工具必须使用同一实例（同一缓存/同一参考图身份），不是可复制的世界状态值")
+  public MapReferenceService mapReferences() {
+    return mapReferences;
   }
 
   /** 渲染字符图（无视觉能力模型的回落形态；不产工件）。 */

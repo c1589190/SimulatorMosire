@@ -1,0 +1,175 @@
+{
+  "date": "2026-11-14",
+  "checkpointCommit": "b9d8fe1d",
+  "checkpointPushed": "origin/feature/d036-node-editor",
+  "featureWorkUncommitted": true,
+  "build": {
+    "jarBytes": 32221686,
+    "jarSha256": "9f8c6598e1001cf8ea66781d6fc22adf2b877c013acccb2b36915c47e5e719b8",
+    "tests": {
+      "tests": 3835,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 7
+    },
+    "reports": 515,
+    "frontend": 482,
+    "fullLog": "/tmp/simos-reference-full-green.log"
+  },
+  "gui": "http://127.0.0.1:18511/",
+  "mcp": "http://127.0.0.1:18515/mcp",
+  "store": "/home/cna/SimulatorMosire/run/map-reference-demo/world",
+  "referenceId": "4c39064bc155a22bfb5290dcd2cefd3c6510f5baabed8cfbbbdda5b2b25daa5e",
+  "demo": {
+    "hexCount": 1392,
+    "terrainCounts": {
+      "plains": 771,
+      "low_hills": 89,
+      "mountains": 169,
+      "ocean": 363
+    },
+    "riverEdges": 32,
+    "roadEdges": 16,
+    "sameTick": 0,
+    "headRevision": 1,
+    "basis": "控制方阅读用户原图后选取的粗略演示轮廓；用于展示自由批量编辑，非DEM或已校准地理数据。道路仅为工具演示线。"
+  },
+  "browser": {
+    "beforeRecognitionPlan": false,
+    "shareWorldWrites": 0,
+    "createGridCommands": 1,
+    "largeImageExactCellPick": true,
+    "refineCommandRequests": 6,
+    "invalidPathAutoRetries": 0,
+    "invalidPathChangedRevisionOrEpoch": false,
+    "uncaughtErrors": 0,
+    "localRemovePreservedRiverAndOtherRoadEdge": true
+  },
+  "restart": {
+    "overviewEqual": true,
+    "referencesEqual": true,
+    "sampleHeightTerrainEqual": true,
+    "mcpImageBytes": 1928602,
+    "mcpImageSha256Equal": true
+  },
+  "emptyDomainCollections": {
+    "businessCollectionsEmpty": true,
+    "defaultDefinitions": {
+      "economy": {
+        "currencies": 1,
+        "moneyInstruments": 1
+      },
+      "social": {
+        "provisioning": 4,
+        "vitalRates": 1,
+        "vitalRemainders": 1
+      }
+    },
+    "counts": {
+      "economy": {
+        "classes": 0,
+        "debtContracts": 0,
+        "flows": 0,
+        "allocations": 0,
+        "relations": 0,
+        "marketTables": 0,
+        "shipments": 0,
+        "assetShares": 0,
+        "operatorConditions": 0,
+        "demands": 0,
+        "classStructures": 0,
+        "classPositions": 0,
+        "classStandings": 0,
+        "productionOrganizations": 0,
+        "assetRules": 0,
+        "governments": 0,
+        "moneyIssuances": 0,
+        "crisisSignals": 0,
+        "modeTransitions": 0,
+        "classShares": 0,
+        "periodicAdjustments": 0,
+        "currencies": 1,
+        "moneyInstruments": 1,
+        "marketZones": 0,
+        "householdDebtRefs": 0,
+        "commodityFreightBaseMilli": 0,
+        "govMarketMandates": 0,
+        "marketRoundStats": 0,
+        "productionRosters": 0,
+        "wageCarryRemainders": 0,
+        "assetOccupancies": 0,
+        "inventoryReservations": 0,
+        "productionWageAnchors": 0,
+        "householdFlowTables": 0,
+        "transportCapacityBatches": 0,
+        "transportPriceAnchors": 0
+      },
+      "social": {
+        "populations": 0,
+        "cities": 0,
+        "groups": 0,
+        "households": 0,
+        "populationEvents": 0,
+        "provisioning": 4,
+        "vitalRates": 1,
+        "vitalRemainders": 1,
+        "satietyPerMille": 0,
+        "fleeStates": 0
+      },
+      "production": {
+        "industries": 0,
+        "modes": 0,
+        "instances": 0,
+        "experienceTracks": 0,
+        "householdExperience": 0,
+        "unlocks": 0,
+        "efficiency": 0,
+        "outputQuantityOverrides": 0
+      },
+      "culture": {
+        "householdCultures": 0
+      },
+      "unit": {
+        "units": 0,
+        "commandChains": 0
+      },
+      "gov": {
+        "offices": 0,
+        "remittanceStates": 0,
+        "nations": 0,
+        "diplomaticRelations": 0,
+        "diplomaticEvents": 0,
+        "nationAffiliations": 0,
+        "govAffiliations": 0
+      },
+      "ga": {
+        "decisionPackets": 0,
+        "mergedEffectPlans": 0,
+        "directives": 0,
+        "verdicts": 0,
+        "decisionMakers": 0,
+        "info": 0,
+        "effects": 0
+      },
+      "actor": {
+        "actors": 0,
+        "accounts": 0
+      },
+      "army": {
+        "armies": 0,
+        "combats": 0,
+        "armyAffiliations": 0
+      }
+    }
+  },
+  "artifacts": [
+    "docs/superpowers/reports/2026-11-14-map-reference-tools-preview.png",
+    "docs/superpowers/reports/2026-11-14-map-reference-tools-labeled-tile.png"
+  ],
+  "logs": "/home/cna/SimulatorMosire/run/map-reference-demo",
+  "notVerified": [
+    "模型自主绘制完整地图",
+    "真实DEM海拔/河流方向/流量",
+    "经济/派系局势/多年AI编排"
+  ]
+}

@@ -4,6 +4,9 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.change.MapChangeSet;
+import io.mosire.simos.map.generate.MapWrap;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.hex.HexDirection;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
 import io.mosire.simos.util.log.EventLog;
@@ -50,6 +53,9 @@ public final class EdgeOperations {
 
   /** 显式模式：只加不删。 */
   private static final String MERGE = "merge";
+
+  /** 显式模式：只摘点名边的该 kind。 */
+  private static final String REMOVE = "remove";
 
   private EdgeOperations() {}
 
@@ -150,6 +156,182 @@ public final class EdgeOperations {
       }
     }
     return MapChangeSet.between(base, base.withEdges(next));
+  }
+
+  /**
+   * 按**有序格链**直接增/删点名边上的某个 kind，返回变更集。
+   *
+   * <p>★ 与 {@link #setEdge} 的 replace 不同：本操作**只碰链上相邻两格形成的边**，其他边（含图外边）、其他 kind 与 props
+   * 一字不动；也不做任何寻路/缺口猜测——链不连续就整批拒。
+   *
+   * <p>★ 相邻判定用 long 差值与 MapWrap 周期换算：远格不会因 {@code int} 溢出被误判成相邻。闭环允许起点在链尾再次出现（只要形成的 无向边不重复、不出现自环）。
+   *
+   * @param base 现图（只读；通路组词表、邻接拓扑与既有 edges 都取自它）
+   * @param kind 已注册通路组 id（大小写不敏感）
+   * @param hexes 有序格链；2..12001 点，每点都必须在图上
+   * @param op {@code merge} 或 {@code remove}（大小写不敏感，**无默认**）
+   * @return 只有 {@code edges} 可能非 {@code Unchanged} 的变更集
+   * @throws IllegalArgumentException 未知 kind/op、点数越界、端点不在图上、某段不相邻、自环、重复无向边
+   */
+  public static MapChangeSet connectChain(
+      GameMap base, String kind, List<HexCoord> hexes, String op) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(kind, "kind");
+    Objects.requireNonNull(hexes, "hexes");
+    Objects.requireNonNull(op, "op");
+    String tagKey = resolveKind(base, kind);
+    String operation = normalizeConnectOp(op);
+    if (hexes.size() < 2 || hexes.size() > 12_001) {
+      debugRejected(
+          "connectChain",
+          "格链点数必须在 2..12001",
+          "kind",
+          tagKey,
+          "op",
+          operation,
+          "points",
+          hexes.size());
+      throw new IllegalArgumentException("hexes 必须是 2..12001 个格的有序链");
+    }
+    for (HexCoord hex : hexes) {
+      if (hex == null) {
+        debugRejected("connectChain", "格链不得含空格", "kind", tagKey, "op", operation);
+        throw new IllegalArgumentException("hexes 不得包含空坐标");
+      }
+      if (!base.hexes().containsKey(hex)) {
+        debugRejected("connectChain", "端点不在图上", "kind", tagKey, "op", operation, "hex", hex);
+        throw new IllegalArgumentException("格不在图上: " + hex);
+      }
+    }
+    List<EdgeRef> ordered = new ArrayList<>(hexes.size() - 1);
+    Set<EdgeRef> seen = new java.util.LinkedHashSet<>();
+    for (int i = 1; i < hexes.size(); i++) {
+      HexCoord previous = hexes.get(i - 1);
+      HexCoord current = hexes.get(i);
+      if (previous.equals(current)) {
+        debugRejected(
+            "connectChain", "相邻两点是同一格（自环）", "kind", tagKey, "op", operation, "hex", current);
+        throw new IllegalArgumentException("第 " + i + " 段是自环（同一格）: " + current);
+      }
+      if (!adjacent(base.wrap(), previous, current)) {
+        debugRejected(
+            "connectChain",
+            "相邻两点不相邻",
+            "kind",
+            tagKey,
+            "op",
+            operation,
+            "segment",
+            i,
+            "from",
+            previous,
+            "to",
+            current);
+        throw new IllegalArgumentException(
+            "第 " + i + " 段不相邻: " + previous + " → " + current + "（不自动寻路/不猜缺口）");
+      }
+      EdgeRef edge = new EdgeRef(previous, current);
+      if (!seen.add(edge)) {
+        debugRejected("connectChain", "同一无向边重复出现", "kind", tagKey, "op", operation, "edge", edge);
+        throw new IllegalArgumentException("同一无向边在链中重复: " + edge);
+      }
+      ordered.add(edge);
+    }
+    Map<EdgeRef, EdgeTags> next = new LinkedHashMap<>(base.edges());
+    for (EdgeRef edge : ordered) {
+      if (MERGE.equals(operation)) {
+        EdgeTags existing = next.get(edge);
+        Map<String, Map<String, Object>> byPathway =
+            existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing.byPathway());
+        byPathway.putIfAbsent(tagKey, Map.of());
+        next.put(edge, new EdgeTags(byPathway));
+      } else {
+        EdgeTags existing = next.get(edge);
+        if (existing == null || !existing.byPathway().containsKey(tagKey)) {
+          continue;
+        }
+        Map<String, Map<String, Object>> byPathway = new LinkedHashMap<>(existing.byPathway());
+        byPathway.remove(tagKey);
+        if (byPathway.isEmpty()) {
+          next.remove(edge);
+        } else {
+          next.put(edge, new EdgeTags(byPathway));
+        }
+      }
+    }
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_EDGES_CONNECTED",
+                MapLogSource.MAP_EDIT,
+                "kind",
+                tagKey,
+                "op",
+                operation,
+                "points",
+                hexes.size(),
+                "edges",
+                ordered.size(),
+                "taggedEdges",
+                next.size()));
+    if (TRACE.isTraceEnabled()) {
+      for (EdgeRef edge : ordered) {
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "MAP_EDGE_CONNECTED",
+                    MapLogSource.MAP_EDIT,
+                    "kind",
+                    tagKey,
+                    "op",
+                    operation,
+                    "edge",
+                    edge));
+      }
+    }
+    return MapChangeSet.between(base, base.withEdges(next));
+  }
+
+  /**
+   * 两个格是否相邻：平面图直接比 long 差值；环绕图按 {@code a} 的六个方向算出规范格再看是否等于 {@code b}。
+   *
+   * <p>全程 long / {@code floorMod}——坐标差达到 int 边界时不会溢出成“看起来相邻”。
+   */
+  private static boolean adjacent(MapWrap wrap, HexCoord a, HexCoord b) {
+    if (!wrap.wrapX()) {
+      return isNeighborDelta((long) b.q() - a.q(), (long) b.r() - a.r());
+    }
+    int row = b.r();
+    long rowOrigin = wrap.qMinAt(row);
+    for (HexDirection direction : HexDirection.ALL) {
+      long q = (long) a.q() + direction.dq();
+      long r = (long) a.r() + direction.dr();
+      if (r != row) {
+        continue;
+      }
+      long canonical = rowOrigin + Math.floorMod(q - rowOrigin, (long) wrap.qWidth());
+      if (canonical == b.q()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isNeighborDelta(long dq, long dr) {
+    return (Math.abs(dq) == 1 && dr == 0)
+        || (dq == 0 && Math.abs(dr) == 1)
+        || (dq == 1 && dr == -1)
+        || (dq == -1 && dr == 1);
+  }
+
+  /** 连通性链模式：只认 {@code merge}/{@code remove}（大小写不敏感，无默认）。 */
+  private static String normalizeConnectOp(String op) {
+    String normalized = op.toLowerCase(Locale.ROOT);
+    if (!MERGE.equals(normalized) && !REMOVE.equals(normalized)) {
+      debugRejected("normalizeConnectOp", "未知 op", "op", op);
+      throw new IllegalArgumentException("未知 op: " + op + "（只能是 merge 或 remove）");
+    }
+    return normalized;
   }
 
   /** 摘掉一条边上的某个 kind 标注；原本没有 ⇒ 原样返回；摘完别无标注 ⇒ {@code null}（该边不再进 edges 组件）。 */

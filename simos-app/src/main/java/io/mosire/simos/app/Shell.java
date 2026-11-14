@@ -34,6 +34,7 @@ import io.mosire.simos.app.access.AppDecisionMakerExistence;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.NationOpeningSnapshot;
+import io.mosire.simos.app.editor.RegistryEditorToolBridge;
 import io.mosire.simos.app.ga.CommandDrain;
 import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.ga.channel.CliDecisionChannel;
@@ -63,6 +64,7 @@ import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.army.spi.ResolveCombatStageHandler;
 import io.mosire.simos.army.spi.SetArmyContactWatchHandler;
 import io.mosire.simos.army.spi.SetArmyMasterGovHandler;
+import io.mosire.simos.army.spi.UpdateArmyHandler;
 import io.mosire.simos.army.stop.AdvanceStopPort;
 import io.mosire.simos.army.stop.StopReportBoard;
 import io.mosire.simos.army.tools.read.StopReportTool;
@@ -163,12 +165,15 @@ import io.mosire.simos.gov.spi.CreateNationHandler;
 import io.mosire.simos.gov.spi.DeleteNationHandler;
 import io.mosire.simos.gov.spi.RecordDiplomaticEventHandler;
 import io.mosire.simos.gov.spi.SetDiplomaticRelationHandler;
+import io.mosire.simos.gov.spi.UpdateNationHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
+import io.mosire.simos.map.spi.ConnectHexesHandler;
 import io.mosire.simos.map.spi.CreateRegionHandler;
 import io.mosire.simos.map.spi.DeleteRegionHandler;
 import io.mosire.simos.map.spi.ImportRasterHandler;
 import io.mosire.simos.map.spi.MergeRegionsHandler;
+import io.mosire.simos.map.spi.PaintTerrainHandler;
 import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.ReassignHexesHandler;
 import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
@@ -248,6 +253,7 @@ import io.mosire.simos.unit.spi.SetVisionRadiusHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
+import io.mosire.simos.unit.spi.UpdateFormationNodeHandler;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
@@ -653,6 +659,9 @@ public final class Shell implements AutoCloseable {
             List.of(
                 new SetTerrainHandler(),
                 new ImportRasterHandler(),
+                // ★ 2026-11-14 自由地图工具：直接多格地形 / 有序格链连通性（GM-only，整批原子）。
+                new PaintTerrainHandler(),
+                new ConnectHexesHandler(),
                 // ★★ 2026-10-12 批次 2（hex 属性表）：GM 改单格可用地面积。**不打** {@code DmUsableCommand} ⇒ 默认仅
                 //   GM（用户裁定「map 层级的命令…肯定不该给 DM 用」）：它进 catalog 与 GM 提交面/窄工具，
                 //   但进不了令白名单 / RegisterEffect / 决策人 catalog。──
@@ -715,6 +724,7 @@ public final class Shell implements AutoCloseable {
                 new SetRejoinTargetHandler(),
                 new CreateCommandChainHandler(),
                 new UpdateCommandChainHandler(),
+                new UpdateFormationNodeHandler(),
                 new ApplyCasualtiesHandler(),
                 // ★★ D3a（2026-10-02 / D-009 补裁）：单单位人力/装备的 GM 调试直改原语（有符号增量，一条命令原子）。
                 //   不打 {@code DmUsableCommand}（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM
@@ -1019,6 +1029,7 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
                 new ActorClearRegionHandler(),
                 new CreateNationHandler(),
+                new UpdateNationHandler(),
                 // ── P1.2（2026-10-09 后端行政批次）：gov.DeleteNation —— 默认严格引用检查（决策人 / 外交关系 /
                 //   map nation tag），显式 clearDiplomaticReferences=true 才连关系与外交事件一起清。GM-only。──
                 // ★★ 2026-10-12 批次 3c：gov.DeleteNation 的"仍有决策人挂在这个国家上"守卫改问 gov 自己的窄口
@@ -1061,6 +1072,7 @@ public final class Shell implements AutoCloseable {
                 //   GM 直接提交与 GM 窄工具照常可用。★ 改名是硬约束：类型前缀决定变更集施加到哪个命名空间的 codec。
                 new CreateArmyHandler(),
                 new SetArmyMasterGovHandler(),
+                new UpdateArmyHandler(),
                 // ── ★★ 2026-10-12 乙收尾：army 的归属写入工单（决策人 → 军队）。同 gov 两条：GM-only、走同一端口判决策人存在性。──
                 new AssignDecisionMakerArmyHandler(AppDecisionMakerExistence.INSTANCE),
                 // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 不
@@ -1530,7 +1542,18 @@ public final class Shell implements AutoCloseable {
             decisionAgentService,
             // ★ C6a/D-020：GUI 三条读口与 MCP 单位/人口读口共用启动期 CalendarService.load 的**同一实例**——
             //   GM 改历法/分带后日期与季节当场整体切换，不需重启。
-            calendarService);
+            calendarService,
+            // ★ 2026-11-14：参考图 HTTP 面与 MCP 工具共用 RenderService 持有的**同一**参考图服务。
+            renderService.mapReferences(),
+            // ★ 2026-11-14：网页编辑器只桥接这四条固定领域工具（不接受任意 GM 工具名）。
+            new RegistryEditorToolBridge(
+                toolRegistry,
+                artifactStore,
+                Set.of(
+                    "simos.gov.editNation",
+                    "simos.gov.nations",
+                    "simos.army.editFormation",
+                    "simos.army.formation")));
     boolean guiUp = false;
     try {
       guiServer.start(config.bindAddress(), config.guiPort());

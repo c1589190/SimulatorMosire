@@ -47,6 +47,9 @@ const SAY_SUFFIX = "/say";
 //   决策模式的「批准/驳回」打 POST /api/approvals/{id}；它不走 Command → ChangeSet → Revision，
 //   故**不进** modes.js 的命令白名单（那只管命令类型），只在这里显式放行。
 const ALLOWED_APPROVAL_PREFIX = "/api/approvals/";
+// ★ 2026-11-14：编辑器固定工具桥的**精确两条**（静态扫描只能看到 `/api/editor/` 前缀；
+//   运行期必须逐字等于 nation|formation，任何其它后缀（含 evil）一律 false）。
+const ALLOWED_EDITOR = ["/api/editor/nation", "/api/editor/formation"];
 // 扫描器看到的是 **api.js 里的字面量**（`postJson("/approvals/" + …)` ⇒ `/api/approvals/`）
 // ⇒ 声明集合是这四条；运行期 URL 由 isAllowedWrite 再要求"前缀 + 非空 id"。
 const DECLARED_WRITES = [
@@ -54,6 +57,8 @@ const DECLARED_WRITES = [
   "/api/approvals/",
   "/api/command",
   "/api/docs",
+  // ★ 2026-11-14：国家/编制编辑器固定工具桥（两条领域工具，kind=nation|formation）。前缀 + 非空 kind。
+  "/api/editor/",
   "/api/fork",
   // ★ 2026-10-15 批 L ②：段路径 sd → ga（5 条窄写随路由改名）。★ 本数组与 `scanPostEndpoints` 的
   //   `Array.from(out).sort()` **逐字比对**（deepEqual）⇒ `/api/ga/*` 必须排在 `/api/llm/*` **之前**
@@ -108,6 +113,9 @@ function isAllowedWrite(url) {
   ) {
     return true;
   }
+  if (ALLOWED_EDITOR.includes(url)) {
+    return true;
+  }
   if (url.startsWith(SAY_PREFIX) && url.endsWith(SAY_SUFFIX)) {
     return url.length > SAY_PREFIX.length + SAY_SUFFIX.length;
   }
@@ -125,8 +133,8 @@ test("api.js-declares-exactly-the-allowed-write-endpoints", () => {
   const found = scanPostEndpoints(readWebui("api.js"));
   assert.equal(
     found.length,
-    13,
-    "扫描必须非空且恰十三条（3 通用命令 + 1 世界文档 + 2 决策窄写 + 1 会话重置窄写 + 1 会话 say + 1 审批 + 4 provider/绑定窄写）：" +
+    14,
+    "扫描必须非空且恰十四条（3 通用命令 + 1 世界文档 + 2 决策窄写 + 1 会话重置窄写 + 1 会话 say + 1 审批 + 4 provider/绑定窄写 + 1 编辑器固定桥）：" +
       JSON.stringify(found)
   );
   assert.deepEqual(found, DECLARED_WRITES);
@@ -166,6 +174,12 @@ test("scanner-has-teeth-on-undeclared-endpoint", () => {
   assert.equal(isAllowedWrite("/api/approvals"), false, "无末尾斜杠不放行");
   assert.equal(isAllowedWrite("/api/approvals/"), false, "只有斜杠、没有 id 不放行");
   assert.equal(isAllowedWrite("/api/approvalsx/pm-1"), false, "错前缀不放行");
+  // ★ 编辑器桥运行期精确两条：未知 suffix / evil / 空 kind 都不放行。
+  assert.equal(isAllowedWrite("/api/editor/nation"), true, "精确 nation 放行");
+  assert.equal(isAllowedWrite("/api/editor/formation"), true, "精确 formation 放行");
+  assert.equal(isAllowedWrite("/api/editor/evil"), false, "未知编辑器后缀不放行");
+  assert.equal(isAllowedWrite("/api/editor/"), false, "只有前缀不放行");
+  assert.equal(isAllowedWrite("/api/editor/nation/extra"), false, "多段路径不放行");
   assert.equal(isAllowedWrite("/api/approvals/pm-1"), true, "恰是前缀 + 非空 id ⇒ 放行");
   // ★ say 前缀也必须是"前缀 + 非空 id + /say 后缀"（裸前缀 / 少后缀 / 空 id 都不放行）。
   assert.equal(isAllowedWrite("/api/ga/decision-makers/"), false, "只有前缀不放行");
@@ -223,6 +237,8 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
   await api.deleteLlmProvider("p1");
   await api.testLlmProvider("p1");
   await api.setDecisionMakerProvider("main", 0, "dm-1", "p1");
+  await api.postEditor("nation", { mode: "create" });
+  await api.postEditor("formation", { mode: "create" });
 
   const posts = calls.filter((c) => c.method === "POST").map((c) => c.url).sort();
   assert.deepEqual(
@@ -232,6 +248,8 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
       "/api/approvals/pm-1",
       "/api/command",
       "/api/docs",
+      "/api/editor/formation",
+      "/api/editor/nation",
       "/api/fork",
       // ★ 同上：`posts` 也经 `.sort()` ⇒ `/api/ga/*` 在 `/api/llm/*` 之前。只挪位置，逐字相等未松。
       "/api/ga/decision-makers/dm-1/say",

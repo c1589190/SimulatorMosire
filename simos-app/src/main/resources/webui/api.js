@@ -361,6 +361,12 @@
     return postJson("/command", envelope);
   }
 
+  /** 网页编辑器固定工具桥（kind = nation|formation）；写前失效 state 缓存，写后由 app.js 统一刷新。 */
+  function postEditor(kind, payload) {
+    invalidateState();
+    return postJson("/editor/" + encodeURIComponent(kind), payload);
+  }
+
   function advance(branch, expectedRevision, from, to) {
     invalidateState();
     var body = { branch: branch, expectedRevision: expectedRevision, from: from };
@@ -566,6 +572,7 @@
     cachedEconomyHex: cachedEconomyHex,
     invalidateState: invalidateState,
     submitCommand: submitCommand,
+    postEditor: postEditor,
     advance: advance,
     fork: fork,
     startDecision: startDecision,

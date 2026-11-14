@@ -68,16 +68,17 @@
   var REGION_DIM_MODES = ["region", "region-edit"];
   // ★ U2：区域名的最小缩放阈值（世界视图 scale≈0.06 时 97 个标签会堆叠成噪声）。
   var REGION_NAME_MIN_SCALE = 0.25;
+  // ★ 2026-11-15：区域列表/搜索定位时把目标抬到的最小缩放（与区域名近景阈值同量级）。
+  var REGION_LOCATE_MIN_SCALE = 0.3;
   /**
    * ★ 2026-09-24（用户报障）：「区域查看/编辑模式下，**启动就加载图上所有区域名称字段，导致非常卡**，
    * 改成和 hex 一样的**根据屏幕所见范围**渲染」。⇒ 区域名只画屏幕可见范围内的那些（外加这个裕量，
    * 免得边界上的标签在拖动时忽隐忽现）。量级取字号上限（40px）加上描边与拖动的余量。
    */
   var REGION_NAME_VISIBLE_MARGIN = 64;
-  // ★ V2：区域名**只在区域查看/区域编辑两个模式**显示（常规模式下用户实测"区域名称也被显示了"）。
-  //   开关（regionNamesEnabled）仍保留，但只在两模式内生效。
-  // D-036：区域编辑并入地图编辑 ⇒ 地图编辑也算区域名可见模式；常规/单位/战役仍不画。
-  var REGION_NAME_MODES = ["region", "region-edit", "map-edit"];
+  // ★ 2026-11-15 区域可见性修复：区域名在**四个公开模式**（常规/地图编辑/单位/战役）与两个
+  //   legacy 区域模式下都可读；是否近景显示仍由 REGION_NAME_MIN_SCALE 控制，大范围由国名补位。
+  var REGION_NAME_MODES = ["view", "map-edit", "unit", "battle", "region", "region-edit"];
   var REGION_NAMES_STORAGE_KEY = "simos.regionNames.v1";
   // ★ U2：区域名开关（默认开，localStorage 持久化；node 宿主无 localStorage ⇒ typeof 守卫）。
   var regionNamesEnabled = loadRegionNamesEnabled();
@@ -150,6 +151,12 @@
     searchIndex: [],
     // ★ F1：图层开关的 localStorage 降级内存态（无 localStorage 宿主用；键名与持久化一致）。
     layerMemory: null,
+    // ★ 2026-11-15：当前图层快照（map.js 侧只读自用；实际归一仍在 renderer）。
+    layerState: null,
+    // ★ 2026-11-15：普通区域基底边界的取数轮次 token（切目标/关图层后丢弃迟到结果）。
+    regionBaselineToken: 0,
+    // ★ 2026-11-15：区域详情在途请求（同 target×id 合流；基底边界与选中高亮共用同一缓存）。
+    regionInflight: {},
     // ★ F2：热力层持久化降级内存态 / 轮次 token（挡过期响应）/ 最近一次成功计划与原文（透明度拖动复用）。
     heatmapMemory: null,
     heatmapToken: 0,
@@ -204,6 +211,8 @@
       var needFit = !active.isReady() || host.fittedBranch !== branch;
       active.setData(body);
       host.overviewRegions = body.regions || [];
+      // ★ 2026-11-15：区域基底边界按新 overview 重取（图层关/目标再变时由 token 丢弃本轮）。
+      reloadRegionBaseline();
       // ★ M12 第六波：地图编辑/区域编辑两簇的宿主 UI 已搬到 map-mapeditor.js / map-regioneditor.js。
       //   本文件对它们只做**惰性** window.SimosMapEditor.* / window.SimosMapRegionEditor.* 调用。
       window.SimosMapEditor.renderTerrainPalette(body.terrainTypes || []);
@@ -442,42 +451,198 @@
     }
   }
 
-  /** ★ F1：国家着色数据（`meta.tag` 以 `nation:` 开头的区域 ⇒ 拉 hex 集合 ⇒ 推给 renderer）。 */
+  /**
+   * 国家着色/国名数据（工作台）：一次调用固定国家读桥 **simos.gov.nations**，每个国家只产生**一项**
+   * （精确 nation:<id> 区域的并集 + Nation.name + 国家颜色），再机械适配成 renderer.setNationRegions 既有的
+   * {id,name,hexes,label,color} 形状。旧的多区域 Nation 不再按 region 重复画多份/多个 label。
+   *
+   * <p>★ 国家合并/归属/名称/颜色都在 gov 视图里；这里只把"一份 gov 视图"转成地图渲染器吃的数据，不重算国家边界。
+   */
   async function reloadNationFills() {
-    var nationRegions = (host.overviewRegions || []).filter(function (region) {
-      return nationTagOf(region) !== null;
-    });
-    var results = await Promise.all(
-      nationRegions.map(function (region) {
-        return fetchRegionCached(String(region.id)).catch(function () {
-          return null;
-        });
-      })
-    );
-    active.setNationRegions(
-      results.filter(function (region) {
-        return !!region;
-      })
-    );
+    try {
+      var body = await api.getJson(api.withTarget("/editor/nation", app.target()));
+      var result = (body && body.result) || {};
+      var nations = Array.isArray(result.nations) ? result.nations : [];
+      active.setNationRegions(
+        nations.map(function (nation) {
+          var hexes = Array.isArray(nation.hexes) ? nation.hexes : [];
+          return {
+            id: nation.nationId,
+            nationId: nation.nationId,
+            name: nation.name,
+            hexes: hexes,
+            hexCount: typeof nation.hexCount === "number" ? nation.hexCount : hexes.length,
+            label: nationLabelOf(hexes),
+            meta: { color: nation.color },
+          };
+        })
+      );
+    } catch (e) {
+      // 国家读口失败 ⇒ 显式清空国家着色（不拿旧 region 推断冒充国家视图，也不整块崩）。
+      active.setNationRegions([]);
+      window.console.warn("[SimosMap] 国家读桥失败：" + e.message);
+    }
   }
 
-  /** 按 id 懒拉区域详情并缓存（键含 target）；失败折成空 hex 集合（不整块崩）。 */
+  /** 国家面积标签落点：取并集格的平均 q/r 最近的成员格（没有成员 ⇒ null）。 */
+  function nationLabelOf(hexes) {
+    if (!Array.isArray(hexes) || !hexes.length) {
+      return null;
+    }
+    var sumQ = 0;
+    var sumR = 0;
+    hexes.forEach(function (hex) {
+      if (hex && Number.isFinite(hex.q) && Number.isFinite(hex.r)) {
+        sumQ += hex.q;
+        sumR += hex.r;
+      }
+    });
+    var targetQ = sumQ / hexes.length;
+    var targetR = sumR / hexes.length;
+    var best = null;
+    var bestDist = Infinity;
+    hexes.forEach(function (hex) {
+      if (!hex || !Number.isFinite(hex.q) || !Number.isFinite(hex.r)) return;
+      var dq = hex.q - targetQ;
+      var dr = hex.r - targetR;
+      var dist = dq * dq + dr * dr;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { q: hex.q, r: hex.r };
+      }
+    });
+    return best;
+  }
+
+  /**
+   * 按 id 懒拉区域详情并缓存（键含 target）；失败折成空 hex 集合（不整块崩）。
+   *
+   * <p>★ 2026-11-15：同一 `target × id` 的并发请求合流（基底边界与选中高亮可能同时要同一区几何）。
+   * 缓存/在途键都含 target ⇒ 切目标后旧请求不会写进新目标的结果。
+   */
   async function fetchRegionCached(id) {
     var cacheKey = regionCacheKey(id);
     var cached = host.regionCache[cacheKey];
-    if (!cached) {
+    if (cached) {
+      return cached;
+    }
+    var inflight = host.regionInflight[cacheKey];
+    if (inflight) {
+      return inflight;
+    }
+    var pending = (async function () {
+      var result;
       try {
-        cached = await api.mapRegion(id, app.target());
+        result = await api.mapRegion(id, app.target());
       } catch (e) {
-        cached = { id: id, hexes: [] };
+        result = { id: id, hexes: [] };
         window.console.warn("[SimosMap] 区域拉取失败：" + id + "：" + e.message);
       }
       // ★ 先存本地再写回：`host.regionCache = {}` 会在 await 期间被 `scheduleTargetReload` 整份替换，
       //   若直接写 `host.regionCache[key] = await …`，被 await 暂停的是**对旧对象的引用**，写进旧对象后
       //   再读新对象就会拿到 undefined（M8-S 实测的 2 次 pageerror 根因）。
-      host.regionCache[cacheKey] = cached;
+      host.regionCache[cacheKey] = result;
+      return result;
+    })();
+    host.regionInflight[cacheKey] = pending;
+    try {
+      return await pending;
+    } finally {
+      if (host.regionInflight[cacheKey] === pending) {
+        delete host.regionInflight[cacheKey];
+      }
     }
-    return cached;
+  }
+
+  // ── 2026-11-15：普通区域基底边界（独立图层；只读现有 region 接口）──────────────────
+  //
+  // ★ 只在 `regions` 图层打开且工作台时取数；每轮带 token + targetKey 校验，切目标/关图层后
+  //   迟到结果直接丢弃并清旧 overlay。几何仍走 `fetchRegionCached`（按 target×id 缓存 + 在途合流），
+  //   并发上限 4，避免一次性打爆后端。
+  var REGION_BASELINE_CONCURRENCY = 4;
+
+  /** 基底边界图层是否开（缺快照时按默认开；旧页 /map 不做这一层，保持原行为）。 */
+  function regionBaselineEnabled() {
+    if (!host.isWorkbench) {
+      return false;
+    }
+    return host.layerState ? host.layerState.regions === true : true;
+  }
+
+  /** 丢弃当前轮次并清空基底边界 overlay（切目标 / 关图层 / 无数据时都走这里）。 */
+  function clearRegionBaseline() {
+    host.regionBaselineToken += 1;
+    if (active && active.setRegionBaselineOutlines) {
+      active.setRegionBaselineOutlines([]);
+    }
+  }
+
+  /**
+   * 重取普通区域基底边界。`regions` 来自既有 overview（不重建归属、不写世界）；
+   * 返回的 Promise 只用于 e2e/调试等待，生产路径不阻塞地图主流程。
+   */
+  function reloadRegionBaseline() {
+    var regions = (host.overviewRegions || []).filter(function (region) {
+      return region && region.id !== null && region.id !== undefined;
+    });
+    if (!regionBaselineEnabled() || !regions.length) {
+      clearRegionBaseline();
+      return Promise.resolve([]);
+    }
+    var token = ++host.regionBaselineToken;
+    var key = targetKey();
+    return loadRegionBaseline(regions.slice(), token, key);
+  }
+
+  /** 限并发读取每个区域几何，token/target 双校验后才把结果推给渲染器。 */
+  async function loadRegionBaseline(regions, token, key) {
+    var entries = [];
+    var next = 0;
+    var workerCount = Math.min(REGION_BASELINE_CONCURRENCY, regions.length);
+
+    async function worker() {
+      while (true) {
+        var index = next;
+        next += 1;
+        if (index >= regions.length) {
+          return;
+        }
+        if (token !== host.regionBaselineToken || key !== targetKey()) {
+          return;
+        }
+        var region = regions[index];
+        var detail = await fetchRegionCached(String(region.id));
+        if (token !== host.regionBaselineToken || key !== targetKey()) {
+          return;
+        }
+        if (!detail || !Array.isArray(detail.hexes) || !detail.hexes.length) {
+          continue;
+        }
+        entries.push({
+          id: String(region.id),
+          color: regionColor(detail.meta),
+          alpha: 0.9,
+          hexes: detail.hexes,
+        });
+      }
+    }
+
+    var workers = [];
+    for (var i = 0; i < workerCount; i += 1) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+    if (token !== host.regionBaselineToken || key !== targetKey()) {
+      return [];
+    }
+    // 确定性顺序：同 id 输入两次结果一致（重叠区域按 id 字典序描边，不依赖网络到达序）。
+    entries.sort(function (a, b) {
+      return a.id.localeCompare(b.id);
+    });
+    if (active && active.setRegionBaselineOutlines) {
+      active.setRegionBaselineOutlines(entries);
+    }
+    return entries;
   }
 
   /** 把焦点区域的 hex 集合推给渲染器的"边界小点层"（null/失败 ⇒ 不画点，不静默造点）。 */
@@ -1193,9 +1358,20 @@
       });
     }
     var prefs = layerPrefsFromDom();
+    var wasRegionBoundariesOn = host.layerState ? host.layerState.regions === true : true;
+    host.layerState = Object.assign({}, prefs);
     persistLayerPrefs(prefs);
     if (active && active.setLayerState) {
       active.setLayerState(prefs);
+    }
+    // ★ 2026-11-15：`regions` 边界图层开/关即时生效；其它键变化不重复拉同一目标几何。
+    var regionBoundariesOn = prefs.regions === true;
+    if (regionBoundariesOn !== wasRegionBoundariesOn) {
+      if (regionBoundariesOn) {
+        reloadRegionBaseline();
+      } else {
+        clearRegionBaseline();
+      }
     }
     // ★ 2026-10-02 用户：战斗事件的显示/关闭由图层开关收口——关掉 combats 时事件面板也关闭。
     if (window.SimosEvents && typeof window.SimosEvents.onLayerChange === "function") {
@@ -1711,9 +1887,41 @@
   }
 
   /**
+   * ★ 2026-11-15：按稳定 regionId 定位（复用目标区域 label 的既有居中/抬缩放流程）。
+   * 只读 overview + 视图变换；不切模式、不选格、不进入隐藏的 legend region 模式。
+   */
+  function locateRegionById(id, fallbackLabel) {
+    var want = String(id);
+    var list = host.overviewRegions || [];
+    var label = null;
+    for (var i = 0; i < list.length; i += 1) {
+      var region = list[i];
+      if (!region || String(region.id) !== want || !region.label) {
+        continue;
+      }
+      label = region.label;
+      break;
+    }
+    if (!label && fallbackLabel) {
+      label = fallbackLabel;
+    }
+    if (
+      !label ||
+      typeof label.q !== "number" ||
+      typeof label.r !== "number" ||
+      !isFinite(label.q) ||
+      !isFinite(label.r)
+    ) {
+      return false;
+    }
+    active.ensureCityVisible(label.q, label.r, REGION_LOCATE_MIN_SCALE, true);
+    return true;
+  }
+
+  /**
    * ★ F1 搜索定位（UI 的唯一入口；也挂到 window.SimosMap 供 e2e/其它页复用）：
-   * 城市/单位 ⇒ 选中 + 保证可见；区域 ⇒ 切区域模式并高亮 + 居中；决策人 ⇒ 切决策模式并聚焦。
-   * 未知 kind fail-closed ⇒ false（不猜、不改任何状态）。
+   * 城市/单位 ⇒ 选中 + 保证可见；区域 ⇒ 高亮 + 居中（不切隐藏的 region 模式）；
+   * 决策人 ⇒ 切决策模式并聚焦。未知 kind fail-closed ⇒ false（不猜、不改任何状态）。
    */
   function locateSearchResult(item) {
     if (!item || !active) {
@@ -1742,14 +1950,17 @@
       return true;
     }
     if (item.kind === "region") {
-      if (state.mode !== "region") {
-        app.setMode("region");
+      // ★ 2026-11-15：不进入隐藏的 region 模式；legacy/决策模式回落常规，公开模式保持原模式。
+      if (["view", "map-edit", "unit", "battle"].indexOf(state.mode) < 0) {
+        app.setMode("view");
       }
       // ★ 2026-10-02 用户报障：搜索定位一个区域后，地图点格也按它的 tag 筛选（与右栏点区域同源）。
       app.setRegionTag(normalizedTag(regionTagById(item.id)));
       app.setHighlightRegions([String(item.id)], "single");
       if (item.at) {
-        active.ensureCityVisible(item.at.q, item.at.r, 0.3, true);
+        active.ensureCityVisible(item.at.q, item.at.r, REGION_LOCATE_MIN_SCALE, true);
+      } else {
+        locateRegionById(item.id);
       }
       return true;
     }
@@ -1833,12 +2044,15 @@
 
   /** 目标坐标变了 ⇒ 地图/单位/区域填充全部按新 revision 重取（取数一律带 withTarget）。 */
   function scheduleTargetReload() {
+    // ★ 2026-11-15：目标一变就作废基底边界轮次并清旧 overlay，不等 120ms 去抖结束。
+    clearRegionBaseline();
     if (host.targetTimer) {
       window.clearTimeout(host.targetTimer);
     }
     host.targetTimer = window.setTimeout(function () {
       host.targetTimer = null;
       host.regionCache = {};
+      host.regionInflight = {};
       reloadOverview();
       // ★ F2：目标变了 ⇒ 热力层按 metric×target 重取（token 在 reloadHeatmap 里挡旧目标响应）。
       if (heatmapMetric) {
@@ -2246,7 +2460,7 @@
 
   /** 子选项的写命令白名单（★ C2 的门控来源）：地形线改地形、连通性线改边，**互不越线**。 */
   var MAP_EDIT_SUBTOOL_WRITES = {
-    "image-import": ["map.ImportRaster"],
+    "image-import": ["map.ImportRaster", "map.PaintTerrain", "map.ConnectHexes"],
     terrain: ["map.SetTerrain", "map.RandomizeRegion"],
     connectivity: ["map.SetEdge"],
   };
@@ -3085,6 +3299,10 @@
     republishDecisionScopeSummary: republishDecisionScopeSummary,
     // ★ F1：搜索定位入口（搜索框 / e2e 共用同一份实现；UI 不另写一套）。
     locateSearchResult: locateSearchResult,
+    // ★ 2026-11-15：区域列表点击的定位入口（稳定 regionId；不切隐藏模式）。
+    locateRegionById: locateRegionById,
+    // ★ 2026-11-15：基底边界重取（图层重开/调试用；生产路径由 overview/图层变化自动触发）。
+    reloadRegionBaseline: reloadRegionBaseline,
     // ★ F1：世界视图的只读投影（图层开关 / 世界数据条数 / 搜索索引条数）——验收与门禁可断言。
     worldViewDebug: function () {
       var debug = active && active.debug ? active.debug() : {};
@@ -3098,6 +3316,12 @@
         layerState: debug.layerState || null,
         nationRegionCount: debug.nationRegionCount || 0,
         nationNameDraws: debug.nationNameDraws || 0,
+        // ★ 2026-11-15：国家疆域/普通区域基底边界的真实绘制投影（供验收与门禁断言）。
+        nationOutlineDraws: debug.nationOutlineDraws || 0,
+        nationOutlineVertexCount: debug.nationOutlineVertexCount || 0,
+        regionBaselineOutlineCount: debug.regionBaselineOutlineCount || 0,
+        regionBaselineVertexCount: debug.regionBaselineVertexCount || 0,
+        regionBaselineDraws: debug.regionBaselineDraws || 0,
         visibleCityCount: debug.visibleCityCount || 0,
         // ★ F1：GOV 辖区条数 / hex 总数——单一真相在 renderer.debug()，这里只是同源转出。
         govJurisdictions: debug.govJurisdictionCount || 0,

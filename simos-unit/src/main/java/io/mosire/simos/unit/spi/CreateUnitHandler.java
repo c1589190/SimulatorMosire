@@ -77,6 +77,7 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
       String name = UnitPayloads.requireText(payload, "name");
       // ★ position 可选：省略/null ⇒ 无自身位置（跟随父）；但那时必须给 parent（否则单位不在图上，是坏输入）。
       Optional<HexCoord> position = UnitPayloads.optionalHex(payload, "position");
+      Optional<Boolean> attachedArg = UnitPayloads.optionalBoolean(payload, "attached");
       UnitPayloads.rejectRetiredManpower(payload);
       List<CompositionEntry> equipment = UnitPayloads.requireComposition(payload, "equipment");
       // ★ S3b：创建期即可给家户（生产路径 RaiseUnit 用）；缺席 ⇒ 空表（旧调用点）。
@@ -90,11 +91,27 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
         throw new IllegalArgumentException(
             "字段 position 缺失且未给 parent：无父又无自身位置的单位不在图上（要么给 position，要么给 parent）");
       }
-      // ★ 编制 v2：有父 ⇒ 编入那一支（attached=true），且给位置时必须与父同格（"只有同格才能一同移动"）。
-      boolean attached = parent.isPresent();
-      if (parent.isPresent() && position.isPresent()) {
+      // ★ 2026-11-14：有父时坐标缺省 ⇒ 创建期写实成父的当前位置（不能留空）。
+      //   attached 缺省 = 有父即 true；显式 attached=false 允许独立落点。
+      boolean attached = attachedArg.orElse(parent.isPresent());
+      if (parent.isPresent()) {
         Optional<HexCoord> parentHex = snapshot.state().effectivePosition(parent.get(), at);
-        if (parentHex.isEmpty() || !parentHex.get().equals(position.get())) {
+        if (position.isEmpty()) {
+          if (parentHex.isEmpty()) {
+            throw new IllegalArgumentException(
+                "单位 "
+                    + id
+                    + " 省略了 position，但父 "
+                    + parent.get()
+                    + " 在 "
+                    + at
+                    + " 没有可确定的位置，"
+                    + "无法把新下级写实到父位置；请显式给 position 或先给父落点");
+          }
+          position = parentHex;
+        }
+        HexCoord explicit = position.orElseThrow();
+        if (attached && !parentHex.map(explicit::equals).orElse(false)) {
           throw new IllegalArgumentException(
               "单位 "
                   + id
@@ -104,16 +121,19 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
                   + parent.get()
                   + " 的 "
                   + parentHex.map(HexCoord::toString).orElse("(不可确定)")
-                  + " 不同格：只有同格的单位才能编入同一支编制");
+                  + " 不同格：只有同格的单位才能编入同一支编制（独立落点请显式 attached=false）");
         }
       }
+      HexCoord positionValue =
+          position.orElseThrow(() -> new IllegalArgumentException("position 解析后意外为空（装配错误）: " + id));
       UnitStatus status = UnitPayloads.optionalStatus(payload, "status").orElse(UnitStatus.MOVING);
       Unit unit =
           new Unit(
               id,
               name,
               new SegmentedSeries<>(List.of(new Segment<>(at, parent)), List.of(), null),
-              new SegmentedSeries<>(List.of(new Segment<>(at, position)), List.of(), null),
+              new SegmentedSeries<>(
+                  List.of(new Segment<>(at, Optional.of(positionValue))), List.of(), null),
               equipment,
               speed,
               mobilityPerMille,

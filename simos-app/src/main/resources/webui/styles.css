@@ -2970,3 +2970,85 @@ body.workbench-page .shell-state {
 .raster-confirmation button { margin-top: 12px; display: block; }
 .raster-clear { margin-top: auto; font-size: 12px; }
 @media (max-width: 800px) { .raster-layout { grid-template-columns: 1fr; } .raster-settings { max-height: none; border-right: none; border-bottom: 1px solid #ffffff18; } .raster-preview-area { max-height: none; } .raster-dialog { max-height: 96vh; } .raster-heading, .raster-steps { padding-left: 14px; padding-right: 14px; } }
+
+/* 2026-11-14 自由判图工具区（底图子功能）：模块 JS 只依赖这些轻量布局，不引入新框架。 */
+.reference-tools { margin-top: 12px; border: 1px solid #ffffff1f; border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.reference-tools legend { padding: 0 6px; color: #cfe0f4; }
+.reference-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+.reference-row label { display: grid; gap: 3px; font-size: 12px; color: #c7d4e4; }
+.reference-row input[type="number"] { width: 92px; }
+.reference-tools textarea { width: 100%; min-height: 64px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; resize: vertical; }
+.reference-view-wrap { display: grid; gap: 6px; justify-items: start; }
+.reference-view-wrap img { max-width: 100%; max-height: 520px; border: 1px solid #ffffff26; border-radius: 8px; background: #0e131a; cursor: crosshair; }
+.reference-tools button:disabled { opacity: .55; cursor: not-allowed; }
+
+/* 2026-11-14 参考图大图：侧栏局部图可能被压窄，用户可在大图里读 q/r 并点格。 */
+.reference-viewer-dialog { width: min(1500px, 96vw); max-width: 96vw; max-height: 96vh; padding: 0; border: 1px solid #435169; border-radius: 14px; background: #10161f; color: inherit; box-shadow: 0 24px 90px #0009; }
+.reference-viewer-dialog::backdrop { background: #06101bd9; }
+.reference-viewer-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #ffffff18; }
+.reference-viewer-heading p { margin: 0; color: #cfe0f4; font-size: 13px; }
+#reference-viewer-image { display: block; width: auto; height: auto; max-width: 100%; max-height: 86vh; margin: 0 auto; background: #0e131a; cursor: crosshair; }
+#reference-viewer-image[hidden] { display: none; }
+
+/* 2026-11-14：国家与完整军队编制编辑（模块资产 gov/army 共用）。 */
+.nation-formation-editor .editor-group { margin: 10px 0 16px; padding: 8px 10px; border: 1px solid rgba(120, 130, 145, 0.35); border-radius: 8px; }
+.nation-formation-editor .editor-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.nation-formation-editor .editor-row select { min-width: 190px; }
+.nation-formation-editor .editor-json { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; }
+.nation-formation-editor .editor-image-wrap { max-height: 560px; overflow: auto; margin-top: 8px; border: 1px solid rgba(120, 130, 145, 0.35); border-radius: 6px; background: #fff; }
+.nation-formation-editor .editor-image { display: block; max-width: 100%; margin: 0 auto; background: #fff; }
+.nation-formation-editor details.editor-group > summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.nation-formation-editor .editor-result { max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: 11px; color: #445; }
+
+/* 2026-11-14：军队编制大图浮层（原生 dialog；两宿主页共用）。 */
+dialog.formation-viewer {
+  width: 90vw;
+  height: 85vh;
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid rgba(80, 90, 105, 0.45);
+  border-radius: 10px;
+  overflow: hidden;
+  color: #1f2937;
+  background: #f4f3ee;
+}
+dialog.formation-viewer::backdrop { background: rgba(12, 16, 22, 0.58); }
+dialog.formation-viewer[open] { display: flex; flex-direction: column; }
+.formation-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(80, 90, 105, 0.25);
+  background: #fff;
+}
+.formation-viewer-head strong { font-size: 15px; }
+.formation-viewer-head .muted { font-size: 12px; }
+.formation-viewer-head button { margin-left: auto; }
+.formation-viewer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(80, 90, 105, 0.2);
+  background: #fbfaf6;
+}
+.formation-viewer-tools #formation-viewer-zoom-label { min-width: 52px; text-align: center; }
+.formation-viewer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: #e9e7df;
+}
+.formation-viewer-body img {
+  display: block;
+  max-width: none;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 2px 14px rgba(20, 26, 36, 0.22);
+}

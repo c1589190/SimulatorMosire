@@ -36,15 +36,15 @@
         </div>
         <button type="button" id="docs-open" title="打开世界文档（按地址查询/编辑 Markdown）">文档</button>
         <button type="button" id="layer-toggle" aria-expanded="false" aria-controls="layer-panel"
-          title="图层开关（国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 战斗事件 / 路线）">图层</button>
+          title="图层开关（国家着色/疆域边界 / 区域边界 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 战斗事件 / 路线）">图层</button>
       </div>
 
       <span id="shell-state" class="shell-state">状态加载中…</span>
     </header>
 
-    <!-- ★ F1：图层抽屉（默认 hidden；localStorage 键 simos.layers.v1；无 localStorage 时降级为内存态）。
-         9 键分组开关 + 场景预设只影响绘制：国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 /
-         决策人 / 战斗事件 / 路线。 -->
+    <!-- ★ F1：图层抽屉（默认 hidden；localStorage 键 simos.layers.v2；无 localStorage 时降级为内存态）。
+         10 键分组开关 + 场景预设只影响绘制：国家着色/疆域边界 / 区域边界 / 区域名与国名 / 城市 / 军队 /
+         政府单位 / 政府辖区 / 决策人 / 战斗事件 / 路线。旧 9 键存档保留，新增 regions 缺省开。 -->
     <div id="layer-panel" class="layer-panel" hidden aria-label="图层开关">
       <h3>图层</h3>
       <div class="layer-presets" role="group" aria-label="图层预设">
@@ -56,7 +56,8 @@
       </div>
       <div class="layer-group">
         <span>底图</span>
-        <label><input type="checkbox" data-layer="nation" checked> 国家着色</label>
+        <label><input type="checkbox" data-layer="nation" checked> 国家着色/疆域边界</label>
+        <label><input type="checkbox" data-layer="regions" checked> 区域边界</label>
         <label><input type="checkbox" data-layer="regionNames" checked> 区域名/国名</label>
       </div>
       <div class="layer-group">
@@ -149,6 +150,48 @@
           </fieldset>
         </section>
 
+        <section class="nation-formation-editor" data-modes="map-edit region-edit unit" aria-label="国家与完整军队编制编辑">
+          <h3>国家与完整编制（一次 JSON 保存）</h3>
+          <p class="muted">整份 JSON 一次保存；载入只导出可保存字段，失败原样显示原因。自带编制样例为虚构。</p>
+          <details class="editor-group" id="nation-editor">
+            <summary>国家 — 整份 JSON 一次保存</summary>
+            <div class="editor-row">
+              <select id="nation-editor-select"><option value="">（载入中…）</option></select>
+              <button type="button" id="nation-editor-load">载入国家</button>
+              <button type="button" id="nation-editor-new">新建空白模板</button>
+              <button type="button" id="nation-editor-hex">当前格加入领土</button>
+              <button type="button" id="nation-editor-refresh">刷新列表</button>
+              <button type="button" id="nation-editor-save" class="primary">保存国家</button>
+            </div>
+            <textarea id="nation-editor-json" class="editor-json" rows="10" spellcheck="false" placeholder="国家 editNation JSON"></textarea>
+            <p id="nation-editor-status" class="status muted">选择国家载入，或新建模板；当前选中格可作为领土。</p>
+            <div class="editor-image-wrap"><img id="nation-editor-image" class="editor-image" alt="国家地图 PNG" hidden></div>
+            <pre id="nation-editor-result" class="editor-result"></pre>
+          </details>
+          <details class="editor-group" id="formation-editor">
+            <summary>军队完整编制 — 整份 JSON 一次保存</summary>
+            <div class="editor-row">
+              <select id="formation-editor-select"><option value="">（载入中…）</option></select>
+              <button type="button" id="formation-editor-load">载入军队</button>
+              <button type="button" id="formation-editor-new">新建师旅营模板</button>
+              <button type="button" id="formation-editor-position">当前格设为 root 落点</button>
+              <button type="button" id="formation-editor-add-battalion">追加一个营</button>
+              <button type="button" id="formation-editor-refresh">刷新列表</button>
+              <button type="button" id="formation-editor-save" class="primary">保存编制</button>
+            </div>
+            <textarea id="formation-editor-json" class="editor-json" rows="12" spellcheck="false" placeholder="军队 editFormation JSON"></textarea>
+            <p id="formation-editor-status" class="status muted">未填下级坐标默认随父移动；人数=本级人数，下属合计另列；编制图实线=随父移动、虚线=独立机动。</p>
+            <div class="editor-row">
+              <button type="button" id="formation-editor-zoom-out" title="缩小">− 缩小</button>
+              <button type="button" id="formation-editor-zoom-reset" title="复位">100%</button>
+              <button type="button" id="formation-editor-zoom-in" title="放大">＋ 放大</button>
+              <button type="button" id="formation-editor-view-large" title="在宽窗浮层查看整棵编制树">查看大图</button>
+            </div>
+            <div class="editor-image-wrap"><img id="formation-editor-image" class="editor-image" alt="军队编制 PNG" hidden></div>
+            <pre id="formation-editor-result" class="editor-result"></pre>
+          </details>
+        </section>
+
         <section class="map-editor" data-modes="map-edit" aria-label="地图编辑">
           <h3>工具</h3>
           <!-- T2：地图编辑下挂二级子选项——「地形」=属性（HexCell.terrain），「连通性」=拓扑（GameMap.edges）。
@@ -206,8 +249,76 @@
           <fieldset class="png-overlay-controls" id="png-overlay-controls" hidden>
             <legend>底图导入</legend>
             <p class="muted">从灰度高度图、晕渲地形图或颜色图例生成六角地形；确认后再写入。</p>
-            <button type="button" id="raster-open" class="primary">打开底图导入工作区</button>
-            <p id="raster-entry-status" class="muted">载入 → 识别修整 → 确认应用</p>
+            <button type="button" id="raster-open" class="primary">打开可选自动识别工作区（旧流程）</button>
+            <p id="raster-entry-status" class="muted">自动识别：载入 → 识别修整 → 确认应用（可选流程）</p>
+            <!-- ★ 2026-11-14 自由判图工具区：与自动识别流程独立，无步骤锁；直接改地形/连通性。
+                 模块实现：/webui/modules/map/map-reference-tools.js。 -->
+            <fieldset class="reference-tools" id="reference-tools">
+              <legend>判图工具（独立于自动识别；自由调用，无步骤锁）</legend>
+              <p class="muted">这些工具不要求先“识别 → 检查 → 确认”，也不使用上面的编号步骤；共享参考图/直接刷地形/直接连边可以任意交替调用。自动识别只是可选的另一条路径。</p>
+              <div class="reference-row">
+                <button type="button" id="reference-share">共享当前底图为参考图</button>
+                <button type="button" id="reference-refresh">刷新参考图/词表</button>
+              </div>
+              <label class="mp-field">参考图
+                <select id="reference-select"><option value="">（先共享或刷新）</option></select>
+              </label>
+              <div class="reference-row">
+                <label>中心 q<input id="reference-q" type="number" step="1" placeholder="可空"></label>
+                <label>中心 r<input id="reference-r" type="number" step="1" placeholder="可空"></label>
+                <label>局部半径
+                  <select id="reference-radius">
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                    <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
+                    <option value="7">7</option><option value="8">8</option>
+                  </select>
+                </label>
+                <label><input id="reference-overlay" type="checkbox" checked> 叠当前地形</label>
+                <button type="button" id="reference-view">查看概览/局部</button>
+                <button type="button" id="reference-open-viewer">大图查看（可点格）</button>
+              </div>
+              <div class="reference-view-wrap">
+                <img id="reference-image" alt="参考图局部视图" hidden>
+                <p id="reference-view-status" class="status muted">选择参考图后查看；中心 q/r 都留空 = 概览。</p>
+              </div>
+              <p class="muted">点参考图把格加入下面的选区；也可直接按行输入。相邻两格才能连成一条边，不自动寻路。</p>
+              <label class="mp-field">点图加入
+                <select id="reference-click-target">
+                  <option value="paint">地形选区</option>
+                  <option value="connect">连接格链</option>
+                </select>
+              </label>
+              <label class="mp-field">多格地形选区（每行 q,r[,height]）
+                <textarea id="reference-paint-cells" rows="4" placeholder="0,0&#10;1,0,0.42"></textarea>
+              </label>
+              <div class="reference-row">
+                <label>地形<select id="reference-paint-terrain"><option value="">（载入词表…）</option></select></label>
+                <label>整批高度（可选，0..1）<input id="reference-paint-height" type="number" min="0" max="1" step="0.01" placeholder="缺省取地形中值"></label>
+                <button type="button" id="reference-paint-apply">直接应用地形</button>
+              </div>
+              <label class="mp-field">河流/道路连接格链（每行 q,r；按顺序相邻）
+                <textarea id="reference-connect-hexes" rows="4" placeholder="0,0&#10;1,0&#10;1,1"></textarea>
+              </label>
+              <div class="reference-row">
+                <label>kind<select id="reference-connect-kind"><option value="river">river</option><option value="road">road</option></select></label>
+                <label>op
+                  <select id="reference-connect-op">
+                    <option value="merge">merge（只加）</option>
+                    <option value="remove">remove（只摘点名边该 kind）</option>
+                  </select>
+                </label>
+                <button type="button" id="reference-connect-apply">直接应用连接</button>
+              </div>
+              <div class="reference-row">
+                <button type="button" id="reference-create-missing">创建缺失格（仅缺失格，默认地形）</button>
+                <button type="button" id="reference-copy-params">复制 LLM 工具参数</button>
+              </div>
+              <p id="reference-default-terrain-note" class="muted">创建缺失格使用的默认地形：尚未加载词表。</p>
+              <label class="mp-field">LLM 工具参数（可复制）
+                <textarea id="reference-params" rows="8" readonly></textarea>
+              </label>
+              <p id="reference-status" class="status muted" aria-live="polite"></p>
+            </fieldset>
           </fieldset>
 
           <div class="map-edit-params" id="edge-controls" data-subtool="connectivity" hidden>
@@ -473,7 +584,7 @@
 
       <div class="wb-gap" aria-hidden="true"></div>
 
-      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision">
+      <section class="panel col-right" id="right-panel" data-modes="view map-edit region region-edit decision">
         <!-- ★ F1：世界总览（无选中时显示；有选中让位给 hex/城市/区域详情，由 panel-right.js 控制 hidden）。 -->
         <div data-modes="view region" id="world-overview-section">
           <h2>世界总览</h2>
@@ -481,7 +592,8 @@
             <p class="empty">载入世界总览…</p>
           </div>
         </div>
-        <div data-modes="region region-edit">
+        <!-- ★ 2026-11-15 区域可见性修复：常规 / 地图编辑也能看到区域列表（不再只挂 legacy region 模式）。 -->
+        <div data-modes="view map-edit region region-edit">
           <h2>区域</h2>
           <div id="region-panel-mount"></div>
         </div>
@@ -618,7 +730,7 @@
       <aside class="raster-settings">
         <label class="mp-field">选择图片<input type="file" id="png-file" accept="image/png,image/jpeg,image/webp"></label>
         <button type="button" id="png-example">载入非洲之角示例</button>
-        <p id="raster-file-info" class="muted">图片在本机处理，不上传原图。</p>
+        <p id="raster-file-info" class="muted">自动识别在浏览器本地处理，不上传原图；点“共享当前底图”给判图工具时，会把当前原图上传到本机世界服务。</p>
         <label class="mp-field">图像类型<select id="raster-kind"><option value="relief">晕渲地形图</option><option value="height">灰度高度图</option><option value="palette">颜色图例图</option></select></label>
         <p id="raster-kind-note" class="muted">按水体颜色和局部纹理近似分类，不代表真实海拔。</p>
         <label class="mp-field">格网方式<select id="raster-grid"><option value="generate">生成六角图幅，保留图外数据</option><option value="existing">套用当前格网</option></select></label>
@@ -651,6 +763,14 @@
         <section id="raster-finished" class="raster-confirmation" hidden><h3>导入已完成</h3><p>地图已保存到当前节点。可继续用地形刷、油漆桶和区域工具完善。</p><button type="button" id="raster-refine" class="primary">进入地形修整</button></section>
       </section>
     </div>
+  </dialog>
+
+  <dialog id="reference-viewer-dialog" class="reference-viewer-dialog" aria-label="参考图大图">
+    <div class="reference-viewer-heading">
+      <p>参考图大图：点击格可加入选区；Esc 或“关闭”返回侧栏。</p>
+      <button type="button" id="reference-viewer-close">关闭</button>
+    </div>
+    <img id="reference-viewer-image" alt="参考图大图局部视图">
   </dialog>
 
   <script src="api.js"></script>
@@ -690,6 +810,27 @@
   <script src="/webui/modules/map/map-raster-core.js"></script>
   <script src="/webui/modules/map/map-raster-draft.js"></script>
   <script src="/webui/modules/map/map-png.js"></script>
+  <script src="/webui/modules/map/map-reference-tools.js"></script>
+<dialog id="formation-viewer" class="formation-viewer" aria-label="军队编制大图">
+  <div class="formation-viewer-head">
+    <strong>军队编制大图</strong>
+    <span class="muted">实线=随父移动，虚线=独立机动；人数=本级/子树</span>
+    <button type="button" id="formation-viewer-close">关闭</button>
+  </div>
+  <div class="formation-viewer-tools" role="toolbar" aria-label="大图缩放">
+    <button type="button" id="formation-viewer-fit">适应窗口</button>
+    <button type="button" id="formation-viewer-original">原图尺寸</button>
+    <button type="button" id="formation-viewer-zoom-out" aria-label="缩小大图">−</button>
+    <span id="formation-viewer-zoom-label" class="muted">适应窗口</span>
+    <button type="button" id="formation-viewer-zoom-in" aria-label="放大大图">＋</button>
+  </div>
+  <div class="formation-viewer-body" id="formation-viewer-body">
+    <img id="formation-viewer-image" alt="军队编制大图">
+  </div>
+</dialog>
+
+  <script src="/webui/modules/gov/nation-editor.js"></script>
+  <script src="/webui/modules/army/formation-editor.js"></script>
   <script src="map-hostpage.js"></script>
   <script src="notifications.js"></script>
   <script src="gm.js"></script>

@@ -408,13 +408,16 @@
   /**
    * 组一条写命令信封：{type, payloadJson, branch, expectedRevision}。
    * ★ expectedRevision 一律取**当前游标**——过期由服务端 409 挡，前端不猜、不预检。
+   * ★ 第三参可选 `frozenTarget`（{branch,revision}）：工具在“检查目标未变”之后同步传入，
+   *   信封与提交前游标捕获都取它，避免检查与组信封之间被 await 插入新状态。
    */
-  function commandEnvelope(type, payload) {
+  function commandEnvelope(type, payload, frozenTarget) {
+    var target = frozenTarget && frozenTarget.branch !== undefined ? frozenTarget : state;
     return {
       type: type,
       payloadJson: JSON.stringify(payload === undefined ? {} : payload),
-      branch: state.branch,
-      expectedRevision: state.revision,
+      branch: target.branch,
+      expectedRevision: target.revision,
     };
   }
 
@@ -429,35 +432,93 @@
    *
    * 返回 {ok:true, body} 或 {ok:false, kind:"conflict"|"rejected"|"error", message, error}——本函数**不碰
    * DOM**，显示位置由调用方决定。
+   *
+   * ★ 第三参可选 `frozenTarget`（{branch,revision}）：工具在同步校验目标未变后传入，信封使用冻结坐标；
+   *   旧两参调用行为完全不变（取当前游标）。
+   * ★ 提交前捕获 branch/revision；成功与 409 只在**当前游标仍等于提交前游标**时才 setRevision。
+   *   `refreshState` 可以更新 heads/writeEpoch，但不抢当前 revision——用户切走的分支或同分支历史节点
+   *   不能被迟到的提交响应拉回。
    */
-  async function writeCommand(type, payload) {
-    if (window.SimosModes && !window.SimosModes.isWriteAllowed(state.mode, type)) {
-      return {
-        ok: false,
-        kind: "mode-denied",
-        message: "当前模式「" + window.SimosModes.modeLabel(state.mode) + "」不允许写命令 " + type,
-      };
+  /**
+   * 一条写提交的共同收尾：成功/冲突只在**当前游标仍是提交前冻结坐标**时刷新 state/writeEpoch 并推进 revision；
+   * 用户已切走的分支/节点不会被迟到的响应拉回。写命令与编辑器工具共用这一段，不各写一套状态机。
+   */
+  async function runWriteSubmission(perform, submission, conflictCurrent, submittedEpoch) {
+    var submittedBranch = submission.branch;
+    var submittedRevision = submission.revision;
+    function stillAtSubmittedBranchRevision() {
+      return state.branch === submittedBranch
+        && Number(state.revision) === Number(submittedRevision);
     }
-    try {
-      var body = await window.SimosApi.submitCommand(commandEnvelope(type, payload));
+    function epochMatches(epoch) {
+      return epoch === undefined || epoch === null || Number(state.writeEpoch) === Number(epoch);
+    }
+    /**
+     * 提交返回后、刷新前：branch/revision 必须仍是提交前冻结值；编辑器还要求 writeEpoch 仍是冻结值。
+     * 返回 null = 用户已切走（不刷新、不推进游标）；否则尝试 refreshState，并回报刷新是否成功。
+     */
+    async function refreshBeforeMovingCursor() {
+      if (!stillAtSubmittedBranchRevision() || !epochMatches(submittedEpoch)) {
+        return null;
+      }
       try {
-        await refreshState(true);
+        return { refreshed: true, body: await refreshState(true) };
       } catch (refreshError) {
-        // 提交已成功：刷新失败不该把成功报成失败（body.ref 已是权威新坐标）。
+        return { refreshed: false, body: null };
       }
-      if (body && body.ref && body.ref.revision !== undefined) {
-        setRevision(body.ref.revision);
+    }
+    /**
+     * 刷新后：仍用 branch/revision 防用户切走；writeEpoch 改比**这次刷新返回的** epoch（不是提交前冻结值），
+     * 否则 refreshState 更新 writeEpoch 后第二次比较永远不等，游标就永远推进不到新 revision。
+     * 刷新失败时只有旧 writeCommand（无 submittedEpoch）保持旧语义；编辑器不拿旧 epoch 蒙混推进。
+     */
+    function canMoveCursorAfterRefresh(refreshed) {
+      if (!stillAtSubmittedBranchRevision()) {
+        return false;
       }
-      return { ok: true, body: body };
+      if (refreshed && refreshed.refreshed) {
+        var refreshEpoch =
+          refreshed.body && refreshed.body.writeEpoch !== undefined
+            ? refreshed.body.writeEpoch
+            : state.writeEpoch;
+        return epochMatches(refreshEpoch);
+      }
+      return submittedEpoch === undefined || submittedEpoch === null;
+    }
+
+    function refOf(body) {
+      var ref = body && body.ref;
+      if (!ref && body && body.result && body.result.submission) {
+        ref = body.result.submission.ref;
+      }
+      return ref;
+    }
+
+    try {
+      var body = await perform();
+      var refreshed = await refreshBeforeMovingCursor();
+      var moved = !!(refreshed && canMoveCursorAfterRefresh(refreshed));
+      if (moved) {
+        var ref = refOf(body);
+        if (ref && ref.revision !== undefined
+          && (ref.branch === undefined || ref.branch === submittedBranch)) {
+          setRevision(ref.revision);
+        }
+      }
+      return {
+        ok: true,
+        body: body,
+        cursorStillCurrent: moved,
+        completedTarget: moved ? target() : null,
+      };
     } catch (error) {
       if (error && error.status === 409) {
-        var current = error.body && error.body.current ? error.body.current : null;
-        try {
-          await refreshState(true);
-        } catch (refreshError) {
-          // 重取失败：保持旧游标，下次操作仍会 409（不伪造成功）。
-        }
-        if (current && current.revision !== undefined) {
+        var current = conflictCurrent(error);
+        var refreshed = await refreshBeforeMovingCursor();
+        var stillCurrent = !!(refreshed && canMoveCursorAfterRefresh(refreshed));
+        if (stillCurrent
+          && current && current.revision !== undefined
+          && (current.branch === undefined || current.branch === submittedBranch)) {
           setRevision(current.revision);
         }
         return {
@@ -465,20 +526,106 @@
           kind: "conflict",
           message: "末端已移动，已自动重取最新状态",
           error: error,
+          cursorStillCurrent: stillCurrent,
+          completedTarget: stillCurrent ? target() : null,
         };
       }
-      if (error && error.status === 422) {
+      if (error && (error.status === 400 || error.status === 422)) {
+        var bodyError = error.body || {};
         var reason =
-          error.body && error.body.reason ? error.body.reason : "422 " + (error.message || "被拒");
-        return { ok: false, kind: "rejected", message: reason, error: error };
+          bodyError.reason
+          || (bodyError.result && bodyError.result.reason)
+          || bodyError.message
+          || (error.status === 400 ? "BAD_REQUEST" : "REJECTED");
+        var stillCurrent = stillAtSubmittedBranchRevision() && epochMatches(submittedEpoch);
+        return {
+          ok: false,
+          kind: "rejected",
+          message: reason,
+          error: error,
+          cursorStillCurrent: stillCurrent,
+          completedTarget: stillCurrent ? target() : null,
+        };
       }
+      var stillCurrent = stillAtSubmittedBranchRevision() && epochMatches(submittedEpoch);
       return {
         ok: false,
         kind: "error",
         message: (error && error.message) || String(error),
         error: error,
+        cursorStillCurrent: stillCurrent,
+        completedTarget: stillCurrent ? target() : null,
       };
     }
+  }
+
+  async function writeCommand(type, payload, frozenTarget) {
+    if (window.SimosModes && !window.SimosModes.isWriteAllowed(state.mode, type)) {
+      return {
+        ok: false,
+        kind: "mode-denied",
+        message: "当前模式「" + window.SimosModes.modeLabel(state.mode) + "」不允许写命令 " + type,
+      };
+    }
+    // 同步捕获：与 commandEnvelope 使用同一份坐标，中间没有 await。
+    var submission = frozenTarget && frozenTarget.branch !== undefined ? frozenTarget : state;
+    return runWriteSubmission(
+      function () { return window.SimosApi.submitCommand(commandEnvelope(type, payload, submission)); },
+      submission,
+      function (error) { return error.body && error.body.current ? error.body.current : null; },
+      undefined);
+  }
+
+  /** 编辑器（国家/军队）允许的现有工作模式。 */
+  function editorModeAllowed(kind) {
+    if (kind !== "nation" && kind !== "formation") {
+      return false;
+    }
+    return state.mode === "map-edit" || state.mode === "region-edit" || state.mode === "unit";
+  }
+
+  /**
+   * 网页编辑器固定工具的共享写入口：冻结当前 {branch,revision,writeEpoch}，branch/expectedRevision 一律由冻结
+   * target 覆盖（JSON 不能偷偷指向别的节点）；成功只在目标仍当前时刷新 state/writeEpoch。
+   * kind = nation|formation；payload 是领域工具的完整 JSON（dryRun 被强制为 false）。
+   */
+  async function writeEditorTool(kind, payload, frozenTarget) {
+    if (!editorModeAllowed(kind)) {
+      return {
+        ok: false,
+        kind: "mode-denied",
+        message: "当前模式「" + window.SimosModes.modeLabel(state.mode) + "」不允许" + (kind === "nation" ? "国家" : "编制") + "编辑",
+        // 同步即时拒绝：目标没有在 await 期间变化，模块应显示提示；不是迟到响应。
+        cursorStillCurrent: true,
+        completedTarget: target(),
+      };
+    }
+    var submission = frozenTarget && frozenTarget.branch !== undefined ? frozenTarget : target();
+    if (submission.branch === null || submission.branch === undefined
+      || submission.revision === null || submission.revision === undefined) {
+      return {
+        ok: false,
+        kind: "bad-target",
+        message: "当前没有冻结的 branch/revision，无法保存；请先载入世界状态",
+        // 同步即时拒绝：没有可读回目标，但必须让模块显示失败；不是迟到响应。
+        cursorStillCurrent: true,
+        completedTarget: null,
+      };
+    }
+    var body = Object.assign({}, payload === undefined ? {} : payload);
+    body.branch = submission.branch;
+    body.expectedRevision = submission.revision;
+    body.dryRun = false;
+    return runWriteSubmission(
+      function () { return window.SimosApi.postEditor(kind, body); },
+      submission,
+      function (error) {
+        var parsed = error && error.body;
+        return parsed && parsed.result && parsed.result.submission
+          ? parsed.result.submission.current
+          : null;
+      },
+      submission.writeEpoch);
   }
 
   /** 页面初始化共用入口：nav + state 摘要；工作台页额外接线模式栏与各面板骨架。 */
@@ -564,5 +711,6 @@
     setServerState: setServerState,
     commandEnvelope: commandEnvelope,
     writeCommand: writeCommand,
+    writeEditorTool: writeEditorTool,
   };
 })();

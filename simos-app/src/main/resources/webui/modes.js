@@ -27,6 +27,8 @@
       writes: [
         "map.SetTerrain",
         "map.ImportRaster",
+        "map.PaintTerrain",
+        "map.ConnectHexes",
         "map.SetEdge",
         "map.RandomizeRegion",
         "map.UpdateRegion",

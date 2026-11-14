@@ -164,5 +164,5 @@
       overlay: { scale: scale, offsetX: offsetX, offsetY: offsetY }, mode: opts.grid === "generate" ? "merge" : "patch" };
   }
   window.SimosRasterCore = { MAX_CELLS: MAX_CELLS, parseHexColor: parseHexColor, nearestTerrain: nearestTerrain,
-    sampleHex: sampleHex, makeGrid: makeGrid, buildPlan: buildPlan, heightOf: heightOf, insideHex: insideHex };
+    sampleHex: sampleHex, makeGrid: makeGrid, existingGrid: existingGrid, buildPlan: buildPlan, heightOf: heightOf, insideHex: insideHex };
 })();

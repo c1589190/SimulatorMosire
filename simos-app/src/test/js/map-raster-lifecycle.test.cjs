@@ -759,7 +759,15 @@ test("clear-removes-the-image-and-the-matching-local-draft", async () => {
   await harness.P.clear();
   assert.deepEqual(harness.draft.clears, [DRAFT_KEY]);
   assert.equal(harness.P.debugState().hasImage, false);
-  assert.equal(harness.elements["raster-file-info"].textContent.includes("图片在本机处理"), true);
+  assert.equal(
+    harness.elements["raster-file-info"].textContent.includes("自动识别在浏览器本地处理，不上传原图"),
+    true
+  );
+  assert.equal(
+    harness.elements["raster-file-info"].textContent.includes("上传到本机世界服务"),
+    true,
+    "共享参考图会传当前原图到本机世界服务，披露不得再写「不上传原图」了事"
+  );
   assert.ok(harness.elements["png-status"].textContent.includes("已清除底图和草稿"));
 });
 

@@ -99,9 +99,12 @@ const JS_DIR = __dirname;
 //     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
 //     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
 //     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
+//   2026-11-14 国家/编制编辑器统一测试起 482 → 497：新增 nation-formation-editor.test.cjs 15 条。
+//   2026-11-14 自由判图统一测试起 456 → 482：新增 map-reference-tools.test.cjs 26 条
+//     （真实 DOM/异步自由工具区 + 公共 writeCommand Promise 生命周期）。
 //   2026-11-14 底图导入统一测试起 428 → 456：新增 map-raster-core 12 条 + map-raster-lifecycle 15 条
 //     （算法真实行为 + P2 生命周期回归）；与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值。
-const MIN_TESTS = 456;
+const MIN_TESTS = 497;
 
 function discoverTests() {
   return fs

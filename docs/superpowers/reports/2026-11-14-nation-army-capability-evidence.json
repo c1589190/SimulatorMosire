@@ -1,0 +1,29 @@
+{
+  "scope": "read-only source and live tools/list plus isolated domain probe; no writes to demo store",
+  "jar": "run/map-reference-demo/simos.jar",
+  "probeSource": "/tmp/SimosFormationAudit.java",
+  "probeLog": "/tmp/simos-formation-audit.log",
+  "probeRows": [
+    "explicitPositions speed=1",
+    "explicitPositions division positionDay1=Optional[1_0] attached=false parent=Optional.empty",
+    "explicitPositions brigade positionDay1=Optional[1_0] attached=true parent=Optional[division]",
+    "explicitPositions battalion positionDay1=Optional[1_0] attached=true parent=Optional[brigade]",
+    "omittedInitialPosition brigade=Optional.empty",
+    "omittedInitialPosition battalion=Optional.empty",
+    "omittedPositionsAfterAdvance speed=1",
+    "omittedPositionsAfterAdvance division positionDay1=Optional[1_0] attached=false parent=Optional.empty",
+    "omittedPositionsAfterAdvance brigade positionDay1=Optional[1_0] attached=true parent=Optional[division]",
+    "omittedPositionsAfterAdvance battalion positionDay1=Optional[1_0] attached=true parent=Optional[brigade]",
+    "detachedBattalion speed=5",
+    "detachedBattalion division positionDay1=Optional[2_0] attached=false parent=Optional.empty",
+    "detachedBattalion brigade positionDay1=Optional[2_0] attached=true parent=Optional[division]",
+    "detachedBattalion battalion positionDay1=Optional[0_0] attached=false parent=Optional[brigade]"
+  ],
+  "cost": "constant 24000 millisMP/edge, 1 day; speedHQ10 brigade5 battalion1",
+  "limitedTo": "handler/domain/participant behavior, not real country scenarios, not public OOB research, not full runtime command replay",
+  "liveToolsLog": "/tmp/simos-capability-live-tools.jsonl",
+  "dshReports": [
+    "/tmp/simos-audit-nation-final.txt",
+    "/tmp/simos-audit-army-final.txt"
+  ]
+}

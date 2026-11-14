@@ -91,6 +91,9 @@ public final class ToolResources {
    */
   public static final String ARMY_NAMESPACE = "army";
 
+  /** 政府切片命名空间（国家/外交/行政数据；{@code simos-gov}）。 */
+  public static final String GOV_NAMESPACE = "gov";
+
   /**
    * ★★ <b>GM 的稳定身份 id</b>（2026-10-14 GM⇄DM 双向信件，约束设计书 §9-A 裁定）：{@code "gm"}——<b>全仓唯一拼写点</b>，
    * 它出现在三处，全部引用本常量、不抄字面量：

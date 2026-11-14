@@ -117,6 +117,12 @@ public final class CatalogTool implements SimosTool {
                   + "unit id 不得与 household id 撞名（UnitState 构造期具名拒）；UNIT 家户位置的一致性由 app 组合工具同批保证，"
                   + "生产路径（推进参与者）还会在每轮推进前把 Social 位置自动同步到 unit.households）"),
           Map.entry(
+              "unit.UpdateFormationNode",
+              "id, name?, position{q,r}?, attached?, parent?, speed?, mobilityPerMille?,"
+                  + " equipment[{type,amount}]?（★ 缺省 = 保持；position 显式 null 且无 attached 后代时才清空；"
+                  + "parent 缺席 = 保持、null/空串 = 升为根；attached=true 必须与父同格（否则具名拒）；"
+                  + "位置/归属/跟随位变化时同刻写实 attached 后代并清掉在途路线；其余 Unit 组件原样保留）"),
+          Map.entry(
               "unit.SetJurisdiction",
               "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"
                   + " levyGrainCapPerCommand?, levyMoneyCapPerCommand?, levyManpowerCapPerCommand?,"
@@ -189,6 +195,15 @@ public final class CatalogTool implements SimosTool {
               "map.ImportRaster",
               "mode(patch|merge), cells[{q(int),r(int),terrain,height(0..1)}...]，1..12000格；"
                   + "重复/越界整体拒绝；保留图外数据"),
+          Map.entry(
+              "map.PaintTerrain",
+              "cells[{q,r,terrain,height?}...]，1..12000 格；全部格必须已存在；height 缺省取该地形标准编辑高度中值；"
+                  + "未知地形/重复/图外/非法高度整批拒绝；保留土地树与其他组件；★ GM-only：决策人不能嵌入令"),
+          Map.entry(
+              "map.ConnectHexes",
+              "kind(当前地图已注册通路组), hexes[{q,r}...]（2..12001 点有序链）, op(merge|remove)；"
+                  + "相邻两格成一条边，MapWrap 邻接；merge 只补点名边该 kind 并保留 props、remove 只摘点名边该 kind；"
+                  + "跨格跳跃/自环/重复无向边整批拒绝；不全图 replace/不自动寻路；★ GM-only：决策人不能嵌入令"),
           Map.entry(
               "map.SetHexArea",
               "hex{q,r}, key(内置字段标签 urban|rural) 或 customKey(自定义字段名，字符串)（两者恰给一个）, op(set|add),"
@@ -790,6 +805,11 @@ public final class CatalogTool implements SimosTool {
                   + "「目标 Region 的账本」，本批只校验 region 存在性、不改账本/主体；"
                   + "区域清账改由组合根按家户集协调（P2-F））"),
           Map.entry("gov.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
+          Map.entry(
+              "gov.UpdateNation",
+              "nationId, name?, homeRegionId?, adminBudgetPerTick?"
+                  + "（★ 至少给一个；未给字段保持原值；homeRegionId 必须存在且 tag 逐字等于 nation:<nationId>；"
+                  + "只改 nations 表，保留决策人/外交/区域/单位；GM-only）"),
           // ★★ 2026-10-12 乙收尾：三条**归属写入工单**（GM-only）。载荷语义逐条相同：身份键
           //   decisionMakerId 必填；目标键**缺席/null/空串 = 清除**（可清）、给了 = 赋予/改绑（可改）、
           //   同值再赋 = 一字未动（幂等）。决策人不存在 / 目标不存在 ⇒ 具名拒。
@@ -813,6 +833,12 @@ public final class CatalogTool implements SimosTool {
               "armyId, masterGovUnitId?, rootUnitId, name"
                   + "（★ masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
                   + "旧 nationId 键已拒并指路 masterGovUnitId）"),
+          Map.entry(
+              "army.UpdateArmy",
+              "armyId, name?, masterGovUnitId?"
+                  + "（★ 至少给一个；未给字段保持原值；masterGovUnitId 缺席 = 保持、"
+                  + "null/空串 = 解除认领，给了必须存在且带 GovernmentFormation；"
+                  + "rootUnit 与 contactWatch 原样保留；armyId 不存在 ⇒ 具名拒；GM-only）"),
           Map.entry(
               "army.SetArmyMasterGov",
               "armyId, masterGovUnitId?"

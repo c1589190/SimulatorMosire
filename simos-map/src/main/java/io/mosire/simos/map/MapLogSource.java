@@ -21,7 +21,8 @@ public enum MapLogSource implements LogOrigin {
   MAP_EDIT("map-edit", "地图写命令处理：区域/地形/连通性/通路组（命令面）", LogOriginKind.SYSTEM),
   MAP_GENERATE("map-generate", "地图生成器阶段与产物汇总（创世期生成，无 day 上下文）", LogOriginKind.SYSTEM),
   MAP_CODEC("map-codec", "MapCodec 编解码、旧形状迁移与变更集施加", LogOriginKind.SYSTEM),
-  MAP_RESOLVE("map-resolve", "MapResolver 候选装配、空结果与故障诊断", LogOriginKind.SYSTEM);
+  MAP_RESOLVE("map-resolve", "MapResolver 候选装配、空结果与故障诊断", LogOriginKind.SYSTEM),
+  MAP_REFERENCE("map-reference", "地图参考图工件发布与视图渲染（宿主输入工件，不改世界）", LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;

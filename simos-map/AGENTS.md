@@ -20,6 +20,7 @@
 - 主代码：`src/main/java/io/mosire/simos/map/**`
 - 地图前端：`src/main/resources/webui/modules/map/`；底图识别、预览和本地草稿也归本模块。
 - 原子底图导入：`ops/RasterImportOperations.java`、`spi/ImportRasterHandler.java`、`tools/write/MapImportRasterTool.java`。
+- 自由判图工具：`reference/` 保存/裁切参考工件，`PaintTerrainHandler` 直接改多格，`ConnectHexesHandler` 编辑点名格链。
 
 ## 工具归属
 
@@ -33,6 +34,7 @@
 - 用户设计原稿：`../docs/superpowers/specs/2026-10-02-architecture-design-source.md`
 - 专题设计：`../docs/superpowers/specs/2026-09-16-simos-master-design.md`
 - 底图导入：`../docs/superpowers/specs/2026-11-14-raster-import-runtime-design.md`
+- 自由判图与连通性：`../docs/superpowers/specs/2026-11-14-map-reference-tools-design.md`
 
 ## 验证
 

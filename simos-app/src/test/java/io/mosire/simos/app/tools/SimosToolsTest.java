@@ -83,6 +83,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.map.terrain.TerrainHeights;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.map.tools.read.MapOverlapsTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
@@ -228,12 +229,16 @@ class SimosToolsTest {
           "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.gov.info",
+          // ★ 2026-11-14 国家/编制编辑器：两条 GM-only 读（都实现 GmOnlyRead）。
+          "simos.gov.nations",
+          "simos.army.formation",
           "simos.llm.providers",
           "simos.map.block",
           "simos.map.hex",
           "simos.map.overlaps",
           "simos.map.overview",
           "simos.map.path",
+          "simos.map.reference",
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
@@ -280,6 +285,9 @@ class SimosToolsTest {
           "simos.map.block",
           "simos.map.overlaps",
           "simos.map.path",
+          "simos.map.reference",
+          "simos.gov.nations",
+          "simos.army.formation",
           "simos.province.divide",
           "simos.ga.decision-maker",
           "simos.ga.decision-makers",
@@ -321,6 +329,9 @@ class SimosToolsTest {
           //     NARROW_WRITE_NAMES / 磁盘窄写扫描面（66）一条不动。
           //   ★ 它 toolRoles()={GM} ⇒ 决策人面一条不动；★ 与它同族的 simos.command.submit 就在上一行。
           "simos.command.submitBatch",
+          // ★ 2026-11-14 国家/编制编辑器：两条 GM-only 组合写（不继承窄写基类）。
+          "simos.gov.editNation",
+          "simos.army.editFormation",
           // ★ D-036：世界文档写口（独立持久数据；GM-only；不继承窄写基类）。
           "simos.docs.create",
           "simos.docs.edit",
@@ -621,6 +632,8 @@ class SimosToolsTest {
           "map.RenameRegion",
           "map.SetEdge",
           "map.SetHexArea",
+          "map.PaintTerrain",
+          "map.ConnectHexes",
           "map.SetTerrain",
           "map.ImportRaster",
           "map.UpdateRegion",
@@ -829,6 +842,8 @@ class SimosToolsTest {
           // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（唯一新增命令类型；不打 DmUsableCommand ⇒ 仅 GM）
           "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
+          // ★ 2026-11-14 国家/编制编辑器：army 窄更新 handler。
+          "army.UpdateArmy",
           // ★★ D-031 Z6（2026-10-16）：culture 命令（culture.* 按字典序排在 army.* 与 economy.* 之间）。
           //   ★★★ D-032 T6（2026-10-17，用户原话「D2直接删」）：`culture.UpsertAptitudeRule` /
           //   `culture.RemoveAptitudeRule` 随"文化 → 生产效率倍率"链（D2）**整条退役** —— Shell:1082 处的
@@ -905,6 +920,7 @@ class SimosToolsTest {
           "gov.DeleteNation",
           "gov.RecordDiplomaticEvent",
           "gov.SetDiplomaticRelation",
+          "gov.UpdateNation",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -917,6 +933,8 @@ class SimosToolsTest {
           "map.SetHexArea",
           "map.SetTerrain",
           "map.ImportRaster",
+          "map.PaintTerrain",
+          "map.ConnectHexes",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（production.* 按字典序排在 map.* 与 social.* 之间）。
@@ -980,7 +998,8 @@ class SimosToolsTest {
           "unit.SetUnitHouseholds",
           "unit.SetVisionRadius",
           "unit.SplitFormation",
-          "unit.UpdateCommandChain");
+          "unit.UpdateCommandChain",
+          "unit.UpdateFormationNode");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -1307,7 +1326,7 @@ class SimosToolsTest {
                 + " ⇒ 152 → **153**（实测来源 = 本条真跑扫 *Handler.java 的 type()；catalog 同轮为 153）。"
                 + "；★★★ 2026-10-23 AgentLib×D-032 集成实测：agentlib 决策包迁移后扫描面 = **150**，"
                 + "catalog 同轮亦为 150。")
-        .hasSize(151);
+        .hasSize(156);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1372,7 +1391,7 @@ class SimosToolsTest {
                 + "决策人桶那两条断言同一次跑**没红**）")
         // ★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策工具并入后 GM 桶 = 182。
         // ★ D-036：世界文档 3 读 + 3 写 ⇒ 182 + 6 = 188。
-        .hasSize(189);
+        .hasSize(196);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1607,7 +1626,7 @@ class SimosToolsTest {
                 + "{@code EconomySetPlanSourcesTool}（真继承基类 ⇒ 扫描器扫得到）⇒ **实测 66 → 67**"
                 + "（本轮真跑本类红在「Expected size: 66 but was: 67」）"
                 + "；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(68);
+        .hasSize(70);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具 ∖ 外来工具。
     // ★★ 2026-10-14：外来工具（doc_*/工作区）既不是本仓窄写类、也不在磁盘扫描面里 ⇒ 必须显式排除，
@@ -1786,6 +1805,10 @@ class SimosToolsTest {
             new Case("simos.province.divide", Map.of("regionId", REGION.value()), "provinces"),
             new Case("simos.map.path", Map.of("unit", U1.value(), "q", 1L, "r", 2L), "reachable"),
             new Case("simos.map.block", Map.of("q", 1L, "r", 1L), "hexes"),
+            // ★ 2026-11-14 自由判图：无 referenceId ⇒ 参考工件清单（空数组就是本轮的正确最小形状）。
+            new Case("simos.map.reference", Map.of(), "references"),
+            new Case("simos.gov.nations", Map.of(), "nations"),
+            new Case("simos.army.formation", Map.of(), "armies"),
             new Case("simos.unit.list", Map.of(), "units"),
             new Case("simos.unit.get", Map.of("id", U1.value()), "id"),
             new Case("simos.social.population", Map.of("q", 1L, "r", 1L), "population"),
@@ -2404,7 +2427,7 @@ class SimosToolsTest {
                 + "（{@code simos-economy/.../tools/write/EconomySetPlanSourcesTool.java}，真继承窄写基类）"
                 + "⇒ **实测 181 → 182**（本轮真跑本类红在「Expected size: 181 but was: 182」）"
                 + "；★★★ 2026-10-23 AgentLib×D-032 集成实测：旧决策工具删除后磁盘 *Tool.java = **178**。")
-        .hasSize(179);
+        .hasSize(186);
 
     List<String> union =
         Stream.concat(
@@ -2698,6 +2721,104 @@ class SimosToolsTest {
 
     ToolResult readBack = call("simos.unit.get", Map.of("id", "u-1"));
     assertThat(JSON.readTree(readBack.message()).get("name").asText()).isEqualTo("改名后的第一连");
+  }
+
+  /** T2/T3：结构化窄工具直接收 cells/hexes（不需要 payloadJson），旧的 payloadJson 窄写继续兼容。 */
+  @Test
+  void structuredPaintTerrainAndLegacySetTerrainBothWork() throws Exception {
+    io.mosire.agentlib.tool.AgentTool paint =
+        shell.toolRegistry().find("map.PaintTerrain").orElseThrow();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> paintSchema = paint.jsonSchema();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> paintProps = (Map<String, Object>) paintSchema.get("properties");
+    assertThat(paintProps).containsKey("cells").doesNotContainKey("payloadJson");
+
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("branch", "main");
+    args.put("expectedRevision", 1);
+    args.put(
+        "cells",
+        List.of(
+            Map.of("q", 1, "r", 1, "terrain", "mountains", "height", 0.81),
+            Map.of("q", 1, "r", 3, "terrain", "desert")));
+    ToolResult painted = call("map.PaintTerrain", args);
+    assertThat(painted.success()).as(painted.message()).isTrue();
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(2L);
+
+    SimulationState afterPaint =
+        shell.coreSimos().replay(ref("main", shell.coreSimos().head(main()).orElseThrow().value()));
+    GameMap map = ((MapSnapshot) afterPaint.module("map").orElseThrow()).map();
+    assertThat(map.terrainAt(H11)).isEqualTo("mountains");
+    assertThat(map.hexes().get(H11).height()).isEqualTo(0.81);
+    assertThat(map.terrainAt(H13)).isEqualTo("desert");
+    assertThat(map.hexes().get(H13).height()).isEqualTo(TerrainHeights.paintHeight("desert"));
+    assertThat(map.hexes().get(H12)).as("未点名格不动").isEqualTo(corridorMap().hexes().get(H12));
+
+    Map<String, Object> legacy = new LinkedHashMap<>();
+    legacy.put("branch", "main");
+    legacy.put("expectedRevision", 2);
+    legacy.put("payloadJson", "{\"hexes\":[{\"q\":1,\"r\":2}],\"terrain\":\"plains\"}");
+    ToolResult oldTool = call("map.SetTerrain", legacy);
+    assertThat(oldTool.success()).as(oldTool.message()).isTrue();
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(3L);
+  }
+
+  /** T1：参考图可选整数参数不得被 Number.longValue() 截断（小数/溢出/布尔都得明确拒绝）。 */
+  @Test
+  void referenceToolRejectsFractionalOverflowAndBooleanIntegers() {
+    String referenceId = "f".repeat(64);
+    for (Object q : new Object[] {1.5, 2_147_483_648L, true}) {
+      Map<String, Object> args = new LinkedHashMap<>();
+      args.put("referenceId", referenceId);
+      args.put("q", q);
+      args.put("r", 1);
+      ToolResult result = call("simos.map.reference", args);
+      assertThat(result.success()).as("q=%s", q).isFalse();
+      assertThat(result.message())
+          .as("q=%s", q)
+          .satisfiesAnyOf(
+              message -> assertThat(message).contains("必须是整数"),
+              message -> assertThat(message).contains("精确整数"),
+              message -> assertThat(message).contains("超出 int 范围"));
+    }
+    Map<String, Object> radius = new LinkedHashMap<>();
+    radius.put("referenceId", referenceId);
+    radius.put("radius", 1.5);
+    ToolResult result = call("simos.map.reference", radius);
+    assertThat(result.success()).isFalse();
+    assertThat(result.message()).contains("精确整数");
+  }
+
+  /** T2/T3：坏坐标整批拒绝且不推 revision；新工具只登记 GM（决策人桶无）。 */
+  @Test
+  void invalidStructuredMapWritesLeaveRevisionUntouchedAndStayGmOnly() throws Exception {
+    long before = shell.coreSimos().head(main()).orElseThrow().value();
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("branch", "main");
+    args.put("expectedRevision", before);
+    args.put("cells", List.of(Map.of("q", 9, "r", 9, "terrain", "plains")));
+    ToolResult result = call("map.PaintTerrain", args);
+    assertThat(result.success()).isFalse();
+    assertThat(result.message()).contains("图外");
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(before);
+
+    Map<String, Object> connectArgs = new LinkedHashMap<>();
+    connectArgs.put("branch", "main");
+    connectArgs.put("expectedRevision", before);
+    connectArgs.put("kind", "river");
+    connectArgs.put("op", "merge");
+    connectArgs.put("hexes", List.of(Map.of("q", 1, "r", 1), Map.of("q", 1, "r", 3)));
+    ToolResult connect = call("map.ConnectHexes", connectArgs);
+    assertThat(connect.success()).isFalse();
+    assertThat(shell.coreSimos().head(main()).orElseThrow().value()).isEqualTo(before);
+
+    List<String> decisionNames =
+        shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
+            .map(io.mosire.agentlib.tool.AgentTool::name)
+            .toList();
+    assertThat(decisionNames)
+        .doesNotContain("map.PaintTerrain", "map.ConnectHexes", "simos.map.reference");
   }
 
   @Test
@@ -3089,7 +3210,7 @@ class SimosToolsTest {
         CreateNationTool.NAME,
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
             + "\"adminBudgetPerTick\":10}",
-        "无国家 tag");
+        "的国家 tag 必须逐字等于");
   }
 
   /**

@@ -1,0 +1,1580 @@
+{
+  "status": "PASS",
+  "recordedAt": "2026-11-14T23:57:03.260996+08:00",
+  "git": {
+    "branch": "feature/d036-node-editor",
+    "head": "b9d8fe1d9b32bbcde6f211e4fcf3cfad70797657",
+    "thisWorkCommitted": false
+  },
+  "tools": [
+    "simos.gov.editNation",
+    "simos.gov.nations",
+    "simos.army.editFormation",
+    "simos.army.formation"
+  ],
+  "fullGate": {
+    "command": "tools/gate.sh full",
+    "rc": 0,
+    "elapsedSeconds": 302,
+    "summaryLog": "/tmp/simos-nation-formation-full5.log",
+    "verifyLog": "/tmp/simos-gate-full-verify-pqUyAX.log",
+    "validateLog": "/tmp/simos-gate-full-validate-cjVxsS.log",
+    "java": {
+      "xmlFiles": 517,
+      "totals": {
+        "tests": 3847,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 7
+      },
+      "modules": {
+        "simos-calendar": [
+          33,
+          0,
+          0,
+          0
+        ],
+        "simos-production": [
+          118,
+          0,
+          0,
+          0
+        ],
+        "simos-economy": [
+          520,
+          0,
+          0,
+          0
+        ],
+        "simos-army": [
+          109,
+          0,
+          0,
+          0
+        ],
+        "simos-social-api": [
+          3,
+          0,
+          0,
+          0
+        ],
+        "simos-core": [
+          248,
+          0,
+          0,
+          0
+        ],
+        "simos-unit": [
+          526,
+          0,
+          0,
+          0
+        ],
+        "simos-social": [
+          217,
+          0,
+          0,
+          0
+        ],
+        "simos-actor": [
+          130,
+          0,
+          0,
+          0
+        ],
+        "simos-util": [
+          224,
+          0,
+          0,
+          0
+        ],
+        "simos-gov": [
+          33,
+          0,
+          0,
+          0
+        ],
+        "simos-map": [
+          446,
+          0,
+          0,
+          0
+        ],
+        "simos-app": [
+          1094,
+          0,
+          0,
+          7
+        ],
+        "simos-culture": [
+          22,
+          0,
+          0,
+          0
+        ],
+        "simos-actor-api": [
+          8,
+          0,
+          0,
+          0
+        ],
+        "simos-ga-spi": [
+          44,
+          0,
+          0,
+          0
+        ],
+        "simos-ga": [
+          22,
+          0,
+          0,
+          0
+        ],
+        "simos-economy-api": [
+          50,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "frontend": {
+      "tests": 497,
+      "pass": 497,
+      "fail": 0,
+      "skip": 0
+    },
+    "mutations": [
+      {
+        "change": "removed omitted child position materialization",
+        "log": "/tmp/simos-mutation-1.log",
+        "killed": true,
+        "restored": true
+      },
+      {
+        "change": "removed default nation overlap rejection",
+        "log": "/tmp/simos-mutation-2.log",
+        "killed": true,
+        "restored": true
+      }
+    ]
+  },
+  "runtimeMovement": {
+    "nationResult": "{\"dryRun\":false,\"mode\":\"create\",\"nationId\":\"demo-nation\",\"name\":\"编制工具演示区\",\"color\":\"#d58045\",\"homeRegionId\":\"nation-home-demo-nation\",\"hexCount\":4,\"regionIds\":[\"nation-home-demo-nation\"],\"releasedRegionIds\":[],\"transferredFromRegionIds\":[],\"governmentUnitId\":\"demo-gov\",\"reason\":\"功能验证虚构区域，非真实国界\",\"commands\":[{\"payload\":\"{\\\"regionId\\\":\\\"nation-home-demo-nation\\\",\\\"name\\\":\\\"编制工具演示区\\\",\\\"hexes\\\":[{\\\"q\\\":0,\\\"r\\\":0},{\\\"q\\\":1,\\\"r\\\":0},{\\\"q\\\":1,\\\"r\\\":1},{\\\"q\\\":2,\\\"r\\\":0}],\\\"meta\\\":{\\\"color\\\":\\\"#d58045\\\",\\\"tag\\\":\\\"nation:demo-nation\\\",\\\"description\\\":null,\\\"annexedBy\\\":null}}\",\"type\":\"map.CreateRegion\"},{\"payload\":\"{\\\"nationId\\\":\\\"demo-nation\\\",\\\"name\\\":\\\"编制工具演示区\\\",\\\"homeRegionId\\\":\\\"nation-home-demo-nation\\\",\\\"adminBudgetPerTick\\\":0}\",\"type\":\"gov.CreateNation\"},{\"payload\":\"{\\\"id\\\":\\\"demo-gov\\\",\\\"name\\\":\\\"演示中央政府\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"equipment\\\":[],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-gov\\\",\\\"level\\\":\\\"CENTRAL\\\",\\\"staff\\\":{}}\",\"type\":\"unit.SetGovFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-gov\\\",\\\"regions\\\":[\\\"nation-home-demo-nation\\\"]}\",\"type\":\"unit.SetJurisdiction\"},{\"payload\":\"{\\\"target\\\":\\\"hh-gov-demo-gov\\\",\\\"reason\\\":\\\"editNation 新建 GOV 政府家户（0 人）：功能验证虚构区域，非真实国界\\\",\\\"source\\\":{\\\"module\\\":\\\"gov\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-gov-demo-gov\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-gov\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"演示中央政府政府家户\\\"},\\\"vitalRates\\\":[]}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"}],\"submission\":{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2},\"commandId\":\"9932ad9b-7975-4553-9b44-2c96be569411\",\"correlationId\":\"9932ad9b-7975-4553-9b44-2c96be569411\"}}",
+    "formationResult": "{\"dryRun\":false,\"mode\":\"create\",\"armyId\":\"demo-formation\",\"name\":\"虚构编制演示师\",\"masterGov\":\"demo-gov\",\"rootUnitId\":\"demo-div-1\",\"nodeCount\":10,\"createdNodes\":10,\"updatedNodes\":0,\"directPersonnel\":60,\"subtreePersonnel\":3340,\"personnelNote\":\"personnel 是本级直接人数；新成员默认成年男性锚点年龄 6570 天，不是真实人口结构。\",\"reason\":\"验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队\",\"commands\":[{\"payload\":\"{\\\"id\\\":\\\"demo-div-1\\\",\\\"name\\\":\\\"演示第1师\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":null,\\\"equipment\\\":[{\\\"type\\\":\\\"指挥车\\\",\\\"amount\\\":6}],\\\"speed\\\":4,\\\"mobilityPerMille\\\":900,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-div-1\\\",\\\"role\\\":\\\"DIVISION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-div-1\\\",\\\"households\\\":[\\\"hh-unit:demo-div-1\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-div-1\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-div-1\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-div-1\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-div-1·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-div-1\\\",\\\"lotId\\\":\\\"army-edit:demo-div-1:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":60,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bde-1\\\",\\\"name\\\":\\\"演示第1旅\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-div-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"指挥车\\\",\\\"amount\\\":4}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bde-1\\\",\\\"role\\\":\\\"BRIGADE\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bde-1\\\",\\\"households\\\":[\\\"hh-unit:demo-bde-1\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bde-1\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bde-1\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bde-1\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bde-1·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bde-1\\\",\\\"lotId\\\":\\\"army-edit:demo-bde-1:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":40,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-1-1\\\",\\\"name\\\":\\\"第1旅第1营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-1\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-1\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-1-1\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-1-1\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-1\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-1-1\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-1-1·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-1\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-1-1:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-1-2\\\",\\\"name\\\":\\\"第1旅第2营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-2\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-2\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-1-2\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-1-2\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-2\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-1-2\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-1-2·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-2\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-1-2:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-1-3\\\",\\\"name\\\":\\\"第1旅第3营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-3\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-1-3\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-1-3\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-1-3\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-3\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-1-3\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-1-3·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-1-3\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-1-3:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bde-2\\\",\\\"name\\\":\\\"演示第2旅\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-div-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"指挥车\\\",\\\"amount\\\":4}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bde-2\\\",\\\"role\\\":\\\"BRIGADE\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bde-2\\\",\\\"households\\\":[\\\"hh-unit:demo-bde-2\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bde-2\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bde-2\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bde-2\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bde-2·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bde-2\\\",\\\"lotId\\\":\\\"army-edit:demo-bde-2:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":40,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-2-1\\\",\\\"name\\\":\\\"第2旅第1营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-2\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-1\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-1\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-2-1\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-2-1\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-1\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-2-1\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-2-1·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-1\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-2-1:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-2-2\\\",\\\"name\\\":\\\"第2旅第2营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-2\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-2\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-2\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-2-2\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-2-2\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-2\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-2-2\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-2-2·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-2\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-2-2:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-bn-2-3\\\",\\\"name\\\":\\\"第2旅第3营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-bde-2\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"卡车\\\",\\\"amount\\\":20},{\\\"type\\\":\\\"机枪\\\",\\\"amount\\\":24},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":450}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-3\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-bn-2-3\\\",\\\"households\\\":[\\\"hh-unit:demo-bn-2-3\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-bn-2-3\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-3\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-bn-2-3\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-bn-2-3·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-bn-2-3\\\",\\\"lotId\\\":\\\"army-edit:demo-bn-2-3:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":500,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"id\\\":\\\"demo-recon-bn\\\",\\\"name\\\":\\\"师直属侦察营\\\",\\\"position\\\":{\\\"q\\\":0,\\\"r\\\":0},\\\"attached\\\":true,\\\"parent\\\":\\\"demo-div-1\\\",\\\"equipment\\\":[{\\\"type\\\":\\\"侦察车\\\",\\\"amount\\\":18},{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":180}],\\\"speed\\\":1,\\\"mobilityPerMille\\\":1000,\\\"households\\\":[]}\",\"type\":\"unit.CreateUnit\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-recon-bn\\\",\\\"role\\\":\\\"BATTALION\\\",\\\"masterGov\\\":\\\"demo-gov\\\"}\",\"type\":\"unit.SetArmyFormation\"},{\"payload\":\"{\\\"unitId\\\":\\\"demo-recon-bn\\\",\\\"households\\\":[\\\"hh-unit:demo-recon-bn\\\"],\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\"}\",\"type\":\"unit.SetUnitHouseholds\"},{\"payload\":\"{\\\"target\\\":\\\"hh-unit:demo-recon-bn\\\",\\\"reason\\\":\\\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\\\",\\\"source\\\":{\\\"module\\\":\\\"army\\\"},\\\"plan\\\":[{\\\"op\\\":\\\"CREATE_HOUSEHOLD\\\",\\\"household\\\":\\\"hh-unit:demo-recon-bn\\\",\\\"location\\\":{\\\"unitId\\\":\\\"demo-recon-bn\\\",\\\"type\\\":\\\"UNIT\\\"},\\\"profile\\\":{\\\"name\\\":\\\"demo-recon-bn·编制人数\\\"},\\\"vitalRates\\\":[]},{\\\"op\\\":\\\"ADD_MEMBERS\\\",\\\"household\\\":\\\"hh-unit:demo-recon-bn\\\",\\\"lotId\\\":\\\"army-edit:demo-recon-bn:1\\\",\\\"sex\\\":\\\"MALE\\\",\\\"count\\\":200,\\\"ageAtAnchorDays\\\":6570}]}\",\"type\":\"social.SubmitHouseholdWorkOrder\"},{\"payload\":\"{\\\"armyId\\\":\\\"demo-formation\\\",\\\"name\\\":\\\"虚构编制演示师\\\",\\\"masterGovUnitId\\\":\\\"demo-gov\\\",\\\"rootUnitId\\\":\\\"demo-div-1\\\"}\",\"type\":\"army.CreateArmy\"}],\"submission\":{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":3},\"commandId\":\"744c4f53-1b45-438f-83ec-fdcebae5bf2f\",\"correlationId\":\"744c4f53-1b45-438f-83ec-fdcebae5bf2f\"}}",
+    "personnel": 3340,
+    "initialPositions": {
+      "demo-bde-1": "0_0",
+      "demo-bde-2": "0_0",
+      "demo-bn-1-1": "0_0",
+      "demo-bn-1-2": "0_0",
+      "demo-bn-1-3": "0_0",
+      "demo-bn-2-1": "0_0",
+      "demo-bn-2-2": "0_0",
+      "demo-bn-2-3": "0_0",
+      "demo-div-1": "0_0",
+      "demo-gov": "0_0",
+      "demo-recon-bn": "0_0"
+    },
+    "formationRead": "{\"branch\":\"main\",\"revision\":3,\"tick\":0,\"count\":1,\"armies\":[{\"armyId\":\"demo-formation\",\"name\":\"虚构编制演示师\",\"masterGov\":\"demo-gov\",\"rootUnitId\":\"demo-div-1\",\"contactWatch\":false,\"nodeCount\":10,\"maxDepth\":3,\"directPersonnel\":3340,\"subtreePersonnel\":3340,\"nodes\":[{\"id\":\"demo-div-1\",\"name\":\"演示第1师\",\"role\":\"DIVISION\",\"masterGov\":\"demo-gov\",\"parentId\":null,\"depth\":1,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":60,\"subtreePersonnel\":3340,\"equipment\":[{\"type\":\"指挥车\",\"amount\":6}],\"speed\":4,\"mobilityPerMille\":900,\"childIds\":[\"demo-bde-1\",\"demo-bde-2\",\"demo-recon-bn\"]},{\"id\":\"demo-bde-1\",\"name\":\"演示第1旅\",\"role\":\"BRIGADE\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-div-1\",\"depth\":2,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":40,\"subtreePersonnel\":1540,\"equipment\":[{\"type\":\"指挥车\",\"amount\":4}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[\"demo-bn-1-1\",\"demo-bn-1-2\",\"demo-bn-1-3\"]},{\"id\":\"demo-bde-2\",\"name\":\"演示第2旅\",\"role\":\"BRIGADE\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-div-1\",\"depth\":2,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":40,\"subtreePersonnel\":1540,\"equipment\":[{\"type\":\"指挥车\",\"amount\":4}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[\"demo-bn-2-1\",\"demo-bn-2-2\",\"demo-bn-2-3\"]},{\"id\":\"demo-recon-bn\",\"name\":\"师直属侦察营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-div-1\",\"depth\":2,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":200,\"subtreePersonnel\":200,\"equipment\":[{\"type\":\"侦察车\",\"amount\":18},{\"type\":\"步枪\",\"amount\":180}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-1-1\",\"name\":\"第1旅第1营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-1\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-1-2\",\"name\":\"第1旅第2营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-1\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-1-3\",\"name\":\"第1旅第3营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-1\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-2-1\",\"name\":\"第2旅第1营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-2\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-2-2\",\"name\":\"第2旅第2营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-2\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]},{\"id\":\"demo-bn-2-3\",\"name\":\"第2旅第3营\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\",\"parentId\":\"demo-bde-2\",\"depth\":3,\"attached\":true,\"position\":{\"r\":0,\"q\":0},\"directPersonnel\":500,\"subtreePersonnel\":500,\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"childIds\":[]}]}],\"render\":{\"summary\":\"编制图「虚构编制演示师」（demo-formation）：10 节点，深度 3，直接人数 3340，子树合计 3340；PNG 1966×490（56148 字节，assetId=0a44848dc00ea939526e701984045a9023b74784fde9f8aa0a47539c9daa38ab）。实线=attached（随父移动），虚线=detached（独立机动线）。\",\"assetId\":\"0a44848dc00ea939526e701984045a9023b74784fde9f8aa0a47539c9daa38ab\",\"byteSize\":56148,\"width\":1966,\"height\":490}}",
+    "afterFirstDay": {
+      "demo-bde-1": "1_0",
+      "demo-bde-2": "1_0",
+      "demo-bn-1-1": "1_0",
+      "demo-bn-1-2": "1_0",
+      "demo-bn-1-3": "1_0",
+      "demo-bn-2-1": "1_0",
+      "demo-bn-2-2": "1_0",
+      "demo-bn-2-3": "1_0",
+      "demo-div-1": "1_0",
+      "demo-gov": "0_0",
+      "demo-recon-bn": "1_0"
+    },
+    "afterSecondDay": {
+      "demo-bde-1": "2_0",
+      "demo-bde-2": "1_1",
+      "demo-bn-1-1": "2_0",
+      "demo-bn-1-2": "2_0",
+      "demo-bn-1-3": "2_0",
+      "demo-bn-2-1": "1_1",
+      "demo-bn-2-2": "1_1",
+      "demo-bn-2-3": "1_1",
+      "demo-div-1": "2_0",
+      "demo-gov": "0_0",
+      "demo-recon-bn": "2_0"
+    },
+    "beforeRestart": {
+      "demo-bde-1": "2_0",
+      "demo-bde-2": "1_1",
+      "demo-bn-1-1": "2_0",
+      "demo-bn-1-2": "2_0",
+      "demo-bn-1-3": "2_0",
+      "demo-bn-2-1": "1_1",
+      "demo-bn-2-2": "1_1",
+      "demo-bn-2-3": "1_1",
+      "demo-div-1": "2_0",
+      "demo-gov": "0_0",
+      "demo-recon-bn": "2_0"
+    },
+    "tick": 2,
+    "head": 6,
+    "afterRestart": {
+      "demo-bde-1": "2_0",
+      "demo-bde-2": "1_1",
+      "demo-bn-1-1": "2_0",
+      "demo-bn-1-2": "2_0",
+      "demo-bn-1-3": "2_0",
+      "demo-bn-2-1": "1_1",
+      "demo-bn-2-2": "1_1",
+      "demo-bn-2-3": "1_1",
+      "demo-div-1": "2_0",
+      "demo-gov": "0_0",
+      "demo-recon-bn": "2_0"
+    }
+  },
+  "mcpOneShotWrites": {
+    "nation-result": {
+      "dryRun": false,
+      "mode": "create",
+      "nationId": "demo-nation",
+      "name": "编制工具演示区",
+      "color": "#d58045",
+      "homeRegionId": "nation-home-demo-nation",
+      "hexCount": 3,
+      "regionIds": [
+        "nation-home-demo-nation"
+      ],
+      "releasedRegionIds": [],
+      "transferredFromRegionIds": [],
+      "governmentUnitId": "demo-gov",
+      "reason": "功能验证虚构区域，非真实国界",
+      "commands": [
+        {
+          "type": "map.CreateRegion",
+          "payload": "{\"regionId\":\"nation-home-demo-nation\",\"name\":\"编制工具演示区\",\"hexes\":[{\"q\":0,\"r\":0},{\"q\":1,\"r\":0},{\"q\":2,\"r\":0}],\"meta\":{\"color\":\"#d58045\",\"tag\":\"nation:demo-nation\",\"description\":null,\"annexedBy\":null}}"
+        },
+        {
+          "type": "gov.CreateNation",
+          "payload": "{\"nationId\":\"demo-nation\",\"name\":\"编制工具演示区\",\"homeRegionId\":\"nation-home-demo-nation\",\"adminBudgetPerTick\":0}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-gov\",\"name\":\"演示中央政府\",\"position\":{\"q\":0,\"r\":0},\"equipment\":[],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetGovFormation",
+          "payload": "{\"unitId\":\"demo-gov\",\"level\":\"CENTRAL\",\"staff\":{}}"
+        },
+        {
+          "type": "unit.SetJurisdiction",
+          "payload": "{\"unitId\":\"demo-gov\",\"regions\":[\"nation-home-demo-nation\"]}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-gov-demo-gov\",\"reason\":\"editNation 新建 GOV 政府家户（0 人）：功能验证虚构区域，非真实国界\",\"source\":{\"module\":\"gov\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-gov-demo-gov\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-gov\"},\"profile\":{\"name\":\"演示中央政府政府家户\"},\"vitalRates\":[]}]}"
+        }
+      ],
+      "submission": {
+        "result": "committed",
+        "ref": {
+          "branch": "main",
+          "revision": 2
+        },
+        "commandId": "635d5994-f5f5-4e28-88f2-644a930096a7",
+        "correlationId": "635d5994-f5f5-4e28-88f2-644a930096a7"
+      }
+    },
+    "formation-result": {
+      "dryRun": false,
+      "mode": "create",
+      "armyId": "demo-formation",
+      "name": "虚构编制演示师",
+      "masterGov": "demo-gov",
+      "rootUnitId": "demo-div-1",
+      "nodeCount": 10,
+      "createdNodes": 10,
+      "updatedNodes": 0,
+      "directPersonnel": 60,
+      "subtreePersonnel": 3340,
+      "personnelNote": "personnel 是本级直接人数；新成员默认成年男性锚点年龄 6570 天，不是真实人口结构。",
+      "reason": "验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队",
+      "commands": [
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-div-1\",\"name\":\"演示第1师\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":null,\"equipment\":[{\"type\":\"指挥车\",\"amount\":6}],\"speed\":4,\"mobilityPerMille\":900,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-div-1\",\"role\":\"DIVISION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-div-1\",\"households\":[\"hh-unit:demo-div-1\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-div-1\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-div-1\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-div-1\"},\"profile\":{\"name\":\"demo-div-1·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-div-1\",\"lotId\":\"army-edit:demo-div-1:1\",\"sex\":\"MALE\",\"count\":60,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bde-1\",\"name\":\"演示第1旅\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-div-1\",\"equipment\":[{\"type\":\"指挥车\",\"amount\":4}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bde-1\",\"role\":\"BRIGADE\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bde-1\",\"households\":[\"hh-unit:demo-bde-1\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bde-1\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bde-1\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bde-1\"},\"profile\":{\"name\":\"demo-bde-1·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bde-1\",\"lotId\":\"army-edit:demo-bde-1:1\",\"sex\":\"MALE\",\"count\":40,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-1-1\",\"name\":\"第1旅第1营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-1\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-1-1\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-1-1\",\"households\":[\"hh-unit:demo-bn-1-1\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-1-1\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-1-1\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-1-1\"},\"profile\":{\"name\":\"demo-bn-1-1·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-1-1\",\"lotId\":\"army-edit:demo-bn-1-1:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-1-2\",\"name\":\"第1旅第2营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-1\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-1-2\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-1-2\",\"households\":[\"hh-unit:demo-bn-1-2\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-1-2\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-1-2\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-1-2\"},\"profile\":{\"name\":\"demo-bn-1-2·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-1-2\",\"lotId\":\"army-edit:demo-bn-1-2:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-1-3\",\"name\":\"第1旅第3营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-1\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-1-3\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-1-3\",\"households\":[\"hh-unit:demo-bn-1-3\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-1-3\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-1-3\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-1-3\"},\"profile\":{\"name\":\"demo-bn-1-3·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-1-3\",\"lotId\":\"army-edit:demo-bn-1-3:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bde-2\",\"name\":\"演示第2旅\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-div-1\",\"equipment\":[{\"type\":\"指挥车\",\"amount\":4}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bde-2\",\"role\":\"BRIGADE\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bde-2\",\"households\":[\"hh-unit:demo-bde-2\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bde-2\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bde-2\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bde-2\"},\"profile\":{\"name\":\"demo-bde-2·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bde-2\",\"lotId\":\"army-edit:demo-bde-2:1\",\"sex\":\"MALE\",\"count\":40,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-2-1\",\"name\":\"第2旅第1营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-2\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-2-1\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-2-1\",\"households\":[\"hh-unit:demo-bn-2-1\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-2-1\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-2-1\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-2-1\"},\"profile\":{\"name\":\"demo-bn-2-1·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-2-1\",\"lotId\":\"army-edit:demo-bn-2-1:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-2-2\",\"name\":\"第2旅第2营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-2\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-2-2\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-2-2\",\"households\":[\"hh-unit:demo-bn-2-2\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-2-2\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-2-2\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-2-2\"},\"profile\":{\"name\":\"demo-bn-2-2·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-2-2\",\"lotId\":\"army-edit:demo-bn-2-2:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-bn-2-3\",\"name\":\"第2旅第3营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-bde-2\",\"equipment\":[{\"type\":\"卡车\",\"amount\":20},{\"type\":\"机枪\",\"amount\":24},{\"type\":\"步枪\",\"amount\":450}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-bn-2-3\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-bn-2-3\",\"households\":[\"hh-unit:demo-bn-2-3\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-2-3\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-bn-2-3\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-bn-2-3\"},\"profile\":{\"name\":\"demo-bn-2-3·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-2-3\",\"lotId\":\"army-edit:demo-bn-2-3:1\",\"sex\":\"MALE\",\"count\":500,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "unit.CreateUnit",
+          "payload": "{\"id\":\"demo-recon-bn\",\"name\":\"师直属侦察营\",\"position\":{\"q\":0,\"r\":0},\"attached\":true,\"parent\":\"demo-div-1\",\"equipment\":[{\"type\":\"侦察车\",\"amount\":18},{\"type\":\"步枪\",\"amount\":180}],\"speed\":1,\"mobilityPerMille\":1000,\"households\":[]}"
+        },
+        {
+          "type": "unit.SetArmyFormation",
+          "payload": "{\"unitId\":\"demo-recon-bn\",\"role\":\"BATTALION\",\"masterGov\":\"demo-gov\"}"
+        },
+        {
+          "type": "unit.SetUnitHouseholds",
+          "payload": "{\"unitId\":\"demo-recon-bn\",\"households\":[\"hh-unit:demo-recon-bn\"],\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\"}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-recon-bn\",\"reason\":\"editFormation 直接人数校准（调用者原因：验证一次 JSON 创建整师编制；纯虚构样例，不是四国真实部队；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-unit:demo-recon-bn\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"demo-recon-bn\"},\"profile\":{\"name\":\"demo-recon-bn·编制人数\"},\"vitalRates\":[]},{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-recon-bn\",\"lotId\":\"army-edit:demo-recon-bn:1\",\"sex\":\"MALE\",\"count\":200,\"ageAtAnchorDays\":6570}]}"
+        },
+        {
+          "type": "army.CreateArmy",
+          "payload": "{\"armyId\":\"demo-formation\",\"name\":\"虚构编制演示师\",\"masterGovUnitId\":\"demo-gov\",\"rootUnitId\":\"demo-div-1\"}"
+        }
+      ],
+      "submission": {
+        "result": "committed",
+        "ref": {
+          "branch": "main",
+          "revision": 3
+        },
+        "commandId": "08ae5c09-49ca-4b9d-b32b-c552ecd0f1b2",
+        "correlationId": "08ae5c09-49ca-4b9d-b32b-c552ecd0f1b2"
+      }
+    },
+    "update-result": {
+      "dryRun": false,
+      "mode": "update",
+      "armyId": "demo-formation",
+      "name": "虚构编制演示师",
+      "masterGov": "demo-gov",
+      "rootUnitId": "demo-div-1",
+      "nodeCount": 10,
+      "createdNodes": 0,
+      "updatedNodes": 3,
+      "directPersonnel": 60,
+      "subtreePersonnel": 3440,
+      "personnelNote": "personnel 是本级直接人数；新成员默认成年男性锚点年龄 6570 天，不是真实人口结构。",
+      "reason": "MCP单次局部编制修改，其他7节点保留",
+      "commands": [
+        {
+          "type": "unit.UpdateFormationNode",
+          "payload": "{\"id\":\"demo-div-1\",\"name\":\"MCP 完整编制核对\"}"
+        },
+        {
+          "type": "unit.UpdateFormationNode",
+          "payload": "{\"id\":\"demo-bde-1\",\"parent\":\"demo-div-1\"}"
+        },
+        {
+          "type": "unit.UpdateFormationNode",
+          "payload": "{\"id\":\"demo-bn-1-1\",\"parent\":\"demo-bde-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":550}]}"
+        },
+        {
+          "type": "social.SubmitHouseholdWorkOrder",
+          "payload": "{\"target\":\"hh-unit:demo-bn-1-1\",\"reason\":\"editFormation 直接人数校准（调用者原因：MCP单次局部编制修改，其他7节点保留；新成员默认成年男性锚点 6570 天，不是真实人口结构）\",\"source\":{\"module\":\"army\"},\"plan\":[{\"op\":\"ADD_MEMBERS\",\"household\":\"hh-unit:demo-bn-1-1\",\"lotId\":\"army-edit:demo-bn-1-1:2\",\"sex\":\"MALE\",\"count\":100,\"ageAtAnchorDays\":6570}]}"
+        }
+      ],
+      "submission": {
+        "result": "committed",
+        "ref": {
+          "branch": "main",
+          "revision": 4
+        },
+        "commandId": "41bae977-1c46-4a14-9cdf-16098b1df32b",
+        "correlationId": "41bae977-1c46-4a14-9cdf-16098b1df32b"
+      }
+    },
+    "formation-read-result": {
+      "branch": "main",
+      "revision": 4,
+      "tick": 0,
+      "count": 1,
+      "armies": [
+        {
+          "armyId": "demo-formation",
+          "name": "虚构编制演示师",
+          "masterGov": "demo-gov",
+          "rootUnitId": "demo-div-1",
+          "contactWatch": false,
+          "nodeCount": 10,
+          "maxDepth": 3,
+          "directPersonnel": 60,
+          "subtreePersonnel": 3440,
+          "nodes": [
+            {
+              "id": "demo-div-1",
+              "name": "MCP 完整编制核对",
+              "role": "DIVISION",
+              "masterGov": "demo-gov",
+              "parentId": null,
+              "depth": 1,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 60,
+              "subtreePersonnel": 3440,
+              "equipment": [
+                {
+                  "type": "指挥车",
+                  "amount": 6
+                }
+              ],
+              "speed": 4,
+              "mobilityPerMille": 900,
+              "childIds": [
+                "demo-bde-1",
+                "demo-bde-2",
+                "demo-recon-bn"
+              ]
+            },
+            {
+              "id": "demo-bde-1",
+              "name": "演示第1旅",
+              "role": "BRIGADE",
+              "masterGov": "demo-gov",
+              "parentId": "demo-div-1",
+              "depth": 2,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 40,
+              "subtreePersonnel": 1640,
+              "equipment": [
+                {
+                  "type": "指挥车",
+                  "amount": 4
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": [
+                "demo-bn-1-1",
+                "demo-bn-1-2",
+                "demo-bn-1-3"
+              ]
+            },
+            {
+              "id": "demo-bde-2",
+              "name": "演示第2旅",
+              "role": "BRIGADE",
+              "masterGov": "demo-gov",
+              "parentId": "demo-div-1",
+              "depth": 2,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 40,
+              "subtreePersonnel": 1540,
+              "equipment": [
+                {
+                  "type": "指挥车",
+                  "amount": 4
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": [
+                "demo-bn-2-1",
+                "demo-bn-2-2",
+                "demo-bn-2-3"
+              ]
+            },
+            {
+              "id": "demo-recon-bn",
+              "name": "师直属侦察营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-div-1",
+              "depth": 2,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 200,
+              "subtreePersonnel": 200,
+              "equipment": [
+                {
+                  "type": "侦察车",
+                  "amount": 18
+                },
+                {
+                  "type": "步枪",
+                  "amount": 180
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-1-1",
+              "name": "第1旅第1营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-1",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 600,
+              "subtreePersonnel": 600,
+              "equipment": [
+                {
+                  "type": "步枪",
+                  "amount": 550
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-1-2",
+              "name": "第1旅第2营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-1",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 500,
+              "subtreePersonnel": 500,
+              "equipment": [
+                {
+                  "type": "卡车",
+                  "amount": 20
+                },
+                {
+                  "type": "机枪",
+                  "amount": 24
+                },
+                {
+                  "type": "步枪",
+                  "amount": 450
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-1-3",
+              "name": "第1旅第3营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-1",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 500,
+              "subtreePersonnel": 500,
+              "equipment": [
+                {
+                  "type": "卡车",
+                  "amount": 20
+                },
+                {
+                  "type": "机枪",
+                  "amount": 24
+                },
+                {
+                  "type": "步枪",
+                  "amount": 450
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-2-1",
+              "name": "第2旅第1营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-2",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 500,
+              "subtreePersonnel": 500,
+              "equipment": [
+                {
+                  "type": "卡车",
+                  "amount": 20
+                },
+                {
+                  "type": "机枪",
+                  "amount": 24
+                },
+                {
+                  "type": "步枪",
+                  "amount": 450
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-2-2",
+              "name": "第2旅第2营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-2",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 500,
+              "subtreePersonnel": 500,
+              "equipment": [
+                {
+                  "type": "卡车",
+                  "amount": 20
+                },
+                {
+                  "type": "机枪",
+                  "amount": 24
+                },
+                {
+                  "type": "步枪",
+                  "amount": 450
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            },
+            {
+              "id": "demo-bn-2-3",
+              "name": "第2旅第3营",
+              "role": "BATTALION",
+              "masterGov": "demo-gov",
+              "parentId": "demo-bde-2",
+              "depth": 3,
+              "attached": true,
+              "position": {
+                "r": 0,
+                "q": 0
+              },
+              "directPersonnel": 500,
+              "subtreePersonnel": 500,
+              "equipment": [
+                {
+                  "type": "卡车",
+                  "amount": 20
+                },
+                {
+                  "type": "机枪",
+                  "amount": 24
+                },
+                {
+                  "type": "步枪",
+                  "amount": 450
+                }
+              ],
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "childIds": []
+            }
+          ]
+        }
+      ],
+      "render": {
+        "summary": "编制图「虚构编制演示师」（demo-formation）：10 节点，深度 3，直接人数 3440，子树合计 3440；PNG 1966×490（57515 字节，assetId=5414247b6a7b459bc1ef03eb748b085099237dd1ec36b357eb9ad1cb51cc4aca）。实线=attached（随父移动），虚线=detached（独立机动线）。",
+        "assetId": "5414247b6a7b459bc1ef03eb748b085099237dd1ec36b357eb9ad1cb51cc4aca",
+        "byteSize": 57515,
+        "width": 1966,
+        "height": 490
+      }
+    }
+  },
+  "browserFullFlow": {
+    "rejected": {
+      "status": "未保存：节点 demo-div-1 的 personnel 必须 ≥ 0: -1",
+      "target": {
+        "branch": "main",
+        "revision": 4,
+        "writeEpoch": 3
+      }
+    },
+    "jsErrors": [],
+    "created": {
+      "state": {
+        "branch": "main",
+        "revision": 3,
+        "writeEpoch": 2
+      },
+      "status": "已载入 虚构编制演示师（10 节点，直接人数 60，子树合计 3340）。",
+      "edit": {
+        "mode": "update",
+        "armyId": "demo-formation",
+        "name": "虚构编制演示师",
+        "masterGov": "demo-gov",
+        "root": {
+          "id": "demo-div-1",
+          "name": "演示第1师",
+          "role": "DIVISION",
+          "position": {
+            "r": 10,
+            "q": 8
+          },
+          "personnel": 60,
+          "equipment": {
+            "指挥车": 6
+          },
+          "speed": 4,
+          "mobilityPerMille": 900,
+          "attached": true,
+          "children": [
+            {
+              "id": "demo-bde-1",
+              "name": "演示第1旅",
+              "role": "BRIGADE",
+              "position": {
+                "r": 10,
+                "q": 8
+              },
+              "personnel": 40,
+              "equipment": {
+                "指挥车": 4
+              },
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "attached": true,
+              "children": [
+                {
+                  "id": "demo-bn-1-1",
+                  "name": "第1旅第1营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                },
+                {
+                  "id": "demo-bn-1-2",
+                  "name": "第1旅第2营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                },
+                {
+                  "id": "demo-bn-1-3",
+                  "name": "第1旅第3营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "demo-bde-2",
+              "name": "演示第2旅",
+              "role": "BRIGADE",
+              "position": {
+                "r": 10,
+                "q": 8
+              },
+              "personnel": 40,
+              "equipment": {
+                "指挥车": 4
+              },
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "attached": true,
+              "children": [
+                {
+                  "id": "demo-bn-2-1",
+                  "name": "第2旅第1营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                },
+                {
+                  "id": "demo-bn-2-2",
+                  "name": "第2旅第2营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                },
+                {
+                  "id": "demo-bn-2-3",
+                  "name": "第2旅第3营",
+                  "role": "BATTALION",
+                  "position": {
+                    "r": 10,
+                    "q": 8
+                  },
+                  "personnel": 500,
+                  "equipment": {
+                    "卡车": 20,
+                    "机枪": 24,
+                    "步枪": 450
+                  },
+                  "speed": 1,
+                  "mobilityPerMille": 1000,
+                  "attached": true,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "demo-recon-bn",
+              "name": "师直属侦察营",
+              "role": "BATTALION",
+              "position": {
+                "r": 10,
+                "q": 8
+              },
+              "personnel": 200,
+              "equipment": {
+                "侦察车": 18,
+                "步枪": 180
+              },
+              "speed": 1,
+              "mobilityPerMille": 1000,
+              "attached": true,
+              "children": []
+            }
+          ]
+        },
+        "reason": "网页载入后编辑"
+      },
+      "imageWidth": 1966,
+      "imageHeight": 490
+    },
+    "postCount": 4
+  },
+  "finalPackagedBrowser": {
+    "jsErrors": [],
+    "postRequests": [],
+    "view": {
+      "status": "已载入 虚构编制演示师（10 节点，直接人数 60，子树合计 3340）。",
+      "target": {
+        "branch": "main",
+        "revision": 4,
+        "writeEpoch": 0
+      },
+      "root": "demo-div-1",
+      "width": 1966,
+      "height": 490
+    }
+  },
+  "finalMcpImages": {
+    "formation": {
+      "path": "run/nation-formation-demo-v3/final-mcp-formation/image-1.png",
+      "byteSize": 57879,
+      "dimensions": [
+        1966,
+        490
+      ],
+      "sha256": "107a4f7783ea5c746d65893060701f232293d2611e7cfd41752bc381a389b38e",
+      "response": {
+        "branch": "main",
+        "revision": 4,
+        "tick": 0,
+        "count": 1,
+        "armies": [
+          {
+            "armyId": "demo-formation",
+            "name": "虚构编制演示师",
+            "masterGov": "demo-gov",
+            "rootUnitId": "demo-div-1",
+            "contactWatch": false,
+            "nodeCount": 10,
+            "maxDepth": 3,
+            "directPersonnel": 60,
+            "subtreePersonnel": 3340,
+            "nodes": [
+              {
+                "id": "demo-div-1",
+                "name": "演示第1师（网页改名）",
+                "role": "DIVISION",
+                "masterGov": "demo-gov",
+                "parentId": null,
+                "depth": 1,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 60,
+                "subtreePersonnel": 3340,
+                "equipment": [
+                  {
+                    "type": "指挥车",
+                    "amount": 6
+                  }
+                ],
+                "speed": 4,
+                "mobilityPerMille": 900,
+                "childIds": [
+                  "demo-bde-1",
+                  "demo-bde-2",
+                  "demo-recon-bn"
+                ]
+              },
+              {
+                "id": "demo-bde-1",
+                "name": "演示第1旅",
+                "role": "BRIGADE",
+                "masterGov": "demo-gov",
+                "parentId": "demo-div-1",
+                "depth": 2,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 40,
+                "subtreePersonnel": 1540,
+                "equipment": [
+                  {
+                    "type": "指挥车",
+                    "amount": 4
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": [
+                  "demo-bn-1-1",
+                  "demo-bn-1-2",
+                  "demo-bn-1-3"
+                ]
+              },
+              {
+                "id": "demo-bde-2",
+                "name": "演示第2旅",
+                "role": "BRIGADE",
+                "masterGov": "demo-gov",
+                "parentId": "demo-div-1",
+                "depth": 2,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 40,
+                "subtreePersonnel": 1540,
+                "equipment": [
+                  {
+                    "type": "指挥车",
+                    "amount": 4
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": [
+                  "demo-bn-2-1",
+                  "demo-bn-2-2",
+                  "demo-bn-2-3"
+                ]
+              },
+              {
+                "id": "demo-recon-bn",
+                "name": "师直属侦察营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-div-1",
+                "depth": 2,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 200,
+                "subtreePersonnel": 200,
+                "equipment": [
+                  {
+                    "type": "侦察车",
+                    "amount": 18
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 180
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-1-1",
+                "name": "第1旅第1营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-1",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-1-2",
+                "name": "第1旅第2营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-1",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-1-3",
+                "name": "第1旅第3营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-1",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-2-1",
+                "name": "第2旅第1营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-2",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-2-2",
+                "name": "第2旅第2营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-2",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              },
+              {
+                "id": "demo-bn-2-3",
+                "name": "第2旅第3营",
+                "role": "BATTALION",
+                "masterGov": "demo-gov",
+                "parentId": "demo-bde-2",
+                "depth": 3,
+                "attached": true,
+                "position": {
+                  "r": 10,
+                  "q": 8
+                },
+                "directPersonnel": 500,
+                "subtreePersonnel": 500,
+                "equipment": [
+                  {
+                    "type": "卡车",
+                    "amount": 20
+                  },
+                  {
+                    "type": "机枪",
+                    "amount": 24
+                  },
+                  {
+                    "type": "步枪",
+                    "amount": 450
+                  }
+                ],
+                "speed": 1,
+                "mobilityPerMille": 1000,
+                "childIds": []
+              }
+            ]
+          }
+        ],
+        "render": {
+          "summary": "编制图「虚构编制演示师」（demo-formation）：10 节点，深度 3，直接人数 3340，子树合计 3340；PNG 1966×490（57879 字节，assetId=107a4f7783ea5c746d65893060701f232293d2611e7cfd41752bc381a389b38e）。实线=attached（随父移动），虚线=detached（独立机动线）。",
+          "assetId": "107a4f7783ea5c746d65893060701f232293d2611e7cfd41752bc381a389b38e",
+          "byteSize": 57879,
+          "width": 1966,
+          "height": 490
+        }
+      }
+    },
+    "nation": {
+      "path": "run/nation-formation-demo-v3/final-mcp-nation/image-1.png",
+      "byteSize": 12205,
+      "dimensions": [
+        520,
+        380
+      ],
+      "sha256": "4bb4020fec7a8440babb26b100fd6d2b2c15c907f8980cc4d3d5d92d4d851fd6",
+      "response": {
+        "branch": "main",
+        "revision": 4,
+        "tick": 0,
+        "count": 1,
+        "nations": [
+          {
+            "nationId": "demo-nation",
+            "name": "编制工具演示区",
+            "homeRegionId": "nation-home-demo-nation",
+            "adminBudgetPerTick": 0,
+            "color": "#d58045",
+            "colorConflict": false,
+            "hexes": [
+              {
+                "r": 9,
+                "q": 7
+              },
+              {
+                "r": 10,
+                "q": 7
+              },
+              {
+                "r": 11,
+                "q": 7
+              },
+              {
+                "r": 9,
+                "q": 8
+              },
+              {
+                "r": 10,
+                "q": 8
+              },
+              {
+                "r": 11,
+                "q": 8
+              },
+              {
+                "r": 9,
+                "q": 9
+              },
+              {
+                "r": 10,
+                "q": 9
+              },
+              {
+                "r": 11,
+                "q": 9
+              },
+              {
+                "r": 9,
+                "q": 10
+              },
+              {
+                "r": 10,
+                "q": 10
+              },
+              {
+                "r": 11,
+                "q": 10
+              }
+            ],
+            "hexCount": 12,
+            "regionIds": [
+              "nation-home-demo-nation"
+            ],
+            "govUnitIds": [
+              "demo-gov"
+            ]
+          }
+        ],
+        "note": "领土=精确 nation:<id> 标签区域的并集；GOV 关系为 jurisdiction 覆盖该国区域的派生展示，不是持久字段。",
+        "render": {
+          "summary": "国家「编制工具演示区」（demo-nation）PNG：领土 12 格，颜色 #d58045，homeRegion nation-home-demo-nation，GOV [demo-gov]；PNG 520×380（12205 字节，assetId=4bb4020fec7a8440babb26b100fd6d2b2c15c907f8980cc4d3d5d92d4d851fd6）。",
+          "assetId": "4bb4020fec7a8440babb26b100fd6d2b2c15c907f8980cc4d3d5d92d4d851fd6",
+          "byteSize": 12205,
+          "width": 520,
+          "height": 380
+        }
+      }
+    }
+  },
+  "coldRestart": {
+    "sameWorldStore": true,
+    "checks": {
+      "state": true,
+      "nations": true,
+      "formations": true,
+      "overview": true,
+      "units": true,
+      "references": true
+    },
+    "beforeState": {
+      "branches": [
+        "main"
+      ],
+      "heads": {
+        "main": 4
+      },
+      "writeEpoch": 3,
+      "meta": {
+        "branch": "main",
+        "revision": 4,
+        "timestamp": {
+          "tick": 0,
+          "calendarLabel": null,
+          "date": {
+            "calendar": "julian",
+            "year": 1445,
+            "month": 1,
+            "day": 1,
+            "dayOfYear": 1
+          }
+        }
+      }
+    },
+    "afterState": {
+      "branches": [
+        "main"
+      ],
+      "heads": {
+        "main": 4
+      },
+      "writeEpoch": 0,
+      "meta": {
+        "branch": "main",
+        "revision": 4,
+        "timestamp": {
+          "tick": 0,
+          "calendarLabel": null,
+          "date": {
+            "calendar": "julian",
+            "year": 1445,
+            "month": 1,
+            "day": 1,
+            "dayOfYear": 1
+          }
+        }
+      }
+    }
+  },
+  "demo": {
+    "gui": "http://127.0.0.1:18521/",
+    "mcp": "http://127.0.0.1:18525/mcp",
+    "pid": 140907,
+    "store": "run/nation-formation-demo-v3/world",
+    "startScript": "run/nation-formation-demo-v3/start.sh",
+    "jar": "run/nation-formation-demo-v3/simos.jar",
+    "jarBytes": 32358355,
+    "jarSha256": "7eef89356f010e9ba94dbf109c80105204fed695b779626c08f0b87fac576a8a",
+    "originalWorldPreserved": "run/map-reference-demo/world",
+    "fictional": true,
+    "realFourCountriesImported": false,
+    "multiYearAiRun": false
+  }
+}

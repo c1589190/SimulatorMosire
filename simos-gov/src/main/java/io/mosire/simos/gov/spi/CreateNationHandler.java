@@ -71,9 +71,16 @@ public final class CreateNationHandler implements CommandHandler {
         return rejected(
             "homeRegion 不存在: " + homeRegion, "nation", nationForLog, "region", regionForLog);
       }
-      if (!NationTag.isNationTag(region.meta().tag())) {
+      // ★ 2026-11-14：tag 必须逐字等于 nation:<本 NationId>，不是前缀匹配（nation:FRAX 不属于 FRA）。
+      String expectedTag = NationTag.tagFor(id);
+      if (!expectedTag.equals(region.meta().tag())) {
         return rejected(
-            "Region " + homeRegion + " 无国家 tag（R13：需以 " + NationTag.PREFIX + " 开头的 tag）",
+            "Region "
+                + homeRegion
+                + " 的国家 tag 必须逐字等于 "
+                + expectedTag
+                + "，实际是 "
+                + region.meta().tag(),
             "nation",
             nationForLog,
             "region",

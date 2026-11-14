@@ -168,6 +168,27 @@ final class MapPayloads {
   }
 
   /**
+   * 必填的**有序** {@code [{q,r}…]} 数组 ⇒ 坐标列表（保留重复与顺序）。连通性命令按相邻两格成边——顺序就是语义， 故这里不能像 {@link
+   * #requireHexes} 那样去重；长度/重复边由领域操作判定。
+   */
+  static List<HexCoord> requireHexSequence(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      debugFieldRejected(field, "必须是 [{q,r}…] 数组");
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [{q,r}…] 数组: " + payload);
+    }
+    List<HexCoord> hexes = new java.util.ArrayList<>(value.size());
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        debugFieldRejected(field, "元素必须是 {q,r} 对象");
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是 {q,r} 对象: " + element);
+      }
+      hexes.add(hexFrom(element, field));
+    }
+    return List.copyOf(hexes);
+  }
+
+  /**
    * 必填的**单格** {@code {q,r}} 对象（2026-10-12 批次 2 新增；形制照 armY/economy/sd 的同名助手）。
    *
    * <p>与 {@link #requireHexes} 分开是因为语义不同：{@code map.SetHexArea} 一次只改一格（"一次改一格一个字段"是用户裁定的粒度），

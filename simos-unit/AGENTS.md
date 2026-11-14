@@ -21,7 +21,7 @@
 ## 源码入口
 
 - 主代码：`src/main/java/io/mosire/simos/unit/**`
-- 当前扫描：`*Tool.java` **34** 个；`*Handler.java` **35** 个；`*ToolSource.java` **0** 个。
+- 当前扫描：`*Tool.java` **34** 个；`*Handler.java` **36** 个；`*ToolSource.java` **0** 个。
 
 ## 工具归属
 
@@ -33,7 +33,7 @@
 - 当前事实与下一步：`../docs/agents/STATUS.md`
 - 设计总索引：`../docs/superpowers/AGENTS.md`；设计裁定索引：`../docs/superpowers/DESIGN_RULINGS.md`
 - 用户设计原稿：`../docs/superpowers/specs/2026-10-02-architecture-design-source.md`
-- 专题设计：`../docs/superpowers/specs/2026-09-20-unit-extension-design.md`
+- 本轮专题：`../docs/superpowers/specs/2026-11-14-nation-formation-editor-design.md`（创建位置写实、编制节点窄更新）；`../docs/superpowers/specs/2026-09-20-unit-extension-design.md`
 - 专题设计：`../docs/superpowers/specs/2026-09-17-social-unit-simos-design.md`
 
 ## 验证

@@ -1,0 +1,10 @@
+{
+  "webuiId": "army",
+  "module": "simos-army",
+  "label": "编制",
+  "version": 1,
+  "assets": [
+    "formation-editor.js"
+  ],
+  "notes": "单支军队完整编制入口：一次 JSON 调用 simos.army.editFormation；读回 simos.army.formation 的完整树/人数/PNG。"
+}

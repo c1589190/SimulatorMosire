@@ -1,4 +1,4 @@
-// worldmodel.js —— F1 世界视图的**纯函数**模型（城市 LOD / 搜索索引与匹配 / 国家汇总 / 九键图层与场景预设）。
+// worldmodel.js —— F1 世界视图的**纯函数**模型（城市 LOD / 搜索索引与匹配 / 国家汇总 / 十键图层与场景预设）。
 //
 // ★ 无 DOM、无 IO、无 fetch：本文件只做确定性计算，门禁可直接对拍。
 // ★ 未知值一律 fail-closed：未知图层键不进入结果；未知城市等级按"最小点、不标签"处理；匹配/排序全部确定。
@@ -10,10 +10,14 @@
 
   // ── 图层 ──────────────────────────────────────────────────────────────
 
-  /** 九个图层键（F1 计划 §3.5 的分组开关）；顺序固定 = 抽屉里的显示顺序。 */
+  /**
+   * 十个图层键（F1 计划 §3.5 的分组开关；`regions` 为 2026-11-15 区域可见性修复新增）。
+   * 顺序固定 = 抽屉里的显示顺序。旧存档只有前九个键 ⇒ 缺 `regions` 走默认开。
+   */
   var LAYER_KEYS = [
-    "nation", // 国家着色
-    "regionNames", // 区域名（含世界视图的国家名）
+    "nation", // 国家着色/疆域边界
+    "regions", // 普通区域基底边界（独立于选中高亮）
+    "regionNames", // 区域名（含大范围国家名）
     "cities", // 城市
     "army", // 军队
     "gov", // 政府单位
@@ -30,6 +34,8 @@
    */
   var DEFAULT_LAYERS = {
     nation: true,
+    // ★ 2026-11-15：普通区域基底边界默认开；旧 9 键偏好缺此键时仍按开（不覆盖用户已存的其它键）。
+    regions: true,
     regionNames: true,
     cities: true,
     army: true,
@@ -64,11 +70,13 @@
 
   /**
    * 场景预设表：`layerPreset` 按 {@link LAYER_KEYS} 展开，表中未列出的键一律 `false`
-   * （不是 DEFAULT_LAYERS）；`military` 显式列出 `nation:false` / `regionNames:false` 以写明语义（取值只看 `=== true`）。
+   * （不是 DEFAULT_LAYERS）；`military` / `government` 显式列出 `nation:false` / `regions:false` / `regionNames:false`
+   * 以写明用途语义（取值只看 `=== true`）。
    */
   var LAYER_PRESETS = {
     all: {
       nation: true,
+      regions: true,
       regionNames: true,
       cities: true,
       army: true,
@@ -80,10 +88,13 @@
     },
     terrain: {
       nation: true,
+      regions: true,
       regionNames: true,
     },
     military: {
+      // ★ 2026-11-15：军事预设按用途显式关国家着色/国名与普通区域基底边界（不靠“未列出 ⇒ false”隐式表达）。
       nation: false,
+      regions: false,
       regionNames: false,
       army: true,
       combats: true,
@@ -91,8 +102,9 @@
     },
     government: {
       // ★ F1 可见性修正：政府视图 = 地形底图 + GOV 标记 + 辖区 + 决策人徽标。
-      //   显式关国家色与国家名，避免国家填充/国名盖住 GOV 辖区（其余键未列出 ⇒ false）。
+      //   显式关国家色/国家名/普通区域基底边界，避免国家填充/国名/区域边界盖住 GOV 辖区。
       nation: false,
+      regions: false,
       regionNames: false,
       gov: true,
       govJurisdiction: true,
@@ -106,7 +118,7 @@
   };
 
   /**
-   * 场景预设：未知 `name` ⇒ `null`（不抛，调用方 fail-closed）；已知名 ⇒ 归一化后的 9 键图层对象
+   * 场景预设：未知 `name` ⇒ `null`（不抛，调用方 fail-closed）；已知名 ⇒ 归一化后的 10 键图层对象
    * （缺省键按 `false`，不是 DEFAULT_LAYERS 全开）。实现：预设表只放 true 键，逐 {@link LAYER_KEYS}
    * 生成 `out[key] = preset[key] === true`，最后过一遍 {@link layerVisibility} 归一。
    */
@@ -144,11 +156,18 @@
   }
 
   /**
-   * ★ 2026-10-01 F1 修复：国家名是否可见 —— **只在世界级 LOD** 显示（缩放大到区域/近景后国家名消失，
-   * 只留城市名）。独立成纯函数，便于渲染器与门禁共用同一判据（避免在 renderer 里另写一套阈值）。
+   * ★ 2026-11-15 区域可见性修复：国家名是否可画。
+   *
+   * <p>旧实现只在 `world` LOD（scale &lt; 0.22）显示国家名，导致常规视角放大一点后“既没有
+   * 国名、也没有区域名”。现在国名在**所有可读缩放**（≥ {@link NATION_LABEL_MIN_SCALE}）都画，
+   * 近景再叠加区域名；字号下限由 {@link nationLabelPlan} 的 `max(8, …)` 保证。
    */
   function nationNamesVisible(scale) {
-    return lodForScale(scale) === "world";
+    return (
+      typeof scale === "number" &&
+      isFinite(scale) &&
+      scale >= NATION_LABEL_MIN_SCALE
+    );
   }
 
   // ── 城市标记计划 ──────────────────────────────────────────────────────
@@ -320,9 +339,12 @@
     }
     var out = [];
     (Array.isArray(regions) ? regions : []).forEach(function (region) {
-      if (!isNationRegion(region) || !region.label || !(region.hexCount > 0)) {
+      var fromGovView = region && region.nationId !== null && region.nationId !== undefined;
+      if ((!isNationRegion(region) && !fromGovView) || !region.label || !(region.hexCount > 0)) {
         return;
       }
+      // ★ 2026-11-14：国家名一律取 gov 视图的 Nation.name（fromGovView 项已由 map.js 适配），
+      //   不再用 region.name 充当国家名；只有旧区域输入（无 nationId）才回落到区域名。
       var name = region.name === null || region.name === undefined ? region.id : region.name;
       if (name === null || name === undefined || String(name) === "") {
         return;

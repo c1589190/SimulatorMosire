@@ -1,5 +1,7 @@
 package io.mosire.simos.map.tools.write;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
@@ -16,6 +18,7 @@ import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.Command;
 import io.mosire.simos.util.state.RevisionId;
@@ -45,6 +48,9 @@ import java.util.Objects;
  * <p>★ 敏感的固定命令类型仍走审批门链（{@link ToolGate.Ask}）：GM 面无脑过、决策人面仍要确认——审批链按**装配**决定， 与工具实现住在哪个模块无关。
  */
 abstract class AbstractNarrowWriteTool implements AgentTool {
+
+  /** 结构化窄工具把顶层参数折成命令载荷时用的唯一序列化器（默认的 payloadJson 路径不使用它）。 */
+  private static final ObjectMapper PAYLOAD_MAPPER = SimosObjectMapper.create();
 
   private final ToolWritePort writes;
   private final String mapId;
@@ -150,9 +156,26 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
     RevisionId expectedRevision = new RevisionId(ToolSchema.requiredLong(args, "expectedRevision"));
     Command command = () -> expectedRevision;
     ToolWritePort.Receipt receipt =
-        writes.submitWithReceipt(
-            branch, command, commandType(), ToolSchema.optionalText(args, "payloadJson", "{}"));
+        writes.submitWithReceipt(branch, command, commandType(), payloadJson(context));
     return new SubmittedCommand(receipt.commandId(), receipt.outcome());
+  }
+
+  /**
+   * 本次提交的命令载荷 JSON。缺省 = 原有的 {@code payloadJson} 字段（原窄工具行为一字不变）；结构化窄工具覆写本钩子，把顶层参数折成同一份载荷。
+   *
+   * <p>钩子只决定“载荷文本是什么”，信封的 {@code branch}/{@code expectedRevision}、命令类型、审批门与结局折叠都不变。
+   */
+  protected String payloadJson(ToolContext context) {
+    return ToolSchema.optionalText(context.arguments(), "payloadJson", "{}");
+  }
+
+  /** 结构化工具把参数对象序列化成命令载荷文本（失败 = 装配/参数错误，不静默发半截 JSON）。 */
+  protected final String payloadJsonOf(Object payload) {
+    try {
+      return PAYLOAD_MAPPER.writeValueAsString(payload);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("工具参数无法序列化成载荷: " + e.getOriginalMessage(), e);
+    }
   }
 
   /**

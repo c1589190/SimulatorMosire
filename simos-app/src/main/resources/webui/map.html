@@ -38,6 +38,47 @@
         <div id="hex-facets"></div>
       </section>
     </div>
+    <section class="panel nation-formation-editor" aria-label="国家与完整军队编制编辑">
+      <h2>国家与完整编制（一次 JSON 保存）</h2>
+      <p class="muted">整份 JSON 一次保存；载入只导出可保存字段。自带编制样例为虚构。</p>
+      <details class="editor-group" id="nation-editor">
+        <summary>国家 — 整份 JSON 一次保存</summary>
+        <div class="editor-row">
+          <select id="nation-editor-select"><option value="">（载入中…）</option></select>
+          <button type="button" id="nation-editor-load">载入国家</button>
+          <button type="button" id="nation-editor-new">新建空白模板</button>
+          <button type="button" id="nation-editor-hex">当前格加入领土</button>
+          <button type="button" id="nation-editor-refresh">刷新列表</button>
+          <button type="button" id="nation-editor-save" class="primary">保存国家</button>
+        </div>
+        <textarea id="nation-editor-json" class="editor-json" rows="9" spellcheck="false" placeholder="国家 editNation JSON"></textarea>
+        <p id="nation-editor-status" class="status muted">先在左侧点选六角格，再“当前格加入领土”。</p>
+        <div class="editor-image-wrap"><img id="nation-editor-image" class="editor-image" alt="国家地图 PNG" hidden></div>
+        <pre id="nation-editor-result" class="editor-result"></pre>
+      </details>
+      <details class="editor-group" id="formation-editor">
+        <summary>军队完整编制 — 整份 JSON 一次保存</summary>
+        <div class="editor-row">
+          <select id="formation-editor-select"><option value="">（载入中…）</option></select>
+          <button type="button" id="formation-editor-load">载入军队</button>
+          <button type="button" id="formation-editor-new">新建师旅营模板</button>
+          <button type="button" id="formation-editor-position">当前格设为 root 落点</button>
+          <button type="button" id="formation-editor-add-battalion">追加一个营</button>
+          <button type="button" id="formation-editor-refresh">刷新列表</button>
+          <button type="button" id="formation-editor-save" class="primary">保存编制</button>
+        </div>
+        <textarea id="formation-editor-json" class="editor-json" rows="11" spellcheck="false" placeholder="军队 editFormation JSON"></textarea>
+        <p id="formation-editor-status" class="status muted">未填下级坐标默认随父移动；人数=本级人数，下属合计另列；编制图实线=随父移动、虚线=独立机动。</p>
+        <div class="editor-row">
+          <button type="button" id="formation-editor-zoom-out" title="缩小">− 缩小</button>
+          <button type="button" id="formation-editor-zoom-reset" title="复位">100%</button>
+          <button type="button" id="formation-editor-zoom-in" title="放大">＋ 放大</button>
+          <button type="button" id="formation-editor-view-large" title="在宽窗浮层查看整棵编制树">查看大图</button>
+        </div>
+        <div class="editor-image-wrap"><img id="formation-editor-image" class="editor-image" alt="军队编制 PNG" hidden></div>
+        <pre id="formation-editor-result" class="editor-result"></pre>
+      </details>
+    </section>
   </main>
 
   <script src="api.js"></script>
@@ -58,6 +99,26 @@
   <script src="renderer.js"></script>
   <!-- ★ M12 第五波：单位编辑宿主 / 旧页+工作台 chrome 拆出；必须在 map.js 之后（取 window.SimosMapCore） -->
   <script src="map-uniteditor.js"></script>
+<dialog id="formation-viewer" class="formation-viewer" aria-label="军队编制大图">
+  <div class="formation-viewer-head">
+    <strong>军队编制大图</strong>
+    <span class="muted">实线=随父移动，虚线=独立机动；人数=本级/子树</span>
+    <button type="button" id="formation-viewer-close">关闭</button>
+  </div>
+  <div class="formation-viewer-tools" role="toolbar" aria-label="大图缩放">
+    <button type="button" id="formation-viewer-fit">适应窗口</button>
+    <button type="button" id="formation-viewer-original">原图尺寸</button>
+    <button type="button" id="formation-viewer-zoom-out" aria-label="缩小大图">−</button>
+    <span id="formation-viewer-zoom-label" class="muted">适应窗口</span>
+    <button type="button" id="formation-viewer-zoom-in" aria-label="放大大图">＋</button>
+  </div>
+  <div class="formation-viewer-body" id="formation-viewer-body">
+    <img id="formation-viewer-image" alt="军队编制大图">
+  </div>
+</dialog>
+
+  <script src="/webui/modules/gov/nation-editor.js"></script>
+  <script src="/webui/modules/army/formation-editor.js"></script>
   <script src="map-hostpage.js"></script>
 </body>
 </html>

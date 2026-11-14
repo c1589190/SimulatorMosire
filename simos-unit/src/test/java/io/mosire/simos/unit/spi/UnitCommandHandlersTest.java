@@ -343,26 +343,30 @@ class UnitCommandHandlersTest {
   }
 
   /**
-   * ★★ 判据（**v2 取代了"移动时跟随"**）：省略 `position` 且给 `parent` ⇒ 该单位是那一支的**成员**（`attached=true`），
-   * 但**没有自己的位置 ⇒ 它不在图上**（旧语义"向父取位"已作废）；父挪到别格也不会把它带出一个位置来。
+   * ★★ 2026-11-14 目标运行设计（编制编辑）：省略 `position` 且给 `parent` ⇒ 创建期**写实父的当前位置**（不得留空）， 且默认
+   * `attached=true`。之后单条 `unit.PlaceAt` 只搬父、不搬整支；整支移动由推进参与者按 attached 链完成。
    *
-   * <p>★ 判别力：把 `effectivePosition` 改回"向父取" ⇒ 两条位置断言红。
+   * <p>★ 判别力：把创建期"写实父位置"去掉 ⇒ 第一条位置断言红（Optional.empty）；把 attached 缺省改掉 ⇒ 第二条红。
    */
   @Test
-  void createUnitWithoutPositionIsAMemberThatIsNotOnTheMap() {
+  void createUnitWithoutPositionWritesTheParentPositionAtCreation() {
     UnitState created =
         applied(
             CREATE,
             worldAt(T5, oneUnit()),
             "{\"id\":\"u-2\",\"name\":\"跟随连\","
                 + "\"equipment\":[],\"speed\":1,\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
-    assertThat(created.units().get(U2).position().valueAt(T5)).as("无自身位置").isEmpty();
+    assertThat(created.units().get(U2).position().valueAt(T5))
+        .as("省略坐标 ⇒ 创建期写实父位置")
+        .contains(SpiFixture.H11);
     assertThat(created.units().get(U2).attached().valueAt(T5)).as("编入 u-1 那一支").isTrue();
-    assertThat(created.effectivePosition(U2, T5)).as("★ v2：不在图上（位置不是继承来的）").isEmpty();
+    assertThat(created.effectivePosition(U2, T5)).as("新下级真实可定位").contains(SpiFixture.H11);
 
     UnitState moved =
         applied(PLACE_AT, worldAt(T6, created), "{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}");
-    assertThat(moved.effectivePosition(U2, T6)).as("父挪走也带不出位置").isEmpty();
+    assertThat(moved.effectivePosition(U2, T6))
+        .as("单条 PlaceAt 只搬父；整支共同移动归推进参与者")
+        .contains(SpiFixture.H11);
   }
 
   /** ★★ 判据（**v2 的正面**）：有 `parent` 且 `position` **与父同格** ⇒ Applied，且该单位带着**自己的位置**（不是继承）。 */

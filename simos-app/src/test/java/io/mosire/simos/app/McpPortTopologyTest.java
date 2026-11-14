@@ -62,12 +62,15 @@ class McpPortTopologyTest {
           "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.gov.info",
+          "simos.gov.nations",
+          "simos.army.formation",
           "simos.llm.providers",
           "simos.map.block",
           "simos.map.hex",
           "simos.map.overlaps",
           "simos.map.overview",
           "simos.map.path",
+          "simos.map.reference",
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
@@ -109,6 +112,8 @@ class McpPortTopologyTest {
           "simos.command.submit",
           // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；非窄写；toolRoles()={GM}）。
           "simos.command.submitBatch",
+          "simos.gov.editNation",
+          "simos.army.editFormation",
           "simos.docs.create",
           "simos.docs.edit",
           "simos.docs.delete",
@@ -178,6 +183,8 @@ class McpPortTopologyTest {
           "map.ImportRaster",
           "map.SetEdge",
           "map.SetHexArea",
+          "map.PaintTerrain",
+          "map.ConnectHexes",
           "map.CreateRegion",
           "map.UpdateRegion",
           "map.RenameRegion",
@@ -344,7 +351,7 @@ class McpPortTopologyTest {
 
       assertThat(toolNames(client))
           .as(
-              "J1：唯一口 = GM 组（181 条；★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」）。原文沿革：★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
+              "J1：唯一口 = GM 组（192 条；★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」）。原文沿革：★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
                   + "★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ **175**；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected: 175 but was: 178」）")
           .containsExactlyInAnyOrderElementsOf(
               concat(

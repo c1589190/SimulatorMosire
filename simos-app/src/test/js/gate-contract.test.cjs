@@ -25,7 +25,9 @@ const REQUIRED_FILES = [
   "map-png.test.cjs",
   "map-raster-core.test.cjs",
   "map-raster-lifecycle.test.cjs",
+  "map-reference-tools.test.cjs",
   "modes.test.cjs",
+  "nation-formation-editor.test.cjs",
   "notifications.test.cjs",
   "pending-signal.test.cjs",
   "provider-config.test.cjs",
@@ -125,10 +127,14 @@ const REQUIRED_FILES = [
 //     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
 //     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
 //     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+//   2026-11-14 自由判图统一测试起 456 → 482：新增 map-reference-tools.test.cjs 26 条
+//     （共享/查看/多格地形/连接擦除/两命令写门/在途与迟到隔离/公共 writeCommand 生命周期）。
+//   2026-11-14 国家/编制编辑器统一测试起 482 → 497：新增 nation-formation-editor.test.cjs 15 条
+//     （载入导出/共享写入/迟到隔离/失败不读回/DOM 安全/大图与宿主冻结）。
 //   2026-11-14 底图导入统一测试起 428 → 456：新增 map-raster-core.test.cjs 12 条（整格采样/三识别/
 //     灰度反向校准/颜色阈值 0/透明跳过/网格与 12000 上限）与 map-raster-lifecycle.test.cjs 15 条
 //     （P2-1 加载令牌、P2-2 在途锁与旧响应、游标失效、IndexedDB 恢复/清除/降级）。
-const MIN_ASSERTIONS = 456;
+const MIN_ASSERTIONS = 497;
 
 function testFiles() {
   return fs

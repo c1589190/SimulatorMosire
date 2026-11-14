@@ -416,6 +416,161 @@ public final class UnitOperations {
   }
 
   /** 位置设置：追加一条 `position` 段；**顺带清空在途路线**（改了位置，旧路线不再有意义）。 */
+  /**
+   * 编制节点的窄更新（{@code unit.UpdateFormationNode} 的领域实现）：只改给定字段，其余 17 个组件原样带过。
+   *
+   * <p>★★ <b>为什么不能拿 {@code PlaceAt} 代替</b>：位置一改，与它一同移动的整支必须同格；单独改一个单位会制造 attached 跨格。 本操作在改
+   * parent/attached/position 时，把该节点沿 attached 链可达的全部后代一起写到同一个位置，并清掉它们的在途路线。
+   *
+   * <p>★ <b>失败语义</b>：父不存在 / 成环 / attached=true 与父不同格 / 把有 attached 后代的节点位置清空 ⇒ 抛 {@link
+   * IllegalArgumentException}。子类字段（name/speed/mobility/equipment）由调用方显式给；{@code null} = 保持。
+   */
+  public static UnitState updateFormationNode(
+      UnitState state, UnitId id, FormationNodePatch patch, SimosTimestamp at) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(id, "id");
+    Objects.requireNonNull(patch, "patch");
+    Objects.requireNonNull(at, "at");
+    Unit unit = require(state, id);
+    Optional<UnitId> currentParent = unit.parent().valueAt(at);
+    Optional<UnitId> nextParent = patch.parent() == null ? currentParent : patch.parent();
+    boolean currentAttached = unit.attached().valueAt(at);
+    boolean nextAttached = patch.attached() == null ? currentAttached : patch.attached();
+    if (nextParent.isPresent()) {
+      UnitId parentId = nextParent.orElseThrow();
+      if (parentId.equals(id)) {
+        throw new IllegalArgumentException("单位 " + id + " 的 parent 不得指向自身");
+      }
+      if (subtreeOf(state, id, at).contains(parentId)) {
+        throw new IllegalArgumentException("单位 " + id + " 不能挂到自己的子树 " + parentId + " 之下（会成环）");
+      }
+      require(state, parentId);
+    }
+    Optional<HexCoord> parentHex =
+        nextParent.isEmpty()
+            ? Optional.empty()
+            : state.effectivePosition(nextParent.orElseThrow(), at);
+    Optional<HexCoord> nextPosition;
+    if (patch.position() != null) {
+      nextPosition = patch.position();
+    } else if (patch.parent() != null || patch.attached() != null) {
+      nextPosition =
+          nextAttached && nextParent.isPresent() ? parentHex : unit.position().valueAt(at);
+    } else {
+      nextPosition = unit.position().valueAt(at);
+    }
+    if (nextAttached && nextParent.isPresent()) {
+      if (parentHex.isEmpty()) {
+        throw new IllegalArgumentException(
+            "单位 " + id + " attached=true，但父 " + nextParent.orElseThrow() + " 没有可确定的位置");
+      }
+      if (nextPosition.isEmpty() || !parentHex.orElseThrow().equals(nextPosition.orElseThrow())) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + id
+                + " attached=true 且位置 "
+                + nextPosition.map(HexCoord::toString).orElse("(空)")
+                + " 与父 "
+                + nextParent.orElseThrow()
+                + " 的 "
+                + parentHex.orElseThrow()
+                + " 不同格：attached 单位不得跨格（独立落点请 attached=false）");
+      }
+    }
+    if (nextPosition.isEmpty() && hasAttachedDescendants(state, id, at)) {
+      throw new IllegalArgumentException("单位 " + id + " 还有 attached 后代，不能把它的位置清空（会制造无位置的整支）");
+    }
+    boolean positionChanged = !Objects.equals(unit.position().valueAt(at), nextPosition);
+    boolean parentChanged = !currentParent.equals(nextParent);
+    boolean attachedChanged = currentAttached != nextAttached;
+    SegmentedSeries<Optional<UnitId>> parentSeries =
+        parentChanged ? setOrAppend(unit.parent(), at, nextParent) : unit.parent();
+    SegmentedSeries<Optional<HexCoord>> positionSeries =
+        positionChanged ? setOrAppend(unit.position(), at, nextPosition) : unit.position();
+    SegmentedSeries<Boolean> attachedSeries =
+        attachedChanged ? setOrAppend(unit.attached(), at, nextAttached) : unit.attached();
+    Unit formationUpdated =
+        copyFormation(unit, parentSeries, positionSeries, attachedSeries, unit.offset());
+
+    // 位置/归属/跟随位变化 ⇒ 沿 attached 链可达的整支一起搬到新位置（并清掉旧路线）；这是"默认共同移动"的编辑侧不变量。
+    UnitState targetState = state;
+    if (nextPosition.isPresent() && (positionChanged || parentChanged || attachedChanged)) {
+      Map<UnitId, Unit> nextUnits = new LinkedHashMap<>(state.units());
+      HexCoord here = nextPosition.orElseThrow();
+      for (UnitId member : state.formationMembers(id, at)) {
+        if (member.equals(id)) {
+          continue;
+        }
+        Unit memberUnit = nextUnits.get(member);
+        if (memberUnit == null) {
+          continue;
+        }
+        nextUnits.put(member, withPositionAndMovement(memberUnit, at, here, Optional.empty()));
+      }
+      targetState = state.withUnits(nextUnits);
+    }
+    Optional<Movement> movement =
+        (positionChanged || parentChanged || attachedChanged)
+            ? Optional.empty()
+            : formationUpdated.movement();
+    Unit finalUnit =
+        copy(
+            formationUpdated,
+            patch.name() == null ? formationUpdated.name() : requireName(patch.name(), id),
+            formationUpdated.parent(),
+            formationUpdated.position(),
+            patch.equipment() == null ? formationUpdated.equipment() : patch.equipment(),
+            patch.speed() == null
+                ? formationUpdated.speed()
+                : requireAtLeastOne(patch.speed(), "speed", id),
+            patch.mobilityPerMille() == null
+                ? formationUpdated.mobilityPerMille()
+                : requireAtLeastOne(patch.mobilityPerMille(), "mobilityPerMille", id),
+            movement);
+    return withUnit(targetState, finalUnit);
+  }
+
+  /**
+   * {@link #updateFormationNode} 的补丁：{@code null} = 保持该字段；{@code position=Optional.empty()} = 清空位置。
+   */
+  public record FormationNodePatch(
+      String name,
+      Optional<HexCoord> position,
+      Boolean attached,
+      Optional<UnitId> parent,
+      Integer speed,
+      Integer mobilityPerMille,
+      List<CompositionEntry> equipment) {
+
+    public FormationNodePatch {
+      // null = 未填（保持），必须保留 null；给了就做保序防御性复制，避免外部可变 List 穿透 record。
+      equipment = equipment == null ? null : List.copyOf(equipment);
+    }
+  }
+
+  private static String requireName(String name, UnitId id) {
+    if (name == null || name.isBlank()) {
+      throw new IllegalArgumentException("单位 " + id + " 的 name 不得为空白");
+    }
+    return name;
+  }
+
+  private static int requireAtLeastOne(int value, String field, UnitId id) {
+    if (value < 1) {
+      throw new IllegalArgumentException("单位 " + id + " 的 " + field + " 必须 ≥ 1: " + value);
+    }
+    return value;
+  }
+
+  private static boolean hasAttachedDescendants(UnitState state, UnitId id, SimosTimestamp at) {
+    for (UnitId member : state.formationMembers(id, at)) {
+      if (!member.equals(id)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public static UnitState placeAt(
       UnitState state, UnitId id, Optional<HexCoord> hex, SimosTimestamp at) {
     Objects.requireNonNull(hex, "hex");
@@ -2162,6 +2317,20 @@ public final class UnitOperations {
    * 的 {@code module} 与 D1 的 {@code stateDescriptions} 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值， 正是 R1
    * 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
    */
+  /** 同刻写实某成员的位置并替换在途行程；其余组件（含 attached/offset/module/households）原样带过。 */
+  private static Unit withPositionAndMovement(
+      Unit unit, SimosTimestamp at, HexCoord hex, Optional<Movement> movement) {
+    return copy(
+        unit,
+        unit.name(),
+        unit.parent(),
+        setOrAppend(unit.position(), at, Optional.of(hex)),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        movement);
+  }
+
   private static Unit copy(
       Unit unit,
       String name,

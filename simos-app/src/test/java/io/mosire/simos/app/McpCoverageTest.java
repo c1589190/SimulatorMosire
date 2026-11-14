@@ -170,6 +170,7 @@ class McpCoverageTest {
           // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（本批唯一新增命令类型）
           "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
+          "army.UpdateArmy",
           // ★★ D-031 Z6（2026-10-16）：culture 命令（按字典序插在 army.* 与 economy.* 之间）。
           //   ★★★ D-032 T6（2026-10-17，用户原话「D2直接删」）：`culture.UpsertAptitudeRule` /
           //   `culture.RemoveAptitudeRule` 随"文化 → 生产效率倍率"链（D2）整条退役 ⇒ 从本表移除。
@@ -245,6 +246,7 @@ class McpCoverageTest {
           "gov.DeleteNation",
           "gov.RecordDiplomaticEvent",
           "gov.SetDiplomaticRelation",
+          "gov.UpdateNation",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -257,6 +259,8 @@ class McpCoverageTest {
           "map.SetHexArea",
           "map.SetTerrain",
           "map.ImportRaster",
+          "map.PaintTerrain",
+          "map.ConnectHexes",
           "map.SplitRegion",
           "map.UpdateRegion",
           // ★★ D-031 Z6（2026-10-16）：production 命令（按字典序插在 map.* 与 social.* 之间）。
@@ -317,7 +321,8 @@ class McpCoverageTest {
           "unit.SetUnitHouseholds",
           "unit.SetVisionRadius",
           "unit.SplitFormation",
-          "unit.UpdateCommandChain");
+          "unit.UpdateCommandChain",
+          "unit.UpdateFormationNode");
 
   /**
    * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdId#ofSeed} 拼 （家户 id
@@ -749,6 +754,13 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "map.ImportRaster",
         "{\"mode\":\"patch\",\"cells\":[{\"q\":1,\"r\":3,\"terrain\":\"plains\",\"height\":0.37}]}");
+    // ★ 2026-11-14 自由判图：直接多格地形 + 有序格链连通性（GM-only 但可提交）。
+    MINIMAL_PAYLOADS.put(
+        "map.PaintTerrain",
+        "{\"cells\":[{\"q\":1,\"r\":3,\"terrain\":\"mountains\",\"height\":0.73}]}");
+    MINIMAL_PAYLOADS.put(
+        "map.ConnectHexes",
+        "{\"kind\":\"river\",\"hexes\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}],\"op\":\"merge\"}");
     // ★★ P1b1（2026-10-01）：三个域的区域清空（GM-only 但可提交）。目标 r-nation 只含 (1,1)，此刻尚未播种
     //   economy/actor 数据；social 清掉后由后面的 social.SeedGroups 再种 ⇒ 不破坏后续 simos.advance 的前置。
     MINIMAL_PAYLOADS.put("social.ClearRegion", "{\"regionId\":\"r-nation\"}");
@@ -968,6 +980,10 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("unit.SetJurisdiction", "{\"unitId\":\"u-2\",\"regions\":[\"r-nation\"]}");
     MINIMAL_PAYLOADS.put(
         "unit.SetTaxRate", "{\"unitId\":\"u-2\",\"regionId\":\"r-nation\",\"ratePerMille\":100}");
+    // ★ 2026-11-14 编制/国家窄更新（追加在最后 ⇒ 不移动既有 revision 号）。
+    MINIMAL_PAYLOADS.put("unit.UpdateFormationNode", "{\"id\":\"u-2\",\"speed\":3}");
+    MINIMAL_PAYLOADS.put("gov.UpdateNation", "{\"nationId\":\"n-cov\",\"name\":\"覆盖国二\"}");
+    MINIMAL_PAYLOADS.put("army.UpdateArmy", "{\"armyId\":\"a-cov\",\"name\":\"覆盖军二\"}");
     // actor.AdjustAccounts：P2-A 后账户主体只有家户 ⇒ 纯正增量打在 actor.Seed 已落好的家户账上，无前置；
     //   grain +1 ⇒ 变更集非空。它是 GmOnly，但 GM 的 simos.command.submit 照常可提交。
     MINIMAL_PAYLOADS.put(
@@ -1159,11 +1175,11 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 **150** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 P4c3 退役旧两条 SetProductionWageDefault/Posting ⇒ 153 → 151；★★★ D-032 T6（2026-10-17）：D1/D2 把"
+            "catalog 列出的 type 与 Shell 注册的 **153** 个 handler 同源（★★★ D-032 C4b：C3/D4-Ib2b 新增 economy.SetProductionRoster / SetProductionWageDefault / SetProductionWagePosting 三条 ⇒ 149 → 152；★★★ D-032 P4b1 新增 economy.SetProductionWageAnchor ⇒ 152 → 153；★★★ D-032 P4c3 退役旧两条 SetProductionWageDefault/Posting ⇒ 153 → 151；★★★ D-032 T6（2026-10-17）：D1/D2 把"
                 + " production.RegisterTechnology / production.SetMastery / culture.UpsertAptitudeRule /"
                 + " culture.RemoveAptitudeRule 四条命令整条退役（用户原话「D1直接删」「D2直接删」），"
                 + " B2c/B3 新增 production.CreateInstance 与 economy.SetPlanSources ⇒ 148；"
-                + "本表与 SimosToolsTest.EXPECTED_COMMAND_TYPES 两处计数必须逐字相同。原文：R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**；★★ D-031 Z6（2026-10-16）新增 production/culture 五条 ⇒ **148**；★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 迁移后 catalog/handler 同源计数 = **150**）")
+                + "本表与 SimosToolsTest.EXPECTED_COMMAND_TYPES 两处计数必须逐字相同。原文：R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**；★★ D-031 Z6（2026-10-16）新增 production/culture 五条 ⇒ **148**；★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 迁移后 catalog/handler 同源计数 = **153**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
@@ -1581,7 +1597,7 @@ class McpCoverageTest {
     regions.put(
         nationRegion,
         Region.of(
-            nationRegion, "种子国区域", Set.of(H11), new RegionMeta(null, "nation:seed", null, null)));
+            nationRegion, "种子国区域", Set.of(H11), new RegionMeta(null, "nation:n-cov", null, null)));
     return new GameMap(
         hexes,
         TerrainBlocks.uniform(hexes.keySet(), desert.key()),

@@ -96,7 +96,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 决策包工具面归入后类1 = **134** （133 + 共享 48 = GM 桶 182）。
    */
-  private static final int GM_ONLY_SIZE = 138;
+  private static final int GM_ONLY_SIZE = 145;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
@@ -131,7 +131,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：并集 = 类1 134 + 类2 25 + 类3 36 = **195**。
    */
-  private static final int TOOL_UNION_SIZE = 202;
+  private static final int TOOL_UNION_SIZE = 209;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
@@ -145,7 +145,7 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★★ 2026-10-23 AgentLib×D-032 集成实测：GM 桶 = 类1 134 + 共享 48 = **182**。
    */
-  private static final int GM_BUCKET_SIZE = 189;
+  private static final int GM_BUCKET_SIZE = 196;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +

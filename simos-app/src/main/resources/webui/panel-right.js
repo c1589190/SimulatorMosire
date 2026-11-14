@@ -121,6 +121,11 @@
             // ★ U3：点单个区域 ⇒ 该区域更亮、同 tag 其他区域淡色（single）。
             app.setHighlightRegions([region.id], "single");
           }
+          // ★ 2026-11-15 区域可见性修复：复用稳定 regionId 的既有定位流程，让目标在画布可见；
+          //   不切模式（公开模式里点列表不会掉进隐藏的 region 模式）。
+          if (window.SimosMap && window.SimosMap.locateRegionById) {
+            window.SimosMap.locateRegionById(region.id, region.label);
+          }
         });
         list.appendChild(item);
       });

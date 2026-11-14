@@ -48,6 +48,8 @@ test("map-edit-allows-map-and-region-writes", () => {
   assert.deepEqual(M.allowedWrites("map-edit"), [
     "map.SetTerrain",
     "map.ImportRaster",
+    "map.PaintTerrain",
+    "map.ConnectHexes",
     "map.SetEdge",
     "map.RandomizeRegion",
     "map.UpdateRegion",
@@ -55,6 +57,8 @@ test("map-edit-allows-map-and-region-writes", () => {
     "map.DeleteRegion",
   ]);
   assert.equal(M.isWriteAllowed("map-edit", "map.SetTerrain"), true);
+  assert.equal(M.isWriteAllowed("map-edit", "map.PaintTerrain"), true);
+  assert.equal(M.isWriteAllowed("map-edit", "map.ConnectHexes"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.SetEdge"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.RandomizeRegion"), true);
   assert.equal(M.isWriteAllowed("map-edit", "map.UpdateRegion"), true);

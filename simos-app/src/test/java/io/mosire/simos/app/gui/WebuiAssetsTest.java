@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -266,50 +267,75 @@ class WebuiAssetsTest {
     return List.copyOf(out);
   }
 
-  /** D-036：模块自带前端 manifest 必须在 classpath，且 app 的发现接口能读到。 */
+  private static final Map<String, List<String>> MODULE_ASSETS =
+      Map.of(
+          "map",
+          List.of(
+              "map-raster-core.js",
+              "map-raster-draft.js",
+              "map-png.js",
+              "map-reference-tools.js",
+              "examples/horn-of-africa.png"),
+          "gov",
+          List.of("nation-editor.js"),
+          "army",
+          List.of("formation-editor.js"));
+
+  /** D-036：模块自带前端 manifest 必须在 classpath，且 app 的发现接口能读到（精确三模块 + 资产）。 */
   @Test
-  void moduleFrontendManifestIsDiscoverable() {
+  void moduleFrontendManifestsAreDiscoverableWithExactAssets() {
     Map<String, Object> discovered = ModuleWebUI.discover();
     assertThat(discovered.get("errors")).as("模块前端发现不得有错误").isEqualTo(List.of());
     List<?> modules = (List<?>) discovered.get("modules");
-    assertThat(modules).hasSize(1);
-    Map<?, ?> map = (Map<?, ?>) modules.get(0);
-    assertThat(map.get("webuiId")).isEqualTo("map");
-    assertThat(map.get("module")).isEqualTo("simos-map");
-    try (InputStream in = getClass().getResourceAsStream("/webui/modules/map/manifest.json")) {
-      assertThat(in).as("模块 manifest 必须在 classpath（从 simos-map jar/classes 提供）").isNotNull();
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
+    assertThat(modules).as("map/gov/army 三个模块前端").hasSize(3);
+    Map<String, Map<?, ?>> byId = new LinkedHashMap<>();
+    for (Object row : modules) {
+      Map<?, ?> module = (Map<?, ?>) row;
+      byId.put(String.valueOf(module.get("id")), module);
+    }
+    assertThat(byId.keySet()).containsExactly("map", "gov", "army");
+    assertThat(byId.get("map").get("module")).isEqualTo("simos-map");
+    assertThat(byId.get("map").get("version")).isEqualTo(3);
+    assertThat(byId.get("gov").get("module")).isEqualTo("simos-gov");
+    assertThat(byId.get("gov").get("version")).isEqualTo(1);
+    assertThat(byId.get("army").get("module")).isEqualTo("simos-army");
+    assertThat(byId.get("army").get("version")).isEqualTo(1);
+    for (Map.Entry<String, List<String>> entry : MODULE_ASSETS.entrySet()) {
+      List<String> assets =
+          ((List<?>) byId.get(entry.getKey()).get("assets")).stream().map(String::valueOf).toList();
+      assertThat(assets)
+          .as("模块 %s 的 manifest 资产必须精确", entry.getKey())
+          .containsExactlyElementsOf(entry.getValue());
+      for (String asset : entry.getValue()) {
+        try (InputStream in =
+            getClass().getResourceAsStream("/webui/modules/" + entry.getKey() + "/" + asset)) {
+          assertThat(in)
+              .as("classpath /webui/modules/%s/%s 必须可读（从模块 jar/classes 提供）", entry.getKey(), asset)
+              .isNotNull();
+        } catch (IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      }
     }
   }
 
-  /** D-036 底图导入：算法/草稿/工作区/示例四个模块资产必须在 manifest 里且真能经 classpath 读到。 */
+  /** 两宿主页必须以相对固定路径引用新模块脚本，并内嵌原生 dialog 大图（Esc 由浏览器关闭）。 */
   @Test
-  void mapModuleRasterImportAssetsAreListedAndPackaged() {
-    Map<String, Object> discovered = ModuleWebUI.discover();
-    assertThat(discovered.get("errors")).isEqualTo(List.of());
-    List<?> modules = (List<?>) discovered.get("modules");
-    assertThat(modules).hasSize(1);
-    Map<?, ?> map = (Map<?, ?>) modules.get(0);
-    assertThat(map.get("version")).isEqualTo(2);
-    List<String> assets = ((List<?>) map.get("assets")).stream().map(String::valueOf).toList();
-    assertThat(assets)
-        .containsExactly(
-            "map-raster-core.js",
-            "map-raster-draft.js",
-            "map-png.js",
-            "examples/horn-of-africa.png");
-    for (String asset :
-        List.of(
-            "map-raster-core.js",
-            "map-raster-draft.js",
-            "map-png.js",
-            "examples/horn-of-africa.png")) {
-      try (InputStream in = getClass().getResourceAsStream("/webui/modules/map/" + asset)) {
-        assertThat(in).as("classpath /webui/modules/map/%s 必须可读", asset).isNotNull();
-      } catch (IOException e) {
-        throw new UncheckedIOException(e);
-      }
+  void bothHostPagesReferenceModuleEditorScriptsAndLargeViewDialog() throws IOException {
+    for (String page : List.of("index.html", "map.html")) {
+      String html = read(WEBUI_SOURCE.resolve(page));
+      assertThat(html)
+          .as("%s 引用 gov 国家编辑器", page)
+          .contains("\"/webui/modules/gov/nation-editor.js\"");
+      assertThat(html)
+          .as("%s 引用 army 编制编辑器", page)
+          .contains("\"/webui/modules/army/formation-editor.js\"");
+      assertThat(html).as("%s 大图按钮", page).contains("id=\"formation-editor-view-large\"");
+      assertThat(html).as("%s 原生 dialog", page).contains("<dialog id=\"formation-viewer\"");
+      assertThat(html).as("%s 关闭按钮", page).contains("id=\"formation-viewer-close\"");
+      assertThat(html).as("%s 适应窗口", page).contains("id=\"formation-viewer-fit\"");
+      assertThat(html).as("%s 原图尺寸", page).contains("id=\"formation-viewer-original\"");
+      assertThat(html).as("%s 放大", page).contains("id=\"formation-viewer-zoom-in\"");
     }
   }
 

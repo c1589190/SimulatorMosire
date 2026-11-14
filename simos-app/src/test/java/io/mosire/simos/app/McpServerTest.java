@@ -10,6 +10,7 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.spec.McpSchema;
 import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -28,6 +29,7 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.reference.MapReferenceService;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
@@ -56,8 +58,14 @@ import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.workspace.WorkspaceTools;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +73,7 @@ import java.util.Optional;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -130,6 +139,8 @@ class McpServerTest {
           "map.RenameRegion",
           "map.SetEdge",
           "map.SetHexArea",
+          "map.PaintTerrain",
+          "map.ConnectHexes",
           "map.SetTerrain",
           "map.ImportRaster",
           "map.UpdateRegion",
@@ -138,6 +149,10 @@ class McpServerTest {
           "army.CreateArmy",
           "ga.CreateDecisionMaker",
           "simos.gov.createNation",
+          "simos.gov.editNation",
+          "simos.gov.nations",
+          "simos.army.editFormation",
+          "simos.army.formation",
           "ga.IssueDirective",
           "ga.PutInfo",
           "ga.RegisterEffect",
@@ -253,6 +268,7 @@ class McpServerTest {
           "simos.map.overlaps",
           "simos.map.overview",
           "simos.map.path",
+          "simos.map.reference",
           "simos.map.region",
           "simos.map.render",
           "simos.province.apply",
@@ -389,7 +405,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 188 条（★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」，与 ShellAssemblySmokeTest.GM_BUCKET_SIZE 同一次读数）。原文沿革：★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」；★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策包工具并入后为 **182**；★★ D-036 世界文档 3 读 + 3 写 ⇒ **188**）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 191 条（★★★ D-032 T6（2026-10-17）：B3 补回 simos.economy.setPlanSources ⇒ 178 → **181**（实测：本条真跑红在「Expected size: 178 but was: 181」，与 ShellAssemblySmokeTest.GM_BUCKET_SIZE 同一次读数）。原文沿革：★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」；★★★ 2026-10-23 AgentLib×D-032 集成实测：AgentLib 五决策包工具并入后为 **182**；★★ D-036 世界文档 3 读 + 3 写 ⇒ **188**）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 
@@ -418,6 +434,62 @@ class McpServerTest {
     assertThat(image.data())
         .as("线上的 base64 必须与工件库里的字节逐字节一致（同一份字节只渲染一次）")
         .isEqualTo(java.util.Base64.getEncoder().encodeToString(bytes));
+  }
+
+  /**
+   * T1/T3：{@code simos.map.reference} 经真 MCP 传输返回 {@link McpSchema.ImageContent}，PNG 真可解码；文本带
+   * branch/revision 与局部 q/r/terrain；DM 工具桶没有它。
+   */
+  @Test
+  void referenceToolShipsRealPngAsImageContentAndStaysGmOnly() throws Exception {
+    client.initialize();
+    MapReferenceService references = shell.renderService().mapReferences();
+    MapReferenceService.Summary summary =
+        references.publish(
+            "africa.png",
+            png(100, 80, new Color(30, 120, 60)),
+            List.of(
+                new MapReferenceService.Cell(H11, 30, 40, 12),
+                new MapReferenceService.Cell(H12, 50, 40, 12),
+                new MapReferenceService.Cell(H13, 70, 40, 12)));
+
+    McpSchema.CallToolResult result =
+        client.callTool(
+            new McpSchema.CallToolRequest(
+                "simos.map.reference",
+                Map.of(
+                    "referenceId", summary.referenceId(),
+                    "q", 1,
+                    "r", 1,
+                    "radius", 1,
+                    "terrainOverlay", true)));
+    assertThat(result.isError()).as(wireText(result)).isFalse();
+    JsonNode body = JSON.readTree(wireText(result));
+    assertThat(body.get("branch").asText()).isEqualTo("main");
+    assertThat(body.get("revision").asLong()).isEqualTo(1L);
+    assertThat(body.get("overview").asBoolean()).isFalse();
+    assertThat(body.get("cells")).hasSize(2);
+    assertThat(body.get("cells").get(0).get("q").asInt()).isEqualTo(1);
+    assertThat(body.get("cells").get(0).get("terrain").asText()).isEqualTo("desert");
+    assertThat(body.get("cells").get(0).get("built").asBoolean()).isTrue();
+
+    List<McpSchema.Content> images =
+        result.content().stream().filter(McpSchema.ImageContent.class::isInstance).toList();
+    assertThat(images).as("参考图必须出成一个 image content 块").hasSize(1);
+    McpSchema.ImageContent image = (McpSchema.ImageContent) images.get(0);
+    assertThat(image.mimeType()).isEqualTo("image/png");
+    byte[] bytes = Base64.getDecoder().decode(image.data());
+    BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(bytes));
+    assertThat(decoded).as("线上的 PNG 必须真能解码").isNotNull();
+    assertThat(decoded.getWidth()).isPositive();
+    assertThat(decoded.getHeight()).isPositive();
+
+    List<String> decisionNames =
+        shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
+            .map(tool -> tool.name())
+            .toList();
+    assertThat(decisionNames)
+        .doesNotContain("simos.map.reference", "map.PaintTerrain", "map.ConnectHexes");
   }
 
   // ── 读：与 QueryService 直接调用逐值对拍 ────────────────────────────────
@@ -647,6 +719,24 @@ class McpServerTest {
         Map.of(),
         Map.of(),
         GenerationSpec.defaults(0L));
+  }
+
+  private static byte[] png(int width, int height, Color color) {
+    BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = image.createGraphics();
+    try {
+      g.setColor(color);
+      g.fillRect(0, 0, width, height);
+    } finally {
+      g.dispose();
+    }
+    try {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assertThat(ImageIO.write(image, "png", out)).isTrue();
+      return out.toByteArray();
+    } catch (Exception e) {
+      throw new AssertionError(e);
+    }
   }
 
   private Path dbFile() {

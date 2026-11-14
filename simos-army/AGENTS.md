@@ -22,7 +22,8 @@
 ## 源码入口
 
 - 主代码：`src/main/java/io/mosire/simos/army/**`
-- 当前扫描：`*Tool.java` **12** 个；`*Handler.java` **7** 个；`*ToolSource.java` **0** 个。
+- 当前扫描：`*Tool.java` **14** 个；`*Handler.java` **8** 个；`*ToolSource.java` **0** 个。
+- 模块自有前端资产：`src/main/resources/webui/modules/army/**`（完整编制编辑入口；`manifest.json` 已在 `modules.index` 注册）。
 
 ## 工具归属
 
@@ -34,8 +35,7 @@
 - 当前事实与下一步：`../docs/agents/STATUS.md`
 - 设计总索引：`../docs/superpowers/AGENTS.md`；设计裁定索引：`../docs/superpowers/DESIGN_RULINGS.md`
 - 用户设计原稿：`../docs/superpowers/specs/2026-10-02-architecture-design-source.md`
-- 专题设计：`../docs/superpowers/specs/2026-10-02-architecture-design-source.md`
-- 专题设计：`../docs/superpowers/specs/2026-09-16-simos-master-design.md`
+- 本轮专题：`../docs/superpowers/specs/2026-11-14-nation-formation-editor-design.md`（完整编制 / 读视图 / PNG）；`../docs/superpowers/specs/2026-09-16-simos-master-design.md`
 
 ## 验证
 

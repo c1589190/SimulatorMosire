@@ -72,6 +72,11 @@
   var GOV_JURISDICTION_SELECTED_FILL_ALPHA = 0.38;
   var GOV_JURISDICTION_STROKE_PX = 2.0;
   var GOV_JURISDICTION_SELECTED_STROKE_PX = 3.0;
+  // ★ 2026-11-15 区域可见性修复：国家疆域/普通区域基底边界的屏幕线宽（与选中高亮层独立）。
+  var NATION_OUTLINE_STROKE_PX = 3.2;
+  var NATION_OUTLINE_INNER_PX = 1.8;
+  var REGION_BASELINE_STROKE_PX = 2.0;
+  var REGION_BASELINE_INNER_PX = 1.2;
 
   // map.js（window.SimosMapCore）
   var app = core.app;
@@ -208,8 +213,14 @@
     var pass2Draws = 0; // Pass 2（未合并余量）绘制次数：P6 全部建块 ⇒ 恒 0
     var blockVertexCount = 0; // 全部块环的顶点数（数据变时更新）
     var unmergedCount = 0; // hexCount − Σ 块 hexCount：> 0 ⇒ 服务端块没覆盖全图（缺陷）
-    var regionOutlines = []; // {id,color,alpha,rings}：区域边界（精确的逐 hex 外缘轮廓，未简化）
+    var regionOutlines = []; // {id,color,alpha,rings}：选中高亮的区域边界（精确的逐 hex 外缘轮廓，未简化）
+    // ★ 2026-11-15：普通区域**基底**边界（独立图层/独立 overlay；清选中高亮不会清它）。
+    var regionBaselineOutlines = []; // {id,color,alpha,rings}
     var outlineVertexCount = 0; // 全部区域边界环的顶点数（精确值；不应被任何简化压低）
+    var regionBaselineVertexCount = 0; // 基底区域边界环的顶点数（真实绘制几何，不是硬填）
+    var regionBaselineDraws = 0; // 基底区域边界实际描边条数（每帧真实计）
+    var nationOutlineDraws = 0; // 国家疆域边界实际描边条数（每帧真实计）
+    var nationOutlineVertexCount = 0; // 国家疆域边界环的顶点数
     var dimPasses = 0; // ★ U1：地形压暗层绘制次数（区域模式应 > 0，常规应恒 0）
     var regionNameDraws = 0; // ★ U2：区域名实际绘制条数（可断言 0 / >0）
     var nationNameDraws = 0; // ★ F1：世界视图国家名实际绘制条数（与区域名分开计数，互不污染既有断言）
@@ -237,6 +248,7 @@
       }
       return {
         nation: true,
+        regions: true,
         regionNames: true,
         cities: true,
         army: true,
@@ -739,11 +751,19 @@
         .map(function (region) {
           return {
             id: String(region.id),
+            nationId: region.nationId === undefined ? null : region.nationId,
             name: region.name === undefined ? null : region.name,
             color: regionColor(region.meta),
+            hexCount: typeof region.hexCount === "number" ? region.hexCount : region.hexes.length,
+            label: region.label || null,
             rings: regionBoundaryRings(region.hexes),
           };
         });
+      nationOutlineVertexCount = nationRegions.reduce(function (total, region) {
+        return total + region.rings.reduce(function (sum, ring) {
+          return sum + ring.length;
+        }, 0);
+      }, 0);
       scheduleRender();
     }
 
@@ -1567,6 +1587,45 @@
     }
 
     /**
+     * ★ 2026-11-15：**国家疆域边界**（工作台）。在既有国家半透明填充之上按精确环描边：
+     * 深色外描边 + 国家色内描边，保证在任意地形色上可辨。图层 `nation` 关掉即不画；
+     * 与普通区域基底边界（`regions`）和选中高亮（`regionOutlines`）相互独立。
+     */
+    function paintNationOutlines(targetCtx) {
+      nationOutlineDraws = 0;
+      if (!isWorkbench || !layerState.nation || !nationRegions.length) {
+        return;
+      }
+      var outerWidth = screenSizeToWorld(NATION_OUTLINE_STROKE_PX);
+      var innerWidth = screenSizeToWorld(NATION_OUTLINE_INNER_PX);
+      nationRegions.forEach(function (region) {
+        if (!region.rings.length) {
+          return;
+        }
+        var path = new Path2D();
+        region.rings.forEach(function (ring) {
+          for (var i = 0; i < ring.length; i += 1) {
+            var x = ring[i].x * cellSize;
+            var y = ring[i].y * cellSize;
+            if (i === 0) {
+              path.moveTo(x, y);
+            } else {
+              path.lineTo(x, y);
+            }
+          }
+          path.closePath();
+        });
+        targetCtx.strokeStyle = "rgba(10, 13, 18, 0.72)";
+        targetCtx.lineWidth = outerWidth;
+        targetCtx.stroke(path);
+        targetCtx.strokeStyle = withAlpha(region.color, 0.98);
+        targetCtx.lineWidth = innerWidth;
+        targetCtx.stroke(path);
+        nationOutlineDraws += 1;
+      });
+    }
+
+    /**
      * ★ F1：**GOV 辖区覆盖层**（workbench 专用）。每项用预算好的精确 rings 画一次 Path2D：
      * 填充 alpha 未选中 ≈0.24 / 选中 ≈0.38（选中色用 {@link GOV_JURISDICTION_SELECTED_COLOR}，
      * 未选中用 {@link GOV_JURISDICTION_COLOR}），再按屏幕线宽描边界（选中 3.0px 实线、未选中 2.0px 虚线）。
@@ -1668,6 +1727,41 @@
       dimPasses += 1;
     }
 
+    /** 世界坐标点 → 稳定 key（区域名计划与国名计划同源，便于判断“同点”）。 */
+    function labelPointKey(x, y) {
+      return Math.round(x * 1000) + "," + Math.round(y * 1000);
+    }
+
+    /** 国家名可见判据（图层 + 缩放）；数据只来自 gov 并集视图的 nationRegions。 */
+    function nationNamesLayerOn() {
+      if (!isWorkbench || !layerState.regionNames) {
+        return false;
+      }
+      if (worldModel && worldModel.nationNamesVisible) {
+        return worldModel.nationNamesVisible(view.scale);
+      }
+      return typeof view.scale === "number" && isFinite(view.scale) && view.scale >= 0.03;
+    }
+
+    /** 当前缩放下的国家名计划（纯函数在 worldmodel；这里只做宿主适配）。 */
+    function nationLabelPlanOf() {
+      if (!nationNamesLayerOn() || !worldModel || !worldModel.nationLabelPlan) {
+        return [];
+      }
+      return worldModel.nationLabelPlan(nationRegions, view.scale);
+    }
+
+    /** 国名计划按“同点”建索引：用于区域名同点错位与国家/所属区域重名去重。 */
+    function nationLabelsByPoint(plan) {
+      var byPoint = {};
+      (plan || []).forEach(function (label) {
+        var world = hexToPixel(label.q, label.r, cellSize);
+        var key = labelPointKey(world.x, world.y);
+        (byPoint[key] || (byPoint[key] = [])).push(label);
+      });
+      return byPoint;
+    }
+
     /**
      * ★ U2：区域名（配方照 GSimulator `render.js:348-364`）：质心居中、字号 ∝√格数 ÷ zoom、
      * 黑描边白字。位置来自 `overview.regions[].label`（服务端质心 hex）。
@@ -1675,6 +1769,9 @@
      * <p>★★ 2026-09-24（用户报障「启动就加载所有区域名，非常卡，改成和 hex 一样按屏幕所见范围渲染」）：
      * 逐帧只画**屏幕可见范围内**的标签 —— 落点与裁剪走纯函数 {@code regionNamePlan}（map.js，可单测），
      * 本函数只负责把计划画出来。原来这里是"遍历全部区域、逐条 stroke/fill"。
+     *
+     * <p>★ 2026-11-15：区域名不再只认 legacy 区域模式；四个公开模式在近景都可读。与国名同点时
+     * 若重名则去重、不重名则纵向错开，避免国家名盖住所属区域名。
      */
     function paintRegionNames(targetCtx) {
       regionNameDraws = 0;
@@ -1682,13 +1779,57 @@
       if (!layerState.regionNames || !regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
         return;
       }
+      var nationPlan = nationLabelPlanOf();
+      var nationByPoint = nationLabelsByPoint(nationPlan);
+      // ★ 2026-11-15：国家名与其所属国家区域名重名时，区域名不再重复画（即使质心落点不完全相同）。
+      var nationTexts = {};
+      nationPlan.forEach(function (label) {
+        nationTexts[String(label.text)] = true;
+      });
+      var sourceRegions = (host.overviewRegions || []).filter(function (region) {
+        if (!region) {
+          return false;
+        }
+        var tag = region.meta ? region.meta.tag : null;
+        var isNationRegion = typeof tag === "string" && tag.indexOf("nation:") === 0;
+        if (!isNationRegion) {
+          return true;
+        }
+        var text = region.name === null || region.name === undefined ? region.id : region.name;
+        return !nationTexts[String(text)];
+      });
       var plan = regionNamePlan(
-        host.overviewRegions || [],
+        sourceRegions,
         view,
         { width: cssW, height: cssH },
         REGION_NAME_VISIBLE_MARGIN,
         cellSize
       );
+      // ★ 2026-11-15：不重名但国名与区域名同点 ⇒ 区域名整体下移一行，避免叠字。
+      if (plan.length && Object.keys(nationByPoint).length) {
+        plan = plan.filter(function (label) {
+          var peers = nationByPoint[labelPointKey(label.x, label.y)];
+          if (!peers) {
+            return true;
+          }
+          for (var i = 0; i < peers.length; i += 1) {
+            if (String(peers[i].text) === String(label.text)) {
+              return false;
+            }
+          }
+          return true;
+        });
+        plan.forEach(function (label) {
+          var peers = nationByPoint[labelPointKey(label.x, label.y)];
+          if (!peers) {
+            return;
+          }
+          var line = peers.reduce(function (max, peer) {
+            return Math.max(max, peer.fontSize || 8);
+          }, 0);
+          label.y += line + 4 / view.scale;
+        });
+      }
       if (!plan.length) {
         return;
       }
@@ -1707,27 +1848,16 @@
     }
 
     /**
-     * ★ F1：世界视图里的**国家名**（区域名图层的 world LOD 子集）。区域模式仍走 {@link #paintRegionNames}
-     * 的既有全区域计划；本函数只在 view 模式、且缩放达到 {@code NATION_LABEL_MIN_SCALE} 时画三国的国名，
-     * 使"世界视图能看见国名"不需要先切到区域模式。计数独立成 {@code nationNameDraws}，不污染既有区域名断言。
+     * ★ F1 / 2026-11-15：**国家名**（区域名图层的子集）。旧实现只在 view 模式 + world LOD 绘制，
+     * 导致常规视角放大/单位/战役模式都没有名称。现在四个公开模式都按图层/缩放画国名，
+     * 近景再叠加区域名；国名一律取 gov 并集视图的 `Nation.name`，不用同标签区域名冒充。
      */
     function paintNationNames(targetCtx) {
       nationNameDraws = 0;
-      if (!layerState.regionNames || !isWorkbench || mode !== "view") {
+      if (!nationNamesLayerOn()) {
         return;
       }
-      // ★ F1 修复：国家名只在**世界级 LOD** 显示（worldmodel.nationNamesVisible 与城市 LOD 同一判据）；
-      //   缩放大到区域/近景后国家名消失，只留城市名。
-      var nationsVisible =
-        worldModel && worldModel.nationNamesVisible
-          ? worldModel.nationNamesVisible(view.scale)
-          : typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0 && view.scale < 0.22;
-      if (!nationsVisible) {
-        return;
-      }
-      var plan = worldModel && worldModel.nationLabelPlan
-        ? worldModel.nationLabelPlan((overview && overview.regions) || [], view.scale)
-        : [];
+      var plan = nationLabelPlanOf();
       if (!plan.length) {
         return;
       }
@@ -1736,13 +1866,24 @@
       targetCtx.lineWidth = 3 / view.scale;
       targetCtx.strokeStyle = "rgba(0, 0, 0, 0.85)";
       targetCtx.fillStyle = "#ffffff";
+      var drawn = 0;
       plan.forEach(function (label) {
         var world = hexToPixel(label.q, label.r, cellSize);
+        var screen = worldToScreen(world, view);
+        if (
+          screen.x < -REGION_NAME_VISIBLE_MARGIN ||
+          screen.y < -REGION_NAME_VISIBLE_MARGIN ||
+          screen.x > cssW + REGION_NAME_VISIBLE_MARGIN ||
+          screen.y > cssH + REGION_NAME_VISIBLE_MARGIN
+        ) {
+          return;
+        }
         targetCtx.font = "bold " + label.fontSize + "px sans-serif";
         targetCtx.strokeText(label.text, world.x, world.y);
         targetCtx.fillText(label.text, world.x, world.y);
+        drawn += 1;
       });
-      nationNameDraws = plan.length;
+      nationNameDraws = drawn;
     }
 
     /**
@@ -1908,6 +2049,69 @@
       });
     }
 
+    /**
+     * ★ 2026-11-15：装载**普通区域基底边界**（独立于选中高亮）。
+     *
+     * <p>每项 `{id,color,alpha,hexes}`：边界环只在这里用 `regionBoundaryRings` 精确算一次；
+     * 清空/切图层/切目标时调用方推空数组（迟到结果由 map.js 的 token 丢弃，不污染新目标）。
+     */
+    function setRegionBaselineOutlines(list) {
+      var total = 0;
+      regionBaselineOutlines = (Array.isArray(list) ? list : [])
+        .filter(function (entry) {
+          return entry && Array.isArray(entry.hexes) && entry.hexes.length > 0;
+        })
+        .map(function (entry) {
+          var rings = regionBoundaryRings(entry.hexes);
+          rings.forEach(function (ring) {
+            total += ring.length;
+          });
+          return {
+            id: entry.id === undefined || entry.id === null ? "" : String(entry.id),
+            color: entry.color || REGION_FALLBACK_COLOR,
+            alpha: entry.alpha === undefined || entry.alpha === null ? 0.9 : entry.alpha,
+            rings: rings,
+          };
+        });
+      regionBaselineVertexCount = total;
+      scheduleRender();
+    }
+
+    /** 普通区域基底边界（`regions` 图层）：精确闭合环 + 深色外描边，独立于 `regionOutlines`。 */
+    function paintRegionBaselineOutlines(targetCtx) {
+      regionBaselineDraws = 0;
+      if (!isWorkbench || !layerState.regions || !regionBaselineOutlines.length) {
+        return;
+      }
+      var outerWidth = screenSizeToWorld(REGION_BASELINE_STROKE_PX);
+      var innerWidth = screenSizeToWorld(REGION_BASELINE_INNER_PX);
+      regionBaselineOutlines.forEach(function (outline) {
+        if (!outline.rings.length) {
+          return;
+        }
+        var path = new Path2D();
+        outline.rings.forEach(function (ring) {
+          for (var i = 0; i < ring.length; i += 1) {
+            var x = ring[i].x * cellSize;
+            var y = ring[i].y * cellSize;
+            if (i === 0) {
+              path.moveTo(x, y);
+            } else {
+              path.lineTo(x, y);
+            }
+          }
+          path.closePath();
+        });
+        targetCtx.strokeStyle = "rgba(10, 13, 18, 0.55)";
+        targetCtx.lineWidth = outerWidth;
+        targetCtx.stroke(path);
+        targetCtx.strokeStyle = withAlpha(outline.color, outline.alpha);
+        targetCtx.lineWidth = innerWidth;
+        targetCtx.stroke(path);
+        regionBaselineDraws += 1;
+      });
+    }
+
     function worldTransform() {
       ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.tx, dpr * view.ty);
     }
@@ -1936,12 +2140,16 @@
       }
       // ★ F1：国家着色（地形之上、其它高亮之下；只画工作台，见图层开关）。
       paintNationFills(ctx);
+      // ★ 2026-11-15：国家疆域边界（填充之上；图层 nation 显式关掉即不画）。
+      paintNationOutlines(ctx);
       // ★ F1：GOV 辖区覆盖层（国家着色之上、地形压暗/高亮之下；只画工作台，见图层开关）。
       paintGovJurisdictions(ctx);
       // ★ F2：热力层（地形/国家/GOV 之后，地形压暗/高亮/城市/单位/标签之前；不盖住标记与标签）。
       drawHeatmap(ctx);
       // ★ U1：区域模式先把地形压暗（屏幕空间全覆盖），再叠区域填充/边界 ⇒ 区域成为视觉主体。
       paintTerrainDim(ctx, app.getState().mode);
+      // ★ 2026-11-15：普通区域基底边界（独立图层；先于选中高亮，清高亮不会消失）。
+      paintRegionBaselineOutlines(ctx);
       paintHighlights(ctx);
       paintRegionOutlines(ctx);
       // ★ U2：区域名压在填充/边界之上、单位之下。
@@ -2879,6 +3087,13 @@
         layerState: Object.assign({}, layerState),
         nationRegionCount: nationRegions.length,
         nationNameDraws: nationNameDraws,
+        // ★ 2026-11-15：国家疆域边界真实绘制计数 / 顶点数。
+        nationOutlineDraws: nationOutlineDraws,
+        nationOutlineVertexCount: nationOutlineVertexCount,
+        // ★ 2026-11-15：普通区域基底边界（独立图层）条数/顶点/真实描边计数。
+        regionBaselineOutlineCount: regionBaselineOutlines.length,
+        regionBaselineVertexCount: regionBaselineVertexCount,
+        regionBaselineDraws: regionBaselineDraws,
         decisionMakerCount: decisionMakers.length,
         // ★ F1：GOV 辖区覆盖层条数与 hex 总数（逐项 hexes.length 求和；供验收/门禁断言）。
         govJurisdictionCount: govJurisdictions.length,
@@ -3073,6 +3288,8 @@
       setDraftHexes: setDraftHexes,
       draftHexes: draftList,
       setRegionOutlines: setRegionOutlines,
+      // ★ 2026-11-15：普通区域基底边界（独立图层/独立 overlay；清高亮不清它）。
+      setRegionBaselineOutlines: setRegionBaselineOutlines,
       setFocusHexes: setFocusHexes,
       regionOutlineRings: function () {
         return regionOutlines.map(function (outline) {

@@ -31,6 +31,7 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
+import io.mosire.simos.app.tools.army.AppFormationRenderPort;
 import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolViews;
 import io.mosire.simos.app.tools.ga.AgentLibDecisionTool;
@@ -44,6 +45,7 @@ import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
 import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
 import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
 import io.mosire.simos.app.tools.gov.AppGovToolViews;
+import io.mosire.simos.app.tools.gov.AppNationRenderPort;
 import io.mosire.simos.app.tools.map.AppMapPathPort;
 import io.mosire.simos.app.tools.map.AppMapRenderPort;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
@@ -80,8 +82,11 @@ import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.army.tools.ArmyManpowerPort;
 import io.mosire.simos.army.tools.ArmyToolPerspective;
 import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.army.tools.FormationRenderPort;
 import io.mosire.simos.army.tools.read.ArmyCombatTool;
 import io.mosire.simos.army.tools.read.ArmyCombatsTool;
+import io.mosire.simos.army.tools.read.FormationTool;
+import io.mosire.simos.army.tools.write.ArmyEditFormationTool;
 import io.mosire.simos.army.tools.write.ArmyRecordCombatTool;
 import io.mosire.simos.army.tools.write.AssignArmyGovTool;
 import io.mosire.simos.army.tools.write.FormatUnitTool;
@@ -168,7 +173,9 @@ import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.NationRenderPort;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
+import io.mosire.simos.gov.tools.read.NationsTool;
 import io.mosire.simos.gov.tools.read.ProvinceDivideTool;
 import io.mosire.simos.gov.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.gov.tools.write.GovApplyStaffingTool;
@@ -177,6 +184,7 @@ import io.mosire.simos.gov.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.gov.tools.write.GovDefineCurrencyTool;
 import io.mosire.simos.gov.tools.write.GovDismissTool;
 import io.mosire.simos.gov.tools.write.GovDispatchTeamTool;
+import io.mosire.simos.gov.tools.write.GovEditNationTool;
 import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
 import io.mosire.simos.gov.tools.write.GovIssueMoneyTool;
 import io.mosire.simos.gov.tools.write.GovOpenPostsToMarketTool;
@@ -202,11 +210,14 @@ import io.mosire.simos.map.tools.read.MapHexTool;
 import io.mosire.simos.map.tools.read.MapOverlapsTool;
 import io.mosire.simos.map.tools.read.MapOverviewTool;
 import io.mosire.simos.map.tools.read.MapPathTool;
+import io.mosire.simos.map.tools.read.MapReferenceTool;
 import io.mosire.simos.map.tools.read.MapRegionTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
+import io.mosire.simos.map.tools.write.MapConnectHexesTool;
 import io.mosire.simos.map.tools.write.MapCreateRegionTool;
 import io.mosire.simos.map.tools.write.MapDeleteRegionTool;
 import io.mosire.simos.map.tools.write.MapImportRasterTool;
+import io.mosire.simos.map.tools.write.MapPaintTerrainTool;
 import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
 import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.map.tools.write.MapRenameRegionTool;
@@ -1462,6 +1473,9 @@ public final class SimosToolSource implements ToolSource {
     UnitToolCommandTypes unitCommandTypes = new AppUnitToolCommandTypes();
     built.add(new MapSetTerrainTool(mapWrites, mapId));
     built.add(new MapImportRasterTool(mapWrites, mapId));
+    // ★ 2026-11-14 自由地图工具：直接多格刷地形 / 有序格链增删连通性（顶层结构化参数，整批原子提交）。
+    built.add(new MapPaintTerrainTool(mapWrites, mapId));
+    built.add(new MapConnectHexesTool(mapWrites, mapId));
     // ★★ 2026-10-12 批次 2（hex 属性表）：GM 改单格可用地面积（map.SetHexArea，命令不打 {@code DmUsableCommand}
     //   ⇒ 决策人令 / RegisterEffect / 决策人 catalog 三条路径都到不了；**只在 GM 桶**）。──
     built.add(new MapSetHexAreaTool(mapWrites, mapId));
@@ -1526,6 +1540,10 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**；★ 三个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走 CoreSimos.submitBatch
     //   一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
     built.add(new GovCreateOfficeTool(gov, mapId));
+    // ★ 2026-11-14：国家编辑一次性入口（地图/领土/颜色/可选中央 GOV；一次 map/unit/gov 原子批）。
+    built.add(new GovEditNationTool(gov));
+    // ★ 2026-11-14：单支军队完整编制的一次性入口（递归树 → social/unit/army 原子批）。
+    built.add(new ArmyEditFormationTool(toolReads, toolWrites));
     built.add(new GovRecruitTool(gov, mapId));
     built.add(new GovDismissTool(gov, mapId));
     // 阶段 13A（2026-10-01 GOV/Army 计划 §2.6 人员流转）：四条 GOV 组合工具——
@@ -1996,6 +2014,8 @@ public final class SimosToolSource implements ToolSource {
     MapToolViews mapViews = new AppMapToolViews();
     MapToolPerspective mapPerspective = new AppMapToolPerspective();
     MapRenderPort mapRender = new AppMapRenderPort(renderService);
+    NationRenderPort nationRender = new AppNationRenderPort(renderService.pngPublisher());
+    FormationRenderPort formationRender = new AppFormationRenderPort(renderService.pngPublisher());
     MapPathPort mapPaths = new AppMapPathPort();
     // ★★ 2026-10-12 B3 第二域（army）：两条 army 读工具**已下放到 `simos-army`**（`army.tools.read`），
     //   注入同一套接缝——窄读口（通用适配器，与 map 共用一个形制）+ 视图口 + 视角口（可见性围栏唯一实现）。
@@ -2078,6 +2098,11 @@ public final class SimosToolSource implements ToolSource {
                 new EconomyOwnershipTool(economyReads, economyViews, economyPerspective, mapId),
                 // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
                 new MapRenderTool(mapReads, mapViews, mapRender),
+                // ★ 2026-11-14：国家与完整编制的只读视图（GM-only；PNG 经同一工件链出站）。
+                new NationsTool(new QueryServiceToolReadPort(query), nationRender),
+                new FormationTool(armyReads, formationRender),
+                // ★ 2026-11-14：参考底图查看（GM-only；PNG 经同一 ArtifactStore 内容寻址出站）。
+                new MapReferenceTool(mapReads, renderService.mapReferences()),
                 // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `ga.CreateDecisionMaker` 写、写完看不见。
                 new DecisionMakersTool(gaQueries),
                 // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
