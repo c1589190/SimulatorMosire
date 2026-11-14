@@ -371,21 +371,22 @@ FORMAT_VERSION_DAY_BASE = "1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3b. 重建模式的 8 模块空切片载荷（baseline 4bf60478）
+# 3b. 重建模式的当前模块空切片载荷
 # ─────────────────────────────────────────────────────────────────────────────
-#: 由当前 baseline 各模块自己的 codec `encodeSnapshot(empty)` 生成（生成器 EmptySlices.java +
-#: 逐字节证据见重建目录 `samples/empty_module_slices.json`）。`map` 由重建器自己产出，不在此列。
-#: ★ 只写 map/social/unit 三个切片时，`/api/units` 等读路径会因缺 `sd` 切片报 400
-#:   （2026-10-02 实测：`状态里没有 sd 模块切片——装配故障`）——故重建档补齐全部 8 模块；
-#:   旧模式（无 --regen-samples）**不补**，保持 M6 逐字节不变。
+#: 由当前 baseline 各模块自己的 codec `encodeSnapshot(empty)` 生成；`map` 由重建器自己产出，不在此列。
+#: 当前 Shell 有 10 个 codec（actor/army/culture/economy/ga/gov/map/production/social/unit）；
+#: 只写旧 map/social/unit 会让 replay 在 `sd`/`ga`、economy、social provisioning 等处失败。
+#: 旧模式（无 --regen-samples）仍不补，保持 M6 逐字节不变。
 EMPTY_MODULE_PAYLOADS = json.loads(r'''{
+  "social": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"populations\":{},\"cities\":{},\"groups\":{},\"households\":{},\"populationEvents\":{},\"provisioning\":{\"globalDemandDefaults\":[{\"ageBracket\":\"CHILD\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":6000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"CHILD\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":600,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"CHILD\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":100,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"CHILD\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":6000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"CHILD\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":600,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"CHILD\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":100,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ADULT\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":10000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"ADULT\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":1000,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ADULT\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":200,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ADULT\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":9000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"ADULT\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":1200,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ADULT\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":200,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ELDER\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":7000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"ELDER\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":800,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ELDER\",\"sex\":\"MALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":150,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ELDER\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"grain\"},\"amountMilli\":7000,\"period\":\"PER_CYCLE_DAYS\",\"cycleDays\":120},{\"ageBracket\":\"ELDER\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"cloth\"},\"amountMilli\":900,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0},{\"ageBracket\":\"ELDER\",\"sex\":\"FEMALE\",\"commodity\":{\"value\":\"tool\"},\"amountMilli\":150,\"period\":\"PER_CALENDAR_YEAR\",\"cycleDays\":0}],\"globalLaborDefaults\":[{\"ageBracket\":\"CHILD\",\"sex\":\"MALE\",\"milliHoursPerTick\":4000},{\"ageBracket\":\"CHILD\",\"sex\":\"FEMALE\",\"milliHoursPerTick\":4000},{\"ageBracket\":\"ADULT\",\"sex\":\"MALE\",\"milliHoursPerTick\":16000},{\"ageBracket\":\"ADULT\",\"sex\":\"FEMALE\",\"milliHoursPerTick\":8000},{\"ageBracket\":\"ELDER\",\"sex\":\"MALE\",\"milliHoursPerTick\":0},{\"ageBracket\":\"ELDER\",\"sex\":\"FEMALE\",\"milliHoursPerTick\":0}],\"householdDemandOverrides\":{},\"householdLaborOverrides\":{}},\"vitalRates\":{\"globalDefaults\":{\"rates\":[{\"bracketId\":\"0-14\",\"sex\":\"MALE\",\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":67},{\"bracketId\":\"0-14\",\"sex\":\"FEMALE\",\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":67},{\"bracketId\":\"15-59\",\"sex\":\"MALE\",\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":33},{\"bracketId\":\"15-59\",\"sex\":\"FEMALE\",\"birthRatePerMillionPerTick\":667,\"deathRatePerMillionPerTick\":33},{\"bracketId\":\"60+\",\"sex\":\"MALE\",\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":667},{\"bracketId\":\"60+\",\"sex\":\"FEMALE\",\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":667}]}},\"vitalRemainders\":{\"entries\":[]},\"satietyPerMille\":{},\"fleeStates\":{}}}",
+  "unit": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"units\":{},\"commandChains\":{}}}",
+  "economy": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"meta\":null,\"classes\":{},\"debtContracts\":{},\"flows\":{},\"allocations\":{},\"relations\":{},\"marketTables\":{},\"shipments\":{},\"assetShares\":{},\"operatorConditions\":{},\"demands\":{},\"classStructures\":{},\"classPositions\":{},\"classStandings\":{},\"productionOrganizations\":{},\"assetRules\":{},\"governments\":{},\"moneyIssuances\":{},\"crisisSignals\":{},\"modeTransitions\":{},\"classShares\":{},\"periodicAdjustments\":{},\"currencies\":{\"silver\":{\"id\":\"silver\",\"scale\":3,\"displayName\":\"银\"}},\"moneyInstruments\":{\"silver-specie\":{\"id\":{\"value\":\"silver-specie\"},\"currency\":{\"value\":\"silver\"},\"kind\":\"SPECIE\",\"issuer\":null,\"redeemer\":null}},\"marketZones\":{},\"householdDebtRefs\":{},\"commodityFreightBaseMilli\":{},\"govMarketMandates\":{},\"marketRoundStats\":{},\"productionRosters\":{},\"wageCarryRemainders\":{},\"assetOccupancies\":{},\"inventoryReservations\":{},\"productionWageAnchors\":{},\"householdFlowTables\":{},\"transportCapacityBatches\":{},\"transportPriceAnchors\":{}}}",
   "actor": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"meta\":null,\"actors\":{},\"accounts\":{}}}",
-  "army": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"combats\":{}}}",
-  "economy": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"meta\":null,\"industries\":{},\"classes\":{},\"debtContracts\":{},\"flows\":{},\"laborSupply\":{},\"allocations\":{},\"relations\":{},\"markets\":{},\"shipments\":{},\"memberships\":{},\"assetShares\":{},\"operatorConditions\":{},\"units\":{},\"demands\":{},\"candidates\":{},\"modes\":{},\"classStructures\":{},\"classPositions\":{},\"classStandings\":{},\"productionOrganizations\":{},\"assetRules\":{},\"governments\":{},\"moneyIssuances\":{},\"pledges\":{},\"liquidationPolicies\":{},\"crisisSignals\":{},\"modeTransitions\":{},\"classShares\":{},\"classFirst\":{\"modeParticipations\":{},\"classPools\":{},\"householdAccounts\":{},\"assetStateSchemas\":{},\"classBounds\":{},\"mobilityPolicies\":{},\"classFlowEvents\":{},\"accounts\":{},\"lenders\":{},\"meta\":{\"tick\":0,\"landForSale\":0,\"landMarketEscrowGrain\":0,\"landMarketEscrowMoney\":0,\"totalLeaseHolding\":0,\"config\":null,\"totals\":{\"producedGrainTotal\":0,\"seedUsedTotal\":0,\"rationConsumedTotal\":0,\"clothConsumedTotal\":0,\"borrowedGrainTotal\":0,\"borrowedMoneyTotal\":0,\"boughtGrainTotal\":0,\"liquidSeizedTotal\":0,\"landSeizedTotal\":0,\"capitalizedTotal\":0,\"redLightTotal\":0,\"collectionEventCount\":0,\"interestChargedTotal\":0,\"rentPaidTotal\":0,\"wagePaidTotal\":0,\"externalSeedPaidTotal\":0,\"residualPaidTotal\":0,\"taxPaidTotal\":0},\"initial\":{\"grainTotal\":0,\"clothTotal\":0,\"householdMoneyTotal\":0,\"lenderMoneyTotal\":0,\"populationTotal\":0,\"ownedLandTotal\":0,\"toolsTotal\":0,\"claimGrainMilli\":0},\"stockEnrichmentViolations\":0}}}}",
-  "gov": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"offices\":{}}}",
-  "sd": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"nations\":{},\"armies\":{},\"combats\":{},\"combatStates\":{},\"decisionMakers\":{},\"directives\":{},\"effects\":{},\"verdicts\":{},\"lossRecords\":{},\"info\":{},\"diplomaticRelations\":{},\"diplomaticEvents\":{}}}",
-  "social": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"populations\":{},\"cities\":{},\"groups\":{}}}",
-  "unit": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"units\":{},\"commandChains\":{}}}"
+  "gov": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"offices\":{},\"remittanceStates\":{},\"nations\":{},\"diplomaticRelations\":{},\"diplomaticEvents\":{},\"nationAffiliations\":{},\"govAffiliations\":{}}}",
+  "army": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"armies\":{},\"combats\":{},\"armyAffiliations\":{}}}",
+  "ga": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"decisionPackets\":{},\"mergedEffectPlans\":{},\"directives\":{},\"verdicts\":{},\"decisionMakers\":{},\"info\":{},\"effects\":{}}}",
+  "production": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"industries\":{},\"modes\":{},\"instances\":{},\"experienceTracks\":{},\"householdExperience\":{},\"unlocks\":{},\"efficiency\":{},\"outputQuantityOverrides\":{}}}",
+  "culture": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"householdCultures\":{}}}"
 }''')
 
 
@@ -637,7 +638,11 @@ def build_map_payload(data, report, regen_samples=None):
                 height = min(1.0, max(0.0, height))
             height_min = height if height_min is None else min(height_min, height)
             height_max = height if height_max is None else max(height_max, height)
-            new_hexes["{}_{}".format(coord[0], coord[1])] = {"height": height}
+            # 当前 MapCodec 的 HexCell: {height, land}；土地树空也必须是 {"byType":{}}，不能缺 land。
+            new_hexes["{}_{}".format(coord[0], coord[1])] = {
+                "height": height,
+                "land": {"byType": {}},
+            }
             terrain_by_hex[coord] = simos_key  # ★ 键是 (q,r) 元组：块切分按坐标邻接
         else:
             simos_key = TERRAIN_MAP[cell["terrain"]]
@@ -766,7 +771,7 @@ def build_checkpoint(map_obj, extra_modules=None):
     """组装信封（modules 的 value 是**字符串**）。
 
     `extra_modules`：namespace → 载荷 JSON 文本；重建模式传 {@link EMPTY_MODULE_PAYLOADS}，
-    使档补齐全 8 模块；旧模式传 None（保持 map/social/unit 三模块的 M6 字节）。
+    使档补齐全当前 10 模块；旧模式传 None（保持 map/social/unit 三模块的 M6 字节）。
     """
     nested_ref = {"branch": {"value": BRANCH}, "revision": {"value": REVISION}}
     ts = {"tick": 0, "calendarLabel": None}
@@ -1006,7 +1011,6 @@ def main(argv=None):
                      rejected="{}: {}".format(type(exc).__name__, exc),
                      samples_path=args.regen_samples)
         return 3
-
 
 if __name__ == "__main__":
     sys.exit(main())
